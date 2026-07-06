@@ -1,0 +1,127 @@
+/* =====================================================================
+   MÓDULO 07/10 · 06-stats-panel.css
+   Parte de la modularización quirúrgica de styles.css
+   (ver README-MODULARIZACION-CSS.md para el mapa completo)
+   Contexto / depende de: 00-base.css — #statsPanel (tabla y barras, parte principal)
+   IMPORTANTE: el orden de carga (nombre numérico) es significativo
+   para la cascada CSS — cargar los <link> en este mismo orden.
+   No se movió ni se reescribió ninguna regla: corte exacto del original.
+   ===================================================================== */
+
+    #statsPanel {
+      position: absolute;
+      bottom: 12px;
+      left: 12px;
+      background: rgba(13, 17, 23, 0.92);
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      padding: 8px 10px;
+      font-family: "Courier New", monospace;
+      font-size: 10px;
+      color: #e6edf3;
+      pointer-events: none;
+      z-index: 10;
+      min-width: 280px;
+      box-shadow: 0 2px 12px #00000066;
+      backdrop-filter: blur(4px);
+    }
+
+    #statsPanel .sp-title {
+      color: #58a6ff;
+      font-weight: 600;
+      font-size: 10px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      margin-bottom: 5px;
+      border-bottom: 1px solid #21262d;
+      padding-bottom: 3px;
+    }
+
+    #statsPanel table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    #statsPanel th {
+      color: #8b949e;
+      font-weight: 400;
+      font-size: 9px;
+      text-align: right;
+      padding: 1px 5px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    #statsPanel th:first-child {
+      text-align: left;
+    }
+
+    #statsPanel td {
+      padding: 2px 5px;
+      text-align: right;
+      font-size: 10px;
+    }
+
+    #statsPanel td:first-child {
+      text-align: left;
+    }
+
+    #statsPanel tr.sp-lots td:first-child {
+      color: #3fb950;
+    }
+
+    #statsPanel tr.sp-lots td {
+      color: #3fb950;
+    }
+
+    #statsPanel tr.sp-mzn td:first-child {
+      color: #58a6ff;
+    }
+
+    #statsPanel tr.sp-mzn td {
+      color: #58a6ff;
+    }
+
+    #statsPanel tr.sp-via td:first-child {
+      color: #f78166;
+    }
+
+    #statsPanel tr.sp-via td {
+      color: #f78166;
+    }
+
+    #statsPanel tr.sp-total td {
+      color: #e6edf3;
+      font-weight: 600;
+      border-top: 1px solid #30363d;
+      padding-top: 4px;
+    }
+
+    #statsPanel tr.sp-total td:first-child {
+      color: #e3b341;
+    }
+
+    #statsPanel .sp-bar-wrap {
+      margin-top: 6px;
+      height: 5px;
+      border-radius: 3px;
+      background: #21262d;
+      overflow: hidden;
+      display: flex;
+    }
+
+    #statsPanel .sp-bar-lots {
+      background: #3fb950;
+      transition: width 0.3s;
+    }
+
+    #statsPanel .sp-bar-mzn {
+      background: #1f6feb;
+      transition: width 0.3s;
+    }
+
+    #statsPanel .sp-bar-via {
+      background: #f78166;
+      transition: width 0.3s;
+    }
+

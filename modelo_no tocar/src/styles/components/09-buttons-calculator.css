@@ -1,0 +1,156 @@
+/* =====================================================================
+   MÓDULO 10/10 · 09-buttons-calculator.css
+   Parte de la modularización quirúrgica de styles.css
+   (ver README-MODULARIZACION-CSS.md para el mapa completo)
+   Contexto / depende de: 01-header-toolbar.css — REDEFINE .btn (pisa la versión original a propósito) + .cbtn*
+   IMPORTANTE: el orden de carga (nombre numérico) es significativo
+   para la cascada CSS — cargar los <link> en este mismo orden.
+   No se movió ni se reescribió ninguna regla: corte exacto del original.
+   ===================================================================== */
+
+    /* ── botones unificados ── */
+    .btn {
+      height: 26px;
+      padding: 0 9px;
+      border-radius: 4px;
+      border: 1px solid #30363d;
+      background: #21262d;
+      color: #c9d1d9;
+      cursor: pointer;
+      font-size: 11px;
+      font-family: "Courier New", monospace;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      white-space: nowrap;
+      transition: all 0.12s;
+    }
+
+    .btn:hover {
+      background: #30363d;
+      border-color: #8b949e;
+    }
+
+    .btn:disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+    }
+
+    .btn.active {
+      background: #1f6feb;
+      border-color: #388bfd;
+      color: #fff;
+    }
+
+    .btn.blue {
+      border-color: #388bfd;
+      color: #79c0ff;
+    }
+
+    .btn.blue:hover {
+      background: #1c2d3f;
+    }
+
+    .btn.green {
+      border-color: #3fb950;
+      color: #56d364;
+    }
+
+    .btn.green:hover {
+      background: #1a3a1f;
+    }
+
+    .btn.red {
+      border-color: #f85149;
+      color: #ff7b72;
+    }
+
+    .btn.red:hover {
+      background: #3d1f1e;
+    }
+
+    .btn.purple {
+      border-color: #d2a8ff;
+      color: #d2a8ff;
+    }
+
+    .btn.purple:hover {
+      background: #2a1f3a;
+    }
+
+    .btn.cyan {
+      border-color: #a5d6ff;
+      color: #a5d6ff;
+    }
+
+    .btn.cyan:hover {
+      background: #1a2a3a;
+    }
+
+    .btn svg {
+      width: 13px;
+      height: 13px;
+      stroke: currentColor;
+      fill: none;
+      stroke-width: 1.8;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      flex-shrink: 0;
+    }
+
+    .cbtn {
+      padding: 0;
+      height: 42px;
+      border-radius: 5px;
+      border: 1px solid #30363d;
+      background: #21262d;
+      color: #e6edf3;
+      font-size: 14px;
+      font-family: "Courier New", monospace;
+      cursor: pointer;
+      transition:
+        background 0.1s,
+        border-color 0.1s;
+    }
+
+    .cbtn:hover {
+      background: #2d333b;
+      border-color: #58a6ff55;
+    }
+
+    .cbtn:active {
+      background: #3d444d;
+    }
+
+    .cbtn-fn {
+      background: #1c2128;
+      color: #8b949e;
+    }
+
+    .cbtn-fn:hover {
+      background: #2d333b;
+      color: #e6edf3;
+    }
+
+    .cbtn-op {
+      background: #1c2a3a;
+      color: #a5d6ff;
+      border-color: #a5d6ff33;
+      font-size: 16px;
+    }
+
+    .cbtn-op:hover {
+      background: #1f3a5f;
+      border-color: #a5d6ff88;
+    }
+
+    .cbtn-eq {
+      background: #1f6feb;
+      color: #fff;
+      border-color: #58a6ff;
+      font-size: 16px;
+    }
+
+    .cbtn-eq:hover {
+      background: #388bfd;
+    }

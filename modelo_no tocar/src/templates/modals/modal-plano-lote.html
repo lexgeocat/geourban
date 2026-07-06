@@ -1,0 +1,209 @@
+<!-- =====================================================================
+     FRAGMENTO 08/10 · 07-modal-plano-lote.html
+     Parte de la modularización quirúrgica de index.html
+     (ver README-MODULARIZACION-HTML.md para el mapa completo y el build)
+     Va después de: 06-modal-import-dxf.html (modal Plano por Lote)
+     Este archivo es un CORTE EXACTO del original: no es un documento HTML
+     independiente (continúa/lo continúan otros fragmentos), y no se
+     modificó ni una línea de marcado. Ensamblar con build-html.js.
+     ===================================================================== -->
+    <div
+      id="modalPlanoLote"
+      style="
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(13, 17, 23, 0.96);
+        z-index: 9999;
+        align-items: flex-start;
+        justify-content: center;
+        overflow-y: auto;
+        padding: 20px 0;
+        font-family: &quot;Courier New&quot;, monospace;
+      "
+    >
+      <div
+        style="
+          background: #161b22;
+          border: 1px solid #30363d;
+          border-radius: 10px;
+          padding: 20px;
+          width: 560px;
+          max-width: 98vw;
+        "
+      >
+        <div
+          style="
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 14px;
+          "
+        >
+          <span
+            style="
+              color: #d2a8ff;
+              font-size: 13px;
+              font-weight: 700;
+              letter-spacing: 1px;
+            "
+          >
+            &#9111; PLANO PERIMÉTRICO DE LOTE
+          </span>
+          <button
+            onclick="cerrarModalPlanoLote()"
+            style="
+              padding: 6px 14px;
+              border-radius: 5px;
+              border: 1px solid #f85149;
+              background: transparent;
+              cursor: pointer;
+              font-size: 11px;
+              font-family: &quot;Courier New&quot;, monospace;
+              color: #f85149;
+            "
+          >
+            &#10005; Cerrar
+          </button>
+        </div>
+        <div
+          style="
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            align-items: center;
+            margin-bottom: 10px;
+          "
+        >
+          <div style="font-size: 10px; color: #8b949e">Manzano:</div>
+          <select
+            id="plMznSel"
+            onchange="plPopulateLotes()"
+            style="
+              background: #0d1117;
+              border: 1px solid #30363d;
+              border-radius: 3px;
+              color: #e6edf3;
+              padding: 3px 8px;
+              font-size: 11px;
+              font-family: &quot;Courier New&quot;, monospace;
+            "
+          ></select>
+          <div style="font-size: 10px; color: #8b949e">Lote:</div>
+          <select
+            id="plLoteSel"
+            style="
+              background: #0d1117;
+              border: 1px solid #30363d;
+              border-radius: 3px;
+              color: #e6edf3;
+              padding: 3px 8px;
+              font-size: 11px;
+              font-family: &quot;Courier New&quot;, monospace;
+            "
+          ></select>
+        </div>
+        <div
+          style="
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            align-items: center;
+            margin-bottom: 10px;
+          "
+        >
+          <div style="font-size: 10px; color: #8b949e">Propietario:</div>
+          <input
+            id="plPropietario"
+            type="text"
+            value="XXXXXXXXXXXXXXX"
+            style="
+              background: #0d1117;
+              border: 1px solid #30363d;
+              border-radius: 3px;
+              color: #e6edf3;
+              padding: 4px 8px;
+              font-size: 11px;
+              font-family: &quot;Courier New&quot;, monospace;
+              width: 150px;
+            "
+          />
+          <div style="font-size: 10px; color: #8b949e">Arq.:</div>
+          <input
+            id="plArquitecto"
+            type="text"
+            value="XXXXXXXXXXXXXXX"
+            style="
+              background: #0d1117;
+              border: 1px solid #30363d;
+              border-radius: 3px;
+              color: #e6edf3;
+              padding: 4px 8px;
+              font-size: 11px;
+              font-family: &quot;Courier New&quot;, monospace;
+              width: 130px;
+            "
+          />
+        </div>
+        <div
+          style="
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            align-items: center;
+            margin-bottom: 14px;
+          "
+        >
+          <div style="font-size: 10px; color: #8b949e">Urbanización:</div>
+          <input
+            id="plUrbanizacion"
+            type="text"
+            value="URB. SAI SOLUCIONES"
+            style="
+              background: #0d1117;
+              border: 1px solid #30363d;
+              border-radius: 3px;
+              color: #e6edf3;
+              padding: 4px 8px;
+              font-size: 11px;
+              font-family: &quot;Courier New&quot;, monospace;
+              width: 180px;
+            "
+          />
+          <div style="font-size: 10px; color: #8b949e">Lámina:</div>
+          <input
+            id="plLamina"
+            type="text"
+            value="PP-01"
+            style="
+              background: #0d1117;
+              border: 1px solid #30363d;
+              border-radius: 3px;
+              color: #e6edf3;
+              padding: 4px 8px;
+              font-size: 11px;
+              font-family: &quot;Courier New&quot;, monospace;
+              width: 60px;
+            "
+          />
+        </div>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap">
+          <button
+            onclick="generarPlanoLote()"
+            style="
+              padding: 6px 18px;
+              border-radius: 5px;
+              border: 1px solid #d2a8ff;
+              background: transparent;
+              cursor: pointer;
+              font-size: 11px;
+              font-family: &quot;Courier New&quot;, monospace;
+              color: #d2a8ff;
+            "
+          >
+            &#9654; Abrir Plano
+          </button>
+        </div>
+      </div>
+    </div>
+

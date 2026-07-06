@@ -1,0 +1,2497 @@
+<!doctype html>
+<!-- =====================================================================
+     FRAGMENTO 01/10 · 00-head.html
+     Parte de la modularización quirúrgica de index.html
+     (ver README-MODULARIZACION-HTML.md para el mapa completo y el build)
+     Va después de: (ninguna) — cabecera <head> del documento
+     Este archivo es un CORTE EXACTO del original: no es un documento HTML
+     independiente (continúa/lo continúan otros fragmentos), y no se
+     modificó ni una línea de marcado. Ensamblar con build-html.js.
+     ===================================================================== -->
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Soluciones a la Ingeniería Sai v30.05</title>
+    <!-- styles.css modularizado en 10 archivos (ver README-MODULARIZACION-CSS.md
+         del paquete de CSS). El orden importa para la cascada: cargar tal
+         cual, en este orden. -->
+    <link rel="stylesheet" href="src/styles/base/00-base.css" />
+    <link rel="stylesheet" href="src/styles/components/01-header-toolbar.css" />
+    <link rel="stylesheet" href="src/styles/layout/02-layout.css" />
+    <link rel="stylesheet" href="src/styles/components/03-sidebar-components.css" />
+    <link rel="stylesheet" href="src/styles/layout/04-statusbar.css" />
+    <link rel="stylesheet" href="src/styles/components/05-edit-panel.css" />
+    <link rel="stylesheet" href="src/styles/components/06-stats-panel.css" />
+    <link rel="stylesheet" href="src/styles/components/07-import-modal.css" />
+    <link rel="stylesheet" href="src/styles/features/08-equipamiento.css" />
+    <link rel="stylesheet" href="src/styles/components/09-buttons-calculator.css" />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css"
+    />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.js"></script>
+    <!-- Dependencias para Ortofoto KMZ -->
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/ol@9.2.4/ol.css"
+    />
+    <script src="https://cdn.jsdelivr.net/npm/ol@9.2.4/dist/ol.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+  </head>
+<!-- =====================================================================
+     FRAGMENTO 02/10 · 01-header-toolbar.html
+     Parte de la modularización quirúrgica de index.html
+     (ver README-MODULARIZACION-HTML.md para el mapa completo y el build)
+     Va después de: 00-head.html (abre <body>, contiene <header> completo)
+     Este archivo es un CORTE EXACTO del original: no es un documento HTML
+     independiente (continúa/lo continúan otros fragmentos), y no se
+     modificó ni una línea de marcado. Ensamblar con build-html.js.
+     ===================================================================== -->
+
+  <body>
+    <header>
+      <h1>
+        <svg
+          width="13"
+          height="13"
+          viewBox="0 0 16 16"
+          fill="#58a6ff"
+          style="vertical-align: -1px"
+        >
+          <path d="M2 2h5v5H2zM9 2h5v5H9zM2 9h5v5H2zM9 9h5v5H9z" />
+        </svg>
+        LOTES SAI v30.05
+      </h1>
+
+      <div class="sep"></div>
+
+      <div class="toolbar">
+        <!-- Grupo 1: Modos de dibujo -->
+        <button class="btn active" id="btnPolygon" onclick="setMode('polygon')">
+          <svg viewBox="0 0 24 24">
+            <polygon points="3,20 12,4 21,20" />
+          </svg>
+          Parcela
+        </button>
+        <button class="btn" id="btnStreet" onclick="setMode('street')" disabled>
+          <svg viewBox="0 0 24 24">
+            <line x1="5" y1="6" x2="19" y2="6" />
+            <line x1="5" y1="12" x2="19" y2="12" />
+            <line x1="5" y1="18" x2="19" y2="18" />
+          </svg>
+          Trazar Calle
+        </button>
+        <button class="btn" id="btnEdit" onclick="setMode('edit')">
+          <svg viewBox="0 0 24 24">
+            <path
+              d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"
+            />
+            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+          </svg>
+          Editar Calles
+        </button>
+        <button
+          class="btn purple"
+          id="btnSlice"
+          onclick="setMode('slice')"
+          disabled
+        >
+          <svg viewBox="0 0 24 24">
+            <line x1="6" y1="3" x2="6" y2="15" />
+            <line x1="18" y1="9" x2="18" y2="21" />
+            <line x1="3" y1="6" x2="15" y2="6" />
+            <line x1="9" y1="18" x2="21" y2="18" />
+            <line x1="3" y1="3" x2="21" y2="21" />
+          </svg>
+          Subdivisión Manual
+        </button>
+
+        <div class="sep"></div>
+
+        <!-- Grupo 2: Ancho de calle -->
+        <div class="sc">
+          <svg
+            width="13"
+            height="13"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="#8b949e"
+            stroke-width="1.8"
+            stroke-linecap="round"
+          >
+            <path d="M3 9h18M3 15h18M9 3v18M15 3v18" />
+          </svg>
+          <span>Calle:</span>
+          <input
+            type="range"
+            id="swRange"
+            min="2"
+            max="40"
+            value="8"
+            oninput="
+              swVal = parseFloat(this.value);
+              document.getElementById('swDisp').textContent = this.value;
+            "
+          />
+          <span class="sv" id="swDisp">8</span><span>m</span>
+        </div>
+
+        <div class="sep"></div>
+
+        <!-- Grupo 3: Importar / Exportar / Vista Previa -->
+        <div
+          style="position: relative; display: inline-flex"
+          id="importBtnWrap"
+        >
+          <button class="btn blue" onclick="toggleImportMenu(event)">
+            <svg viewBox="0 0 24 24">
+              <polyline points="16,16 12,12 8,16" />
+              <line x1="12" y1="12" x2="12" y2="21" />
+              <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3" />
+            </svg>
+            Importar
+            <svg viewBox="0 0 24 24" style="width: 9px; height: 9px">
+              <polyline points="6,9 12,15 18,9" />
+            </svg>
+          </button>
+          <div
+            id="importMenu"
+            style="
+              display: none;
+              position: absolute;
+              top: calc(100% + 4px);
+              left: 0;
+              background: #161b22;
+              border: 1px solid #30363d;
+              border-radius: 6px;
+              box-shadow: 0 4px 18px #00000088;
+              z-index: 9000;
+              min-width: 175px;
+              overflow: hidden;
+              font-family: &quot;Courier New&quot;, monospace;
+            "
+          >
+            <button
+              onclick="
+                closeImportMenu();
+                triggerImportDXF();
+              "
+              style="
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                width: 100%;
+                text-align: left;
+                padding: 7px 12px;
+                background: transparent;
+                border: none;
+                border-bottom: 1px solid #21262d;
+                color: #79c0ff;
+                font-size: 11px;
+                font-family: &quot;Courier New&quot;, monospace;
+                cursor: pointer;
+              "
+              onmouseover="this.style.background = '#1c2a3a'"
+              onmouseout="this.style.background = 'transparent'"
+            >
+              <svg
+                width="13"
+                height="13"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path
+                  d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"
+                />
+                <polyline points="14,2 14,8 20,8" />
+              </svg>
+              DXF (AutoCAD)
+            </button>
+
+            <button
+              onclick="
+                closeImportMenu();
+                triggerImportKMZ();
+              "
+              style="
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                width: 100%;
+                text-align: left;
+                padding: 7px 12px;
+                background: transparent;
+                border: none;
+                border-bottom: 1px solid #21262d;
+                color: #56d364;
+                font-size: 11px;
+                font-family: &quot;Courier New&quot;, monospace;
+                cursor: pointer;
+              "
+              onmouseover="this.style.background = '#1a2a1a'"
+              onmouseout="this.style.background = 'transparent'"
+            >
+              <svg
+                width="13"
+                height="13"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <circle cx="12" cy="12" r="10" />
+                <line x1="2" y1="12" x2="22" y2="12" />
+                <path
+                  d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"
+                />
+              </svg>
+              KMZ / KML (Google Earth)
+            </button>
+            <button
+              onclick="
+                closeImportMenu();
+                triggerOrthoKMZ();
+              "
+              style="
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                width: 100%;
+                text-align: left;
+                padding: 7px 12px;
+                background: transparent;
+                border: none;
+                color: #79c0ff;
+                font-size: 11px;
+                font-family: &quot;Courier New&quot;, monospace;
+                cursor: pointer;
+              "
+              onmouseover="this.style.background = '#1a2535'"
+              onmouseout="this.style.background = 'transparent'"
+            >
+              <svg
+                width="13"
+                height="13"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <rect x="2" y="3" width="20" height="14" rx="2" />
+                <circle cx="8" cy="8" r="2" />
+                <polyline points="14,7 18,13 10,13 6,10" />
+              </svg>
+              Ortofoto KMZ
+            </button>
+          </div>
+        </div>
+
+        <input
+          type="file"
+          id="kmzFileInput"
+          accept=".kmz,.kml"
+          style="display: none"
+          onchange="handleKMZFileSelected(this)"
+        />
+        <input
+          type="file"
+          id="dxfFileInput"
+          accept=".dxf"
+          style="display: none"
+          onchange="handleDXFFileSelected(this)"
+        />
+
+        <button class="btn green" onclick="exportDXF()">
+          <svg viewBox="0 0 24 24">
+            <polyline points="8,17 12,21 16,17" />
+            <line x1="12" y1="12" x2="12" y2="21" />
+            <path d="M20.88 18.09A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3" />
+          </svg>
+          Exportar DXF
+        </button>
+
+        <div
+          style="position: relative; display: inline-flex"
+          id="vistaPreviaWrap"
+        >
+          <button class="btn blue" onclick="toggleVistaPreviaMenu(event)">
+            <svg viewBox="0 0 24 24">
+              <rect x="3" y="3" width="18" height="18" rx="2" />
+              <line x1="3" y1="9" x2="21" y2="9" />
+              <line x1="9" y1="21" x2="9" y2="9" />
+            </svg>
+            Vista Previa
+            <svg viewBox="0 0 24 24" style="width: 9px; height: 9px">
+              <polyline points="6,9 12,15 18,9" />
+            </svg>
+          </button>
+          <div
+            id="vistaPreviaMenu"
+            style="
+              display: none;
+              position: absolute;
+              top: calc(100% + 4px);
+              left: 0;
+              background: #161b22;
+              border: 1px solid #30363d;
+              border-radius: 6px;
+              box-shadow: 0 4px 18px #00000088;
+              z-index: 9000;
+              min-width: 175px;
+              overflow: hidden;
+              font-family: &quot;Courier New&quot;, monospace;
+            "
+          >
+            <button
+              onclick="
+                closeVistaPreviaMenu();
+                printPlan();
+              "
+              style="
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                width: 100%;
+                text-align: left;
+                padding: 7px 12px;
+                background: transparent;
+                border: none;
+                border-bottom: 1px solid #21262d;
+                color: #79c0ff;
+                font-size: 11px;
+                font-family: &quot;Courier New&quot;, monospace;
+                cursor: pointer;
+              "
+              onmouseover="this.style.background = '#1c2a3a'"
+              onmouseout="this.style.background = 'transparent'"
+            >
+              <svg
+                width="13"
+                height="13"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <rect x="3" y="3" width="18" height="18" rx="2" />
+                <line x1="3" y1="9" x2="21" y2="9" />
+                <line x1="9" y1="21" x2="9" y2="9" />
+              </svg>
+              Plano General
+            </button>
+            <button
+              onclick="
+                closeVistaPreviaMenu();
+                abrirPlanoLote();
+              "
+              style="
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                width: 100%;
+                text-align: left;
+                padding: 7px 12px;
+                background: transparent;
+                border: none;
+                color: #d2a8ff;
+                font-size: 11px;
+                font-family: &quot;Courier New&quot;, monospace;
+                cursor: pointer;
+              "
+              onmouseover="this.style.background = '#1c1028'"
+              onmouseout="this.style.background = 'transparent'"
+            >
+              <svg
+                width="13"
+                height="13"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path
+                  d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"
+                />
+                <polyline points="14,2 14,8 20,8" />
+                <line x1="16" y1="13" x2="8" y2="13" />
+                <line x1="16" y1="17" x2="8" y2="17" />
+              </svg>
+              Plano por Lote
+            </button>
+          </div>
+        </div>
+
+        <div class="sep"></div>
+
+        <!-- Grupo 4: Proyecto -->
+        <button
+          class="btn green"
+          onclick="saveProject()"
+          title="Guardar proyecto"
+        >
+          <svg viewBox="0 0 24 24">
+            <path
+              d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"
+            />
+            <polyline points="17,21 17,13 7,13 7,21" />
+            <polyline points="7,3 7,8 15,8" />
+          </svg>
+          Guardar
+        </button>
+        <button
+          class="btn green"
+          onclick="triggerLoadProject()"
+          title="Cargar proyecto"
+        >
+          <svg viewBox="0 0 24 24">
+            <path
+              d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"
+            />
+          </svg>
+          Abrir
+        </button>
+        <input
+          type="file"
+          id="projectFileInput"
+          accept=".lsai"
+          style="display: none"
+          onchange="handleProjectFileSelected(this)"
+        />
+
+        <div class="sep"></div>
+
+        <!-- Grupo 5: Utilidades y acciones -->
+        <button class="btn cyan" onclick="toggleCalc()" title="Calculadora">
+          <svg viewBox="0 0 24 24">
+            <rect x="4" y="2" width="16" height="20" rx="2" />
+            <line x1="8" y1="6" x2="16" y2="6" />
+            <line x1="8" y1="10" x2="16" y2="10" />
+            <line x1="8" y1="14" x2="12" y2="14" />
+          </svg>
+          Calc
+        </button>
+        <button
+          class="btn red"
+          onclick="deleteParcela()"
+          title="Elimina la parcela y su contenido"
+        >
+          <svg viewBox="0 0 24 24">
+            <polyline points="3,6 5,6 21,6" />
+            <path d="M19 6l-1 14H6L5 6" />
+            <path d="M10 11v6M14 11v6" />
+            <path d="M9 6V4h6v2" />
+          </svg>
+          Parcela
+        </button>
+        <button class="btn blue" onclick="resetAll()">
+          <svg viewBox="0 0 24 24">
+            <rect x="3" y="3" width="18" height="18" rx="2" />
+            <line x1="8" y1="12" x2="16" y2="12" />
+            <line x1="12" y1="8" x2="12" y2="16" />
+          </svg>
+          Nuevo
+        </button>
+      </div>
+    </header>
+
+<!-- =====================================================================
+     FRAGMENTO 03/10 · 02-main-canvas-sidebar.html
+     Parte de la modularización quirúrgica de index.html
+     (ver README-MODULARIZACION-HTML.md para el mapa completo y el build)
+     Va después de: 01-header-toolbar.html (contenedor .main: canvas + sidebar)
+     Este archivo es un CORTE EXACTO del original: no es un documento HTML
+     independiente (continúa/lo continúan otros fragmentos), y no se
+     modificó ni una línea de marcado. Ensamblar con build-html.js.
+     ===================================================================== -->
+    <div class="main">
+      <div class="canvas-wrap" id="canvasWrap">
+        <div
+          id="satelliteMap"
+          style="
+            position: absolute;
+            inset: 0;
+            z-index: 0;
+            display: none;
+            pointer-events: none;
+          "
+        ></div>
+        <canvas
+          id="mainCanvas"
+          tabindex="0"
+          style="
+            position: relative;
+            z-index: 1;
+            background: transparent;
+            outline: none;
+          "
+        ></canvas>
+
+        <div
+          id="canvasQuickPanel"
+          style="
+            position: absolute;
+            top: 12px;
+            left: 12px;
+            z-index: 20;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            font-family: &quot;Courier New&quot;, monospace;
+            pointer-events: auto;
+          "
+        >
+          <div style="position: relative">
+            <button
+              id="btnVista"
+              onclick="toggleVistaMenu(event)"
+              style="
+                display: flex;
+                align-items: center;
+                gap: 5px;
+                background: rgba(13, 17, 23, 0.88);
+                border: 1px solid #30363d;
+                border-radius: 4px;
+                padding: 4px 9px;
+                font-size: 11px;
+                color: #e6edf3;
+                cursor: pointer;
+                user-select: none;
+                backdrop-filter: blur(4px);
+                transition: border-color 0.12s;
+                font-family: &quot;Courier New&quot;, monospace;
+              "
+              onmouseover="this.style.borderColor = '#58a6ff'"
+              onmouseout="this.style.borderColor = '#30363d'"
+            >
+              &#9654; Vista &#9660;
+            </button>
+            <div
+              id="vistaMenu"
+              style="
+                display: none;
+                position: absolute;
+                top: calc(100% + 4px);
+                left: 0;
+                background: rgba(13, 17, 23, 0.96);
+                border: 1px solid #30363d;
+                border-radius: 6px;
+                box-shadow: 0 4px 18px #00000088;
+                z-index: 9000;
+                min-width: 160px;
+                overflow: hidden;
+                font-family: &quot;Courier New&quot;, monospace;
+                backdrop-filter: blur(8px);
+              "
+            >
+              <label
+                style="
+                  display: flex;
+                  align-items: center;
+                  gap: 8px;
+                  padding: 8px 14px;
+                  font-size: 11px;
+                  color: #e6edf3;
+                  cursor: pointer;
+                  border-bottom: 1px solid #21262d;
+                  transition: background 0.1s;
+                "
+                onmouseover="this.style.background = '#21262d'"
+                onmouseout="this.style.background = 'transparent'"
+              >
+                <input
+                  type="checkbox"
+                  id="lotsChk"
+                  checked
+                  onchange="
+                    showLots = this.checked;
+                    render();
+                  "
+                  style="
+                    accent-color: #3fb950;
+                    width: 12px;
+                    height: 12px;
+                    cursor: pointer;
+                    margin: 0;
+                  "
+                />
+                <span style="color: #3fb950">&#9632;</span> Lotes
+              </label>
+              <label
+                style="
+                  display: flex;
+                  align-items: center;
+                  gap: 8px;
+                  padding: 8px 14px;
+                  font-size: 11px;
+                  color: #e6edf3;
+                  cursor: pointer;
+                  border-bottom: 1px solid #21262d;
+                  transition: background 0.1s;
+                "
+                onmouseover="this.style.background = '#21262d'"
+                onmouseout="this.style.background = 'transparent'"
+              >
+                <input
+                  type="checkbox"
+                  id="gridChk"
+                  checked
+                  onchange="
+                    showGrid = this.checked;
+                    render();
+                  "
+                  style="
+                    accent-color: #58a6ff;
+                    width: 12px;
+                    height: 12px;
+                    cursor: pointer;
+                    margin: 0;
+                  "
+                />
+                <span style="color: #58a6ff">&#9632;</span> Grilla
+              </label>
+              <label
+                style="
+                  display: flex;
+                  align-items: center;
+                  gap: 8px;
+                  padding: 8px 14px;
+                  font-size: 11px;
+                  color: #e6edf3;
+                  cursor: pointer;
+                  border-bottom: 1px solid #21262d;
+                  transition: background 0.1s;
+                "
+                onmouseover="this.style.background = '#21262d'"
+                onmouseout="this.style.background = 'transparent'"
+              >
+                <input
+                  type="checkbox"
+                  id="satChk"
+                  onchange="toggleSatellite(this.checked)"
+                  style="
+                    accent-color: #79c0ff;
+                    width: 12px;
+                    height: 12px;
+                    cursor: pointer;
+                    margin: 0;
+                  "
+                />
+                <span style="color: #79c0ff">&#9632;</span> Satélite
+              </label>
+
+              <label
+                id="guideLinesLabel"
+                style="
+                  display: none;
+                  align-items: center;
+                  gap: 8px;
+                  padding: 8px 14px;
+                  font-size: 11px;
+                  color: #e6edf3;
+                  cursor: pointer;
+                  border-bottom: 1px solid #21262d;
+                  transition: background 0.1s;
+                "
+                onmouseover="this.style.background = '#21262d'"
+                onmouseout="this.style.background = 'transparent'"
+              >
+                <input
+                  type="checkbox"
+                  id="guideChk"
+                  checked
+                  onchange="
+                    showGuideLines = this.checked;
+                    render();
+                  "
+                  style="
+                    accent-color: #79c0ff;
+                    width: 12px;
+                    height: 12px;
+                    cursor: pointer;
+                    margin: 0;
+                  "
+                />
+                <span style="color: #79c0ff">&#9632;</span> Guías DXF
+              </label>
+              <label
+                id="orthoVisLabel"
+                style="
+                  display: none;
+                  align-items: center;
+                  gap: 8px;
+                  padding: 8px 14px;
+                  font-size: 11px;
+                  color: #e6edf3;
+                  cursor: pointer;
+                  transition: background 0.1s;
+                "
+                onmouseover="this.style.background = '#21262d'"
+                onmouseout="this.style.background = 'transparent'"
+              >
+                <input
+                  type="checkbox"
+                  id="orthoVisChk"
+                  checked
+                  onchange="
+                    _orthoVisible = this.checked;
+                    render();
+                  "
+                  style="
+                    accent-color: #79c0ff;
+                    width: 12px;
+                    height: 12px;
+                    cursor: pointer;
+                    margin: 0;
+                  "
+                />
+                <span style="color: #79c0ff">&#9632;</span> Ortofoto
+              </label>
+            </div>
+          </div>
+
+          <button
+            id="btnUndo"
+            onclick="undoAction()"
+            disabled
+            title="Sin acciones para deshacer"
+            style="
+              padding: 4px 10px;
+              border-radius: 4px;
+              border: 1px solid #a5d6ff55;
+              background: rgba(13, 17, 23, 0.88);
+              color: #a5d6ff;
+              cursor: pointer;
+              font-size: 11px;
+              font-family: &quot;Courier New&quot;, monospace;
+              opacity: 0.4;
+              backdrop-filter: blur(4px);
+              transition: all 0.12s;
+              text-align: left;
+              white-space: nowrap;
+            "
+            onmouseover="
+              if (!this.disabled)
+                this.style.background = 'rgba(31,111,235,0.18)';
+            "
+            onmouseout="this.style.background = 'rgba(13,17,23,0.88)'"
+          >
+            &#8630; Deshacer
+          </button>
+
+          <button
+            onclick="applyLots()"
+            title="Generar lotes en todos los manzanos"
+            style="
+              padding: 4px 10px;
+              border-radius: 4px;
+              border: 1px solid #e3b34155;
+              background: rgba(13, 17, 23, 0.88);
+              color: #e3b341;
+              cursor: pointer;
+              font-size: 11px;
+              font-family: &quot;Courier New&quot;, monospace;
+              backdrop-filter: blur(4px);
+              transition: all 0.12s;
+              text-align: left;
+              white-space: nowrap;
+            "
+            onmouseover="this.style.background = 'rgba(227,179,65,0.18)'"
+            onmouseout="this.style.background = 'rgba(13,17,23,0.88)'"
+          >
+            &#9654; Generar Lotes
+          </button>
+
+          <button
+            id="btnClose"
+            onclick="closePolygon()"
+            style="
+              display: none;
+              padding: 4px 10px;
+              border-radius: 4px;
+              border: 1px solid #3fb95088;
+              background: rgba(13, 17, 23, 0.88);
+              color: #3fb950;
+              cursor: pointer;
+              font-size: 11px;
+              font-family: &quot;Courier New&quot;, monospace;
+              backdrop-filter: blur(4px);
+              transition: all 0.12s;
+              text-align: left;
+              white-space: nowrap;
+            "
+            onmouseover="this.style.background = 'rgba(63,185,80,0.18)'"
+            onmouseout="this.style.background = 'rgba(13,17,23,0.88)'"
+          >
+            &#9650; Cerrar Parcela
+          </button>
+        </div>
+
+        <button
+          onclick="centerOnDrawing()"
+          title="Centrar vista en el dibujo"
+          style="
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            z-index: 20;
+            width: 34px;
+            height: 34px;
+            border-radius: 4px;
+            border: 1px solid #a5d6ff55;
+            background: rgba(13, 17, 23, 0.88);
+            color: #a5d6ff;
+            cursor: pointer;
+            font-size: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(4px);
+            transition: all 0.12s;
+            pointer-events: auto;
+          "
+          onmouseover="
+            this.style.background = 'rgba(31,111,235,0.18)';
+            this.style.borderColor = '#a5d6ff';
+          "
+          onmouseout="
+            this.style.background = 'rgba(13,17,23,0.88)';
+            this.style.borderColor = '#a5d6ff55';
+          "
+        >
+          &#x2316;
+        </button>
+
+        <div id="statsPanel">
+          <div class="sp-title">&#9632; Estadísticas del Proyecto</div>
+          <table>
+            <thead>
+              <tr>
+                <th>Descripción</th>
+                <th>Cant.</th>
+                <th>Área (m²)</th>
+                <th>%</th>
+              </tr>
+            </thead>
+            <tbody id="statsBody">
+              <tr>
+                <td
+                  colspan="4"
+                  style="color: #8b949e; text-align: center; padding: 4px 0"
+                >
+                  Sin datos
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="sp-bar-wrap" id="statsBar">
+            <div class="sp-bar-lots" id="sbLots" style="width: 0%"></div>
+            <div class="sp-bar-mzn" id="sbMzn" style="width: 0%"></div>
+            <div class="sp-bar-via" id="sbVia" style="width: 0%"></div>
+          </div>
+        </div>
+      </div>
+      <div class="sidebar">
+        <div class="instr" id="instrBox">
+          <div class="s"><b>PASO 1:</b> Clic para vértices de la parcela.</div>
+          <div class="s" style="color: #8b949e">
+            Doble clic o "Cerrar" para finalizar.
+          </div>
+        </div>
+        <a
+          href="https://www.youtube.com/watch?v=xeeSmVgF2o0"
+          target="_blank"
+          style="
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            background: #1a1a2e;
+            border: 1px solid #ff000055;
+            border-radius: 4px;
+            padding: 6px 10px;
+            margin-bottom: 7px;
+            text-decoration: none;
+            color: #ff4444;
+            font-size: 11px;
+            font-family: &quot;Courier New&quot;, monospace;
+            font-weight: 600;
+            transition:
+              background 0.15s,
+              border-color 0.15s;
+          "
+          onmouseover="
+            this.style.background = '#2a0a0a';
+            this.style.borderColor = '#ff0000aa';
+          "
+          onmouseout="
+            this.style.background = '#1a1a2e';
+            this.style.borderColor = '#ff000055';
+          "
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="#ff4444">
+            <path
+              d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.5 12 3.5 12 3.5s-7.5 0-9.4.6A3 3 0 0 0 .5 6.2 31 31 0 0 0 0 12a31 31 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.6 9.4.6 9.4.6s7.5 0 9.4-.6a3 3 0 0 0 2.1-2.1A31 31 0 0 0 24 12a31 31 0 0 0-.5-5.8z"
+            />
+            <polygon
+              points="9.75,15.02 15.5,12 9.75,8.98 9.75,15.02"
+              fill="white"
+            />
+          </svg>
+          ▶ Ver Tutorial en YouTube
+        </a>
+
+        <div class="lot-params">
+          <div class="lp-title">&#9632; Parámetros de Lotes</div>
+          <label>Área objetivo por lote (m²)</label>
+          <input
+            id="lpArea"
+            type="number"
+            step="1"
+            min="10"
+            value="250"
+            oninput="updateLpCalc()"
+          />
+          <label>Frente mínimo (m)</label>
+          <input
+            id="lpFront"
+            type="number"
+            step="0.5"
+            min="1"
+            value="12"
+            oninput="updateLpCalc()"
+          />
+          <label>Dirección eje principal</label>
+          <select id="lpDir" onchange="onDirChange()">
+            <option value="auto">Automático (eje mayor del manzano)</option>
+            <option value="seg">Por segmento (definir por manzano)</option>
+          </select>
+          <div
+            id="segHint"
+            style="
+              display: none;
+              margin-top: 4px;
+              padding: 4px 6px;
+              background: #0d1117;
+              border: 1px solid #f78166;
+              border-radius: 3px;
+              font-size: 10px;
+              color: #f78166;
+            "
+          >
+            ▶ Clic en un lado del manzano resaltado en el canvas.
+          </div>
+          <div
+            id="segInfo"
+            style="
+              display: none;
+              margin-top: 3px;
+              font-size: 10px;
+              color: #3fb950;
+              padding: 2px 0;
+            "
+          >
+            ✓ Segmento seleccionado
+          </div>
+          <div class="lp-calc" id="lpCalc"></div>
+          <div class="lp-actions">
+            <button onclick="applyLots()">&#9654; Generar Lotes</button>
+            <button class="clear" onclick="clearLots()">
+              &#10005; Limpiar
+            </button>
+          </div>
+        </div>
+
+        <div
+          id="slicePanel"
+          style="
+            display: none;
+            background: #1c2128;
+            border: 1px solid #d2a8ff;
+            border-radius: 4px;
+            padding: 8px;
+            margin-bottom: 7px;
+          "
+        >
+          <div
+            style="
+              color: #d2a8ff;
+              font-weight: 600;
+              font-size: 11px;
+              margin-bottom: 6px;
+            "
+          >
+            &#9986; Subdivisión Manual
+          </div>
+
+          <div id="slicePhaseA">
+            <div style="font-size: 10px; color: #8b949e; margin-bottom: 4px">
+              Manzano base
+            </div>
+            <select
+              id="sliceMznSel"
+              style="
+                background: #0d1117;
+                border: 1px solid #30363d;
+                border-radius: 3px;
+                color: #e6edf3;
+                padding: 3px 6px;
+                font-size: 11px;
+                font-family: &quot;Courier New&quot;, monospace;
+                width: 100%;
+                margin-bottom: 6px;
+              "
+              onchange="onSliceMznChange()"
+            ></select>
+            <div style="font-size: 10px; color: #8b949e; margin-bottom: 4px">
+              Área del sub-manzano (m²)
+            </div>
+            <input
+              id="sliceTargetArea"
+              type="number"
+              min="1"
+              step="1"
+              value="500"
+              style="
+                background: #0d1117;
+                border: 1px solid #30363d;
+                border-radius: 3px;
+                color: #e6edf3;
+                padding: 3px 6px;
+                font-size: 11px;
+                font-family: &quot;Courier New&quot;, monospace;
+                width: 100%;
+                margin-bottom: 6px;
+              "
+              oninput="updateSliceCalc()"
+            />
+            <div
+              id="sliceCalcInfo"
+              style="
+                background: #0d1117;
+                border: 1px solid #30363d;
+                border-radius: 3px;
+                padding: 5px 6px;
+                font-size: 10px;
+                line-height: 1.8;
+                margin-bottom: 6px;
+              "
+            ></div>
+            <button
+              onclick="sliceStartFrente()"
+              style="
+                width: 100%;
+                padding: 4px 0;
+                border-radius: 3px;
+                border: 1px solid #d2a8ff;
+                background: transparent;
+                cursor: pointer;
+                font-size: 10px;
+                font-family: &quot;Courier New&quot;, monospace;
+                color: #d2a8ff;
+              "
+            >
+              &#9654; Paso 1: Definir frente del sub-manzano
+            </button>
+          </div>
+
+          <div id="slicePhaseB" style="display: none">
+            <div
+              style="
+                padding: 5px 7px;
+                background: #0d1117;
+                border: 1px solid #d2a8ff;
+                border-radius: 3px;
+                font-size: 10px;
+                color: #d2a8ff;
+                margin-bottom: 6px;
+              "
+            >
+              &#9654; Clic en el lado FRENTE del manzano en el canvas.
+            </div>
+            <button
+              onclick="sliceCancelFrente()"
+              style="
+                width: 100%;
+                padding: 4px 0;
+                border-radius: 3px;
+                border: 1px solid #f85149;
+                background: transparent;
+                cursor: pointer;
+                font-size: 10px;
+                font-family: &quot;Courier New&quot;, monospace;
+                color: #f85149;
+              "
+            >
+              &#10005; Cancelar
+            </button>
+          </div>
+
+          <div id="slicePhaseC" style="display: none">
+            <!-- Método A: segmento lateral (naranja) — original -->
+            <div
+              id="slicePhaseCHintAux"
+              style="
+                padding: 5px 7px;
+                background: #0d1117;
+                border: 1px solid #e3b341;
+                border-radius: 3px;
+                font-size: 10px;
+                color: #e3b341;
+                margin-bottom: 6px;
+              "
+            >
+              &#9654; Clic en un segmento LATERAL adyacente (naranja) en el
+              canvas.
+            </div>
+            <!-- Método B: trazar línea de corte con 2 puntos -->
+            <div
+              id="slicePhaseCHintLine"
+              style="
+                display: none;
+                padding: 5px 7px;
+                background: #0d1117;
+                border: 1px solid #58a6ff;
+                border-radius: 3px;
+                font-size: 10px;
+                color: #58a6ff;
+                margin-bottom: 6px;
+              "
+            >
+              <span id="sliceCutLineStepTxt"
+                >&#9654; Clic para definir PUNTO 1 de la línea de corte</span
+              ><br />
+              <span style="color: #8b949e; font-size: 9px"
+                >&#8869; snap perpendicular a segmentos activo</span
+              >
+            </div>
+            <button
+              id="btnSliceCutLine"
+              onclick="startSliceCutLine()"
+              style="
+                width: 100%;
+                margin-bottom: 5px;
+                padding: 4px 0;
+                border-radius: 3px;
+                border: 1px solid #58a6ff;
+                background: transparent;
+                cursor: pointer;
+                font-size: 10px;
+                font-family: &quot;Courier New&quot;, monospace;
+                color: #58a6ff;
+              "
+            >
+              &#9998; Trazar línea de corte (2 puntos)
+            </button>
+            <button
+              onclick="sliceCancelFrente()"
+              style="
+                width: 100%;
+                padding: 4px 0;
+                border-radius: 3px;
+                border: 1px solid #f85149;
+                background: transparent;
+                cursor: pointer;
+                font-size: 10px;
+                font-family: &quot;Courier New&quot;, monospace;
+                color: #f85149;
+              "
+            >
+              &#10005; Cancelar
+            </button>
+          </div>
+
+          <div id="slicePhaseD" style="display: none">
+            <div
+              id="sliceSubMznInfo"
+              style="
+                background: #0d1117;
+                border: 1px solid #3fb950;
+                border-radius: 3px;
+                padding: 5px 6px;
+                font-size: 10px;
+                color: #3fb950;
+                margin-bottom: 6px;
+              "
+            ></div>
+            <div
+              style="
+                font-size: 10px;
+                color: #d2a8ff;
+                margin-bottom: 3px;
+                margin-top: 4px;
+              "
+            >
+              &#9654; Paso 2: Definir dirección de lotes
+            </div>
+            <div
+              id="sliceSegHint"
+              style="
+                display: none;
+                padding: 4px 6px;
+                background: #0d1117;
+                border: 1px solid #d2a8ff;
+                border-radius: 3px;
+                font-size: 10px;
+                color: #d2a8ff;
+                margin-bottom: 6px;
+              "
+            >
+              &#9654; Clic en un lado del sub-manzano en el canvas.
+            </div>
+            <div
+              id="sliceSegInfo"
+              style="
+                display: none;
+                font-size: 10px;
+                color: #3fb950;
+                margin-bottom: 6px;
+              "
+            >
+              &#10003; Dirección de corte definida
+            </div>
+            <div style="font-size: 10px; color: #8b949e; margin-bottom: 2px">
+              Modo de subdivisión
+            </div>
+            <select
+              id="sliceMode"
+              style="
+                background: #0d1117;
+                border: 1px solid #30363d;
+                border-radius: 3px;
+                color: #e6edf3;
+                padding: 3px 6px;
+                font-size: 11px;
+                font-family: &quot;Courier New&quot;, monospace;
+                width: 100%;
+                margin-bottom: 6px;
+              "
+              onchange="onSliceModeChange()"
+            >
+              <option value="equal">Partes iguales (N lotes)</option>
+              <option value="custom">Áreas específicas (m²)</option>
+            </select>
+            <div id="sliceNGroup" style="margin-bottom: 6px">
+              <div style="font-size: 10px; color: #8b949e; margin-bottom: 2px">
+                Número de lotes
+              </div>
+              <input
+                id="sliceN"
+                type="number"
+                min="2"
+                max="99"
+                value="4"
+                step="1"
+                style="
+                  background: #0d1117;
+                  border: 1px solid #30363d;
+                  border-radius: 3px;
+                  color: #e6edf3;
+                  padding: 3px 6px;
+                  font-size: 11px;
+                  font-family: &quot;Courier New&quot;, monospace;
+                  width: 100%;
+                "
+                oninput="updateSliceCalc()"
+              />
+            </div>
+            <div id="sliceAreasGroup" style="display: none; margin-bottom: 6px">
+              <div style="font-size: 10px; color: #8b949e; margin-bottom: 2px">
+                Área por lote en m² (un valor = todos iguales)
+              </div>
+              <input
+                id="sliceAreas"
+                type="text"
+                placeholder="250 ó 120, 150, 200"
+                style="
+                  background: #0d1117;
+                  border: 1px solid #30363d;
+                  border-radius: 3px;
+                  color: #e6edf3;
+                  padding: 3px 6px;
+                  font-size: 11px;
+                  font-family: &quot;Courier New&quot;, monospace;
+                  width: 100%;
+                "
+                oninput="updateSliceCalc()"
+              />
+            </div>
+            <div style="font-size: 10px; color: #8b949e; margin-bottom: 2px">
+              Frente mínimo (m)
+            </div>
+            <input
+              id="sliceFrente"
+              type="number"
+              min="0.1"
+              step="0.1"
+              value="6"
+              style="
+                background: #0d1117;
+                border: 1px solid #30363d;
+                border-radius: 3px;
+                color: #e6edf3;
+                padding: 3px 6px;
+                font-size: 11px;
+                font-family: &quot;Courier New&quot;, monospace;
+                width: 100%;
+                margin-bottom: 6px;
+              "
+              oninput="updateSliceCalc()"
+            />
+            <div style="display: flex; gap: 4px; margin-top: 4px">
+              <button
+                onclick="startSliceSegPick()"
+                style="
+                  flex: 1;
+                  padding: 4px 0;
+                  border-radius: 3px;
+                  border: 1px solid #d2a8ff;
+                  background: transparent;
+                  cursor: pointer;
+                  font-size: 10px;
+                  font-family: &quot;Courier New&quot;, monospace;
+                  color: #d2a8ff;
+                "
+              >
+                &#9654; Definir dirección
+              </button>
+              <button
+                onclick="runSliceSubdivision()"
+                style="
+                  flex: 1;
+                  padding: 4px 0;
+                  border-radius: 3px;
+                  border: 1px solid #3fb950;
+                  background: transparent;
+                  cursor: pointer;
+                  font-size: 10px;
+                  font-family: &quot;Courier New&quot;, monospace;
+                  color: #3fb950;
+                "
+              >
+                &#10003; Ejecutar
+              </button>
+              <button
+                onclick="clearSliceLots()"
+                style="
+                  padding: 4px 6px;
+                  border-radius: 3px;
+                  border: 1px solid #f85149;
+                  background: transparent;
+                  cursor: pointer;
+                  font-size: 10px;
+                  font-family: &quot;Courier New&quot;, monospace;
+                  color: #f85149;
+                "
+              >
+                &#10005;
+              </button>
+            </div>
+            <button
+              onclick="sliceNewSubManzano()"
+              style="
+                width: 100%;
+                margin-top: 5px;
+                padding: 4px 0;
+                border-radius: 3px;
+                border: 1px solid #e3b341;
+                background: transparent;
+                cursor: pointer;
+                font-size: 10px;
+                font-family: &quot;Courier New&quot;, monospace;
+                color: #e3b341;
+              "
+            >
+              &#43; Nuevo sub-manzano
+            </button>
+          </div>
+        </div>
+
+        <div id="editPanel">
+          <div class="ep-title" id="epTitle">Calle 1</div>
+          <label>Inicio X / Y (m)</label>
+          <div class="row">
+            <input id="epSX" type="number" step="0.1" placeholder="X" />
+            <input id="epSY" type="number" step="0.1" placeholder="Y" />
+          </div>
+          <label>Fin X / Y (m)</label>
+          <div class="row">
+            <input id="epEX" type="number" step="0.1" placeholder="X" />
+            <input id="epEY" type="number" step="0.1" placeholder="Y" />
+          </div>
+          <label>Longitud eje (m)</label>
+          <input
+            id="epLen"
+            class="full"
+            type="number"
+            step="0.5"
+            min="1"
+            placeholder="Longitud"
+          />
+          <label>Ancho (m)</label>
+          <input
+            id="epW"
+            class="full"
+            type="number"
+            step="0.5"
+            min="1"
+            placeholder="Ancho"
+          />
+          <div class="ep-actions">
+            <button class="apply" onclick="applyEditPanel()">
+              &#10003; Aplicar
+            </button>
+            <button onclick="closeEditPanel()">Cerrar</button>
+            <button class="del" onclick="deleteSelectedStreet()">
+              &#10005; Borrar
+            </button>
+          </div>
+        </div>
+
+        <h3>Manzanos</h3>
+        <div id="lotsPanel"></div>
+        <h3>Calles</h3>
+        <div id="streetsPanel"></div>
+        <div
+          style="margin-top: 8px; font-size: 10px; color: #8b949e"
+          id="totalArea"
+        ></div>
+      </div>
+    </div>
+
+<!-- =====================================================================
+     FRAGMENTO 04/10 · 03-statusbar-calculator.html
+     Parte de la modularización quirúrgica de index.html
+     (ver README-MODULARIZACION-HTML.md para el mapa completo y el build)
+     Va después de: 02-main-canvas-sidebar.html (.sbar + calculadora flotante)
+     Este archivo es un CORTE EXACTO del original: no es un documento HTML
+     independiente (continúa/lo continúan otros fragmentos), y no se
+     modificó ni una línea de marcado. Ensamblar con build-html.js.
+     ===================================================================== -->
+    <div class="sbar">
+      <span class="mi" id="modeLabel">MODO: PARCELA</span>
+      <span class="coords" id="coordsLabel">X: 0 Y: 0</span>
+      <span id="hintLabel" style="color: #f78166"></span>
+    </div>
+
+    <div
+      id="calcPanel"
+      style="
+        display: none;
+        position: fixed;
+        bottom: 44px;
+        right: 240px;
+        width: 220px;
+        background: #161b22;
+        border: 1px solid #a5d6ff44;
+        border-radius: 8px;
+        box-shadow: 0 4px 24px #00000066;
+        z-index: 900;
+        font-family: &quot;Courier New&quot;, monospace;
+        user-select: none;
+      "
+    >
+      <div
+        id="calcHeader"
+        style="
+          padding: 6px 10px;
+          background: #1c2128;
+          border-bottom: 1px solid #30363d;
+          border-radius: 8px 8px 0 0;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          cursor: move;
+        "
+      >
+        <span
+          style="
+            font-size: 10px;
+            color: #a5d6ff;
+            letter-spacing: 1px;
+            font-weight: 600;
+          "
+          >&#9635; CALCULADORA</span
+        >
+        <button
+          onclick="toggleCalc()"
+          style="
+            background: none;
+            border: none;
+            color: #8b949e;
+            cursor: pointer;
+            font-size: 13px;
+            line-height: 1;
+            padding: 0 2px;
+          "
+        >
+          &#10005;
+        </button>
+      </div>
+
+      <div style="padding: 8px 10px 4px">
+        <div
+          id="calcExpr"
+          style="
+            font-size: 9px;
+            color: #8b949e;
+            min-height: 14px;
+            text-align: right;
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+            margin-bottom: 2px;
+          "
+        ></div>
+        <div
+          id="calcDisplay"
+          style="
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 4px;
+            padding: 6px 8px;
+            font-size: 20px;
+            color: #e6edf3;
+            text-align: right;
+            min-height: 38px;
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+          "
+        >
+          0
+        </div>
+      </div>
+      <div
+        style="
+          padding: 6px 8px 10px;
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
+          gap: 5px;
+        "
+      >
+        <button class="cbtn cbtn-fn" onclick="calcFn('clear')">C</button>
+        <button class="cbtn cbtn-fn" onclick="calcFn('sign')">+/-</button>
+        <button class="cbtn cbtn-fn" onclick="calcFn('pct')">%</button>
+        <button class="cbtn cbtn-op" onclick="calcOp('/')">÷</button>
+        <button class="cbtn" onclick="calcNum('7')">7</button>
+        <button class="cbtn" onclick="calcNum('8')">8</button>
+        <button class="cbtn" onclick="calcNum('9')">9</button>
+        <button class="cbtn cbtn-op" onclick="calcOp('*')">×</button>
+        <button class="cbtn" onclick="calcNum('4')">4</button>
+        <button class="cbtn" onclick="calcNum('5')">5</button>
+        <button class="cbtn" onclick="calcNum('6')">6</button>
+        <button class="cbtn cbtn-op" onclick="calcOp('-')">−</button>
+        <button class="cbtn" onclick="calcNum('1')">1</button>
+        <button class="cbtn" onclick="calcNum('2')">2</button>
+        <button class="cbtn" onclick="calcNum('3')">3</button>
+        <button class="cbtn cbtn-op" onclick="calcOp('+')">+</button>
+        <button class="cbtn" onclick="calcNum('0')" style="grid-column: span 2">
+          0
+        </button>
+        <button class="cbtn" onclick="calcDot()">.</button>
+        <button class="cbtn cbtn-eq" onclick="calcEq()">=</button>
+      </div>
+    </div>
+
+<!-- =====================================================================
+     FRAGMENTO 05/10 · 04-modal-ortofoto-kmz.html
+     Parte de la modularización quirúrgica de index.html
+     (ver README-MODULARIZACION-HTML.md para el mapa completo y el build)
+     Va después de: 03-statusbar-calculator.html (modal Ortofoto KMZ)
+     Este archivo es un CORTE EXACTO del original: no es un documento HTML
+     independiente (continúa/lo continúan otros fragmentos), y no se
+     modificó ni una línea de marcado. Ensamblar con build-html.js.
+     ===================================================================== -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!-- MODAL: CARGAR ORTOFOTO KMZ                                 -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <div
+      id="orthoKmzModal"
+      style="
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: #0d111799;
+        z-index: 999;
+        align-items: center;
+        justify-content: center;
+      "
+    >
+      <div
+        style="
+          background: #161b22;
+          border: 1px solid #30363d;
+          border-radius: 8px;
+          padding: 18px;
+          width: 400px;
+          max-width: 95vw;
+          font-family: &quot;Courier New&quot;, monospace;
+        "
+      >
+        <h2
+          style="
+            color: #a5d6ff;
+            font-size: 13px;
+            margin-bottom: 12px;
+            letter-spacing: 1px;
+          "
+        >
+          🛰️ CARGAR ORTOFOTO GEOREFERENCIADA (KMZ)
+        </h2>
+        <div
+          id="orthoKmzDrop"
+          style="
+            border: 2px dashed #30363d;
+            border-radius: 6px;
+            padding: 22px 10px;
+            text-align: center;
+            color: #8b949e;
+            font-size: 11px;
+            margin-bottom: 10px;
+            cursor: pointer;
+            transition: border-color 0.15s;
+          "
+          onclick="document.getElementById('orthoKmzFileInput').click()"
+          ondragover="orthoKmzDragOver(event)"
+          ondragleave="orthoKmzDragLeave(event)"
+          ondrop="orthoKmzDropHandler(event)"
+        >
+          <span style="font-size: 26px; display: block; margin-bottom: 6px"
+            >🗺️</span
+          >
+          Clic aquí o arrastrá un archivo <b>.KMZ</b><br />
+          <span style="font-size: 9px; color: #484f58"
+            >Ortofoto georeferenciada con GroundOverlay</span
+          >
+        </div>
+        <input
+          type="file"
+          id="orthoKmzFileInput"
+          accept=".kmz"
+          style="display: none"
+          onchange="orthoKmzFileSelected(this)"
+        />
+        <div
+          id="orthoKmzFileName"
+          style="
+            font-size: 10px;
+            color: #3fb950;
+            margin-bottom: 8px;
+            padding: 4px 7px;
+            background: #1a3a1f;
+            border-radius: 3px;
+            display: none;
+          "
+        ></div>
+        <div
+          id="orthoKmzStatus"
+          style="
+            font-size: 10px;
+            padding: 5px 8px;
+            border-radius: 3px;
+            margin-bottom: 8px;
+            display: none;
+          "
+        ></div>
+        <!-- Opacidad -->
+        <div
+          style="
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 10px;
+            font-size: 11px;
+            color: #8b949e;
+          "
+        >
+          <span>Opacidad:</span>
+          <input
+            type="range"
+            id="orthoOpacitySlider"
+            min="10"
+            max="100"
+            value="85"
+            style="flex: 1; accent-color: #a5d6ff"
+            oninput="
+              document.getElementById('orthoOpacityVal').textContent =
+                this.value + '%'
+            "
+          />
+          <span
+            id="orthoOpacityVal"
+            style="color: #a5d6ff; font-weight: 600; min-width: 34px"
+            >85%</span
+          >
+        </div>
+        <div
+          style="
+            font-size: 9px;
+            color: #484f58;
+            margin-top: 8px;
+            line-height: 1.6;
+          "
+        >
+          ⚠ Requiere que la parcela ya esté georeferenciada (importada desde
+          KMZ/KML o con origen UTM).<br />
+          ✓ La ortofoto se dibuja bajo los vectores del proyecto.<br />
+          ✓ Compatible con archivos KMZ con GroundOverlay (Google Earth, drones,
+          etc.).
+        </div>
+        <div style="display: flex; gap: 6px; margin-top: 10px">
+          <button
+            id="orthoKmzBtnLoad"
+            onclick="executeLoadOrthoKMZ()"
+            disabled
+            style="
+              flex: 1;
+              padding: 5px 0;
+              border-radius: 4px;
+              border: 1px solid #a5d6ff;
+              background: transparent;
+              cursor: pointer;
+              font-size: 11px;
+              font-family: &quot;Courier New&quot;, monospace;
+              color: #a5d6ff;
+            "
+          >
+            🛰️ Cargar Ortofoto
+          </button>
+          <button
+            onclick="closeOrthoKmzModal()"
+            style="
+              flex: 1;
+              padding: 5px 0;
+              border-radius: 4px;
+              border: 1px solid #f85149;
+              background: transparent;
+              cursor: pointer;
+              font-size: 11px;
+              font-family: &quot;Courier New&quot;, monospace;
+              color: #f85149;
+            "
+          >
+            ✕ Cancelar
+          </button>
+        </div>
+        <div style="display: flex; gap: 6px; margin-top: 6px">
+          <button
+            onclick="
+              removeOrthoLayer();
+              closeOrthoKmzModal();
+            "
+            style="
+              flex: 1;
+              padding: 4px 0;
+              border-radius: 4px;
+              border: 1px solid #f8514966;
+              background: transparent;
+              cursor: pointer;
+              font-size: 10px;
+              font-family: &quot;Courier New&quot;, monospace;
+              color: #f8514999;
+            "
+          >
+            🗑 Quitar ortofoto actual
+          </button>
+        </div>
+      </div>
+    </div>
+
+<!-- =====================================================================
+     FRAGMENTO 06/10 · 05-modal-import-kmz-kml.html
+     Parte de la modularización quirúrgica de index.html
+     (ver README-MODULARIZACION-HTML.md para el mapa completo y el build)
+     Va después de: 04-modal-ortofoto-kmz.html (modal Importar KMZ/KML)
+     Este archivo es un CORTE EXACTO del original: no es un documento HTML
+     independiente (continúa/lo continúan otros fragmentos), y no se
+     modificó ni una línea de marcado. Ensamblar con build-html.js.
+     ===================================================================== -->
+    <div
+      id="importKMZModal"
+      style="
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: #0d111799;
+        z-index: 999;
+        align-items: center;
+        justify-content: center;
+      "
+    >
+      <div
+        style="
+          background: #161b22;
+          border: 1px solid #30363d;
+          border-radius: 8px;
+          padding: 18px;
+          width: 380px;
+          max-width: 95vw;
+          font-family: &quot;Courier New&quot;, monospace;
+        "
+      >
+        <h2
+          style="
+            color: #56d364;
+            font-size: 13px;
+            margin-bottom: 12px;
+            letter-spacing: 1px;
+          "
+        >
+          &#8593; IMPORTAR PARCELA DESDE KMZ / KML
+        </h2>
+        <div
+          id="kmzDrop"
+          style="
+            border: 2px dashed #30363d;
+            border-radius: 6px;
+            padding: 22px 10px;
+            text-align: center;
+            color: #8b949e;
+            font-size: 11px;
+            margin-bottom: 10px;
+            cursor: pointer;
+            transition: border-color 0.15s;
+          "
+          onclick="document.getElementById('kmzFileInput').click()"
+          ondragover="kmzDragOver(event)"
+          ondragleave="kmzDragLeave(event)"
+          ondrop="kmzDropHandler(event)"
+        >
+          <span style="font-size: 26px; display: block; margin-bottom: 6px"
+            >&#127758;</span
+          >
+          Clic aquí o arrastrá un archivo <b>.KMZ</b> o <b>.KML</b><br />
+          <span style="font-size: 9px; color: #484f58"
+            >Google Earth · Google Maps · GPS dispositivos</span
+          >
+        </div>
+        <div
+          id="kmzFileName"
+          style="
+            font-size: 10px;
+            color: #3fb950;
+            margin-bottom: 8px;
+            padding: 4px 7px;
+            background: #1a3a1f;
+            border-radius: 3px;
+            display: none;
+          "
+        ></div>
+        <div
+          id="kmzStatus"
+          style="
+            font-size: 10px;
+            padding: 5px 8px;
+            border-radius: 3px;
+            margin-bottom: 8px;
+            display: none;
+          "
+        ></div>
+        <div
+          style="
+            font-size: 9px;
+            color: #484f58;
+            margin-top: 8px;
+            line-height: 1.6;
+          "
+        >
+          &#9888; La importación reemplaza la parcela actual y borra calles y
+          lotes.<br />
+          &#10003; Las coordenadas KMZ/KML son WGS84 — no necesitás configurar
+          UTM.<br />
+          &#10003; Se importa el primer polígono válido encontrado (&ge;3
+          vértices).<br />
+          &#10003; Compatible con archivos exportados de Google Earth y GPS.
+        </div>
+        <div style="display: flex; gap: 6px; margin-top: 10px">
+          <button
+            id="kmzBtnImport"
+            onclick="executeImportKMZ()"
+            disabled
+            style="
+              flex: 1;
+              padding: 5px 0;
+              border-radius: 4px;
+              border: 1px solid #56d364;
+              background: transparent;
+              cursor: pointer;
+              font-size: 11px;
+              font-family: &quot;Courier New&quot;, monospace;
+              color: #56d364;
+            "
+          >
+            &#10003; Importar
+          </button>
+          <button
+            onclick="closeImportKMZModal()"
+            style="
+              flex: 1;
+              padding: 5px 0;
+              border-radius: 4px;
+              border: 1px solid #f85149;
+              background: transparent;
+              cursor: pointer;
+              font-size: 11px;
+              font-family: &quot;Courier New&quot;, monospace;
+              color: #f85149;
+            "
+          >
+            &#10005; Cancelar
+          </button>
+        </div>
+      </div>
+    </div>
+<!-- =====================================================================
+     FRAGMENTO 07/10 · 06-modal-import-dxf.html
+     Parte de la modularización quirúrgica de index.html
+     (ver README-MODULARIZACION-HTML.md para el mapa completo y el build)
+     Va después de: 05-modal-import-kmz-kml.html (modal Importar DXF)
+     Este archivo es un CORTE EXACTO del original: no es un documento HTML
+     independiente (continúa/lo continúan otros fragmentos), y no se
+     modificó ni una línea de marcado. Ensamblar con build-html.js.
+     ===================================================================== -->
+    <div id="importModal">
+      <div id="importModalBox">
+        <h2>&#8593; IMPORTAR PARCELA DESDE DXF</h2>
+        <div
+          class="im-drop"
+          id="imDrop"
+          onclick="document.getElementById('dxfFileInput').click()"
+          ondragover="imDragOver(event)"
+          ondragleave="imDragLeave(event)"
+          ondrop="imDrop(event)"
+        >
+          <span class="im-icon">&#128196;</span>
+          Clic aquí o arrastrá un archivo <b>.DXF</b><br />
+          <span style="font-size: 9px; color: #484f58"
+            >LWPOLYLINE · POLYLINE · LINE · ARC · CIRCLE · SPLINE</span
+          >
+        </div>
+        <div class="im-file-name" id="imFileName"></div>
+        <div class="im-status" id="imStatus"></div>
+        <div style="margin-bottom: 8px">
+          <div
+            style="
+              font-size: 10px;
+              color: #e3b341;
+              margin-bottom: 4px;
+              font-weight: 600;
+            "
+          >
+            ⚙ Coordenadas UTM del DXF
+          </div>
+          <div style="display: flex; gap: 6px; margin-bottom: 4px">
+            <div style="flex: 1">
+              <div style="font-size: 9px; color: #8b949e; margin-bottom: 2px">
+                Zona UTM
+              </div>
+              <input
+                id="imUtmZone"
+                type="number"
+                value="19"
+                min="1"
+                max="60"
+                style="
+                  width: 100%;
+                  background: #0d1117;
+                  border: 1px solid #30363d;
+                  border-radius: 3px;
+                  color: #e6edf3;
+                  padding: 3px 6px;
+                  font-size: 11px;
+                  font-family: &quot;Courier New&quot;, monospace;
+                "
+              />
+            </div>
+            <div style="flex: 1">
+              <div style="font-size: 9px; color: #8b949e; margin-bottom: 2px">
+                Hemisferio
+              </div>
+              <select
+                id="imUtmHemi"
+                style="
+                  width: 100%;
+                  background: #0d1117;
+                  border: 1px solid #30363d;
+                  border-radius: 3px;
+                  color: #e6edf3;
+                  padding: 3px 6px;
+                  font-size: 11px;
+                  font-family: &quot;Courier New&quot;, monospace;
+                "
+              >
+                <option value="south">Sur</option>
+                <option value="north">Norte</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        <div class="im-note">
+          ⚠ La importación reemplaza la parcela actual y borra calles y
+          lotes.<br />
+          ✓ Solo se importa el primer polígono cerrado válido (&ge;3
+          vértices).<br />
+          ✓ Las coordenadas DXF deben estar en UTM (metros reales).
+        </div>
+        <div class="im-actions">
+          <button
+            class="go"
+            id="imBtnImport"
+            onclick="executeImportDXF()"
+            disabled
+          >
+            &#10003; Importar
+          </button>
+          <button class="cancel" onclick="closeImportModal()">
+            &#10005; Cancelar
+          </button>
+        </div>
+      </div>
+    </div>
+
+<!-- =====================================================================
+     FRAGMENTO 08/10 · 07-modal-plano-lote.html
+     Parte de la modularización quirúrgica de index.html
+     (ver README-MODULARIZACION-HTML.md para el mapa completo y el build)
+     Va después de: 06-modal-import-dxf.html (modal Plano por Lote)
+     Este archivo es un CORTE EXACTO del original: no es un documento HTML
+     independiente (continúa/lo continúan otros fragmentos), y no se
+     modificó ni una línea de marcado. Ensamblar con build-html.js.
+     ===================================================================== -->
+    <div
+      id="modalPlanoLote"
+      style="
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(13, 17, 23, 0.96);
+        z-index: 9999;
+        align-items: flex-start;
+        justify-content: center;
+        overflow-y: auto;
+        padding: 20px 0;
+        font-family: &quot;Courier New&quot;, monospace;
+      "
+    >
+      <div
+        style="
+          background: #161b22;
+          border: 1px solid #30363d;
+          border-radius: 10px;
+          padding: 20px;
+          width: 560px;
+          max-width: 98vw;
+        "
+      >
+        <div
+          style="
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 14px;
+          "
+        >
+          <span
+            style="
+              color: #d2a8ff;
+              font-size: 13px;
+              font-weight: 700;
+              letter-spacing: 1px;
+            "
+          >
+            &#9111; PLANO PERIMÉTRICO DE LOTE
+          </span>
+          <button
+            onclick="cerrarModalPlanoLote()"
+            style="
+              padding: 6px 14px;
+              border-radius: 5px;
+              border: 1px solid #f85149;
+              background: transparent;
+              cursor: pointer;
+              font-size: 11px;
+              font-family: &quot;Courier New&quot;, monospace;
+              color: #f85149;
+            "
+          >
+            &#10005; Cerrar
+          </button>
+        </div>
+        <div
+          style="
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            align-items: center;
+            margin-bottom: 10px;
+          "
+        >
+          <div style="font-size: 10px; color: #8b949e">Manzano:</div>
+          <select
+            id="plMznSel"
+            onchange="plPopulateLotes()"
+            style="
+              background: #0d1117;
+              border: 1px solid #30363d;
+              border-radius: 3px;
+              color: #e6edf3;
+              padding: 3px 8px;
+              font-size: 11px;
+              font-family: &quot;Courier New&quot;, monospace;
+            "
+          ></select>
+          <div style="font-size: 10px; color: #8b949e">Lote:</div>
+          <select
+            id="plLoteSel"
+            style="
+              background: #0d1117;
+              border: 1px solid #30363d;
+              border-radius: 3px;
+              color: #e6edf3;
+              padding: 3px 8px;
+              font-size: 11px;
+              font-family: &quot;Courier New&quot;, monospace;
+            "
+          ></select>
+        </div>
+        <div
+          style="
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            align-items: center;
+            margin-bottom: 10px;
+          "
+        >
+          <div style="font-size: 10px; color: #8b949e">Propietario:</div>
+          <input
+            id="plPropietario"
+            type="text"
+            value="XXXXXXXXXXXXXXX"
+            style="
+              background: #0d1117;
+              border: 1px solid #30363d;
+              border-radius: 3px;
+              color: #e6edf3;
+              padding: 4px 8px;
+              font-size: 11px;
+              font-family: &quot;Courier New&quot;, monospace;
+              width: 150px;
+            "
+          />
+          <div style="font-size: 10px; color: #8b949e">Arq.:</div>
+          <input
+            id="plArquitecto"
+            type="text"
+            value="XXXXXXXXXXXXXXX"
+            style="
+              background: #0d1117;
+              border: 1px solid #30363d;
+              border-radius: 3px;
+              color: #e6edf3;
+              padding: 4px 8px;
+              font-size: 11px;
+              font-family: &quot;Courier New&quot;, monospace;
+              width: 130px;
+            "
+          />
+        </div>
+        <div
+          style="
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            align-items: center;
+            margin-bottom: 14px;
+          "
+        >
+          <div style="font-size: 10px; color: #8b949e">Urbanización:</div>
+          <input
+            id="plUrbanizacion"
+            type="text"
+            value="URB. SAI SOLUCIONES"
+            style="
+              background: #0d1117;
+              border: 1px solid #30363d;
+              border-radius: 3px;
+              color: #e6edf3;
+              padding: 4px 8px;
+              font-size: 11px;
+              font-family: &quot;Courier New&quot;, monospace;
+              width: 180px;
+            "
+          />
+          <div style="font-size: 10px; color: #8b949e">Lámina:</div>
+          <input
+            id="plLamina"
+            type="text"
+            value="PP-01"
+            style="
+              background: #0d1117;
+              border: 1px solid #30363d;
+              border-radius: 3px;
+              color: #e6edf3;
+              padding: 4px 8px;
+              font-size: 11px;
+              font-family: &quot;Courier New&quot;, monospace;
+              width: 60px;
+            "
+          />
+        </div>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap">
+          <button
+            onclick="generarPlanoLote()"
+            style="
+              padding: 6px 18px;
+              border-radius: 5px;
+              border: 1px solid #d2a8ff;
+              background: transparent;
+              cursor: pointer;
+              font-size: 11px;
+              font-family: &quot;Courier New&quot;, monospace;
+              color: #d2a8ff;
+            "
+          >
+            &#9654; Abrir Plano
+          </button>
+        </div>
+      </div>
+    </div>
+
+<!-- =====================================================================
+     FRAGMENTO 09/10 · 08-modal-print.html
+     Parte de la modularización quirúrgica de index.html
+     (ver README-MODULARIZACION-HTML.md para el mapa completo y el build)
+     Va después de: 07-modal-plano-lote.html (modal de Impresión)
+     Este archivo es un CORTE EXACTO del original: no es un documento HTML
+     independiente (continúa/lo continúan otros fragmentos), y no se
+     modificó ni una línea de marcado. Ensamblar con build-html.js.
+     ===================================================================== -->
+    <div
+      id="printModal"
+      style="
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(13, 17, 23, 0.96);
+        z-index: 9999;
+        align-items: flex-start;
+        justify-content: center;
+        overflow-y: auto;
+        padding: 20px 0;
+        font-family: &quot;Courier New&quot;, monospace;
+      "
+    >
+      <div
+        style="
+          background: #161b22;
+          border: 1px solid #30363d;
+          border-radius: 10px;
+          padding: 20px;
+          width: 900px;
+          max-width: 98vw;
+        "
+      >
+        <div
+          style="
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 14px;
+          "
+        >
+          <span
+            style="
+              color: #79c0ff;
+              font-size: 13px;
+              font-weight: 700;
+              letter-spacing: 1px;
+            "
+            >&#9112; PLANO DE IMPRESIÓN</span
+          >
+          <div style="display: flex; gap: 8px">
+            <button
+              onclick="downloadPlanoPDF()"
+              style="
+                padding: 6px 14px;
+                border-radius: 5px;
+                border: 1px solid #79c0ff;
+                background: transparent;
+                cursor: pointer;
+                font-size: 11px;
+                font-family: &quot;Courier New&quot;, monospace;
+                color: #79c0ff;
+              "
+            >
+              &#8595; Descargar PDF
+            </button>
+            <button
+              onclick="_downloadPlanoPNG()"
+              style="
+                padding: 6px 14px;
+                border-radius: 5px;
+                border: 1px solid #3fb950;
+                background: transparent;
+                cursor: pointer;
+                font-size: 11px;
+                font-family: &quot;Courier New&quot;, monospace;
+                color: #3fb950;
+              "
+            >
+              &#8595; Descargar PNG
+            </button>
+            <button
+              onclick="closePrintModal()"
+              style="
+                padding: 6px 14px;
+                border-radius: 5px;
+                border: 1px solid #f85149;
+                background: transparent;
+                cursor: pointer;
+                font-size: 11px;
+                font-family: &quot;Courier New&quot;, monospace;
+                color: #f85149;
+              "
+            >
+              &#10005; Cerrar
+            </button>
+          </div>
+        </div>
+        <div
+          style="
+            margin-bottom: 12px;
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            align-items: center;
+          "
+        >
+          <div style="font-size: 10px; color: #8b949e">Título:</div>
+          <input
+            id="planTitle"
+            type="text"
+            value="URB. SAI SOLUCIONES"
+            style="
+              background: #0d1117;
+              border: 1px solid #30363d;
+              border-radius: 3px;
+              color: #e6edf3;
+              padding: 4px 8px;
+              font-size: 11px;
+              font-family: &quot;Courier New&quot;, monospace;
+              width: 180px;
+            "
+          />
+          <div style="font-size: 10px; color: #8b949e">Propietario:</div>
+          <input
+            id="planOwner"
+            type="text"
+            value="XXXXXXXXXXXXXXX"
+            style="
+              background: #0d1117;
+              border: 1px solid #30363d;
+              border-radius: 3px;
+              color: #e6edf3;
+              padding: 4px 8px;
+              font-size: 11px;
+              font-family: &quot;Courier New&quot;, monospace;
+              width: 160px;
+            "
+          />
+          <div style="font-size: 10px; color: #8b949e">Arq.:</div>
+          <input
+            id="planArch"
+            type="text"
+            value="XXXXXXXXXXXXXXX"
+            style="
+              background: #0d1117;
+              border: 1px solid #30363d;
+              border-radius: 3px;
+              color: #e6edf3;
+              padding: 4px 8px;
+              font-size: 11px;
+              font-family: &quot;Courier New&quot;, monospace;
+              width: 140px;
+            "
+          />
+          <button
+            onclick="regeneratePlan()"
+            style="
+              padding: 4px 10px;
+              border-radius: 4px;
+              border: 1px solid #e3b341;
+              background: transparent;
+              cursor: pointer;
+              font-size: 10px;
+              font-family: &quot;Courier New&quot;, monospace;
+              color: #e3b341;
+            "
+          >
+            &#9654; Regenerar
+          </button>
+        </div>
+        <canvas
+          id="planCanvas"
+          style="
+            width: 100%;
+            border: 1px solid #30363d;
+            border-radius: 4px;
+            display: block;
+          "
+        ></canvas>
+      </div>
+    </div>
+
+<!-- =====================================================================
+     FRAGMENTO 10/10 · 09-scripts-footer.html
+     Parte de la modularización quirúrgica de index.html
+     (ver README-MODULARIZACION-HTML.md para el mapa completo y el build)
+     Va después de: 08-modal-print.html (carga de <script> + cierre </body></html>)
+     Este archivo es un CORTE EXACTO del original: no es un documento HTML
+     independiente (continúa/lo continúan otros fragmentos), y no se
+     modificó ni una línea de marcado. Ensamblar con build-html.js.
+     ===================================================================== -->
+    <!-- 01-core.js modularizado en 17 archivos (ver README-MODULARIZACION.md
+         del paquete de JS). Deben cargarse en este orden, como <script>
+         clásicos (sin type="module"), antes de los demás scripts. -->
+    <script src="src/scripts/i18n/translations.js"></script>
+    <script src="src/scripts/i18n/i18n.js"></script>
+    <script src="src/scripts/core/state.js"></script>
+    <script src="src/scripts/core/history.js"></script>
+    <script src="src/scripts/modules/coords.js"></script>
+    <script src="src/scripts/ui/lot-params-ui.js"></script>
+    <script src="src/scripts/canvas/canvas-interactions.js"></script>
+    <script src="src/scripts/modules/street-fillets.js"></script>
+    <script src="src/scripts/modules/polygon-engine.js"></script>
+    <script src="src/scripts/modules/lot-subdivision.js"></script>
+    <script src="src/scripts/ui/sidebar-ui.js"></script>
+    <script src="src/scripts/canvas/equipamiento-render.js"></script>
+    <script src="src/scripts/canvas/render.js"></script>
+    <script src="src/scripts/ui/project-actions.js"></script>
+    <script src="src/scripts/modules/manual-slice.js"></script>
+    <script src="src/scripts/ui/stats-view-menu.js"></script>
+    <script src="src/scripts/modules/plano-lote.js"></script>
+
+    <script src="src/scripts/modules/calculator.js"></script>
+    <script src="src/scripts/import-export/export-pdf.js"></script>
+    <script src="src/scripts/core/project-save.js"></script>
+    <script src="src/scripts/ui/satellite-image.js"></script>
+    <script src="src/scripts/import-export/import-dxf.js"></script>
+    <script src="src/scripts/import-export/import-kmz-kml.js"></script>
+    <script src="src/scripts/import-export/import-orthophoto-kmz.js"></script>
+    <script src="src/scripts/import-export/print.js"></script>
+  </body>
+</html>

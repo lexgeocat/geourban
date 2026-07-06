@@ -1,0 +1,110 @@
+/* =====================================================================
+   MÓDULO 02/10 · 01-header-toolbar.css
+   Parte de la modularización quirúrgica de styles.css
+   (ver README-MODULARIZACION-CSS.md para el mapa completo)
+   Contexto / depende de: 00-base.css — header, h1, .toolbar, .btn (versión original), .sep, .sc
+   IMPORTANTE: el orden de carga (nombre numérico) es significativo
+   para la cascada CSS — cargar los <link> en este mismo orden.
+   No se movió ni se reescribió ninguna regla: corte exacto del original.
+   ===================================================================== */
+
+    header {
+      background: #161b22;
+      border-bottom: 1px solid #30363d;
+      padding: 5px 10px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+      flex-wrap: wrap;
+    }
+
+    header h1 {
+      font-size: 12px;
+      font-weight: 600;
+      color: #58a6ff;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    .toolbar {
+      display: flex;
+      gap: 4px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      padding: 3px 9px;
+      border-radius: 4px;
+      border: 1px solid #30363d;
+      background: #21262d;
+      color: #e6edf3;
+      cursor: pointer;
+      font-size: 11px;
+      font-family: "Courier New", monospace;
+      transition: all 0.12s;
+      white-space: nowrap;
+    }
+
+    .btn:hover {
+      background: #30363d;
+      border-color: #58a6ff;
+    }
+
+    .btn.active {
+      background: #1f6feb;
+      border-color: #58a6ff;
+      color: #fff;
+    }
+
+    .btn.danger {
+      border-color: #f85149;
+      color: #f85149;
+    }
+
+    .btn.danger:hover {
+      background: #3d1f1e;
+    }
+
+    .btn.success {
+      border-color: #3fb950;
+      color: #3fb950;
+    }
+
+    .btn.success:hover {
+      background: #1a3a1f;
+    }
+
+    .btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    .sep {
+      width: 1px;
+      height: 18px;
+      background: #30363d;
+      margin: 0 2px;
+    }
+
+    .sc {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 11px;
+      color: #8b949e;
+    }
+
+    .sc input[type="range"] {
+      width: 65px;
+      accent-color: #f78166;
+    }
+
+    .sc .sv {
+      color: #f78166;
+      font-weight: 600;
+      min-width: 22px;
+    }
+

@@ -1,0 +1,97 @@
+/* =====================================================================
+   MÓDULO 06/10 · 05-edit-panel.css
+   Parte de la modularización quirúrgica de styles.css
+   (ver README-MODULARIZACION-CSS.md para el mapa completo)
+   Contexto / depende de: 00-base.css — #editPanel completo
+   IMPORTANTE: el orden de carga (nombre numérico) es significativo
+   para la cascada CSS — cargar los <link> en este mismo orden.
+   No se movió ni se reescribió ninguna regla: corte exacto del original.
+   ===================================================================== */
+
+    #editPanel {
+      background: #1c2128;
+      border: 1px solid #f78166;
+      border-radius: 4px;
+      padding: 8px;
+      margin-bottom: 7px;
+      display: none;
+    }
+
+    #editPanel .ep-title {
+      color: #f78166;
+      font-weight: 600;
+      font-size: 11px;
+      margin-bottom: 6px;
+    }
+
+    #editPanel label {
+      color: #8b949e;
+      font-size: 10px;
+      display: block;
+      margin-bottom: 1px;
+      margin-top: 4px;
+    }
+
+    #editPanel input {
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 3px;
+      color: #e6edf3;
+      padding: 3px 5px;
+      font-size: 11px;
+      font-family: "Courier New", monospace;
+    }
+
+    #editPanel .row {
+      display: flex;
+      gap: 4px;
+    }
+
+    #editPanel .row input {
+      width: 50%;
+    }
+
+    #editPanel input.full {
+      width: 100%;
+    }
+
+    #editPanel .ep-actions {
+      display: flex;
+      gap: 4px;
+      margin-top: 6px;
+    }
+
+    #editPanel button {
+      flex: 1;
+      padding: 4px 0;
+      border-radius: 3px;
+      border: 1px solid #30363d;
+      background: transparent;
+      cursor: pointer;
+      font-size: 10px;
+      font-family: "Courier New", monospace;
+      color: #e6edf3;
+    }
+
+    #editPanel button:hover {
+      background: #30363d;
+    }
+
+    #editPanel button.apply {
+      border-color: #3fb950;
+      color: #3fb950;
+    }
+
+    #editPanel button.apply:hover {
+      background: #1a3a1f;
+    }
+
+    #editPanel button.del {
+      border-color: #f85149;
+      color: #f85149;
+    }
+
+    #editPanel button.del:hover {
+      background: #3d1f1e;
+    }
+

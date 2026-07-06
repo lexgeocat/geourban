@@ -1,0 +1,135 @@
+<!-- =====================================================================
+     FRAGMENTO 04/10 · 03-statusbar-calculator.html
+     Parte de la modularización quirúrgica de index.html
+     (ver README-MODULARIZACION-HTML.md para el mapa completo y el build)
+     Va después de: 02-main-canvas-sidebar.html (.sbar + calculadora flotante)
+     Este archivo es un CORTE EXACTO del original: no es un documento HTML
+     independiente (continúa/lo continúan otros fragmentos), y no se
+     modificó ni una línea de marcado. Ensamblar con build-html.js.
+     ===================================================================== -->
+    <div class="sbar">
+      <span class="mi" id="modeLabel">MODO: PARCELA</span>
+      <span class="coords" id="coordsLabel">X: 0 Y: 0</span>
+      <span id="hintLabel" style="color: #f78166"></span>
+    </div>
+
+    <div
+      id="calcPanel"
+      style="
+        display: none;
+        position: fixed;
+        bottom: 44px;
+        right: 240px;
+        width: 220px;
+        background: #161b22;
+        border: 1px solid #a5d6ff44;
+        border-radius: 8px;
+        box-shadow: 0 4px 24px #00000066;
+        z-index: 900;
+        font-family: &quot;Courier New&quot;, monospace;
+        user-select: none;
+      "
+    >
+      <div
+        id="calcHeader"
+        style="
+          padding: 6px 10px;
+          background: #1c2128;
+          border-bottom: 1px solid #30363d;
+          border-radius: 8px 8px 0 0;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          cursor: move;
+        "
+      >
+        <span
+          style="
+            font-size: 10px;
+            color: #a5d6ff;
+            letter-spacing: 1px;
+            font-weight: 600;
+          "
+          >&#9635; CALCULADORA</span
+        >
+        <button
+          onclick="toggleCalc()"
+          style="
+            background: none;
+            border: none;
+            color: #8b949e;
+            cursor: pointer;
+            font-size: 13px;
+            line-height: 1;
+            padding: 0 2px;
+          "
+        >
+          &#10005;
+        </button>
+      </div>
+
+      <div style="padding: 8px 10px 4px">
+        <div
+          id="calcExpr"
+          style="
+            font-size: 9px;
+            color: #8b949e;
+            min-height: 14px;
+            text-align: right;
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+            margin-bottom: 2px;
+          "
+        ></div>
+        <div
+          id="calcDisplay"
+          style="
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 4px;
+            padding: 6px 8px;
+            font-size: 20px;
+            color: #e6edf3;
+            text-align: right;
+            min-height: 38px;
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+          "
+        >
+          0
+        </div>
+      </div>
+      <div
+        style="
+          padding: 6px 8px 10px;
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
+          gap: 5px;
+        "
+      >
+        <button class="cbtn cbtn-fn" onclick="calcFn('clear')">C</button>
+        <button class="cbtn cbtn-fn" onclick="calcFn('sign')">+/-</button>
+        <button class="cbtn cbtn-fn" onclick="calcFn('pct')">%</button>
+        <button class="cbtn cbtn-op" onclick="calcOp('/')">÷</button>
+        <button class="cbtn" onclick="calcNum('7')">7</button>
+        <button class="cbtn" onclick="calcNum('8')">8</button>
+        <button class="cbtn" onclick="calcNum('9')">9</button>
+        <button class="cbtn cbtn-op" onclick="calcOp('*')">×</button>
+        <button class="cbtn" onclick="calcNum('4')">4</button>
+        <button class="cbtn" onclick="calcNum('5')">5</button>
+        <button class="cbtn" onclick="calcNum('6')">6</button>
+        <button class="cbtn cbtn-op" onclick="calcOp('-')">−</button>
+        <button class="cbtn" onclick="calcNum('1')">1</button>
+        <button class="cbtn" onclick="calcNum('2')">2</button>
+        <button class="cbtn" onclick="calcNum('3')">3</button>
+        <button class="cbtn cbtn-op" onclick="calcOp('+')">+</button>
+        <button class="cbtn" onclick="calcNum('0')" style="grid-column: span 2">
+          0
+        </button>
+        <button class="cbtn" onclick="calcDot()">.</button>
+        <button class="cbtn cbtn-eq" onclick="calcEq()">=</button>
+      </div>
+    </div>
+

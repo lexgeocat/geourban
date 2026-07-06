@@ -1,0 +1,204 @@
+<!-- =====================================================================
+     FRAGMENTO 05/10 · 04-modal-ortofoto-kmz.html
+     Parte de la modularización quirúrgica de index.html
+     (ver README-MODULARIZACION-HTML.md para el mapa completo y el build)
+     Va después de: 03-statusbar-calculator.html (modal Ortofoto KMZ)
+     Este archivo es un CORTE EXACTO del original: no es un documento HTML
+     independiente (continúa/lo continúan otros fragmentos), y no se
+     modificó ni una línea de marcado. Ensamblar con build-html.js.
+     ===================================================================== -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!-- MODAL: CARGAR ORTOFOTO KMZ                                 -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <div
+      id="orthoKmzModal"
+      style="
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: #0d111799;
+        z-index: 999;
+        align-items: center;
+        justify-content: center;
+      "
+    >
+      <div
+        style="
+          background: #161b22;
+          border: 1px solid #30363d;
+          border-radius: 8px;
+          padding: 18px;
+          width: 400px;
+          max-width: 95vw;
+          font-family: &quot;Courier New&quot;, monospace;
+        "
+      >
+        <h2
+          style="
+            color: #a5d6ff;
+            font-size: 13px;
+            margin-bottom: 12px;
+            letter-spacing: 1px;
+          "
+        >
+          🛰️ CARGAR ORTOFOTO GEOREFERENCIADA (KMZ)
+        </h2>
+        <div
+          id="orthoKmzDrop"
+          style="
+            border: 2px dashed #30363d;
+            border-radius: 6px;
+            padding: 22px 10px;
+            text-align: center;
+            color: #8b949e;
+            font-size: 11px;
+            margin-bottom: 10px;
+            cursor: pointer;
+            transition: border-color 0.15s;
+          "
+          onclick="document.getElementById('orthoKmzFileInput').click()"
+          ondragover="orthoKmzDragOver(event)"
+          ondragleave="orthoKmzDragLeave(event)"
+          ondrop="orthoKmzDropHandler(event)"
+        >
+          <span style="font-size: 26px; display: block; margin-bottom: 6px"
+            >🗺️</span
+          >
+          Clic aquí o arrastrá un archivo <b>.KMZ</b><br />
+          <span style="font-size: 9px; color: #484f58"
+            >Ortofoto georeferenciada con GroundOverlay</span
+          >
+        </div>
+        <input
+          type="file"
+          id="orthoKmzFileInput"
+          accept=".kmz"
+          style="display: none"
+          onchange="orthoKmzFileSelected(this)"
+        />
+        <div
+          id="orthoKmzFileName"
+          style="
+            font-size: 10px;
+            color: #3fb950;
+            margin-bottom: 8px;
+            padding: 4px 7px;
+            background: #1a3a1f;
+            border-radius: 3px;
+            display: none;
+          "
+        ></div>
+        <div
+          id="orthoKmzStatus"
+          style="
+            font-size: 10px;
+            padding: 5px 8px;
+            border-radius: 3px;
+            margin-bottom: 8px;
+            display: none;
+          "
+        ></div>
+        <!-- Opacidad -->
+        <div
+          style="
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 10px;
+            font-size: 11px;
+            color: #8b949e;
+          "
+        >
+          <span>Opacidad:</span>
+          <input
+            type="range"
+            id="orthoOpacitySlider"
+            min="10"
+            max="100"
+            value="85"
+            style="flex: 1; accent-color: #a5d6ff"
+            oninput="
+              document.getElementById('orthoOpacityVal').textContent =
+                this.value + '%'
+            "
+          />
+          <span
+            id="orthoOpacityVal"
+            style="color: #a5d6ff; font-weight: 600; min-width: 34px"
+            >85%</span
+          >
+        </div>
+        <div
+          style="
+            font-size: 9px;
+            color: #484f58;
+            margin-top: 8px;
+            line-height: 1.6;
+          "
+        >
+          ⚠ Requiere que la parcela ya esté georeferenciada (importada desde
+          KMZ/KML o con origen UTM).<br />
+          ✓ La ortofoto se dibuja bajo los vectores del proyecto.<br />
+          ✓ Compatible con archivos KMZ con GroundOverlay (Google Earth, drones,
+          etc.).
+        </div>
+        <div style="display: flex; gap: 6px; margin-top: 10px">
+          <button
+            id="orthoKmzBtnLoad"
+            onclick="executeLoadOrthoKMZ()"
+            disabled
+            style="
+              flex: 1;
+              padding: 5px 0;
+              border-radius: 4px;
+              border: 1px solid #a5d6ff;
+              background: transparent;
+              cursor: pointer;
+              font-size: 11px;
+              font-family: &quot;Courier New&quot;, monospace;
+              color: #a5d6ff;
+            "
+          >
+            🛰️ Cargar Ortofoto
+          </button>
+          <button
+            onclick="closeOrthoKmzModal()"
+            style="
+              flex: 1;
+              padding: 5px 0;
+              border-radius: 4px;
+              border: 1px solid #f85149;
+              background: transparent;
+              cursor: pointer;
+              font-size: 11px;
+              font-family: &quot;Courier New&quot;, monospace;
+              color: #f85149;
+            "
+          >
+            ✕ Cancelar
+          </button>
+        </div>
+        <div style="display: flex; gap: 6px; margin-top: 6px">
+          <button
+            onclick="
+              removeOrthoLayer();
+              closeOrthoKmzModal();
+            "
+            style="
+              flex: 1;
+              padding: 4px 0;
+              border-radius: 4px;
+              border: 1px solid #f8514966;
+              background: transparent;
+              cursor: pointer;
+              font-size: 10px;
+              font-family: &quot;Courier New&quot;, monospace;
+              color: #f8514999;
+            "
+          >
+            🗑 Quitar ortofoto actual
+          </button>
+        </div>
+      </div>
+    </div>
+

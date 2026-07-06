@@ -1,0 +1,30 @@
+/* =====================================================================
+   MÓDULO 01/10 · 00-base.css
+   Parte de la modularización quirúrgica de styles.css
+   (ver README-MODULARIZACION-CSS.md para el mapa completo)
+   Contexto / depende de: (ninguna) — reset (*) y estilos base de <body>
+   IMPORTANTE: el orden de carga (nombre numérico) es significativo
+   para la cascada CSS — cargar los <link> en este mismo orden.
+   No se movió ni se reescribió ninguna regla: corte exacto del original.
+   ===================================================================== */
+
+/* ============================================================
+   styles.css — extraido de index.html (bloques <style>)
+   ============================================================ */
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: "Courier New", monospace;
+      background: #0d1117;
+      color: #e6edf3;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+

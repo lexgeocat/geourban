@@ -1,0 +1,30 @@
+/* =====================================================================
+   MÓDULO 09/10 · 08-equipamiento.css
+   Parte de la modularización quirúrgica de styles.css
+   (ver README-MODULARIZACION-CSS.md para el mapa completo)
+   Contexto / depende de: 06-stats-panel.css — filas sp-equip + .equip-badge
+   IMPORTANTE: el orden de carga (nombre numérico) es significativo
+   para la cascada CSS — cargar los <link> en este mismo orden.
+   No se movió ni se reescribió ninguna regla: corte exacto del original.
+   ===================================================================== */
+
+    #statsPanel tr.sp-equip td {
+      color: #e3b341;
+    }
+
+    #statsPanel tr.sp-equip td:first-child {
+      color: #e3b341;
+    }
+
+    .equip-badge {
+      display: inline-block;
+      background: #1c2800;
+      border: 1px solid #e3b34166;
+      border-radius: 3px;
+      padding: 2px 5px;
+      font-size: 9px;
+      color: #e3b341;
+      margin-top: 4px;
+      letter-spacing: 0.5px;
+    }
+
