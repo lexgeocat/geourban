@@ -7,7 +7,6 @@ import WebGLVectorLayer from 'ol/layer/WebGLVector';
 import VectorSource from 'ol/source/Vector';
 import Draw from 'ol/interaction/Draw';
 import Snap from 'ol/interaction/Snap';
-import { defaults as defaultControls, Attribution } from 'ol/control';
 import { Feature } from 'ol';
 import { Polygon } from 'ol/geom';
 import { useLayerStore } from '../store/layerStore';
@@ -42,7 +41,7 @@ export default function MapView() {
   const mapDivRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<Map | null>(null);
   const { visibility } = useLayerStore();
-  const drawMode = useDrawStore((s) => s.mode);
+  const drawMode = useDrawStore().mode;
 
   // --- Inicializar mapa (solo una vez) ---
   useEffect(() => {
@@ -60,6 +59,7 @@ export default function MapView() {
       }),
       visible: visibility.satellite,
     });
+
     // Capa con 10 k polígonos (WebGL)
     const vectorSource = new VectorSource({
       features: generateGridFeatures(100),
@@ -67,17 +67,16 @@ export default function MapView() {
     const polygonsLayer = new WebGLVectorLayer({
       source: vectorSource,
       style: {
-        fillColor: '#4f46e5',
-        strokeColor: '#1e40af',
+        fill: '#4f46e5',
+        stroke: '#1e40af',
         strokeWidth: 1,
         opacity: 0.6,
       },
       visible: visibility.polygons,
     });
 
-
     const map = new Map({
-      target: mapDivRef.current,
+      target: mapDivRef.current!,
       layers: [osmLayer, satelliteLayer, polygonsLayer],
       view: new View({
         center: [0, 0],
@@ -122,17 +121,17 @@ export default function MapView() {
   }, [visibility]);
 
   // --- Lógica de dibujo y snapping ---
+  // Creamos la capa donde se guardarán los dibujos del usuario
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map) return;
 
-    // Fuente y capa donde se guardan los dibujos del usuario
     const drawSource = new VectorSource();
     const drawLayer = new WebGLVectorLayer({
       source: drawSource,
       style: {
-        fillColor: '#10b981', // verde suave
-        strokeColor: '#059669',
+        fill: '#10b981', // verde suave
+        stroke: '#059669',
         strokeWidth: 2,
         opacity: 0.5,
       },
@@ -148,6 +147,7 @@ export default function MapView() {
     });
     map.addInteraction(snap);
 
+    // Interacción de dibujo según el modo seleccionado
     let drawInteraction: any = null;
     if (drawMode === 'polygon') {
       drawInteraction = new Draw({ source: drawSource, type: 'Polygon' });
@@ -164,7 +164,7 @@ export default function MapView() {
       map.removeInteraction(snap);
       map.removeLayer(drawLayer);
     };
-    // Dependencia: drawMode (reactiva al cambiar el botón)
+    // Dependence: drawMode (reactiva al cambiar el modo)
   }, [drawMode]);
 
   return <div ref={mapDivRef} className="h-full w-full" />;

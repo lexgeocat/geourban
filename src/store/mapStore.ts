@@ -14,6 +14,7 @@ export const useMapStore = create<MapState>()(
     mapInstance: null,
     setMap: (map) =>
       set((state) => {
+        // @ts-ignore
         state.mapInstance = map;
       }),
     fitPolygonsLayer: () => {
