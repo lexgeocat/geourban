@@ -3,7 +3,8 @@ import Map from 'ol/Map';
 import View from 'ol/View';
 import TileLayer from 'ol/layer/Tile';
 import { OSM, XYZ } from 'ol/source';
-import { defaults as defaultControls, Attribution } from 'ol/control';
+import { defaults } from 'ol/control';
+import Attribution from 'ol/control/Attribution';
 import WebGLVectorLayer from 'ol/layer/WebGLVector';
 import VectorSource from 'ol/source/Vector';
 import Draw from 'ol/interaction/Draw';
@@ -83,7 +84,7 @@ export default function MapView() {
         center: [0, 0],
         zoom: 2,
       }),
-      controls: defaultControls({ attribution: false }).extend([
+      controls: defaults({ attribution: false }).extend([
         new Attribution({
           collapsible: false,
           className: 'custom-attribution',
