@@ -31,6 +31,8 @@ jobs:
 
       - name: Build
         run: npm run build
+        env:
+          VITE_BASE_PATH: /geourban/
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
