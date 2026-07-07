@@ -2,16 +2,281 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Estilos para la atribución de OpenLayers */
-.custom-attribution {
-  background: rgba(255, 255, 255, 0.8);
-  padding: 2px 6px;
-  font-size: 0.75rem;
-  border-radius: 4px;
-  color: #333;
+/* ============================================================
+   GeoUrban — CAD Dark Design System
+   ============================================================ */
+
+:root {
+  /* ─── Color Palette ─── */
+  --cad-bg-deepest:    #0d1117;
+  --cad-bg-deep:       #151b28;
+  --cad-bg-panel:      #1a2236;
+  --cad-bg-surface:    #212d45;
+  --cad-bg-hover:      rgba(0, 212, 255, 0.08);
+  --cad-bg-active:     rgba(0, 212, 255, 0.15);
+
+  --cad-border:        #2a3a52;
+  --cad-border-accent: #0f3460;
+
+  --cad-accent:        #00d4ff;
+  --cad-accent-violet: #7c3aed;
+  --cad-accent-green:  #10b981;
+  --cad-accent-amber:  #f59e0b;
+  --cad-accent-red:    #ef4444;
+
+  --cad-text:          #e2e8f0;
+  --cad-text-dim:      #94a3b8;
+  --cad-text-muted:    #64748b;
+
+  /* ─── Spacing ─── */
+  --cad-toolbar-width: 48px;
+  --cad-topbar-height: 40px;
+  --cad-statusbar-height: 28px;
+
+  /* ─── Shadows ─── */
+  --cad-shadow-sm:  0 1px 3px rgba(0, 0, 0, 0.4);
+  --cad-shadow-md:  0 4px 12px rgba(0, 0, 0, 0.5);
+  --cad-shadow-lg:  0 8px 32px rgba(0, 0, 0, 0.6);
+  --cad-shadow-glow: 0 0 12px rgba(0, 212, 255, 0.3);
+
+  /* ─── Transitions ─── */
+  --cad-transition: 150ms cubic-bezier(0.4, 0, 0.2, 1);
 }
-/* Ocultar botones de colapso y símbolos */
+
+/* ─── Global Reset ─── */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body, #root {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background: var(--cad-bg-deepest);
+  color: var(--cad-text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ─── Scrollbar Dark ─── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--cad-bg-deep);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--cad-border);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--cad-text-muted);
+}
+
+/* ============================================================
+   CAD Tooltip System (CSS only)
+   ============================================================ */
+.cad-tooltip {
+  position: relative;
+}
+.cad-tooltip::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  left: calc(100% + 10px);
+  top: 50%;
+  transform: translateY(-50%);
+  padding: 5px 10px;
+  background: var(--cad-bg-surface);
+  color: var(--cad-text);
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  border-radius: 4px;
+  border: 1px solid var(--cad-border);
+  box-shadow: var(--cad-shadow-md);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--cad-transition), transform var(--cad-transition);
+  transform: translateY(-50%) translateX(-4px);
+  z-index: 9999;
+}
+.cad-tooltip:hover::after {
+  opacity: 1;
+  transform: translateY(-50%) translateX(0);
+}
+
+/* Tooltip variant: bottom (for top bar) */
+.cad-tooltip-bottom::after {
+  left: 50%;
+  top: calc(100% + 8px);
+  transform: translateX(-50%) translateY(-4px);
+}
+.cad-tooltip-bottom:hover::after {
+  transform: translateX(-50%) translateY(0);
+}
+
+/* ============================================================
+   CAD Icon Button
+   ============================================================ */
+.cad-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: none;
+  background: transparent;
+  color: var(--cad-text-dim);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all var(--cad-transition);
+  outline: none;
+}
+.cad-icon-btn svg {
+  width: 18px;
+  height: 18px;
+  transition: all var(--cad-transition);
+}
+.cad-icon-btn:hover {
+  background: var(--cad-bg-hover);
+  color: var(--cad-accent);
+}
+.cad-icon-btn:hover svg {
+  filter: drop-shadow(0 0 4px rgba(0, 212, 255, 0.4));
+}
+.cad-icon-btn.active {
+  background: var(--cad-bg-active);
+  color: var(--cad-accent);
+  box-shadow: inset 2px 0 0 var(--cad-accent);
+}
+.cad-icon-btn.active svg {
+  filter: drop-shadow(0 0 6px rgba(0, 212, 255, 0.5));
+}
+.cad-icon-btn:active {
+  transform: scale(0.92);
+}
+
+/* ============================================================
+   CAD Toggle Switch
+   ============================================================ */
+.cad-toggle {
+  position: relative;
+  width: 32px;
+  height: 18px;
+  appearance: none;
+  -webkit-appearance: none;
+  background: var(--cad-bg-deepest);
+  border: 1px solid var(--cad-border);
+  border-radius: 9px;
+  cursor: pointer;
+  transition: all var(--cad-transition);
+  flex-shrink: 0;
+}
+.cad-toggle::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  background: var(--cad-text-muted);
+  border-radius: 50%;
+  transition: all var(--cad-transition);
+}
+.cad-toggle:checked {
+  background: var(--cad-accent);
+  border-color: var(--cad-accent);
+}
+.cad-toggle:checked::after {
+  left: 16px;
+  background: #fff;
+  box-shadow: 0 0 6px rgba(0, 212, 255, 0.6);
+}
+
+/* ============================================================
+   CAD Panels (Glassmorphism)
+   ============================================================ */
+.cad-panel-glass {
+  background: rgba(26, 34, 54, 0.85);
+  backdrop-filter: blur(16px) saturate(1.2);
+  -webkit-backdrop-filter: blur(16px) saturate(1.2);
+  border: 1px solid rgba(42, 58, 82, 0.6);
+  border-radius: 10px;
+  box-shadow: var(--cad-shadow-lg);
+}
+
+/* ============================================================
+   CAD Separator (toolbar divider)
+   ============================================================ */
+.cad-separator {
+  width: 24px;
+  height: 1px;
+  background: var(--cad-border);
+  margin: 4px auto;
+  opacity: 0.6;
+}
+
+/* ============================================================
+   OpenLayers Overrides
+   ============================================================ */
+.ol-control button {
+  display: none !important;
+}
+.custom-attribution {
+  position: absolute;
+  bottom: 2px;
+  right: 4px;
+  background: rgba(13, 17, 23, 0.75) !important;
+  backdrop-filter: blur(8px);
+  padding: 2px 8px !important;
+  font-size: 0.6rem !important;
+  border-radius: 4px;
+  color: var(--cad-text-muted) !important;
+  border: 1px solid var(--cad-border) !important;
+}
+.custom-attribution a {
+  color: var(--cad-text-dim) !important;
+}
 .custom-attribution button,
 .custom-attribution .ol-uncollapsible {
   display: none !important;
+}
+
+/* Hide default OL zoom control */
+.ol-zoom {
+  display: none !important;
+}
+
+/* ============================================================
+   Animations
+   ============================================================ */
+@keyframes fadeSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes pulseGlow {
+  0%, 100% { box-shadow: 0 0 0 rgba(0, 212, 255, 0); }
+  50% { box-shadow: 0 0 12px rgba(0, 212, 255, 0.3); }
+}
+
+.animate-fade-in {
+  animation: fadeSlideIn 0.25s ease-out;
+}
+
+/* ============================================================
+   Monospace utility
+   ============================================================ */
+.font-mono-cad {
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
 }

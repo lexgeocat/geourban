@@ -8,20 +8,20 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "immer": "^10.1.1",
+    "ol": "^10.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "ol": "^10.0.0",
-    "zustand": "^4.5.0",
-    "immer": "^10.1.1"
+    "zustand": "^4.5.0"
   },
   "devDependencies": {
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
-    "typescript": "^5.5.2",
-    "vite": "^5.4.0",
     "@vitejs/plugin-react": "^4.3.0",
-    "tailwindcss": "^3.4.0",
-    "postcss": "^8.4.47",
-    "autoprefixer": "^10.4.19"
+    "autoprefixer": "^10.5.2",
+    "postcss": "^8.5.16",
+    "tailwindcss": "^3.4.19",
+    "typescript": "^5.5.2",
+    "vite": "^5.4.0"
   }
 }

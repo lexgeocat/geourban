@@ -1,34 +1,52 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import Map from 'ol/Map';
-import { Extent } from 'ol/extent';
+
+type CursorCoords = { x: number; y: number } | null;
 
 type MapState = {
   mapInstance: Map | null;
+  cursorCoords: CursorCoords;
+  zoom: number;
   setMap: (map: Map | null) => void;
-  fitPolygonsLayer: () => void;
+  setCursorCoords: (coords: CursorCoords) => void;
+  setZoom: (zoom: number) => void;
+  zoomIn: () => void;
+  zoomOut: () => void;
 };
 
 export const useMapStore = create<MapState>()(
-  immer((set) => ({
+  immer((set, get) => ({
     mapInstance: null,
+    cursorCoords: null,
+    zoom: 2,
     setMap: (map) =>
       set((state) => {
-        // @ts-ignore
+        // @ts-ignore – immer draft vs OL class instance
         state.mapInstance = map;
       }),
-    fitPolygonsLayer: () => {
+    setCursorCoords: (coords) =>
       set((state) => {
-        const map = state.mapInstance;
-        if (!map) return;
-        const polygonsLayer = map.getLayers().item(2);
-        if (!polygonsLayer) return;
-        // @ts-ignore – WebGLVectorLayer has getSource()
-        const source = (polygonsLayer as any).getSource();
-        const extent = source.getExtent();
-        const view = map.getView();
-        view.fit(extent, { size: map.getSize(), maxZoom: 10, padding: [20, 20, 20, 20] });
-      });
+        // @ts-ignore
+        state.cursorCoords = coords;
+      }),
+    setZoom: (zoom) =>
+      set((state) => {
+        state.zoom = zoom;
+      }),
+    zoomIn: () => {
+      const map = get().mapInstance;
+      if (!map) return;
+      const view = map.getView();
+      const z = view.getZoom();
+      if (z !== undefined) view.animate({ zoom: z + 1, duration: 200 });
+    },
+    zoomOut: () => {
+      const map = get().mapInstance;
+      if (!map) return;
+      const view = map.getView();
+      const z = view.getZoom();
+      if (z !== undefined) view.animate({ zoom: z - 1, duration: 200 });
     },
   }))
 );

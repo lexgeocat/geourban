@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 
-type DrawMode = 'none' | 'polygon' | 'line';
+export type DrawMode = 'select' | 'pan' | 'polygon' | 'line' | 'none';
 
 type DrawState = {
   mode: DrawMode;
@@ -10,7 +10,7 @@ type DrawState = {
 
 export const useDrawStore = create<DrawState>()(
   immer((set) => ({
-    mode: 'none',
+    mode: 'select',
     setMode: (mode) =>
       set((state) => {
         state.mode = mode;

@@ -1,7 +1,7 @@
-import create from 'zustand';
+import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 
-type LayerKey = 'osm' | 'satellite' | 'polygons';
+type LayerKey = 'osm' | 'satellite';
 
 type LayerState = {
   visibility: Record<LayerKey, boolean>;
@@ -13,7 +13,6 @@ export const useLayerStore = create<LayerState>()(
     visibility: {
       osm: true,
       satellite: false,
-      polygons: true,
     },
     setVisibility: (key, visible) =>
       set((state) => {

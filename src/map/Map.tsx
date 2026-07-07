@@ -9,35 +9,10 @@ import WebGLVectorLayer from 'ol/layer/WebGLVector';
 import VectorSource from 'ol/source/Vector';
 import Draw from 'ol/interaction/Draw';
 import Snap from 'ol/interaction/Snap';
-import { Feature } from 'ol';
-import { Polygon } from 'ol/geom';
+import { toLonLat, fromLonLat } from 'ol/proj';
 import { useLayerStore } from '../store/layerStore';
 import { useMapStore } from '../store/mapStore';
 import { useDrawStore } from '../store/drawStore';
-
-// Helper: generar 10 000 polígonos en una cuadrícula 100×100
-function generateGridFeatures(countPerSide: number = 100): Feature<Polygon>[] {
-  const size = 1; // tamaño de celda
-  const features: Feature<Polygon>[] = [];
-  for (let i = 0; i < countPerSide; i++) {
-    for (let j = 0; j < countPerSide; j++) {
-      const x = i * size;
-      const y = j * size;
-      const polygon = new Polygon([
-        [
-          [x, y],
-          [x + size, y],
-          [x + size, y + size],
-          [x, y + size],
-          [x, y],
-        ],
-      ]);
-      const feat = new Feature({ geometry: polygon, id: i * countPerSide + j });
-      features.push(feat);
-    }
-  }
-  return features;
-}
 
 export default function MapView() {
   const mapDivRef = useRef<HTMLDivElement>(null);
@@ -62,27 +37,12 @@ export default function MapView() {
       visible: visibility.satellite,
     });
 
-    // Capa con 10 k polígonos (WebGL)
-    const vectorSource = new VectorSource({
-      features: generateGridFeatures(100),
-    });
-    const polygonsLayer = new WebGLVectorLayer({
-      source: vectorSource,
-      style: {
-        fill: '#4f46e5',
-        stroke: '#1e40af',
-        strokeWidth: 1,
-        opacity: 0.6,
-      },
-      visible: visibility.polygons,
-    });
-
     const map = new Map({
       target: mapDivRef.current!,
-      layers: [osmLayer, satelliteLayer, polygonsLayer],
+      layers: [osmLayer, satelliteLayer],
       view: new View({
-        center: [0, 0],
-        zoom: 2,
+        center: fromLonLat([-68.30, -16.65]),
+        zoom: 17,
       }),
       controls: defaults({ attribution: false }).extend([
         new Attribution({
@@ -92,11 +52,23 @@ export default function MapView() {
       ]),
     });
 
-    // Ajustar vista al cargar los polígonos
-    map.once('rendercomplete', () => {
-      const extent = vectorSource.getExtent();
-      map.getView().fit(extent, { size: map.getSize(), maxZoom: 10, padding: [20, 20, 20, 20] });
+    // --- Live cursor coordinates & zoom ---
+    const setCursorCoords = useMapStore.getState().setCursorCoords;
+    const setZoom = useMapStore.getState().setZoom;
+
+    map.on('pointermove', (evt) => {
+      const lonLat = toLonLat(evt.coordinate);
+      setCursorCoords({ x: lonLat[0], y: lonLat[1] });
     });
+
+    map.getView().on('change:resolution', () => {
+      const z = map.getView().getZoom();
+      if (z !== undefined) setZoom(z);
+    });
+
+    // Set initial zoom
+    const initialZoom = map.getView().getZoom();
+    if (initialZoom !== undefined) setZoom(initialZoom);
 
     // Guardar instancia en store global
     useMapStore.getState().setMap(map);
@@ -105,7 +77,7 @@ export default function MapView() {
     // Cleanup al desmontar
     return () => {
       useMapStore.getState().setMap(null);
-      map.setTarget(null);
+      map.setTarget(undefined);
       mapInstanceRef.current = null;
     };
   }, []);
@@ -116,26 +88,25 @@ export default function MapView() {
     if (!map) return;
     const osmLayer = map.getLayers().item(0) as TileLayer;
     const satelliteLayer = map.getLayers().item(1) as TileLayer;
-    const polygonsLayer = map.getLayers().item(2) as WebGLVectorLayer;
     if (osmLayer) osmLayer.setVisible(visibility.osm);
     if (satelliteLayer) satelliteLayer.setVisible(visibility.satellite);
-    if (polygonsLayer) polygonsLayer.setVisible(visibility.polygons);
   }, [visibility]);
 
   // --- Lógica de dibujo y snapping ---
-  // Creamos la capa donde se guardarán los dibujos del usuario
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map) return;
+
+    // No draw interaction for select/pan/none modes
+    if (drawMode !== 'polygon' && drawMode !== 'line') return;
 
     const drawSource = new VectorSource();
     const drawLayer = new WebGLVectorLayer({
       source: drawSource,
       style: {
-        fill: '#10b981', // verde suave
-        stroke: '#059669',
-        strokeWidth: 2,
-        opacity: 0.5,
+        'fill-color': 'rgba(16, 185, 129, 0.5)',
+        'stroke-color': '#059669',
+        'stroke-width': 2,
       },
     });
     map.addLayer(drawLayer);
@@ -150,24 +121,26 @@ export default function MapView() {
     map.addInteraction(snap);
 
     // Interacción de dibujo según el modo seleccionado
-    let drawInteraction: any = null;
-    if (drawMode === 'polygon') {
-      drawInteraction = new Draw({ source: drawSource, type: 'Polygon' });
-    } else if (drawMode === 'line') {
-      drawInteraction = new Draw({ source: drawSource, type: 'LineString' });
-    }
-    if (drawInteraction) {
-      map.addInteraction(drawInteraction);
-    }
+    const drawType = drawMode === 'polygon' ? 'Polygon' : 'LineString';
+    const drawInteraction = new Draw({ source: drawSource, type: drawType });
+    map.addInteraction(drawInteraction);
 
     // Cleanup cuando cambie el modo o al desmontar
     return () => {
-      if (drawInteraction) map.removeInteraction(drawInteraction);
+      map.removeInteraction(drawInteraction);
       map.removeInteraction(snap);
       map.removeLayer(drawLayer);
     };
-    // Dependence: drawMode (reactiva al cambiar el modo)
   }, [drawMode]);
 
-  return <div ref={mapDivRef} className="h-full w-full" />;
+  return (
+    <div
+      ref={mapDivRef}
+      style={{
+        width: '100%',
+        height: '100%',
+        background: 'var(--cad-bg-deepest)',
+      }}
+    />
+  );
 }
