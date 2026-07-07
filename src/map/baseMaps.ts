@@ -1,10 +1,11 @@
-import TileLayer from 'ol/layer/Tile.js';
-import type BaseLayer from 'ol/layer/Base.js';
-import type Map from 'ol/Map.js';
-import { OSM, XYZ } from 'ol/source.js';
+import TileLayer from 'ol/layer/Tile';
+import type BaseLayer from 'ol/layer/Base';
+import type Map from 'ol/Map';
+import { OSM } from 'ol/source';
 import { createCadBaseMap, CAD_BASE_MAP_ATTRIBUTION, cadBaseMapBundles } from './cadGridLayer';
+import { createGoogleMapsLayer } from './googleMaps';
 
-export type BaseMapId = 'osm' | 'topo' | 'satellite' | 'cad';
+export type BaseMapId = 'osm' | 'cad' | 'google-satellite';
 
 export interface BaseMapDef {
   id: BaseMapId;
@@ -40,25 +41,8 @@ export const BASE_MAP_DEFS: BaseMapDef[] = [
       }),
   },
   {
-    id: 'topo',
-    label: 'Topográfico',
-    create: () =>
-      new TileLayer({
-        source: new XYZ({
-          url: 'https://{a-c}.tile.opentopomap.org/{z}/{x}/{y}.png',
-          attributions: '© <a href="https://opentopomap.org">OpenTopoMap</a> contributors',
-        }),
-      }),
-  },
-  {
-    id: 'satellite',
-    label: 'Satélite',
-    create: () =>
-      new TileLayer({
-        source: new XYZ({
-          url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-          attributions: '© <a href="https://esri.com">Esri</a>, Maxar, Earthstar Geographics',
-        }),
-      }),
+    id: 'google-satellite',
+    label: 'Google Maps (Satélite)',
+    create: () => createGoogleMapsLayer('satellite'),
   },
 ];

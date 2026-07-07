@@ -1,7 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import Map from 'ol/Map.js';
 import View from 'ol/View.js';
-import TileLayer from 'ol/layer/Tile.js';
 import type BaseLayer from 'ol/layer/Base.js';
 import VectorLayer from 'ol/layer/Vector.js';
 import { defaults } from 'ol/control.js';
@@ -23,7 +22,6 @@ import { useDrawStore } from '../store/drawStore';
 import { useHistoryStore } from '../store/historyStore';
 import { updateFeatureMetrics } from '../geo/metrics';
 import { BASE_MAP_DEFS } from './baseMaps';
-import type { BaseMapId } from './baseMaps';
 import { generateDemoGrid } from './demoDataset';
 import { findSnap, createSnapPoints, SNAP_COLORS } from './advancedSnap';
 import { emitMetricsInvalidated, emitMetricsUpdated } from './metricsEvents';
@@ -52,137 +50,133 @@ export default function MapView() {
   useEffect(() => {
     if (!mapDivRef.current) return;
 
-    // Capa base única (se intercambia la fuente vía efecto baseMap)
     const def = BASE_MAP_DEFS.find((d) => d.id === baseMapId) ?? BASE_MAP_DEFS[0];
-    const baseLayer = def.create();
+    const baseLayer = def.create() as BaseLayer;
     baseLayerRef.current = baseLayer;
 
-    // Capa de demostración: 10 000 polígonos sintéticos con WebGL optimizado
-    const demoSrc = new VectorSource({
-      features: generateDemoGrid(100),
-    });
-    demoSrcRef.current = demoSrc;
-    const demoLayer = new WebGLVectorLayer({
-      source: demoSrc,
-      visible: false, // apagada por defecto
-      disableHitDetection: true, // solo visual → evita latencia en hover/click
-      style: {
-        // LOD: invisible por debajo de zoom 14 para no saturar la GPU
-        'fill-color': ['case', ['>=', ['zoom'], 14], 'rgba(0, 212, 255, 0.15)', 'transparent'],
-        'stroke-color': ['case', ['>=', ['zoom'], 14], 'rgba(0, 212, 255, 0.5)', 'transparent'],
-        'stroke-width': ['case', ['>=', ['zoom'], 14], 1, 0],
-      },
-    });
-    demoLayerRef.current = demoLayer;
+      // Capa de demostración: 10 000 polígonos sintéticos con WebGL optimizado
+      const demoSrc = new VectorSource({
+        features: generateDemoGrid(100),
+      });
+      demoSrcRef.current = demoSrc;
+      const demoLayer = new WebGLVectorLayer({
+        source: demoSrc,
+        visible: false,
+        disableHitDetection: true,
+        style: {
+          'fill-color': ['case', ['>=', ['zoom'], 14], 'rgba(0, 212, 255, 0.15)', 'transparent'],
+          'stroke-color': ['case', ['>=', ['zoom'], 14], 'rgba(0, 212, 255, 0.5)', 'transparent'],
+          'stroke-width': ['case', ['>=', ['zoom'], 14], 1, 0],
+        },
+      });
+      demoLayerRef.current = demoLayer;
 
-    // Capa de dibujo persistente (features dibujadas por el usuario)
-    const drawSrc = new VectorSource();
-    drawSrcRef.current = drawSrc;
-    useMapStore.getState().setDrawSource(drawSrc);
-    const drawLayer = new WebGLVectorLayer({
-      source: drawSrc,
-      style: {
-        'fill-color': 'rgba(16, 185, 129, 0.4)',
-        'stroke-color': '#10b981',
-        'stroke-width': 2,
-      },
-    });
-    const measurementLayer = new VectorLayer({
-      source: drawSrc,
-      visible: measurementsVisible,
-      declutter: true,
-      style: createMeasurementStyle(),
-    });
-    measurementLayerRef.current = measurementLayer;
+      // Capa de dibujo persistente (features dibujadas por el usuario)
+      const drawSrc = new VectorSource();
+      drawSrcRef.current = drawSrc;
+      useMapStore.getState().setDrawSource(drawSrc);
+      const drawLayer = new WebGLVectorLayer({
+        source: drawSrc,
+        style: {
+          'fill-color': 'rgba(16, 185, 129, 0.4)',
+          'stroke-color': '#10b981',
+          'stroke-width': 2,
+        },
+      });
+      const measurementLayer = new VectorLayer({
+        source: drawSrc,
+        visible: measurementsVisible,
+        declutter: true,
+        style: createMeasurementStyle(),
+      });
+      measurementLayerRef.current = measurementLayer;
 
-    const map = new Map({
-      target: mapDivRef.current!,
-      layers: [baseLayer, demoLayer, drawLayer, measurementLayer],
-      view: new View({
-        center: fromLonLat(viewConfig.center),
-        zoom: viewConfig.zoom,
-      }),
-      controls: defaults({ attribution: false }).extend([
-        new Attribution({
-          collapsible: false,
-          className: 'custom-attribution',
+      const map = new Map({
+        target: mapDivRef.current!,
+        layers: [baseLayer, demoLayer, drawLayer, measurementLayer],
+        view: new View({
+          center: fromLonLat(viewConfig.center),
+          zoom: viewConfig.zoom,
         }),
-      ]),
-    });
+        controls: defaults({ attribution: false }).extend([
+          new Attribution({
+            collapsible: false,
+            className: 'custom-attribution',
+          }),
+        ]),
+      });
 
-    // --- Live cursor coordinates & zoom ---
-    const setCursorCoords = useMapStore.getState().setCursorCoords;
-    const setZoom = useMapStore.getState().setZoom;
+      // --- Live cursor coordinates & zoom ---
+      const setCursorCoords = useMapStore.getState().setCursorCoords;
+      const setZoom = useMapStore.getState().setZoom;
 
-    map.on('pointermove', (evt) => {
-      const lonLat = toLonLat(evt.coordinate);
-      setCursorCoords({ x: lonLat[0], y: lonLat[1] });
-    });
+      map.on('pointermove', (evt) => {
+        const lonLat = toLonLat(evt.coordinate);
+        setCursorCoords({ x: lonLat[0], y: lonLat[1] });
+      });
 
-    map.getView().on('change:resolution', () => {
-      const z = map.getView().getZoom();
-      if (z !== undefined) setZoom(z);
-    });
+      map.getView().on('change:resolution', () => {
+        const z = map.getView().getZoom();
+        if (z !== undefined) setZoom(z);
+      });
 
-    // Set initial zoom
-    const initialZoom = map.getView().getZoom();
-    if (initialZoom !== undefined) setZoom(initialZoom);
+      const initialZoom = map.getView().getZoom();
+      if (initialZoom !== undefined) setZoom(initialZoom);
 
-    // --- Capa de highlight para selección espacial ---
-    const hlSrc = new VectorSource();
-    highlightSrcRef.current = hlSrc;
-    const hlLayer = new VectorLayer({
-      source: hlSrc,
-      style: new Style({
-        fill: new Fill({ color: 'rgba(255, 200, 0, 0.25)' }),
-        stroke: new Stroke({ color: '#f59e0b', width: 2 }),
-      }),
-    });
-    map.addLayer(hlLayer);
+      // --- Capa de highlight para selección espacial ---
+      const hlSrc = new VectorSource();
+      highlightSrcRef.current = hlSrc;
+      const hlLayer = new VectorLayer({
+        source: hlSrc,
+        style: new Style({
+          fill: new Fill({ color: 'rgba(255, 200, 0, 0.25)' }),
+          stroke: new Stroke({ color: '#f59e0b', width: 2 }),
+        }),
+      });
+      map.addLayer(hlLayer);
 
-    // --- Selección de lotes con clic (modo 'select') ---
-    map.on('click', (evt) => {
-      const currentMode = useDrawStore.getState().mode;
-      if (currentMode !== 'select') return;
+      // --- Selección de lotes con clic (modo 'select') ---
+      map.on('click', (evt) => {
+        const currentMode = useDrawStore.getState().mode;
+        if (currentMode !== 'select') return;
 
-      // Buscar en: 1) features dibujadas, 2) demo layer
-      const sources = [drawSrcRef.current, demoSrcRef.current].filter(Boolean);
-      if (selectedFeatureRef.current) {
-        selectedFeatureRef.current.set('selected', false);
-        selectedFeatureRef.current.changed();
-        selectedFeatureRef.current = null;
-      }
-      hlSrc.clear();
-      for (const s of sources) {
-        const found = s!.getFeaturesAtCoordinate(evt.coordinate);
-        if (found.length > 0) {
-          const feature = found[0] as Feature<Geometry>;
-          feature.set('selected', true);
-          feature.changed();
-          selectedFeatureRef.current = feature;
-          hlSrc.addFeature(feature);
-          measurementLayerRef.current?.changed();
-          return;
+        const sources = [drawSrcRef.current, demoSrcRef.current].filter(Boolean);
+        if (selectedFeatureRef.current) {
+          selectedFeatureRef.current.set('selected', false);
+          selectedFeatureRef.current.changed();
+          selectedFeatureRef.current = null;
         }
+        hlSrc.clear();
+        for (const s of sources) {
+          const found = s!.getFeaturesAtCoordinate(evt.coordinate);
+          if (found.length > 0) {
+            const feature = found[0] as Feature<Geometry>;
+            feature.set('selected', true);
+            feature.changed();
+            selectedFeatureRef.current = feature;
+            hlSrc.addFeature(feature);
+            measurementLayerRef.current?.changed();
+            return;
+          }
+        }
+        measurementLayerRef.current?.changed();
+      });
+
+      useMapStore.getState().setMap(map);
+      mapInstanceRef.current = map;
+
+      if (def.attach) {
+        baseLayerCleanupRef.current = def.attach(map, baseLayer);
       }
-      measurementLayerRef.current?.changed();
-    });
+      baseMapInitializedRef.current = true;
 
-    useMapStore.getState().setMap(map);
-    mapInstanceRef.current = map;
-
-    if (def.attach) {
-      baseLayerCleanupRef.current = def.attach(map, baseLayer);
-    }
-    baseMapInitializedRef.current = true;
-
-    // Cleanup al desmontar
     return () => {
       baseLayerCleanupRef.current?.();
       baseLayerCleanupRef.current = null;
       useMapStore.getState().setMap(null);
       useMapStore.getState().setDrawSource(null);
-      map.setTarget(undefined);
+      const m = mapInstanceRef.current;
+      if (m) m.setTarget(undefined);
       mapInstanceRef.current = null;
     };
   }, []);
@@ -202,7 +196,7 @@ export default function MapView() {
     baseLayerCleanupRef.current = null;
 
     const def = BASE_MAP_DEFS.find((d) => d.id === baseMapId) ?? BASE_MAP_DEFS[0];
-    const newLayer = def.create();
+    const newLayer = def.create() as BaseLayer;
     baseLayerRef.current = newLayer;
 
     if (oldLayer) {

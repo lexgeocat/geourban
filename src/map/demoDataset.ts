@@ -1,6 +1,21 @@
-import Feature from 'ol/Feature.js';
-import Polygon from 'ol/geom/Polygon.js';
-import { fromLonLat } from 'ol/proj.js';
+import Feature from 'ol/Feature';
+import Polygon from 'ol/geom/Polygon';
+import { fromLonLat } from 'ol/proj';
+import * as turf from '@turf/turf';
+import { Geometry } from 'ol/geom';
+import GeoJSON from 'ol/format/GeoJSON';
+
+/**
+ * Simplifica una geometría usando Turf.js.
+ * @param geom - Geometría OpenLayers.
+ * @param tolerance - Tolerancia de simplificación (en metros).
+ */
+const simplifyGeometry = (geom: Geometry, tolerance: number = 0.5): Geometry => {
+  const format = new GeoJSON();
+  const geojson = format.writeGeometryObject(geom);
+  const simplified = turf.simplify(geojson, { tolerance, highQuality: true });
+  return format.readGeometry(simplified);
+};
 
 /**
  * Genera una cuadrícula sintética de N×N polígonos centrada en Viacha.
@@ -24,16 +39,20 @@ export function generateDemoGrid(countPerSide: number = 100): Feature<Polygon>[]
     for (let j = 0; j < countPerSide; j++) {
       const x = startX + i * step;
       const y = startY + j * step;
-      const polygon = new Polygon([
-        [
-          [x, y],
-          [x + cellSize, y],
-          [x + cellSize, y + cellSize],
-          [x, y + cellSize],
-          [x, y],
-        ],
-      ]);
-      features.push(new Feature({ geometry: polygon }));
+       let polygon = new Polygon([
+         [
+           [x, y],
+           [x + cellSize, y],
+           [x + cellSize, y + cellSize],
+           [x, y + cellSize],
+           [x, y],
+         ],
+       ]);
+       // Simplificar geometrías para zooms alejados
+       if (countPerSide > 50) {
+         polygon = simplifyGeometry(polygon, 0.5) as Polygon;
+       }
+       features.push(new Feature({ geometry: polygon }));
     }
   }
   return features;

@@ -48,8 +48,8 @@ export const useMapStore = create<MapState>()(
       }),
     setDrawSource: (src) =>
       set((state) => {
-        // @ts-expect-error - OL source types conflict with Immer draft
-      }),
+        state.drawSource = src;
+       }),
     restoreDrawFeatures: (geojson) => {
       const src = get().drawSource;
       if (!src) return;
@@ -62,8 +62,8 @@ export const useMapStore = create<MapState>()(
     },
     setCursorCoords: (coords) =>
       set((state) => {
-        // @ts-expect-error - OL coords conflict with Immer draft
-      }),
+        state.cursorCoords = coords;
+       }),
     setZoom: (zoom) =>
       set((state) => {
         state.zoom = zoom;
