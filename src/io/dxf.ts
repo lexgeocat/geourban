@@ -2,19 +2,54 @@ import DxfParser, { type IEntity } from 'dxf-parser';
 import Drawing from 'dxf-writer';
 import { createEmptyProject, type GeoUrbanProject, type ImportResult } from './types';
 import type { Feature, FeatureCollection, LineString, Point, Polygon } from 'geojson';
+import { fromLonLat, toLonLat, transform } from 'ol/proj.js';
+import { useMapStore } from '../store/mapStore';
 
-export async function importDxf(file: File): Promise<ImportResult> {
+export async function importDxf(
+  file: File,
+  sourceCrs: 'local' | string = 'local'
+): Promise<ImportResult> {
   const text = await file.text();
   const parser = new DxfParser();
   const dxf = parser.parseSync(text);
   if (!dxf) throw new Error('No se pudo parsear el archivo DXF');
 
-  const features: Feature[] = [];
+const features: Feature[] = [];
 
   for (const entity of dxf.entities ?? []) {
     const feature = entityToFeature(entity);
     if (feature) features.push(feature);
   }
+
+  if (sourceCrs === 'local') {
+    // Sin CRS real: centramos relativo a la vista actual (fallback para DXF
+    // "de escritorio" sin georreferenciar).
+    const viewCenter = useMapStore.getState().viewConfig.center;
+    const centerMerc = fromLonLat(viewCenter) as [number, number];
+    for (const feature of features) {
+      translateFeatureGeometryToView(feature, centerMerc);
+    }
+  } else {
+    // CRS real (p. ej. EPSG:32719 desde AutoCAD Map 3D): reproyección
+    // matemática real de UTM a WGS84, no un simple desplazamiento.
+    for (const feature of features) {
+      reprojectFeatureGeometry(feature, sourceCrs, 'EPSG:4326');
+    }
+  }
+  function reprojectFeatureGeometry(feature: Feature, sourceCrs: string, destCrs: string) {
+  const geom = feature.geometry;
+  if (!geom) return;
+
+  const toDest = (coord: number[]) => transform(coord, sourceCrs, destCrs) as [number, number];
+
+  if (geom.type === 'Point') {
+    geom.coordinates = toDest(geom.coordinates);
+  } else if (geom.type === 'LineString') {
+    geom.coordinates = geom.coordinates.map(toDest);
+  } else if (geom.type === 'Polygon') {
+    geom.coordinates = geom.coordinates.map((ring) => ring.map(toDest));
+  }
+}
 
   const project = createEmptyProject(file.name.replace(/\.dxf$/i, ''));
   project.data = { type: 'FeatureCollection', features };
@@ -62,6 +97,21 @@ function entityToFeature(entity: IEntity): Feature | null {
     return { type: 'Feature', properties: { dxfType: type }, geometry };
   }
   return null;
+}
+function translateFeatureGeometryToView(feature: Feature, centerMerc: [number, number]) {
+  const geom = feature.geometry;
+  if (!geom) return;
+
+  const toViewLngLat = ([x, y]: number[]): [number, number] =>
+    toLonLat([x + centerMerc[0], y + centerMerc[1]]) as [number, number];
+
+  if (geom.type === 'Point') {
+    geom.coordinates = toViewLngLat(geom.coordinates);
+  } else if (geom.type === 'LineString') {
+    geom.coordinates = geom.coordinates.map(toViewLngLat);
+  } else if (geom.type === 'Polygon') {
+    geom.coordinates = geom.coordinates.map((ring) => ring.map(toViewLngLat));
+  }
 }
 
 export function exportDxf(project: GeoUrbanProject): string {

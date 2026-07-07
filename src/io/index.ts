@@ -18,7 +18,11 @@ export * from './gpkg';
 export * from './dxf';
 export * from './persistence';
 
-export async function importFile(file: File, format?: ImportFormat): Promise<ImportResult> {
+export async function importFile(
+  file: File,
+  format?: ImportFormat,
+  options?: { dxfSourceCrs?: string }
+): Promise<ImportResult> {
   const ext = format ?? inferFormat(file.name);
   switch (ext) {
     case 'geourban':
@@ -34,7 +38,7 @@ export async function importFile(file: File, format?: ImportFormat): Promise<Imp
     case 'gpkg':
       return importGpkg(file);
     case 'dxf':
-      return importDxf(file);
+      return importDxf(file, options?.dxfSourceCrs ?? 'local');
     default:
       throw new Error(`Formato no soportado: ${ext}`);
   }
