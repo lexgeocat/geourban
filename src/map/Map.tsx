@@ -3,6 +3,7 @@ import Map from 'ol/Map';
 import View from 'ol/View';
 import TileLayer from 'ol/layer/Tile';
 import { OSM, XYZ } from 'ol/source';
+import { defaults as defaultControls, Attribution } from 'ol/control';
 import WebGLVectorLayer from 'ol/layer/WebGLVector';
 import VectorSource from 'ol/source/Vector';
 import Draw from 'ol/interaction/Draw';
