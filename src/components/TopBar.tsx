@@ -21,6 +21,15 @@ const IconZoomOut = () => (
   </svg>
 );
 
+const IconFitToExtent = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M15 3h6v6" />
+    <path d="M9 21H3v-6" />
+    <path d="M21 3l-7 7" />
+    <path d="M3 21l7-7" />
+  </svg>
+);
+
 /* ─── Mode label map ─── */
 const modeLabels: Record<string, { label: string; color: string }> = {
   select:  { label: 'SELECCIÓN',   color: 'var(--cad-text-dim)' },
@@ -35,6 +44,7 @@ const modeLabels: Record<string, { label: string; color: string }> = {
 export default function TopBar() {
   const zoomIn = useMapStore((s) => s.zoomIn);
   const zoomOut = useMapStore((s) => s.zoomOut);
+  const fitToExtent = useMapStore((s) => s.fitToExtent);
   const mode = useDrawStore((s) => s.mode);
   const modeInfo = modeLabels[mode] || modeLabels.none;
 
@@ -126,6 +136,15 @@ export default function TopBar() {
           style={{ width: 28, height: 28 }}
         >
           <IconZoomOut />
+        </button>
+        <button
+          onClick={fitToExtent}
+          className="cad-icon-btn cad-tooltip-bottom cad-tooltip"
+          data-tooltip="Centrar vista"
+          aria-label="Centrar vista"
+          style={{ width: 28, height: 28 }}
+        >
+          <IconFitToExtent />
         </button>
         <button
           onClick={zoomIn}
