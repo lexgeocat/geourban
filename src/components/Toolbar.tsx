@@ -1,5 +1,7 @@
 import React from 'react';
 import { useDrawStore, type DrawMode } from '../store/drawStore';
+import { useHistoryStore } from '../store/historyStore';
+import { useMapStore } from '../store/mapStore';
 
 /* ─── SVG Icon Components (inline, no dependencies) ─── */
 
@@ -41,6 +43,20 @@ const IconEraser = () => (
   </svg>
 );
 
+const IconUndo = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M3 7v6h6" />
+    <path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13" />
+  </svg>
+);
+
+const IconRedo = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 7v6h-6" />
+    <path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3L21 13" />
+  </svg>
+);
+
 /* ─── Tool definitions ─── */
 
 type ToolDef = {
@@ -65,6 +81,8 @@ const drawTools: ToolDef[] = [
 export default function Toolbar() {
   const mode = useDrawStore((s) => s.mode);
   const setMode = useDrawStore((s) => s.setMode);
+  const canUndo = useHistoryStore((s) => s.canUndo);
+  const canRedo = useHistoryStore((s) => s.canRedo);
 
   const renderTool = (tool: ToolDef) => (
     <button
@@ -77,6 +95,20 @@ export default function Toolbar() {
       {tool.icon}
     </button>
   );
+
+  const handleUndo = () => {
+    const state = useHistoryStore.getState().undo();
+    if (state) {
+      useMapStore.getState().restoreDrawFeatures(state);
+    }
+  };
+
+  const handleRedo = () => {
+    const state = useHistoryStore.getState().redo();
+    if (state) {
+      useMapStore.getState().restoreDrawFeatures(state);
+    }
+  };
 
   return (
     <div
@@ -101,6 +133,28 @@ export default function Toolbar() {
 
       {/* Drawing tools */}
       {drawTools.map(renderTool)}
+
+      <div className="cad-separator" />
+
+      {/* Undo / Redo */}
+      <button
+        onClick={handleUndo}
+        disabled={!canUndo}
+        className={`cad-icon-btn cad-tooltip ${!canUndo ? 'disabled' : ''}`}
+        data-tooltip="Deshacer (Ctrl+Z)"
+        aria-label="Deshacer"
+      >
+        <IconUndo />
+      </button>
+      <button
+        onClick={handleRedo}
+        disabled={!canRedo}
+        className={`cad-icon-btn cad-tooltip ${!canRedo ? 'disabled' : ''}`}
+        data-tooltip="Rehacer (Ctrl+Y)"
+        aria-label="Rehacer"
+      >
+        <IconRedo />
+      </button>
     </div>
   );
 }

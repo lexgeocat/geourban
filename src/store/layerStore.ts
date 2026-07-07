@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import type { BaseMapId } from '../map/baseMaps';
 
-type LayerKey = 'demo';
+type LayerKey = 'demo' | 'measurements';
 
 type LayerState = {
   /** Mapa base activo (solo uno a la vez) */
@@ -15,9 +15,10 @@ type LayerState = {
 
 export const useLayerStore = create<LayerState>()(
   immer((set) => ({
-    baseMap: 'osm' as BaseMapId,
+    baseMap: 'cad' as BaseMapId,
     visibility: {
       demo: false,
+      measurements: true,
     },
     setBaseMap: (id) =>
       set((state) => {

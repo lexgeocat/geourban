@@ -1,0 +1,55 @@
+import type { FeatureCollection } from 'geojson';
+import type { GeoWorkerRequest, GeoWorkerResponse } from './geoOperations';
+
+let worker: Worker | null = null;
+
+function getWorker() {
+  if (!worker) {
+    worker = new Worker(new URL('./geoWorker.ts', import.meta.url), { type: 'module' });
+  }
+  return worker;
+}
+
+function runWorker<T extends GeoWorkerResponse>(request: GeoWorkerRequest): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const w = getWorker();
+
+    const onMessage = (event: MessageEvent<T>) => {
+      w.removeEventListener('message', onMessage);
+      w.removeEventListener('error', onError);
+      if (event.data.error) reject(new Error(event.data.error));
+      else resolve(event.data);
+    };
+
+    const onError = (err: ErrorEvent) => {
+      w.removeEventListener('message', onMessage);
+      w.removeEventListener('error', onError);
+      reject(err.error ?? new Error(err.message));
+    };
+
+    w.addEventListener('message', onMessage);
+    w.addEventListener('error', onError);
+    w.postMessage(request);
+  });
+}
+
+export async function unionPolygonsInWorker(features: FeatureCollection) {
+  const response = await runWorker<{ type: 'union'; result: FeatureCollection }>({
+    type: 'union',
+    features,
+  });
+  return response.result;
+}
+
+export async function validateTopologyInWorker(features: FeatureCollection) {
+  const response = await runWorker<{ type: 'validate'; valid: boolean; issues: string[] }>({
+    type: 'validate',
+    features,
+  });
+  return { valid: response.valid, issues: response.issues };
+}
+
+export function terminateGeoWorker() {
+  worker?.terminate();
+  worker = null;
+}

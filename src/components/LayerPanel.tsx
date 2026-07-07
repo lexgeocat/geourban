@@ -59,8 +59,19 @@ const IconSatellite = () => (
   </svg>
 );
 
+const IconCad = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: 14, height: 14 }}>
+    <rect x="3" y="3" width="18" height="18" rx="1" />
+    <path d="M3 9h18" />
+    <path d="M3 15h18" />
+    <path d="M9 3v18" />
+    <path d="M15 3v18" />
+  </svg>
+);
+
 /* ─── Mapa base: icono por id ─── */
 const BASE_MAP_ICONS: Record<BaseMapId, React.ReactNode> = {
+  cad: <IconCad />,
   osm: <IconMap />,
   topo: <IconTopo />,
   satellite: <IconSatellite />,
@@ -193,6 +204,39 @@ export default function LayerPanel() {
               </span>
               <span style={{ fontSize: '0.75rem', color: visibility.demo ? 'var(--cad-text)' : 'var(--cad-text-muted)' }}>
                 Lotes de prueba (10K)
+              </span>
+            </label>
+            <label
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                cursor: 'pointer',
+                padding: '4px 6px',
+                borderRadius: 6,
+                transition: 'background 150ms ease',
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--cad-bg-hover)')}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+            >
+              <input
+                type="checkbox"
+                checked={visibility.measurements}
+                onChange={(e) => setVisibility('measurements', e.target.checked)}
+                className="cad-toggle"
+              />
+              <span style={{ color: 'var(--cad-text-dim)', display: 'flex', alignItems: 'center' }}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: 14, height: 14 }}>
+                  <path d="M4 19h16" />
+                  <path d="M6 16V8" />
+                  <path d="M18 16V8" />
+                  <path d="M6 12h12" />
+                  <path d="m8 10-2 2 2 2" />
+                  <path d="m16 10 2 2-2 2" />
+                </svg>
+              </span>
+              <span style={{ fontSize: '0.75rem', color: visibility.measurements ? 'var(--cad-text)' : 'var(--cad-text-muted)' }}>
+                Cotas automáticas
               </span>
             </label>
           </div>

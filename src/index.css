@@ -160,6 +160,11 @@ html, body, #root {
 .cad-icon-btn:active {
   transform: scale(0.92);
 }
+.cad-icon-btn.disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  pointer-events: none;
+}
 
 /* ============================================================
    CAD Toggle Switch

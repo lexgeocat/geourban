@@ -1,11 +1,28 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import MapView from './map/Map';
 import LayerPanel from './components/LayerPanel';
 import Toolbar from './components/Toolbar';
 import TopBar from './components/TopBar';
 import StatusBar from './components/StatusBar';
+import { startAutosave } from './io/persistence';
+import { writeProjectFromOlFeatures } from './io/geojson';
+import { useMapStore } from './store/mapStore';
+import { useLayerStore } from './store/layerStore';
 
 function App() {
+  useEffect(() => {
+    return startAutosave(() => {
+      const drawSource = useMapStore.getState().drawSource;
+      const viewConfig = useMapStore.getState().viewConfig;
+      const baseMap = useLayerStore.getState().baseMap;
+      const features = drawSource?.getFeatures() ?? [];
+      const project = writeProjectFromOlFeatures(features);
+      project.baseMap = baseMap;
+      project.view = { center: viewConfig.center, zoom: viewConfig.zoom };
+      return project;
+    });
+  }, []);
+
   return (
     <div style={{ width: '100%', height: '100vh', position: 'relative', overflow: 'hidden' }}>
       {/* Map takes the full screen */}

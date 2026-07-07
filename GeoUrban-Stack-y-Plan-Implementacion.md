@@ -1,6 +1,8 @@
 # GeoUrban — Stack Tecnológico y Plan de Implementación
 ### Documento de arquitectura técnica — v1.0 (julio 2026)
 
+> **Implementación completada (julio 2026):** ver [`docs/DOCUMENTACION-IMPLEMENTACION.md`](docs/DOCUMENTACION-IMPLEMENTACION.md) para el detalle de dependencias, módulos `src/io/` y `src/workers/`, Tauri, PWA, CI y estado por fases.
+
 ---
 
 ## 1. Resumen de las decisiones fuertes
@@ -164,8 +166,44 @@ Cualquiera de las tres funciona con tu selector de capas (requisito 7): activar/
 - Undo/redo con Zustand+Immer.
 
 ### Fase 3 — Acotamiento automático (1 semana)
-- Cálculo de área/perímetro/distancias con Turf en cada edición.
-- Renderizado de etiquetas de cota sobre el mapa (estilo tipo CAD).
+
+Esta fase convierte los dibujos en datos de ingeniería: cada lote, línea y subdivisión empieza a tener métricas confiables, legibles y persistentes. El cálculo no es el principal riesgo; el cuello de botella real es el renderizado de etiquetas sobre miles de geometrías.
+
+- **Pipeline event-driven de métricas.**
+  - Escuchar `drawend`, `modifyend`, `translateend` y operaciones de subdivisión/fusión.
+  - Normalizar la geometría a una proyección métrica antes de calcular; nunca calcular áreas o longitudes útiles sobre grados lat/lon.
+  - Recalcular con Turf.js: área, perímetro, longitudes por segmento, centroide/punto interior y bounding box.
+  - Guardar el resultado como propiedades de la feature (`areaM2`, `perimeterM`, `segmentLengths`, `labelPoint`, `metricsUpdatedAt`) y notificar al store.
+  - Forzar redibujado solo de las capas afectadas con `layer.changed()`, evitando refrescar todo el mapa.
+
+- **Helper de proyecciones.**
+  - Crear una utilidad en `src/geo/projections.ts` para transformar entre `EPSG:4326`, `EPSG:3857` y una proyección métrica local de trabajo.
+  - Para MVP, usar `EPSG:3857` solo como aproximación visual y documentar su límite; para precisión planimétrica, seleccionar UTM local según el centro del proyecto o permitir configurar CRS del proyecto al importar.
+  - Encapsular la conversión para que Turf reciba siempre coordenadas métricas cuando se calculen distancias, áreas y perímetros.
+
+- **Estrategia estricta de LOD para etiquetas.**
+  - Crear `src/map/styleFactory.ts` como punto único de estilos dinámicos.
+  - No renderizar `ol/style/Text` para todos los lotes por defecto. Es obligatorio condicionar etiquetas por zoom, resolución y tamaño visible del feature.
+  - Mostrar etiquetas de área solo si el polígono supera un área mínima en pantalla, por ejemplo `minScreenAreaPx`.
+  - Mostrar longitudes de lados solo en zooms altos o cuando el lote esté seleccionado/activo.
+  - En zoom bajo, mostrar solo relleno/borde; en zoom medio, área o identificador; en zoom alto, área + perímetro + cotas por segmento.
+
+- **Renderizado tipo CAD.**
+  - Etiquetas con `backgroundFill`, `padding` y color de alto contraste para que sean legibles sobre mapa base satelital o urbano.
+  - Longitudes de líneas rotadas según el ángulo del segmento, con normalización para que el texto no quede invertido.
+  - Offsets inteligentes: separar la etiqueta del segmento y mover etiquetas pequeñas hacia `labelPoint`/punto interior cuando el centroide caiga fuera del polígono.
+  - Distinguir visualmente cotas persistentes, cotas temporales de edición y cotas de selección.
+
+- **Event bus entre mapa y stores.**
+  - El mapa emite eventos de dominio (`feature:metrics-invalidated`, `feature:metrics-updated`) en vez de acoplar interacciones OpenLayers directamente al store.
+  - `layerStore` persiste métricas calculadas y `historyStore` registra cambios relevantes para undo/redo.
+  - Las operaciones masivas deben agruparse en batches para evitar 10.000 actualizaciones individuales de React.
+
+- **Criterios de aceptación.**
+  - Editar un lote actualiza área/perímetro/distancias sin bloquear la UI.
+  - Con 10.000 lotes cargados, el mapa mantiene navegación fluida porque las etiquetas respetan LOD.
+  - Las métricas se guardan en el `.geourban` y se recalculan al importar geometrías sin métricas.
+  - Las cotas son legibles sobre cualquier mapa base gracias a fondo, padding y contraste.
 
 ### Fase 4 — Subdivisión y fusión (el núcleo del producto, 3-4 semanas)
 - Subdivisión por grilla regular.

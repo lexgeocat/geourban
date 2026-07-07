@@ -1,7 +1,12 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
-import Map from 'ol/Map';
-import { extend as extendExtent, Extent } from 'ol/extent';
+import Map from 'ol/Map.js';
+import VectorSource from 'ol/source/Vector.js';
+import GeoJSON from 'ol/format/GeoJSON.js';
+import { extend as extendExtent, Extent } from 'ol/extent.js';
+import { refreshSourceMetrics } from '../geo/metrics';
+
+const geoJsonFormat = new GeoJSON();
 
 type CursorCoords = { x: number; y: number } | null;
 
@@ -13,11 +18,14 @@ export type ViewConfig = {
 
 type MapState = {
   mapInstance: Map | null;
+  drawSource: VectorSource | null;
   cursorCoords: CursorCoords;
   zoom: number;
-  /** Configuración de vista inicial (se puede sobrescribir) */
   viewConfig: ViewConfig;
   setMap: (map: Map | null) => void;
+  setDrawSource: (src: VectorSource | null) => void;
+  /** Recibe GeoJSON array serializado desde historyStore y reemplaza features */
+  restoreDrawFeatures: (geojson: any) => void;
   setCursorCoords: (coords: CursorCoords) => void;
   setZoom: (zoom: number) => void;
   setViewConfig: (config: ViewConfig) => void;
@@ -29,6 +37,7 @@ type MapState = {
 export const useMapStore = create<MapState>()(
   immer((set, get) => ({
     mapInstance: null,
+    drawSource: null,
     cursorCoords: null,
     zoom: 17,
     viewConfig: { center: [-68.30, -16.65], zoom: 17 },
@@ -37,6 +46,21 @@ export const useMapStore = create<MapState>()(
         // @ts-ignore – immer draft vs OL class instance
         state.mapInstance = map;
       }),
+    setDrawSource: (src) =>
+      set((state) => {
+        // @ts-ignore
+        state.drawSource = src;
+      }),
+    restoreDrawFeatures: (geojson) => {
+      const src = get().drawSource;
+      if (!src) return;
+      const features = geoJsonFormat.readFeatures(geojson, {
+        featureProjection: 'EPSG:3857',
+      });
+      src.clear();
+      src.addFeatures(features as any);
+      refreshSourceMetrics(src);
+    },
     setCursorCoords: (coords) =>
       set((state) => {
         // @ts-ignore

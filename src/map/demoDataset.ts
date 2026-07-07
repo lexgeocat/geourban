@@ -1,6 +1,6 @@
-import { Feature } from 'ol';
-import { Polygon } from 'ol/geom';
-import { fromLonLat } from 'ol/proj';
+import Feature from 'ol/Feature.js';
+import Polygon from 'ol/geom/Polygon.js';
+import { fromLonLat } from 'ol/proj.js';
 
 /**
  * Genera una cuadrícula sintética de N×N polígonos centrada en Viacha.

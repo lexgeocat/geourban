@@ -1,52 +1,74 @@
-import React from 'react';
+import React, { useRef } from 'react';
+import { FolderOpen, Save, Download } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { useMapStore } from '../store/mapStore';
 import { useDrawStore } from '../store/drawStore';
+import { useLayerStore } from '../store/layerStore';
+import {
+  importFile,
+  exportProject,
+  writeProjectFromOlFeatures,
+  readOlFeaturesFromProject,
+  type ExportFormat,
+} from '../io';
+import { refreshSourceMetrics } from '../geo/metrics';
 
-/* ─── Icons ─── */
-
-const IconZoomIn = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="11" cy="11" r="8" />
-    <line x1="21" y1="21" x2="16.65" y2="16.65" />
-    <line x1="11" y1="8" x2="11" y2="14" />
-    <line x1="8" y1="11" x2="14" y2="11" />
-  </svg>
-);
-
-const IconZoomOut = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="11" cy="11" r="8" />
-    <line x1="21" y1="21" x2="16.65" y2="16.65" />
-    <line x1="8" y1="11" x2="14" y2="11" />
-  </svg>
-);
-
-const IconFitToExtent = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M15 3h6v6" />
-    <path d="M9 21H3v-6" />
-    <path d="M21 3l-7 7" />
-    <path d="M3 21l7-7" />
-  </svg>
-);
-
-/* ─── Mode label map ─── */
 const modeLabels: Record<string, { label: string; color: string }> = {
-  select:  { label: 'SELECCIÓN',   color: 'var(--cad-text-dim)' },
-  pan:     { label: 'MOVER',       color: 'var(--cad-text-dim)' },
-  polygon: { label: 'POLÍGONO',    color: 'var(--cad-accent)' },
-  line:    { label: 'LÍNEA',       color: 'var(--cad-accent)' },
-  none:    { label: 'INACTIVO',    color: 'var(--cad-text-muted)' },
+  select: { label: 'SELECCIÓN', color: 'var(--cad-text-dim)' },
+  pan: { label: 'MOVER', color: 'var(--cad-text-dim)' },
+  polygon: { label: 'POLÍGONO', color: 'var(--cad-accent)' },
+  line: { label: 'LÍNEA', color: 'var(--cad-accent)' },
+  none: { label: 'INACTIVO', color: 'var(--cad-text-muted)' },
 };
 
-/* ─── Component ─── */
+const IMPORT_ACCEPT = '.geourban,.geojson,.json,.kml,.kmz,.shp,.gpkg,.dxf';
 
 export default function TopBar() {
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const zoomIn = useMapStore((s) => s.zoomIn);
   const zoomOut = useMapStore((s) => s.zoomOut);
   const fitToExtent = useMapStore((s) => s.fitToExtent);
+  const drawSource = useMapStore((s) => s.drawSource);
+  const viewConfig = useMapStore((s) => s.viewConfig);
   const mode = useDrawStore((s) => s.mode);
+  const baseMap = useLayerStore((s) => s.baseMap);
   const modeInfo = modeLabels[mode] || modeLabels.none;
+
+  const getCurrentProject = () => {
+    const features = drawSource?.getFeatures() ?? [];
+    const project = writeProjectFromOlFeatures(features);
+    project.name = 'Proyecto GeoUrban';
+    project.baseMap = baseMap;
+    project.view = { center: viewConfig.center, zoom: viewConfig.zoom };
+    return project;
+  };
+
+  const handleImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file || !drawSource) return;
+    try {
+      const { project, warnings } = await importFile(file);
+      const features = readOlFeaturesFromProject(project);
+      drawSource.clear();
+      drawSource.addFeatures(features as never);
+      refreshSourceMetrics(drawSource);
+      if (warnings.length) console.warn('Import warnings:', warnings);
+    } catch (err) {
+      console.error(err);
+      alert(err instanceof Error ? err.message : 'Error al importar archivo');
+    } finally {
+      event.target.value = '';
+    }
+  };
+
+  const handleExport = async (format: ExportFormat) => {
+    try {
+      await exportProject(getCurrentProject(), format, 'geourban-proyecto');
+    } catch (err) {
+      console.error(err);
+      alert(err instanceof Error ? err.message : 'Error al exportar');
+    }
+  };
 
   return (
     <div
@@ -65,9 +87,7 @@ export default function TopBar() {
         zIndex: 100,
       }}
     >
-      {/* Left: Logo */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        {/* Logo mark */}
         <div
           style={{
             width: 24,
@@ -88,10 +108,8 @@ export default function TopBar() {
           Geo<span style={{ color: 'var(--cad-accent)' }}>Urban</span>
         </span>
 
-        {/* Separator */}
         <div style={{ width: 1, height: 16, background: 'var(--cad-border)', margin: '0 4px' }} />
 
-        {/* Active tool badge */}
         <div
           style={{
             display: 'flex',
@@ -112,48 +130,43 @@ export default function TopBar() {
               boxShadow: mode === 'polygon' || mode === 'line' ? '0 0 6px var(--cad-accent)' : 'none',
             }}
           />
-          <span
-            className="font-mono-cad"
-            style={{
-              fontSize: '0.6rem',
-              fontWeight: 500,
-              letterSpacing: '0.08em',
-              color: modeInfo.color,
-            }}
-          >
+          <span className="font-mono-cad" style={{ fontSize: '0.6rem', fontWeight: 500, letterSpacing: '0.08em', color: modeInfo.color }}>
             {modeInfo.label}
           </span>
         </div>
+
+        <div style={{ width: 1, height: 16, background: 'var(--cad-border)' }} />
+
+        <input ref={fileInputRef} type="file" accept={IMPORT_ACCEPT} hidden onChange={handleImport} />
+        <Button variant="ghost" size="sm" onClick={() => fileInputRef.current?.click()} title="Importar">
+          <FolderOpen size={14} />
+          Importar
+        </Button>
+        <Button variant="ghost" size="sm" onClick={() => void handleExport('geourban')} title="Guardar .geourban">
+          <Save size={14} />
+          Guardar
+        </Button>
+        <Button variant="ghost" size="sm" onClick={() => void handleExport('geojson')} title="Exportar GeoJSON">
+          <Download size={14} />
+          Exportar
+        </Button>
       </div>
 
-      {/* Right: Zoom controls */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-        <button
-          onClick={zoomOut}
-          className="cad-icon-btn cad-tooltip-bottom cad-tooltip"
-          data-tooltip="Alejar"
-          aria-label="Alejar"
-          style={{ width: 28, height: 28 }}
-        >
-          <IconZoomOut />
+        <button onClick={zoomOut} className="cad-icon-btn cad-tooltip-bottom cad-tooltip" data-tooltip="Alejar" aria-label="Alejar" style={{ width: 28, height: 28 }}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /><line x1="8" y1="11" x2="14" y2="11" />
+          </svg>
         </button>
-        <button
-          onClick={fitToExtent}
-          className="cad-icon-btn cad-tooltip-bottom cad-tooltip"
-          data-tooltip="Centrar vista"
-          aria-label="Centrar vista"
-          style={{ width: 28, height: 28 }}
-        >
-          <IconFitToExtent />
+        <button onClick={fitToExtent} className="cad-icon-btn cad-tooltip-bottom cad-tooltip" data-tooltip="Centrar vista" aria-label="Centrar vista" style={{ width: 28, height: 28 }}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M15 3h6v6" /><path d="M9 21H3v-6" /><path d="M21 3l-7 7" /><path d="M3 21l7-7" />
+          </svg>
         </button>
-        <button
-          onClick={zoomIn}
-          className="cad-icon-btn cad-tooltip-bottom cad-tooltip"
-          data-tooltip="Acercar"
-          aria-label="Acercar"
-          style={{ width: 28, height: 28 }}
-        >
-          <IconZoomIn />
+        <button onClick={zoomIn} className="cad-icon-btn cad-tooltip-bottom cad-tooltip" data-tooltip="Acercar" aria-label="Acercar" style={{ width: 28, height: 28 }}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /><line x1="11" y1="8" x2="11" y2="14" /><line x1="8" y1="11" x2="14" y2="11" />
+          </svg>
         </button>
       </div>
     </div>
