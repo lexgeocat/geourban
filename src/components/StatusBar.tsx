@@ -28,7 +28,13 @@ export default function StatusBar() {
       {/* Left: coordinates */}
       <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
         <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 11, height: 11 }}>
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            style={{ width: 11, height: 11 }}
+          >
             <circle cx="12" cy="12" r="3" />
             <line x1="12" y1="2" x2="12" y2="6" />
             <line x1="12" y1="18" x2="12" y2="22" />
@@ -52,7 +58,13 @@ export default function StatusBar() {
 
       {/* Right: zoom */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 11, height: 11 }}>
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          style={{ width: 11, height: 11 }}
+        >
           <circle cx="11" cy="11" r="8" />
           <line x1="21" y1="21" x2="16.65" y2="16.65" />
         </svg>

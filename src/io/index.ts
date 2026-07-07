@@ -1,5 +1,10 @@
 import type { ImportFormat, ExportFormat, ImportResult, GeoUrbanProject } from './types';
-import { parseGeoUrbanJson, parseGeoJson, serializeGeoUrbanProject, downloadTextFile } from './geojson';
+import {
+  parseGeoUrbanJson,
+  parseGeoJson,
+  serializeGeoUrbanProject,
+  downloadTextFile,
+} from './geojson';
 import { importKml, importKmz, exportKml, exportKmz } from './kml';
 import { importShp, exportShp } from './shp';
 import { importGpkg } from './gpkg';
@@ -35,7 +40,11 @@ export async function importFile(file: File, format?: ImportFormat): Promise<Imp
   }
 }
 
-export async function exportProject(project: GeoUrbanProject, format: ExportFormat, filename: string) {
+export async function exportProject(
+  project: GeoUrbanProject,
+  format: ExportFormat,
+  filename: string
+) {
   switch (format) {
     case 'geourban':
       downloadTextFile(`${filename}.geourban`, serializeGeoUrbanProject(project));
@@ -44,7 +53,11 @@ export async function exportProject(project: GeoUrbanProject, format: ExportForm
       downloadTextFile(`${filename}.geojson`, JSON.stringify(project.data, null, 2));
       break;
     case 'kml':
-      downloadTextFile(`${filename}.kml`, exportKml(project), 'application/vnd.google-earth.kml+xml');
+      downloadTextFile(
+        `${filename}.kml`,
+        exportKml(project),
+        'application/vnd.google-earth.kml+xml'
+      );
       break;
     case 'kmz': {
       const blob = await exportKmz(project);

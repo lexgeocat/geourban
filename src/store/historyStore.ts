@@ -7,8 +7,8 @@ const geoJsonFormat = new GeoJSON();
 const MAX_HISTORY = 50;
 
 type HistoryState = {
-  past: string[];        // snapshots serializados (GeoJSON)
-  future: string[];      // snapshots para redo
+  past: string[]; // snapshots serializados (GeoJSON)
+  future: string[]; // snapshots para redo
   canUndo: boolean;
   canRedo: boolean;
 

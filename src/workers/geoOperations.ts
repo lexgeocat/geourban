@@ -46,7 +46,10 @@ export function unionFeatures(collection: FeatureCollection): FeatureCollection 
   };
 }
 
-export function validateTopology(collection: FeatureCollection): { valid: boolean; issues: string[] } {
+export function validateTopology(collection: FeatureCollection): {
+  valid: boolean;
+  issues: string[];
+} {
   const issues: string[] = [];
 
   collection.features.forEach((feature, index) => {
@@ -57,7 +60,9 @@ export function validateTopology(collection: FeatureCollection): { valid: boolea
     try {
       const geom = reader.read(feature.geometry);
       if (!geom.isValid()) {
-        issues.push(`Feature ${index}: geometría inválida (${geom.getValidationError()?.toString() ?? 'desconocido'})`);
+        issues.push(
+          `Feature ${index}: geometría inválida (${geom.getValidationError()?.toString() ?? 'desconocido'})`
+        );
       }
     } catch (err) {
       issues.push(`Feature ${index}: error al leer geometría — ${String(err)}`);

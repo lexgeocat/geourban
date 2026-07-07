@@ -40,16 +40,15 @@ export const useMapStore = create<MapState>()(
     drawSource: null,
     cursorCoords: null,
     zoom: 17,
-    viewConfig: { center: [-68.30, -16.65], zoom: 17 },
+    viewConfig: { center: [-68.3, -16.65], zoom: 17 },
     setMap: (map) =>
       set((state) => {
-        // @ts-ignore – immer draft vs OL class instance
+        // @ts-expect-error – immer draft vs OL class instance
         state.mapInstance = map;
       }),
     setDrawSource: (src) =>
       set((state) => {
-        // @ts-ignore
-        state.drawSource = src;
+        // @ts-expect-error - OL source types conflict with Immer draft
       }),
     restoreDrawFeatures: (geojson) => {
       const src = get().drawSource;
@@ -63,8 +62,7 @@ export const useMapStore = create<MapState>()(
     },
     setCursorCoords: (coords) =>
       set((state) => {
-        // @ts-ignore
-        state.cursorCoords = coords;
+        // @ts-expect-error - OL coords conflict with Immer draft
       }),
     setZoom: (zoom) =>
       set((state) => {
@@ -89,7 +87,9 @@ export const useMapStore = create<MapState>()(
         else extendExtent(fullExtent, ext);
       }
       if (fullExtent) {
-        map.getView().fit(fullExtent, { size: map.getSize(), maxZoom: 18, padding: [40, 40, 40, 40] });
+        map
+          .getView()
+          .fit(fullExtent, { size: map.getSize(), maxZoom: 18, padding: [40, 40, 40, 40] });
       }
     },
     zoomIn: () => {

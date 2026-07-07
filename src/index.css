@@ -8,25 +8,25 @@
 
 :root {
   /* ─── Color Palette ─── */
-  --cad-bg-deepest:    #0d1117;
-  --cad-bg-deep:       #151b28;
-  --cad-bg-panel:      #1a2236;
-  --cad-bg-surface:    #212d45;
-  --cad-bg-hover:      rgba(0, 212, 255, 0.08);
-  --cad-bg-active:     rgba(0, 212, 255, 0.15);
+  --cad-bg-deepest: #0d1117;
+  --cad-bg-deep: #151b28;
+  --cad-bg-panel: #1a2236;
+  --cad-bg-surface: #212d45;
+  --cad-bg-hover: rgba(0, 212, 255, 0.08);
+  --cad-bg-active: rgba(0, 212, 255, 0.15);
 
-  --cad-border:        #2a3a52;
+  --cad-border: #2a3a52;
   --cad-border-accent: #0f3460;
 
-  --cad-accent:        #00d4ff;
+  --cad-accent: #00d4ff;
   --cad-accent-violet: #7c3aed;
-  --cad-accent-green:  #10b981;
-  --cad-accent-amber:  #f59e0b;
-  --cad-accent-red:    #ef4444;
+  --cad-accent-green: #10b981;
+  --cad-accent-amber: #f59e0b;
+  --cad-accent-red: #ef4444;
 
-  --cad-text:          #e2e8f0;
-  --cad-text-dim:      #94a3b8;
-  --cad-text-muted:    #64748b;
+  --cad-text: #e2e8f0;
+  --cad-text-dim: #94a3b8;
+  --cad-text-muted: #64748b;
 
   /* ─── Spacing ─── */
   --cad-toolbar-width: 48px;
@@ -34,9 +34,9 @@
   --cad-statusbar-height: 28px;
 
   /* ─── Shadows ─── */
-  --cad-shadow-sm:  0 1px 3px rgba(0, 0, 0, 0.4);
-  --cad-shadow-md:  0 4px 12px rgba(0, 0, 0, 0.5);
-  --cad-shadow-lg:  0 8px 32px rgba(0, 0, 0, 0.6);
+  --cad-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
+  --cad-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
+  --cad-shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.6);
   --cad-shadow-glow: 0 0 12px rgba(0, 212, 255, 0.3);
 
   /* ─── Transitions ─── */
@@ -44,17 +44,25 @@
 }
 
 /* ─── Global Reset ─── */
-*, *::before, *::after {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
 }
 
-html, body, #root {
+html,
+body,
+#root {
   height: 100%;
   width: 100%;
   overflow: hidden;
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-family:
+    'Inter',
+    system-ui,
+    -apple-system,
+    sans-serif;
   background: var(--cad-bg-deepest);
   color: var(--cad-text);
   -webkit-font-smoothing: antialiased;
@@ -101,7 +109,9 @@ html, body, #root {
   box-shadow: var(--cad-shadow-md);
   opacity: 0;
   pointer-events: none;
-  transition: opacity var(--cad-transition), transform var(--cad-transition);
+  transition:
+    opacity var(--cad-transition),
+    transform var(--cad-transition);
   transform: translateY(-50%) translateX(-4px);
   z-index: 9999;
 }
@@ -306,8 +316,13 @@ html, body, #root {
   }
 }
 @keyframes pulseGlow {
-  0%, 100% { box-shadow: 0 0 0 rgba(0, 212, 255, 0); }
-  50% { box-shadow: 0 0 12px rgba(0, 212, 255, 0.3); }
+  0%,
+  100% {
+    box-shadow: 0 0 0 rgba(0, 212, 255, 0);
+  }
+  50% {
+    box-shadow: 0 0 12px rgba(0, 212, 255, 0.3);
+  }
 }
 
 .animate-fade-in {

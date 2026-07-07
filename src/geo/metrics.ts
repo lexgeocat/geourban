@@ -5,7 +5,11 @@ import type Geometry from 'ol/geom/Geometry.js';
 import VectorSource from 'ol/source/Vector.js';
 import GeoJSON from 'ol/format/GeoJSON.js';
 import { area, length, lineString, polygon, along, centroid } from '@turf/turf';
-import type { FeatureCollection, LineString as GeoJsonLineString, Polygon as GeoJsonPolygon } from 'geojson';
+import type {
+  FeatureCollection,
+  LineString as GeoJsonLineString,
+  Polygon as GeoJsonPolygon,
+} from 'geojson';
 import { DISPLAY_PROJECTION, GEOGRAPHIC_PROJECTION } from './projections';
 
 export type SegmentMetric = {

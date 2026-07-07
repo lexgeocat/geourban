@@ -6,7 +6,14 @@ import type { BaseMapId } from '../map/baseMaps';
 /* ─── Icons ─── */
 
 const IconLayers = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
     <path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z" />
     <path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65" />
     <path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65" />
@@ -35,7 +42,15 @@ const IconChevron = ({ open }: { open: boolean }) => (
 /* ─── Iconos de mapas base inline ─── */
 
 const IconMap = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: 14, height: 14 }}>
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.5"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    style={{ width: 14, height: 14 }}
+  >
     <circle cx="12" cy="12" r="10" />
     <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" />
     <path d="M2 12h20" />
@@ -43,14 +58,30 @@ const IconMap = () => (
 );
 
 const IconTopo = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: 14, height: 14 }}>
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.5"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    style={{ width: 14, height: 14 }}
+  >
     <path d="M3 3v18h18" />
     <path d="M7 16l3-7 4 5 5-8" />
   </svg>
 );
 
 const IconSatellite = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: 14, height: 14 }}>
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.5"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    style={{ width: 14, height: 14 }}
+  >
     <path d="M13 7 8.7 2.7a2.41 2.41 0 0 0-3.4 0L2.7 5.3a2.41 2.41 0 0 0 0 3.4L7 13" />
     <path d="M11 17l4.3 4.3a2.41 2.41 0 0 0 3.4 0l2.6-2.6a2.41 2.41 0 0 0 0-3.4L17 11" />
     <path d="M8 11l4 4" />
@@ -60,7 +91,15 @@ const IconSatellite = () => (
 );
 
 const IconCad = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: 14, height: 14 }}>
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.5"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    style={{ width: 14, height: 14 }}
+  >
     <rect x="3" y="3" width="18" height="18" rx="1" />
     <path d="M3 9h18" />
     <path d="M3 15h18" />
@@ -128,13 +167,31 @@ export default function LayerPanel() {
               borderBottom: '1px solid var(--cad-border)',
             }}
           >
-            <span style={{ fontSize: '0.7rem', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--cad-text-dim)' }}>
+            <span
+              style={{
+                fontSize: '0.7rem',
+                fontWeight: 600,
+                letterSpacing: '0.06em',
+                textTransform: 'uppercase',
+                color: 'var(--cad-text-dim)',
+              }}
+            >
               Capas
             </span>
           </div>
 
           {/* Mapa base: radio buttons (solo uno activo) */}
-          <span style={{ fontSize: '0.6rem', fontWeight: 500, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--cad-text-muted)', marginBottom: 6, display: 'block' }}>
+          <span
+            style={{
+              fontSize: '0.6rem',
+              fontWeight: 500,
+              letterSpacing: '0.06em',
+              textTransform: 'uppercase',
+              color: 'var(--cad-text-muted)',
+              marginBottom: 6,
+              display: 'block',
+            }}
+          >
             Mapa base
           </span>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 12 }}>
@@ -160,10 +217,17 @@ export default function LayerPanel() {
                   onChange={() => setBaseMap(def.id)}
                   className="cad-radio"
                 />
-                <span style={{ color: 'var(--cad-text-dim)', display: 'flex', alignItems: 'center' }}>
+                <span
+                  style={{ color: 'var(--cad-text-dim)', display: 'flex', alignItems: 'center' }}
+                >
                   {BASE_MAP_ICONS[def.id]}
                 </span>
-                <span style={{ fontSize: '0.75rem', color: baseMap === def.id ? 'var(--cad-text)' : 'var(--cad-text-muted)' }}>
+                <span
+                  style={{
+                    fontSize: '0.75rem',
+                    color: baseMap === def.id ? 'var(--cad-text)' : 'var(--cad-text-muted)',
+                  }}
+                >
                   {def.label}
                 </span>
               </label>
@@ -171,7 +235,17 @@ export default function LayerPanel() {
           </div>
 
           {/* Capas de trabajo (overlays) */}
-          <span style={{ fontSize: '0.6rem', fontWeight: 500, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--cad-text-muted)', marginBottom: 6, display: 'block' }}>
+          <span
+            style={{
+              fontSize: '0.6rem',
+              fontWeight: 500,
+              letterSpacing: '0.06em',
+              textTransform: 'uppercase',
+              color: 'var(--cad-text-muted)',
+              marginBottom: 6,
+              display: 'block',
+            }}
+          >
             Capas de trabajo
           </span>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -195,14 +269,27 @@ export default function LayerPanel() {
                 className="cad-toggle"
               />
               <span style={{ color: 'var(--cad-text-dim)', display: 'flex', alignItems: 'center' }}>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: 14, height: 14 }}>
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  style={{ width: 14, height: 14 }}
+                >
                   <rect x="3" y="3" width="7" height="7" />
                   <rect x="14" y="3" width="7" height="7" />
                   <rect x="14" y="14" width="7" height="7" />
                   <rect x="3" y="14" width="7" height="7" />
                 </svg>
               </span>
-              <span style={{ fontSize: '0.75rem', color: visibility.demo ? 'var(--cad-text)' : 'var(--cad-text-muted)' }}>
+              <span
+                style={{
+                  fontSize: '0.75rem',
+                  color: visibility.demo ? 'var(--cad-text)' : 'var(--cad-text-muted)',
+                }}
+              >
                 Lotes de prueba (10K)
               </span>
             </label>
@@ -226,7 +313,15 @@ export default function LayerPanel() {
                 className="cad-toggle"
               />
               <span style={{ color: 'var(--cad-text-dim)', display: 'flex', alignItems: 'center' }}>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: 14, height: 14 }}>
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  style={{ width: 14, height: 14 }}
+                >
                   <path d="M4 19h16" />
                   <path d="M6 16V8" />
                   <path d="M18 16V8" />
@@ -235,7 +330,12 @@ export default function LayerPanel() {
                   <path d="m16 10 2 2-2 2" />
                 </svg>
               </span>
-              <span style={{ fontSize: '0.75rem', color: visibility.measurements ? 'var(--cad-text)' : 'var(--cad-text-muted)' }}>
+              <span
+                style={{
+                  fontSize: '0.75rem',
+                  color: visibility.measurements ? 'var(--cad-text)' : 'var(--cad-text-muted)',
+                }}
+              >
                 Cotas automáticas
               </span>
             </label>

@@ -57,7 +57,7 @@ export default function MapView() {
     const baseLayer = def.create();
     baseLayerRef.current = baseLayer;
 
-    // Capa de demostración: 10 000 polígonos sintéticos con WebGL optimizado
+    // Capa de demostración: 10 000 polígonos sintéticos con WebGL optimizado
     const demoSrc = new VectorSource({
       features: generateDemoGrid(100),
     });
@@ -68,18 +68,8 @@ export default function MapView() {
       disableHitDetection: true, // solo visual → evita latencia en hover/click
       style: {
         // LOD: invisible por debajo de zoom 14 para no saturar la GPU
-        'fill-color': [
-          'case',
-          ['>=', ['zoom'], 14],
-          'rgba(0, 212, 255, 0.15)',
-          'transparent',
-        ],
-        'stroke-color': [
-          'case',
-          ['>=', ['zoom'], 14],
-          'rgba(0, 212, 255, 0.5)',
-          'transparent',
-        ],
+        'fill-color': ['case', ['>=', ['zoom'], 14], 'rgba(0, 212, 255, 0.15)', 'transparent'],
+        'stroke-color': ['case', ['>=', ['zoom'], 14], 'rgba(0, 212, 255, 0.5)', 'transparent'],
         'stroke-width': ['case', ['>=', ['zoom'], 14], 1, 0],
       },
     });
@@ -116,7 +106,7 @@ export default function MapView() {
         new Attribution({
           collapsible: false,
           className: 'custom-attribution',
-        })
+        }),
       ]),
     });
 
@@ -256,7 +246,12 @@ export default function MapView() {
       // Puntos medios como vértices virtuales para snap
       const snapPointsSrc = createSnapPoints(src);
       if (snapPointsSrc.getFeatures().length > 0) {
-        const midSnap = new Snap({ source: snapPointsSrc, pixelTolerance: 10, vertex: true, edge: false });
+        const midSnap = new Snap({
+          source: snapPointsSrc,
+          pixelTolerance: 10,
+          vertex: true,
+          edge: false,
+        });
         map.addInteraction(midSnap);
         toClean.push(() => map.removeInteraction(midSnap));
       }
@@ -280,7 +275,11 @@ export default function MapView() {
       const perpLayer = new VectorLayer({
         source: perpIndicator,
         style: new Style({
-          image: new CircleStyle({ radius: 5, fill: new Fill({ color: '#f59e0b' }), stroke: new Stroke({ color: '#fff', width: 1 }) }),
+          image: new CircleStyle({
+            radius: 5,
+            fill: new Fill({ color: '#f59e0b' }),
+            stroke: new Stroke({ color: '#fff', width: 1 }),
+          }),
         }),
       });
       map.addLayer(perpLayer);
@@ -293,17 +292,21 @@ export default function MapView() {
         perpIndicator.clear();
         if (result) {
           const color = SNAP_COLORS[result.type] ?? '#f59e0b';
-          perpIndicator.addFeature(new Feature({
-            geometry: new Point(result.point),
-            snapType: result.type,
-          }));
-          perpLayer.setStyle(new Style({
-            image: new CircleStyle({
-              radius: 5,
-              fill: new Fill({ color }),
-              stroke: new Stroke({ color: '#fff', width: 1 }),
-            }),
-          }));
+          perpIndicator.addFeature(
+            new Feature({
+              geometry: new Point(result.point),
+              snapType: result.type,
+            })
+          );
+          perpLayer.setStyle(
+            new Style({
+              image: new CircleStyle({
+                radius: 5,
+                fill: new Fill({ color }),
+                stroke: new Stroke({ color: '#fff', width: 1 }),
+              }),
+            })
+          );
         }
       });
       toClean.push(() => unByKey(pmKey));

@@ -14,11 +14,15 @@ function getZoomFromResolution(resolution: number) {
   return Math.log2(156543.03392804097 / resolution);
 }
 
-function makeTextStyle(text: string, coordinate: [number, number], options?: {
-  rotation?: number;
-  offsetY?: number;
-  selected?: boolean;
-}) {
+function makeTextStyle(
+  text: string,
+  coordinate: [number, number],
+  options?: {
+    rotation?: number;
+    offsetY?: number;
+    selected?: boolean;
+  }
+) {
   return new Style({
     geometry: new Point(coordinate),
     text: new Text({

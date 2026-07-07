@@ -30,7 +30,10 @@ export function exportShp(project: GeoUrbanProject): { shp: Blob; dbf: Blob; prj
   const collection = project.data;
   const options = { types: inferShpTypes(collection) };
   const result = shpwrite.zip(collection, options) as Record<string, string>;
-  const layerName = Object.keys(result).find((k) => k.endsWith('.shp'))?.replace('.shp', '') ?? 'layer';
+  const layerName =
+    Object.keys(result)
+      .find((k) => k.endsWith('.shp'))
+      ?.replace('.shp', '') ?? 'layer';
 
   return {
     shp: base64ToBlob(result[`${layerName}.shp`], 'application/octet-stream'),

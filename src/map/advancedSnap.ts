@@ -35,16 +35,25 @@ function parallelProjection(cursor: number[], a: number[], b: number[]): number[
   return [a[0] + t * ab[0], a[1] + t * ab[1]];
 }
 
-function segmentIntersection(a1: number[], a2: number[], b1: number[], b2: number[]): number[] | null {
-  const x1 = a1[0], y1 = a1[1], x2 = a2[0], y2 = a2[1];
-  const x3 = b1[0], y3 = b1[1], x4 = b2[0], y4 = b2[1];
+function segmentIntersection(
+  a1: number[],
+  a2: number[],
+  b1: number[],
+  b2: number[]
+): number[] | null {
+  const x1 = a1[0],
+    y1 = a1[1],
+    x2 = a2[0],
+    y2 = a2[1];
+  const x3 = b1[0],
+    y3 = b1[1],
+    x4 = b2[0],
+    y4 = b2[1];
   const denom = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
   if (Math.abs(denom) < 1e-12) return null;
 
-  const px =
-    ((x1 * y2 - y1 * x2) * (x3 - x4) - (x1 - x2) * (x3 * y4 - y3 * x4)) / denom;
-  const py =
-    ((x1 * y2 - y1 * x2) * (y3 - y4) - (y1 - y2) * (x3 * y4 - y3 * x4)) / denom;
+  const px = ((x1 * y2 - y1 * x2) * (x3 - x4) - (x1 - x2) * (x3 * y4 - y3 * x4)) / denom;
+  const py = ((x1 * y2 - y1 * x2) * (y3 - y4) - (y1 - y2) * (x3 * y4 - y3 * x4)) / denom;
 
   const onSegment = (x: number, y: number, sx1: number, sy1: number, sx2: number, sy2: number) =>
     x >= Math.min(sx1, sx2) - 1e-6 &&
@@ -52,10 +61,7 @@ function segmentIntersection(a1: number[], a2: number[], b1: number[], b2: numbe
     y >= Math.min(sy1, sy2) - 1e-6 &&
     y <= Math.max(sy1, sy2) + 1e-6;
 
-  if (
-    onSegment(px, py, x1, y1, x2, y2) &&
-    onSegment(px, py, x3, y3, x4, y4)
-  ) {
+  if (onSegment(px, py, x1, y1, x2, y2) && onSegment(px, py, x3, y3, x4, y4)) {
     return [px, py];
   }
   return null;
@@ -120,18 +126,21 @@ export function findSnap(
 
         const mp = midpoint(a, b);
         const dM = dist(cursor, mp);
-        if (dM < tolerance) candidates.push({ point: mp, type: 'midpoint', feature: feat, dist: dM });
+        if (dM < tolerance)
+          candidates.push({ point: mp, type: 'midpoint', feature: feat, dist: dM });
 
         const pp = perpendicularProjection(cursor, a, b);
         if (pp) {
           const dP = dist(cursor, pp);
-          if (dP < tolerance) candidates.push({ point: pp, type: 'perpendicular', feature: feat, dist: dP });
+          if (dP < tolerance)
+            candidates.push({ point: pp, type: 'perpendicular', feature: feat, dist: dP });
         }
 
         const par = parallelProjection(cursor, a, b);
         if (par) {
           const dPar = dist(cursor, par);
-          if (dPar < tolerance) candidates.push({ point: par, type: 'parallel', feature: feat, dist: dPar });
+          if (dPar < tolerance)
+            candidates.push({ point: par, type: 'parallel', feature: feat, dist: dPar });
         }
       }
     }
@@ -139,7 +148,12 @@ export function findSnap(
 
   for (let i = 0; i < segments.length; i++) {
     for (let j = i + 1; j < segments.length; j++) {
-      const hit = segmentIntersection(segments[i][0], segments[i][1], segments[j][0], segments[j][1]);
+      const hit = segmentIntersection(
+        segments[i][0],
+        segments[i][1],
+        segments[j][0],
+        segments[j][1]
+      );
       if (!hit) continue;
       const dI = dist(cursor, hit);
       if (dI < tolerance) {

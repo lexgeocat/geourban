@@ -30,7 +30,9 @@ export async function importKml(file: File): Promise<ImportResult> {
 export async function importKmz(file: File): Promise<ImportResult> {
   const buffer = await file.arrayBuffer();
   const zip = await JSZip.loadAsync(buffer);
-  const kmlEntry = Object.values(zip.files).find((entry) => entry.name.toLowerCase().endsWith('.kml'));
+  const kmlEntry = Object.values(zip.files).find((entry) =>
+    entry.name.toLowerCase().endsWith('.kml')
+  );
   if (!kmlEntry) throw new Error('KMZ inválido: no se encontró archivo .kml');
   const text = await kmlEntry.async('text');
   const features = kmlFormat.readFeatures(text, {
