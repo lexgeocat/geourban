@@ -1,6 +1,7 @@
 import React from 'react';
 import MapView from './map/Map';
 import LayerPanel from './components/LayerPanel';
+import Toolbar from './components/Toolbar';
 
 function App() {
   return (
@@ -11,8 +12,11 @@ function App() {
         <LayerPanel />
       </aside>
       {/* Main map area */}
-      <main className="flex-1">
-        <MapView />
+      <main className="flex-1 flex flex-col">
+        <Toolbar />
+        <div className="flex-1">
+          <MapView />
+        </div>
       </main>
     </div>
   );
