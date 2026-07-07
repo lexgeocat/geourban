@@ -12,9 +12,12 @@ const options: LayerOption[] = [
   { key: 'polygons', label: 'Polígonos (10k)' },
 ];
 
+import { useMapStore } from '../store/mapStore';
+
 export default function LayerPanel() {
   const visibility = useLayerStore((s) => s.visibility);
   const setVisibility = useLayerStore((s) => s.setVisibility);
+  const fitPolygons = useMapStore((s) => s.fitPolygonsLayer);
 
   return (
     <div className="space-y-2">
@@ -29,6 +32,13 @@ export default function LayerPanel() {
           <span>{opt.label}</span>
         </label>
       ))}
+      {/* Botón para centrar vista en los polígonos */}
+      <button
+        onClick={fitPolygons}
+        className="mt-2 w-full bg-indigo-600 text-white py-1 rounded hover:bg-indigo-700"
+      >
+        Centrar vista en polígonos
+      </button>
     </div>
   );
 }

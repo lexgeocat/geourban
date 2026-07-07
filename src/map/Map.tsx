@@ -8,6 +8,7 @@ import VectorSource from 'ol/source/Vector';
 import { Feature } from 'ol';
 import { Polygon } from 'ol/geom';
 import { useLayerStore } from '../store/layerStore';
+import { useMapStore } from '../store/mapStore';
 
 // Helper to generate 10k square polygons in a grid (100x100)
 function generateGridFeatures(countPerSide: number = 100): Feature<Polygon>[] {
@@ -86,14 +87,18 @@ export default function MapView() {
       map.getView().fit(extent, { size: map.getSize(), maxZoom: 10, padding: [20, 20, 20, 20] });
     });
 
+    // Store map instance in global store
+    useMapStore.getState().setMap(map);
+
     mapInstanceRef.current = map;
 
     // Cleanup on unmount
     return () => {
+      // Remove map from store
+      useMapStore.getState().setMap(null);
       map.setTarget(null);
       mapInstanceRef.current = null;
-    };
-  }, []);
+    };  }, []);
 
   // Update layer visibility when store changes
   useEffect(() => {
