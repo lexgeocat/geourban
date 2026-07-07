@@ -12,7 +12,7 @@ export type GeoUrbanProject = {
   name: string;
   createdAt: string;
   updatedAt: string;
-  baseMap: 'osm' | 'topo' | 'satellite' | 'cad';
+  baseMap: 'osm' | 'cad' | 'google-satellite';
   layers: GeoUrbanLayerMeta[];
   view: {
     center: [number, number];

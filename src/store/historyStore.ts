@@ -34,7 +34,7 @@ export const useHistoryStore = create<HistoryState>()(
         state.past.push(serialized);
         if (state.past.length > MAX_HISTORY) state.past.shift();
         state.future = [];
-        state.canUndo = state.past.length > 0;
+        state.canUndo = state.past.length > 1;
         state.canRedo = false;
       }),
 

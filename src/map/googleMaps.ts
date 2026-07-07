@@ -26,7 +26,6 @@ export const createGoogleMapsLayer = (type: 'satellite' | 'roadmap' | 'terrain' 
       },
       tileLoadFunction: (imageTile, src) => {
         const img = imageTile.getImage() as HTMLImageElement;
-        img.crossOrigin = 'anonymous';
         img.onload = () => imageTile.setState(2);
         img.onerror = () => {
           const coord = imageTile.tileCoord as [number, number, number];
@@ -41,7 +40,7 @@ export const createGoogleMapsLayer = (type: 'satellite' | 'roadmap' | 'terrain' 
         img.src = src;
       },
     }),
-    visible: false,
+    visible: true,
     className: 'google-maps-layer',
   });
 };

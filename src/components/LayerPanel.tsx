@@ -112,8 +112,7 @@ const IconCad = () => (
 const BASE_MAP_ICONS: Record<BaseMapId, React.ReactNode> = {
   cad: <IconCad />,
   osm: <IconMap />,
-  topo: <IconTopo />,
-  satellite: <IconSatellite />,
+  'google-satellite': <IconSatellite />,
 };
 
 /* ─── Component ─── */
