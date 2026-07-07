@@ -7,6 +7,7 @@ import WebGLVectorLayer from 'ol/layer/WebGLVector';
 import VectorSource from 'ol/source/Vector';
 import Draw from 'ol/interaction/Draw';
 import Snap from 'ol/interaction/Snap';
+import { defaults as defaultControls, Attribution } from 'ol/control';
 import { Feature } from 'ol';
 import { Polygon } from 'ol/geom';
 import { useLayerStore } from '../store/layerStore';
@@ -74,6 +75,7 @@ export default function MapView() {
       visible: visibility.polygons,
     });
 
+
     const map = new Map({
       target: mapDivRef.current,
       layers: [osmLayer, satelliteLayer, polygonsLayer],
@@ -81,6 +83,12 @@ export default function MapView() {
         center: [0, 0],
         zoom: 2,
       }),
+      controls: defaultControls({ attribution: false }).extend([
+        new Attribution({
+          collapsible: false,
+          className: 'custom-attribution',
+        })
+      ]),
     });
 
     // Ajustar vista al cargar los polígonos

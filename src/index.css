@@ -1,3 +1,17 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Estilos para la atribución de OpenLayers */
+.custom-attribution {
+  background: rgba(255, 255, 255, 0.8);
+  padding: 2px 6px;
+  font-size: 0.75rem;
+  border-radius: 4px;
+  color: #333;
+}
+/* Ocultar botones de colapso y símbolos */
+.custom-attribution button,
+.custom-attribution .ol-uncollapsible {
+  display: none !important;
+}
