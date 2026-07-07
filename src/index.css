@@ -199,6 +199,41 @@ html, body, #root {
 }
 
 /* ============================================================
+   CAD Radio Button
+   ============================================================ */
+.cad-radio {
+  position: relative;
+  width: 16px;
+  height: 16px;
+  appearance: none;
+  -webkit-appearance: none;
+  background: var(--cad-bg-deepest);
+  border: 1px solid var(--cad-border);
+  border-radius: 50%;
+  cursor: pointer;
+  transition: all var(--cad-transition);
+  flex-shrink: 0;
+}
+.cad-radio::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0);
+  width: 8px;
+  height: 8px;
+  background: var(--cad-accent);
+  border-radius: 50%;
+  transition: transform 120ms ease;
+}
+.cad-radio:checked {
+  border-color: var(--cad-accent);
+}
+.cad-radio:checked::after {
+  transform: translate(-50%, -50%) scale(1);
+}
+
+/* ============================================================
    CAD Panels (Glassmorphism)
    ============================================================ */
 .cad-panel-glass {

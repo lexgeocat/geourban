@@ -5,13 +5,22 @@ import { extend as extendExtent, Extent } from 'ol/extent';
 
 type CursorCoords = { x: number; y: number } | null;
 
+export type ViewConfig = {
+  /** Centro del mapa en [lng, lat] (EPSG:4326) */
+  center: [number, number];
+  zoom: number;
+};
+
 type MapState = {
   mapInstance: Map | null;
   cursorCoords: CursorCoords;
   zoom: number;
+  /** Configuración de vista inicial (se puede sobrescribir) */
+  viewConfig: ViewConfig;
   setMap: (map: Map | null) => void;
   setCursorCoords: (coords: CursorCoords) => void;
   setZoom: (zoom: number) => void;
+  setViewConfig: (config: ViewConfig) => void;
   fitToExtent: () => void;
   zoomIn: () => void;
   zoomOut: () => void;
@@ -21,7 +30,8 @@ export const useMapStore = create<MapState>()(
   immer((set, get) => ({
     mapInstance: null,
     cursorCoords: null,
-    zoom: 2,
+    zoom: 17,
+    viewConfig: { center: [-68.30, -16.65], zoom: 17 },
     setMap: (map) =>
       set((state) => {
         // @ts-ignore – immer draft vs OL class instance
@@ -35,6 +45,10 @@ export const useMapStore = create<MapState>()(
     setZoom: (zoom) =>
       set((state) => {
         state.zoom = zoom;
+      }),
+    setViewConfig: (config) =>
+      set((state) => {
+        state.viewConfig = config;
       }),
     fitToExtent: () => {
       const map = get().mapInstance;
