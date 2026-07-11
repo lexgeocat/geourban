@@ -3,9 +3,10 @@ import { useSubdivisionStore } from '../store/subdivisionStore';
 import { useMapStore } from '../store/mapStore';
 import { useHistoryStore } from '../store/historyStore';
 import { useSelectionStore } from '../store/selectionStore';
+import { useDrawStore } from '../store/drawStore';
 import { subdivide } from '../geo/subdivisionAlgorithms';
 import { updateFeatureMetrics, refreshSourceMetrics } from '../geo/metrics';
-import type { Polygon as GeoJsonPolygon } from 'geojson';
+import type { Polygon as GeoJsonPolygon, LineString as GeoJsonLineString } from 'geojson';
 import GeoJSON from 'ol/format/GeoJSON.js';
 import type Feature from 'ol/Feature';
 import type Geometry from 'ol/geom/Geometry';
@@ -42,6 +43,7 @@ export default function SubdivisionDialog() {
 
   const drawSource = useMapStore((s) => s.drawSource);
   const targetId = useSubdivisionStore((s) => s.targetFeatureId);
+  const lastDrawnLineId = useDrawStore((s) => s.lastDrawnLineId);
 
   // Hooks deben estar siempre
   // En vez de sincronizar el estado de la geometria en useEffect (que dispara
@@ -69,7 +71,19 @@ export default function SubdivisionDialog() {
     if (drawSource.getFeatureById(targetId) == null) return 'Feature no encontrada';
     if (targetGeom == null) return 'La geometría no es un polígono';
     return null;
-  }, [isOpen, targetId, drawSource, targetGeom]);
+   }, [isOpen, targetId, drawSource, targetGeom]);
+
+  const manualSplitLine = useMemo<GeoJsonLineString | null>(() => {
+    if (!isOpen || method !== 'manual' || !drawSource || lastDrawnLineId == null) return null;
+    const lineFeat = drawSource.getFeatureById(lastDrawnLineId) as Feature<Geometry> | null;
+    const g = lineFeat?.getGeometry();
+    if (!g || g.getType() !== 'LineString') return null;
+    const gj = geoJsonFormat.writeGeometryObject(g, {
+      featureProjection: 'EPSG:3857',
+      dataProjection: 'EPSG:3857',
+    });
+    return gj.type === 'LineString' ? (gj as GeoJsonLineString) : null;
+  }, [isOpen, method, drawSource, lastDrawnLineId]);
 
   if (!isOpen) return null;
   // Combinar el loadError con el errorMessage del store
@@ -82,7 +96,14 @@ export default function SubdivisionDialog() {
       setError('No hay polígono target');
       return;
     }
-    const r = subdivide(targetGeom, options);
+    if (method === 'manual' && !manualSplitLine) {
+      setError('Trazá una línea (tecla L) que cruce el polígono antes de previsualizar.');
+      setPreview(null);
+      return;
+    }
+    const effectiveOptions =
+      method === 'manual' ? { ...options, splitLine: manualSplitLine } : options;
+    const r = subdivide(targetGeom, effectiveOptions);
     if (!r.ok) {
       setError(r.error ?? 'No se pudo generar el preview');
       setPreview(null);
@@ -93,12 +114,17 @@ export default function SubdivisionDialog() {
 
   const applySubdivision = () => {
     if (!drawSource || targetId == null) return;
+    if (method === 'manual' && !manualSplitLine) {
+      setError('Trazá una línea (tecla L) que cruce el polígono antes de aplicar.');
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
       // targetGeom ya esta en EPSG:3857
-      const r = subdivide(targetGeom!, options);
-      if (!r.ok) {
+      const effectiveOptions =
+        method === 'manual' ? { ...options, splitLine: manualSplitLine } : options;
+      const r = subdivide(targetGeom!, effectiveOptions);      if (!r.ok) {
         setError(r.error ?? 'Subdivisión falló');
         return;
       }
@@ -112,7 +138,7 @@ export default function SubdivisionDialog() {
         if (!wgs) return;
         const geom3857 = geoJsonFormat.readGeometry(
           { type: 'Polygon', coordinates: wgs.coordinates },
-          { featureProjection: 'EPSG:3857' }
+          { featureProjection: 'EPSG:3857', dataProjection: 'EPSG:3857' }
         );
         const olFeat = new Feature({ geometry: geom3857 as Geometry });
         const newId = `subdiv-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;

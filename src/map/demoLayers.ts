@@ -64,19 +64,19 @@ export function createDemoLayers(countPerSide = 100): DemoLayerBundle {
   const lod0Features = features.map((f) => {
     const clone = f.clone();
     clone.setId(f.getId());
-    clone.set('geometry', f.get('lod_0'));
+    clone.setGeometry(f.get('lod_0') as Polygon);
     return clone;
   });
   const lod1Features = features.map((f) => {
     const clone = f.clone();
     clone.setId(f.getId());
-    clone.set('geometry', f.get('lod_1'));
+    clone.setGeometry(f.get('lod_1') as Polygon);
     return clone;
   });
   const lod2Features = features.map((f) => {
     const clone = f.clone();
     clone.setId(f.getId());
-    clone.set('geometry', f.get('lod_2'));
+    clone.setGeometry(f.get('lod_2') as Polygon);
     return clone;
   });
 

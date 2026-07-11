@@ -175,10 +175,18 @@ export const useMapStore = create<MapState>()(
       });
       if (selectedFeatures.length < 2) return null;
 
-      // Serializar a FeatureCollection GeoJSON
+      // Serializar a FeatureCollection GeoJSON. featureProjection y
+      // dataProjection deben coincidir (ambos EPSG:3857): el worker JSTS
+      // opera sobre los mismos numeros crudos de ida y vuelta, no queremos
+      // ninguna reproyeccion real.
       const collection: FeatureCollection = {
         type: 'FeatureCollection',
-        features: selectedFeatures.map((f) => geoJsonFormat.writeFeatureObject(f)),
+        features: selectedFeatures.map((f) =>
+          geoJsonFormat.writeFeatureObject(f, {
+            featureProjection: 'EPSG:3857',
+            dataProjection: 'EPSG:3857',
+          })
+        ),
       };
 
       const merged = await mergePolygonsInWorker(collection);
@@ -190,8 +198,10 @@ export const useMapStore = create<MapState>()(
 
       // Insertar el resultado como un nuevo feature OL
       const newId = `merged-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-      const olFeats = geoJsonFormat.readFeatures(merged, { featureProjection: 'EPSG:3857' });
-      if (olFeats.length === 0) return null;
+      const olFeats = geoJsonFormat.readFeatures(merged, {
+        featureProjection: 'EPSG:3857',
+        dataProjection: 'EPSG:3857',
+      });      if (olFeats.length === 0) return null;
       const target = olFeats[0] as Feature<Geometry>;
       target.setId(newId);
       target.set('mergedFrom', Array.from(selectedIds));
@@ -202,12 +212,17 @@ export const useMapStore = create<MapState>()(
       useHistoryStore.getState().pushState(src.getFeatures());
       return newId;
     },
-    validateProjectTopology: async () => {
+   validateProjectTopology: async () => {
       const src = get().drawSource;
       if (!src) return { valid: true, issues: [] };
       const collection: FeatureCollection = {
         type: 'FeatureCollection',
-        features: src.getFeatures().map((f) => geoJsonFormat.writeFeatureObject(f)),
+        features: src.getFeatures().map((f) =>
+          geoJsonFormat.writeFeatureObject(f, {
+            featureProjection: 'EPSG:3857',
+            dataProjection: 'EPSG:3857',
+          })
+        ),
       };
       return validateTopologyInWorker(collection);
     },

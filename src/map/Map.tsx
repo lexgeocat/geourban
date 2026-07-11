@@ -243,16 +243,23 @@ export default function MapView() {
 
     const toClean: (() => void)[] = [];
 
-    // Limpia interaccion Select previa antes de crear una nueva
+ // Limpia interaccion Select previa antes de crear una nueva
     if (selectInteractionRef.current) {
       map.removeInteraction(selectInteractionRef.current);
       selectInteractionRef.current = null;
     }
 
+    // Las capas WebGL (drawLayer, demoLayers) tienen disableHitDetection:true
+    // y NO soportan forEachFeatureAtCoordinate. Select/Translate deben
+    // restringirse SOLO a measurementLayer (capa Canvas normal), o crashean
+    // al mover el mouse.
+    const hitDetectionLayerFilter = (layer: BaseLayer) =>
+      layer === measurementLayerRef.current;
+
     // Modo SELECT: Select (multi con Shift) + Modify + Translate
     if (drawMode === 'select') {
       const select = new Select({
-        source: src,
+        layers: hitDetectionLayerFilter,
         style: new Style({
           fill: new Fill({ color: 'rgba(0, 212, 255, 0.15)' }),
           stroke: new Stroke({ color: '#00d4ff', width: 2.5 }),
@@ -308,6 +315,7 @@ export default function MapView() {
       // Translate (mover features completos)
       const translate = new Translate({
         features: select.getFeatures(),
+        layers: hitDetectionLayerFilter,
       });
       translate.on('translateend', () => {
         select.getFeatures().forEach((f) => updateFeatureMetrics(f as Feature<Geometry>));
@@ -338,11 +346,19 @@ export default function MapView() {
         toClean.push(() => map.removeInteraction(midSnap));
       }
 
-      // Dibujo
+       // Dibujo
       const drawType = drawMode === 'polygon' ? 'Polygon' : 'LineString';
       const draw = new Draw({ source: src, type: drawType });
       draw.on('drawend', (event) => {
         const feature = event.feature as Feature<Geometry>;
+        if (drawType === 'LineString') {
+          // Draw no asigna id solo; se lo damos para que la subdivision
+          // "manual" pueda referenciar esta linea como corte.
+          const lineId =
+            feature.getId() ?? `line-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+          feature.setId(lineId);
+          useDrawStore.getState().setLastDrawnLineId(lineId);
+        }
         updateFeatureMetrics(feature);
         measurementLayerRef.current?.changed();
         useHistoryStore.getState().pushState(src.getFeatures());
@@ -354,7 +370,7 @@ export default function MapView() {
     // Modo ERASE: cada click sobre una feature la borra
     if (drawMode === 'erase') {
       const select = new Select({
-        source: src,
+        layers: hitDetectionLayerFilter,
         style: new Style({
           fill: new Fill({ color: 'rgba(239, 68, 68, 0.25)' }),
           stroke: new Stroke({ color: '#ef4444', width: 2 }),
