@@ -3,9 +3,8 @@ import type BaseLayer from 'ol/layer/Base';
 import type Map from 'ol/Map';
 import { OSM } from 'ol/source';
 import { createCadBaseMap, CAD_BASE_MAP_ATTRIBUTION, cadBaseMapBundles } from './cadGridLayer';
-import { createGoogleMapsLayer } from './googleMaps';
 
-export type BaseMapId = 'osm' | 'cad' | 'google-satellite';
+export type BaseMapId = 'cad' | 'osm';
 
 export interface BaseMapDef {
   id: BaseMapId;
@@ -39,10 +38,5 @@ export const BASE_MAP_DEFS: BaseMapDef[] = [
       new TileLayer({
         source: new OSM(),
       }),
-  },
-  {
-    id: 'google-satellite',
-    label: 'Google Maps (Satélite)',
-    create: () => createGoogleMapsLayer('satellite'),
   },
 ];

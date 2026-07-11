@@ -5,6 +5,12 @@ import VectorSource from 'ol/source/Vector.js';
 import GeoJSON from 'ol/format/GeoJSON.js';
 import { extend as extendExtent, Extent } from 'ol/extent.js';
 import { refreshSourceMetrics } from '../geo/metrics';
+import { useSelectionStore } from './selectionStore';
+import { useHistoryStore } from './historyStore';
+import { mergePolygonsInWorker, validateTopologyInWorker } from '../workers/geoWorkerClient';
+import type { FeatureCollection } from 'geojson';
+import Feature from 'ol/Feature.js';
+import type Geometry from 'ol/geom/Geometry.js';
 
 const geoJsonFormat = new GeoJSON();
 
@@ -32,6 +38,20 @@ type MapState = {
   fitToExtent: () => void;
   zoomIn: () => void;
   zoomOut: () => void;
+  /** Borra las features seleccionadas (de drawSource) y refresca metricas */
+  deleteSelected: () => number;
+  /** Borra UNA feature concreta (por id OL) */
+  deleteFeatureById: (id: string | number) => boolean;
+  /**
+   * Fusiona los features seleccionados (polígonos) en uno solo, vía worker JSTS.
+   * Devuelve el id del feature resultante o null si no se pudo.
+   */
+  mergeSelected: () => Promise<string | number | null>;
+  /**
+   * Valida la topologia de todos los features del drawSource via worker.
+   * Devuelve el resultado del analisis.
+   */
+  validateProjectTopology: () => Promise<{ valid: boolean; issues: string[] }>;
 };
 
 export const useMapStore = create<MapState>()(
@@ -59,6 +79,7 @@ export const useMapStore = create<MapState>()(
       src.clear();
       src.addFeatures(features as any);
       refreshSourceMetrics(src);
+      useSelectionStore.getState().clear();
     },
     setCursorCoords: (coords) =>
       set((state) => {
@@ -105,6 +126,90 @@ export const useMapStore = create<MapState>()(
       const view = map.getView();
       const z = view.getZoom();
       if (z !== undefined) view.animate({ zoom: z - 1, duration: 200 });
+    },
+    deleteSelected: () => {
+      const src = get().drawSource;
+      if (!src) return 0;
+      const selectedIds = useSelectionStore.getState().selectedIds;
+      if (selectedIds.size === 0) return 0;
+
+      let removed = 0;
+      const toRemove: string[] = [];
+      src.forEachFeature((f) => {
+        const id = f.getId();
+        if (id !== undefined && selectedIds.has(id as string | number)) {
+          toRemove.push(id as string);
+          removed++;
+        }
+      });
+      toRemove.forEach((id) => src.removeFeature(src.getFeatureById(id)));
+      useSelectionStore.getState().clear();
+      src.changed();
+      if (removed > 0) {
+        useHistoryStore.getState().pushState(src.getFeatures());
+      }
+      return removed;
+    },
+    deleteFeatureById: (id) => {
+      const src = get().drawSource;
+      if (!src) return false;
+      const feat = src.getFeatureById(id);
+      if (!feat) return false;
+      src.removeFeature(feat);
+      useSelectionStore.getState().remove(id);
+      src.changed();
+      useHistoryStore.getState().pushState(src.getFeatures());
+      return true;
+    },
+    mergeSelected: async () => {
+      const src = get().drawSource;
+      if (!src) return null;
+      const selectedIds = useSelectionStore.getState().selectedIds;
+      if (selectedIds.size < 2) return null;
+
+      // Recolectar features seleccionadas
+      const selectedFeatures: Feature<Geometry>[] = [];
+      selectedIds.forEach((id) => {
+        const f = src.getFeatureById(id) as Feature<Geometry> | null;
+        if (f) selectedFeatures.push(f);
+      });
+      if (selectedFeatures.length < 2) return null;
+
+      // Serializar a FeatureCollection GeoJSON
+      const collection: FeatureCollection = {
+        type: 'FeatureCollection',
+        features: selectedFeatures.map((f) => geoJsonFormat.writeFeatureObject(f)),
+      };
+
+      const merged = await mergePolygonsInWorker(collection);
+      if (!merged.features.length) return null;
+
+      // Eliminar las originales
+      selectedFeatures.forEach((f) => src.removeFeature(f));
+      useSelectionStore.getState().clear();
+
+      // Insertar el resultado como un nuevo feature OL
+      const newId = `merged-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const olFeats = geoJsonFormat.readFeatures(merged, { featureProjection: 'EPSG:3857' });
+      if (olFeats.length === 0) return null;
+      const target = olFeats[0] as Feature<Geometry>;
+      target.setId(newId);
+      target.set('mergedFrom', Array.from(selectedIds));
+      target.set('mergedAt', new Date().toISOString());
+      src.addFeature(target);
+      refreshSourceMetrics(src);
+      src.changed();
+      useHistoryStore.getState().pushState(src.getFeatures());
+      return newId;
+    },
+    validateProjectTopology: async () => {
+      const src = get().drawSource;
+      if (!src) return { valid: true, issues: [] };
+      const collection: FeatureCollection = {
+        type: 'FeatureCollection',
+        features: src.getFeatures().map((f) => geoJsonFormat.writeFeatureObject(f)),
+      };
+      return validateTopologyInWorker(collection);
     },
   }))
 );

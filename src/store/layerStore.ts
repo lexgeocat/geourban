@@ -15,7 +15,7 @@ type LayerState = {
 
 export const useLayerStore = create<LayerState>()(
   immer((set) => ({
-    baseMap: 'google-satellite' as BaseMapId,
+    baseMap: 'cad' as BaseMapId,
     visibility: {
       demo: false,
       measurements: true,

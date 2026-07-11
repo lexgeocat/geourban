@@ -1,4 +1,5 @@
 import type { FeatureCollection } from 'geojson';
+import type { BaseMapId } from '../map/baseMaps';
 
 export type GeoUrbanLayerMeta = {
   id: string;
@@ -12,7 +13,7 @@ export type GeoUrbanProject = {
   name: string;
   createdAt: string;
   updatedAt: string;
-  baseMap: 'osm' | 'cad' | 'google-satellite';
+  baseMap: BaseMapId;
   layers: GeoUrbanLayerMeta[];
   view: {
     center: [number, number];

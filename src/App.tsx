@@ -4,12 +4,17 @@ import LayerPanel from './components/LayerPanel';
 import Toolbar from './components/Toolbar';
 import TopBar from './components/TopBar';
 import StatusBar from './components/StatusBar';
+import SubdivisionDialog from './components/SubdivisionDialog';
+import PropertyPanel from './components/PropertyPanel';
 import { startAutosave } from './io/persistence';
 import { writeProjectFromOlFeatures } from './io/geojson';
 import { useMapStore } from './store/mapStore';
 import { useLayerStore } from './store/layerStore';
+import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 
 function App() {
+  useKeyboardShortcuts();
+
   useEffect(() => {
     return startAutosave(() => {
       const drawSource = useMapStore.getState().drawSource;
@@ -55,9 +60,14 @@ function App() {
           <Toolbar />
         </div>
         <div style={{ pointerEvents: 'auto' }}>
+          <PropertyPanel />
+        </div>
+        <div style={{ pointerEvents: 'auto' }}>
           <LayerPanel />
         </div>
       </div>
+
+      <SubdivisionDialog />
 
       <StatusBar />
     </div>

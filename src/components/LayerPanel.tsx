@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useLayerStore } from '../store/layerStore';
 import { BASE_MAP_DEFS } from '../map/baseMaps';
 import type { BaseMapId } from '../map/baseMaps';
+import TopologyValidator from './TopologyValidator';
 
 /* ─── Icons ─── */
 
@@ -57,39 +58,6 @@ const IconMap = () => (
   </svg>
 );
 
-const IconTopo = () => (
-  <svg
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="1.5"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    style={{ width: 14, height: 14 }}
-  >
-    <path d="M3 3v18h18" />
-    <path d="M7 16l3-7 4 5 5-8" />
-  </svg>
-);
-
-const IconSatellite = () => (
-  <svg
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="1.5"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    style={{ width: 14, height: 14 }}
-  >
-    <path d="M13 7 8.7 2.7a2.41 2.41 0 0 0-3.4 0L2.7 5.3a2.41 2.41 0 0 0 0 3.4L7 13" />
-    <path d="M11 17l4.3 4.3a2.41 2.41 0 0 0 3.4 0l2.6-2.6a2.41 2.41 0 0 0 0-3.4L17 11" />
-    <path d="M8 11l4 4" />
-    <path d="m16 8-1.5-1.5" />
-    <path d="M2 22l4.5-4.5" />
-  </svg>
-);
-
 const IconCad = () => (
   <svg
     viewBox="0 0 24 24"
@@ -108,11 +76,9 @@ const IconCad = () => (
   </svg>
 );
 
-/* ─── Mapa base: icono por id ─── */
 const BASE_MAP_ICONS: Record<BaseMapId, React.ReactNode> = {
   cad: <IconCad />,
   osm: <IconMap />,
-  'google-satellite': <IconSatellite />,
 };
 
 /* ─── Component ─── */
@@ -339,6 +305,8 @@ export default function LayerPanel() {
               </span>
             </label>
           </div>
+
+          <TopologyValidator />
         </div>
       )}
     </div>
