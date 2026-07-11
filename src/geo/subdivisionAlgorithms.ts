@@ -171,6 +171,31 @@ function countSteps(available: number, step: number): number {
   if (step <= 0 || available <= 0) return 0;
   return Math.max(0, Math.floor(available / step));
 }
+/** Bounding box (no necesariamente mínimo) del polígono a un ángulo fijo dado. */
+function boundingBoxAtAngle(
+  polygon: GeoJsonPolygon,
+  angleRad: number
+): { center: [number, number]; width: number; height: number; angle: number } {
+  const hull = turf.convex(polygon);
+  const ring = hull ? (hull.geometry as GeoJsonPolygon).coordinates[0] : polygon.coordinates[0];
+  const rotated = ring.map((pt) => rotatePoint(pt as [number, number], -angleRad));
+  const xs = rotated.map((p) => p[0]);
+  const ys = rotated.map((p) => p[1]);
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+  const cx = (minX + maxX) / 2;
+  const cy = (minY + maxY) / 2;
+  const center = rotatePoint([cx, cy], angleRad);
+  return { center, width: maxX - minX, height: maxY - minY, angle: angleRad };
+}
+
+/** Cuenta lotes que entran en `available` considerando N*lotSize + (N-1)*gap <= available. */
+function countStepsWithGap(available: number, lotSize: number, gap: number): number {
+  if (lotSize <= 0 || available <= 0) return 0;
+  return Math.max(0, Math.floor((available + gap) / (lotSize + gap)));
+}
 
 /* ---------- Subdivision: Grid Regular ---------- */
 
@@ -192,15 +217,24 @@ export function subdivideGridRegular(
     };
   }
 
-  const obb = orientedBoundingBox(polygon);
+  // Si viene un rotationRad explícito (subdivideProportional / subdivideOffset
+  // lo necesitan para alinear la grilla con un eje concreto en vez de con el
+  // OBB de área mínima), lo respetamos en vez de recalcular el OBB propio.
+  const obb =
+    opts.rotationRad !== undefined
+      ? boundingBoxAtAngle(polygon, opts.rotationRad)
+      : orientedBoundingBox(polygon);
   const totalW = obb.width;
   const totalD = obb.height;
-  // Calcular pasos incluyendo calle interna si existe
   const stepW = lotWidthM + innerStreet;
   const stepD = lotDepthM + innerStreet;
 
-  const cols = countSteps(totalW, lotWidthM);
-  const rows = countSteps(totalD, lotDepthM);
+  // Ahora el conteo de columnas/filas SÍ considera la calle interna, por
+  // construcción no puede haber overflow (antes solo se avisaba con un
+  // warning y se seguía dibujando la grilla igual, generando recortes
+  // silenciosos contra el bbox del padre).
+  const cols = countStepsWithGap(totalW, lotWidthM, innerStreet);
+  const rows = countStepsWithGap(totalD, lotDepthM, innerStreet);
 
   if (cols === 0 || rows === 0) {
     return {
@@ -211,21 +245,6 @@ export function subdivideGridRegular(
     };
   }
 
-  // Verificar con calle interna
-  const usedW = cols * stepW - innerStreet;
-  const usedD = rows * stepD - innerStreet;
-  if (usedW > totalW * 1.001) {
-    warnings.push(
-      `Con ${cols} columnas la calle interna no entra: ${usedW.toFixed(1)}m > ${totalW.toFixed(1)}m disponibles. Se omite la calle.`
-    );
-  }
-  if (usedD > totalD * 1.001) {
-    warnings.push(
-      `Con ${rows} filas la calle interna no entra: ${usedD.toFixed(1)}m > ${totalD.toFixed(1)}m disponibles. Se omite la calle.`
-    );
-  }
-
-  // Ajustar para que el grid se centre en el OBB
   const marginW = (totalW - cols * lotWidthM - (cols - 1) * innerStreet) / 2;
   const marginD = (totalD - rows * lotDepthM - (rows - 1) * innerStreet) / 2;
 
@@ -285,7 +304,6 @@ export function subdivideProportional(
   const obb = orientedBoundingBox(polygon);
   const polygonArea = Math.abs(turf.area(polygon));
 
-  // Determinar N segun targetCount o targetAreaM2
   let n = opts.targetCount ?? 0;
   if (n <= 0 && opts.targetAreaM2 && opts.targetAreaM2 > 0) {
     n = Math.max(1, Math.floor(polygonArea / opts.targetAreaM2));
@@ -294,33 +312,30 @@ export function subdivideProportional(
     return { ok: false, features: [], warnings, error: 'Falta targetCount o targetAreaM2' };
   }
 
-  // Elegir una orientacion: usar la mas larga como filas para que los lotes
-  // queden mas cuadrados posible.
-  const longestIsWidth = obb.width >= obb.height;
-  const longestDim = longestIsWidth ? obb.width : obb.height;
-  const shortestDim = longestIsWidth ? obb.height : obb.width;
-
-  // Distribuir N en una grilla m x k tal que m*k = N
-  // y los lotes queden lo mas cuadrados posible.
-  // Aspect ratio objetivo: squareRatio = sqrt((longestDim*shortestDim) / N)
-  // y lotW = longestDim / m, lotD = shortestDim / k con m*k = N
-  const aspect = Math.sqrt(n * (shortestDim / longestDim));
-  let cols = Math.max(1, Math.round(aspect));
+  // IMPORTANTE: acá NO usamos "longestDim/shortestDim" — cols siempre
+  // divide el eje X del OBB (obb.width) y rows siempre el eje Y
+  // (obb.height). Antes se mezclaban los ejes ("longest/shortest") y el
+  // resultado se pasaba a subdivideGridRegular, que SIEMPRE aplica
+  // lotWidthM al eje X — si el polígono era más alto que ancho, el
+  // ancho/profundidad quedaban invertidos.
+  //
+  // Lotes cuadrados: lotW = W/cols == lotH = H/rows, con cols*rows ≈ n
+  //   => cols = sqrt(n * W/H)
+  const rawCols = Math.sqrt(n * (obb.width / obb.height));
+  let cols = Math.max(1, Math.round(rawCols));
   let rows = Math.max(1, Math.ceil(n / cols));
-  // Ajuste si rows * cols < n
   if (rows * cols < n) {
     if (cols * (rows + 1) <= n * 1.1) rows += 1;
     else cols += 1;
   }
 
-  const lotWidthM = longestDim / cols;
-  const lotDepthM = shortestDim / rows;
+  const lotWidthM = obb.width / cols;
+  const lotDepthM = obb.height / rows;
 
   warnings.push(
     `Grilla proporcional: ${rows} filas x ${cols} cols (lotes ${lotWidthM.toFixed(1)}m x ${lotDepthM.toFixed(1)}m)`
   );
 
-  // Delegamos en subdivideGridRegular sin calle interna
   return subdivideGridRegular(polygon, {
     method: 'grid',
     lotWidthM,
@@ -570,12 +585,13 @@ export function subdivideOffset(
   // Estrategia: subdivision por grilla a lo largo del lado 0
   // con profundidad calculada para que entre en el OBB.
   const depth = parentArea / parentFront;
+  const frontAngle = Math.atan2(b[1] - a[1], b[0] - a[0]);
   return subdivideGridRegular(polygon, {
     method: 'grid',
     lotWidthM: lotWidth,
     lotDepthM: depth,
     innerStreetWidthM: 0,
-    rotationRad: 0, // seguimos el lado 0 del poligono, no el OBB
+    rotationRad: frontAngle, // seguimos el lado 0 real del poligono, no el OBB
   });
 }
 

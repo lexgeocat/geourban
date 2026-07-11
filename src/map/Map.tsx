@@ -11,7 +11,7 @@ import Draw from 'ol/interaction/Draw.js';
 import Modify from 'ol/interaction/Modify.js';
 import Snap from 'ol/interaction/Snap.js';
 import Select from 'ol/interaction/Select.js';
-import Translate from 'ol/interaction/Translate.js';
+import SafeTranslate from './safeTranslate';
 import { unByKey } from 'ol/Observable.js';
 import { toLonLat, fromLonLat } from 'ol/proj.js';
 import { Fill, Stroke, Style, Circle as CircleStyle } from 'ol/style.js';
@@ -314,18 +314,25 @@ export default function MapView() {
       map.addInteraction(modify);
       toClean.push(() => map.removeInteraction(modify));
 
-      // Translate (mover features completos)
-      const translate = new Translate({
-        features: select.getFeatures(),
-        layers: hitDetectionLayers,
-      });
-      translate.on('translateend', () => {
-        select.getFeatures().forEach((f) => updateFeatureMetrics(f as Feature<Geometry>));
-        measurementLayerRef.current?.changed();
-        useHistoryStore.getState().pushState(src.getFeatures());
-      });
-      map.addInteraction(translate);
-      toClean.push(() => map.removeInteraction(translate));
+      // Translate (mover features completos) — implementación propia
+      // (SafeTranslate) en vez de ol/interaction/Translate: la versión
+      // nativa hace hit-test SIN restricción de capa en cada pointermove
+      // (para el cursor "mover"), lo cual revienta contra WebGLVectorLayer
+      // con disableHitDetection:true apenas el mouse pasa por el mapa en
+      // modo select. Ver src/map/safeTranslate.ts para el detalle.
+      if (measurementLayerRef.current) {
+        const translate = new SafeTranslate({
+          features: select.getFeatures(),
+          hitDetectionLayer: measurementLayerRef.current,
+        });
+        translate.on('translateend', () => {
+          select.getFeatures().forEach((f) => updateFeatureMetrics(f as Feature<Geometry>));
+          measurementLayerRef.current?.changed();
+          useHistoryStore.getState().pushState(src.getFeatures());
+        });
+        map.addInteraction(translate);
+        toClean.push(() => map.removeInteraction(translate));
+      }
     }
 
     // Modo POLYGON / LINE: snap nativo + snap en puntos medios + Draw

@@ -197,15 +197,34 @@ export default function TopBar() {
           <Save size={14} />
           Guardar
         </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => void handleExport('geojson')}
-          title="Exportar GeoJSON"
+         <select
+          defaultValue=""
+          onChange={(e) => {
+            const fmt = e.target.value as ExportFormat;
+            if (fmt) void handleExport(fmt);
+            e.target.value = '';
+          }}
+          title="Exportar"
+          style={{
+            height: 30,
+            background: 'transparent',
+            border: '1px solid var(--cad-border)',
+            borderRadius: 6,
+            color: 'var(--cad-text-dim)',
+            fontSize: '0.75rem',
+            padding: '0 6px',
+            cursor: 'pointer',
+          }}
         >
-          <Download size={14} />
-          Exportar
-        </Button>
+          <option value="" disabled>
+            ⬇ Exportar…
+          </option>
+          <option value="geojson">GeoJSON (.geojson)</option>
+          <option value="kml">KML (.kml)</option>
+          <option value="kmz">KMZ (.kmz)</option>
+          <option value="shp">Shapefile (.shp)</option>
+          <option value="dxf">DXF (.dxf)</option>
+        </select>
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>

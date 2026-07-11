@@ -170,7 +170,6 @@ export const useMapStore = create<MapState>()(
       const selectedIds = useSelectionStore.getState().selectedIds;
       if (selectedIds.size < 2) return null;
 
-      // Recolectar features seleccionadas
       const selectedFeatures: Feature<Geometry>[] = [];
       selectedIds.forEach((id) => {
         const f = src.getFeatureById(id) as Feature<Geometry> | null;
@@ -178,10 +177,6 @@ export const useMapStore = create<MapState>()(
       });
       if (selectedFeatures.length < 2) return null;
 
-      // Serializar a FeatureCollection GeoJSON. featureProjection y
-      // dataProjection deben coincidir (ambos EPSG:3857): el worker JSTS
-      // opera sobre los mismos numeros crudos de ida y vuelta, no queremos
-      // ninguna reproyeccion real.
       const collection: FeatureCollection = {
         type: 'FeatureCollection',
         features: selectedFeatures.map((f) =>
@@ -195,20 +190,34 @@ export const useMapStore = create<MapState>()(
       const merged = await mergePolygonsInWorker(collection);
       if (!merged.features.length) return null;
 
-      // Eliminar las originales
-      selectedFeatures.forEach((f) => src.removeFeature(f));
-      useSelectionStore.getState().clear();
-
-      // Insertar el resultado como un nuevo feature OL
-      const newId = `merged-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      // Construimos y validamos el feature resultante ANTES de tocar los
+      // originales. Antes se borraban los originales primero y recien
+      // despues se chequeaba si el resultado era legible -> si fallaba,
+      // se perdian los poligonos de origen sin dejar nada en su lugar.
       const olFeats = geoJsonFormat.readFeatures(merged, {
         featureProjection: 'EPSG:3857',
         dataProjection: 'EPSG:3857',
-      });      if (olFeats.length === 0) return null;
+      });
+      if (olFeats.length === 0) return null;
+
       const target = olFeats[0] as Feature<Geometry>;
+      if (target.getGeometry()?.getType() === 'MultiPolygon') {
+        // Los poligonos seleccionados no son contiguos (no se tocan):
+        // JSTS devuelve un MultiPolygon en vez de fusionarlos en un solo
+        // anillo. metrics.ts no sabe calcular area/perimetro de un
+        // MultiPolygon, asi que en vez de insertar un feature "mudo"
+        // (sin cotas, sin aviso), tratamos esto como fusion fallida.
+        return null;
+      }
+
+      const newId = `merged-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       target.setId(newId);
       target.set('mergedFrom', Array.from(selectedIds));
       target.set('mergedAt', new Date().toISOString());
+
+      // Recien ahora, con el resultado validado, reemplazamos los originales.
+      selectedFeatures.forEach((f) => src.removeFeature(f));
+      useSelectionStore.getState().clear();
       src.addFeature(target);
       refreshSourceMetrics(src);
       src.changed();
