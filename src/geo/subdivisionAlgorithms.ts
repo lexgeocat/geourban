@@ -101,7 +101,7 @@ function orientedBoundingBox(
     const p1 = ring[i];
     const p2 = ring[i + 1];
     const angle = Math.atan2(p2[1] - p1[1], p2[0] - p1[0]);
-    const rotated = ring.map((pt) => rotatePoint(pt, -angle));
+    const rotated = ring.map((pt) => rotatePoint(pt as [number, number], -angle));
     const xs = rotated.map((p) => p[0]);
     const ys = rotated.map((p) => p[1]);
     const minX = Math.min(...xs);
@@ -119,7 +119,7 @@ function orientedBoundingBox(
     }
   }
   // Centro del OBB
-  const rotatedRing = ring.map((pt) => rotatePoint(pt, -bestAngle));
+  const rotatedRing = ring.map((pt) => rotatePoint(pt as [number, number], -bestAngle));
   const xs = rotatedRing.map((p) => p[0]);
   const ys = rotatedRing.map((p) => p[1]);
   const minX = Math.min(...xs);

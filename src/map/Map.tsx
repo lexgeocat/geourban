@@ -252,14 +252,16 @@ export default function MapView() {
     // Las capas WebGL (drawLayer, demoLayers) tienen disableHitDetection:true
     // y NO soportan forEachFeatureAtCoordinate. Select/Translate deben
     // restringirse SOLO a measurementLayer (capa Canvas normal), o crashean
-    // al mover el mouse.
-    const hitDetectionLayerFilter = (layer: BaseLayer) =>
-      layer === measurementLayerRef.current;
+    // al mover el mouse. Se usa un array explicito (no funcion) para maxima
+    // compatibilidad con el hit-detection interno de OL.
+    const hitDetectionLayers = measurementLayerRef.current
+      ? [measurementLayerRef.current]
+      : [];
 
     // Modo SELECT: Select (multi con Shift) + Modify + Translate
     if (drawMode === 'select') {
       const select = new Select({
-        layers: hitDetectionLayerFilter,
+        layers: hitDetectionLayers,
         style: new Style({
           fill: new Fill({ color: 'rgba(0, 212, 255, 0.15)' }),
           stroke: new Stroke({ color: '#00d4ff', width: 2.5 }),
@@ -315,7 +317,7 @@ export default function MapView() {
       // Translate (mover features completos)
       const translate = new Translate({
         features: select.getFeatures(),
-        layers: hitDetectionLayerFilter,
+        layers: hitDetectionLayers,
       });
       translate.on('translateend', () => {
         select.getFeatures().forEach((f) => updateFeatureMetrics(f as Feature<Geometry>));
@@ -370,7 +372,7 @@ export default function MapView() {
     // Modo ERASE: cada click sobre una feature la borra
     if (drawMode === 'erase') {
       const select = new Select({
-        layers: hitDetectionLayerFilter,
+        layers: hitDetectionLayers,
         style: new Style({
           fill: new Fill({ color: 'rgba(239, 68, 68, 0.25)' }),
           stroke: new Stroke({ color: '#ef4444', width: 2 }),

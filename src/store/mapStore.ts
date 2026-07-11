@@ -133,16 +133,19 @@ export const useMapStore = create<MapState>()(
       const selectedIds = useSelectionStore.getState().selectedIds;
       if (selectedIds.size === 0) return 0;
 
-      let removed = 0;
-      const toRemove: string[] = [];
+     let removed = 0;
+      const toRemove: Array<string | number> = [];
       src.forEachFeature((f) => {
         const id = f.getId();
         if (id !== undefined && selectedIds.has(id as string | number)) {
-          toRemove.push(id as string);
+          toRemove.push(id as string | number);
           removed++;
         }
       });
-      toRemove.forEach((id) => src.removeFeature(src.getFeatureById(id)));
+      toRemove.forEach((id) => {
+        const feat = src.getFeatureById(id);
+        if (feat) src.removeFeature(feat);
+      });
       useSelectionStore.getState().clear();
       src.changed();
       if (removed > 0) {

@@ -8,7 +8,7 @@ import { subdivide } from '../geo/subdivisionAlgorithms';
 import { updateFeatureMetrics, refreshSourceMetrics } from '../geo/metrics';
 import type { Polygon as GeoJsonPolygon, LineString as GeoJsonLineString } from 'geojson';
 import GeoJSON from 'ol/format/GeoJSON.js';
-import type Feature from 'ol/Feature';
+import Feature from 'ol/Feature';
 import type Geometry from 'ol/geom/Geometry';
 
 const geoJsonFormat = new GeoJSON();
