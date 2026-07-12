@@ -4,24 +4,7 @@ import { useHistoryStore } from '../store/historyStore';
 import { useMapStore } from '../store/mapStore';
 import { useSelectionStore } from '../store/selectionStore';
 
-/* ================================================================
-   useKeyboardShortcuts
-   ================================================================
-   Atajos al estilo CAD (single-key + modificadores):
-     V -> select
-     H -> pan
-     P -> polygon
-     L -> line
-     E -> erase
-     Esc -> none (sale de cualquier modo)
-     Delete / Backspace -> borrar seleccionados
-     Ctrl/Cmd + Z -> undo
-     Ctrl/Cmd + Y / Ctrl + Shift + Z -> redo
-     Ctrl/Cmd + A -> seleccionar todo (drawSource)
-
-   Los atajos NO se disparan si el foco esta en un input/textarea
-   o en un contentEditable (para no romper formularios o busquedas).
-   ================================================================ */
+// No se disparan si el foco esta en un input/textarea/contentEditable
 
 function isTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;

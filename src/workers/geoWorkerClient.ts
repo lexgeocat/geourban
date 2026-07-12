@@ -33,37 +33,9 @@ function runWorker<T extends GeoWorkerResponse>(request: GeoWorkerRequest): Prom
   });
 }
 
-export async function unionPolygonsInWorker(features: FeatureCollection) {
-  const response = await runWorker<{ type: 'union'; result: FeatureCollection }>({
-    type: 'union',
-    features,
-  });
-  return response.result;
-}
-
 export async function mergePolygonsInWorker(features: FeatureCollection) {
   const response = await runWorker<{ type: 'merge'; result: FeatureCollection }>({
     type: 'merge',
-    features,
-  });
-  return response.result;
-}
-
-export async function subtractPolygonsInWorker(
-  minuend: FeatureCollection,
-  subtrahend: FeatureCollection
-) {
-  const response = await runWorker<{ type: 'subtract'; result: FeatureCollection }>({
-    type: 'subtract',
-    minuend,
-    subtrahend,
-  });
-  return response.result;
-}
-
-export async function intersectPolygonsInWorker(features: FeatureCollection) {
-  const response = await runWorker<{ type: 'intersect'; result: FeatureCollection }>({
-    type: 'intersect',
     features,
   });
   return response.result;
@@ -77,7 +49,4 @@ export async function validateTopologyInWorker(features: FeatureCollection) {
   return { valid: response.valid, issues: response.issues };
 }
 
-export function terminateGeoWorker() {
-  worker?.terminate();
-  worker = null;
-}
+

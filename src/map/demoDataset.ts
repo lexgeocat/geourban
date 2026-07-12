@@ -2,12 +2,7 @@ import Feature from 'ol/Feature';
 import Polygon from 'ol/geom/Polygon';
 import RBush from 'rbush';
 
-/* ================================================================
-   SpatialIndex — R-Tree (rbush 4.x) para busquedas O(log n)
-   ================================================================
-   Wrapper tipado de rbush para busquedas espaciales rapidas sobre
-   features vectoriales. Soporta insert/remove incremental.
-   ================================================================ */
+
 
 interface RBushItem {
   minX: number;
@@ -104,11 +99,4 @@ export function getOrCreateSpatialIndex(): SpatialIndex {
   return globalSpatialIndex;
 }
 
-export function getSpatialIndex(): SpatialIndex | null {
-  return globalSpatialIndex;
-}
 
-export function invalidateSpatialIndex(): void {
-  globalSpatialIndex?.clear();
-  globalSpatialIndex = null;
-}

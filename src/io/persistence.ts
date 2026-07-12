@@ -1,7 +1,7 @@
 import Dexie, { type Table } from 'dexie';
 import type { GeoUrbanProject } from './types';
 
-export class GeoUrbanDB extends Dexie {
+class GeoUrbanDB extends Dexie {
   projects!: Table<GeoUrbanProject & { id?: number; savedAt: string }, number>;
 
   constructor() {
@@ -12,9 +12,7 @@ export class GeoUrbanDB extends Dexie {
   }
 }
 
-export const db = new GeoUrbanDB();
-
-const AUTOSAVE_KEY = 'current';
+const db = new GeoUrbanDB();
 
 export async function autosaveProject(project: GeoUrbanProject) {
   const payload = {
@@ -28,17 +26,6 @@ export async function autosaveProject(project: GeoUrbanProject) {
     return existing.id;
   }
   return db.projects.add(payload);
-}
-
-export async function loadAutosavedProject(): Promise<GeoUrbanProject | null> {
-  const row = await db.projects.orderBy('updatedAt').reverse().first();
-  if (!row) return null;
-  const { id: _id, savedAt: _savedAt, ...project } = row;
-  return project;
-}
-
-export async function clearAutosave() {
-  await db.projects.clear();
 }
 
 export function startAutosave(getProject: () => GeoUrbanProject, intervalMs = 30_000) {
@@ -58,5 +45,3 @@ export function startAutosave(getProject: () => GeoUrbanProject, intervalMs = 30
     window.removeEventListener('beforeunload', onBeforeUnload);
   };
 }
-
-export { AUTOSAVE_KEY };

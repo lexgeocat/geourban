@@ -1,10 +1,7 @@
 import shp from 'shpjs';
 // @ts-expect-error shp-write no tiene tipos completos
 import shpwrite from 'shp-write';
-import GeoJSON from 'ol/format/GeoJSON.js';
 import { createEmptyProject, type GeoUrbanProject, type ImportResult } from './types';
-
-const geoJsonFormat = new GeoJSON();
 
 export async function importShp(files: FileList | File[]): Promise<ImportResult> {
   const list = Array.from(files);
@@ -56,9 +53,4 @@ function base64ToBlob(base64: string, mime: string) {
   return new Blob([bytes], { type: mime });
 }
 
-export function readOlFeaturesFromShpProject(project: GeoUrbanProject) {
-  return geoJsonFormat.readFeatures(project.data, {
-    featureProjection: 'EPSG:3857',
-    dataProjection: 'EPSG:4326',
-  });
-}
+

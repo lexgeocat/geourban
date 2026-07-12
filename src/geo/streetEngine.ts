@@ -1,9 +1,3 @@
-/**
- * Motor de geometría de calles — port de LOTES_SAI street-fillets.js.
- * Calcula fillets (arcos de empalme) en esquinas de calles y gestiona
- * el recorte de bordes con supresión de solapes.
- */
-
 import type { Street } from '../store/streetStore';
 
 // ─── Tipos ──────────────────────────────────────────────────────────
@@ -29,16 +23,6 @@ export interface StreetFillet {
   streetA: Street;
   /** Calle B */
   streetB: Street;
-}
-
-export interface StreetEdgeSegment {
-  /** Puntos del borde [from, to] */
-  from: [number, number];
-  to: [number, number];
-  /** Calle origen */
-  street: Street;
-  /** Lado: +1 o -1 */
-  side: number;
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────
@@ -220,86 +204,4 @@ export function filletArcPoints(fillet: StreetFillet, segments = 16): [number, n
   return points;
 }
 
-// ─── Calcular rectángulo de calle (borde izq + derecho) ────────────
 
-export function streetRectangle(street: Street): {
-  left: [[number, number], [number, number]];
-  right: [[number, number], [number, number]];
-  halfWidth: number;
-} {
-  const { start, end, widthM } = street;
-  const halfW = widthM / 2;
-  const n = norm(start, end);
-  return {
-    left: [add(start, scale(n, halfW)), add(end, scale(n, halfW))],
-    right: [add(start, scale(n, -halfW)), add(end, scale(n, -halfW))],
-    halfWidth: halfW,
-  };
-}
-
-// ─── Generar geometría de borde de calle con gaps para fillets ──────
-
-export function streetEdgeSegments(
-  street: Street,
-  side: number,
-  fillets: StreetFillet[],
-  _allStreets: Street[],
-): [number, number][] {
-  const halfW = street.widthM / 2;
-  const n = norm(street.start, street.end);
-  const offset = scale(n, side * halfW);
-  const pa: [number, number] = [street.start[0] + offset[0], street.start[1] + offset[1]];
-  const pb: [number, number] = [street.end[0] + offset[0], street.end[1] + offset[1]];
-  const segDir = normalize(sub(pb, pa));
-  const segLen = Math.hypot(pb[0] - pa[0], pb[1] - pa[1]);
-  if (segLen < 1e-6) return [];
-
-  // Encontrar zonas a suprimir (donde hay fillets o solapes con otras calles)
-  const suppress: [number, number][] = [];
-
-  // Supresión por fillets
-  for (const f of fillets) {
-    const isA = f.streetA === street;
-    const isB = f.streetB === street;
-    if (!isA && !isB) continue;
-    const mySide = isA ? (f.corner[0] - street.start[0] * n[0] - street.start[1] * n[1] > 0 ? 1 : -1) : side;
-    if (mySide !== side) continue;
-    const myTang = isA ? f.tangA : f.tangB;
-    const cornerProj = dot(sub(f.corner, pa), segDir);
-    const tangProj = dot(sub(myTang, pa), segDir);
-    const t0 = Math.max(0, Math.min(tangProj, cornerProj) - 1);
-    const t1 = Math.min(segLen, Math.max(tangProj, cornerProj) + 1);
-    if (t1 > t0) suppress.push([t0, t1]);
-  }
-
-  // Generar segmentos visibles
-  suppress.sort((a, b) => a[0] - b[0]);
-  const merged: [number, number][] = [];
-  for (const s of suppress) {
-    if (merged.length > 0 && s[0] <= merged[merged.length - 1][1] + 1) {
-      merged[merged.length - 1][1] = Math.max(merged[merged.length - 1][1], s[1]);
-    } else {
-      merged.push(s);
-    }
-  }
-
-  const result: [number, number][] = [];
-  let cur = 0;
-  for (const [g0, g1] of merged) {
-    if (g0 > cur + 0.5) {
-      result.push([
-        [pa[0] + segDir[0] * cur, pa[1] + segDir[1] * cur],
-        [pa[0] + segDir[0] * g0, pa[1] + segDir[1] * g0],
-      ]);
-    }
-    cur = g1;
-  }
-  if (cur < segLen - 0.5) {
-    result.push([
-      [pa[0] + segDir[0] * cur, pa[1] + segDir[1] * cur],
-      [pa[0] + segDir[0] * segLen, pa[1] + segDir[1] * segLen],
-    ]);
-  }
-
-  return result;
-}

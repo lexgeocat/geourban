@@ -1,15 +1,8 @@
-/**
- * Subdivisión de manzanos — port quirúrgico de LOTES_SAI lot-subdivision.js
- * y manual-slice.js. Trabaja sobre coordenadas EPSG:3857 (metros).
- *
- * Métodos:
- *  - auto: PCA axis + binary search (160 iter) + narrow detection + dual-half
- *  - exact: PCA axis + binary search (160 iter) + single pass
- *  - manual-slice: bisección con frente seleccionado (200 iter)
- */
+
 import type { Polygon as GeoJsonPolygon, MultiPolygon, Feature as GeoJsonFeature } from 'geojson';
 import {
   type Pt,
+  type CutResult,
   type LotResult,
   type SliceResult,
   polyArea,
@@ -548,7 +541,7 @@ export function sliceBisectManzano(
     }
   }
 
-  let bestLo: number, bestHi: number;
+  let bestLo = undefined as number | undefined, bestHi = undefined as number | undefined;
   if (crosses.length === 0) {
     let bestSample = samples[0], bestErr = Infinity;
     for (const s of samples) {
@@ -601,7 +594,7 @@ export function sliceBisectManzano(
 
 // ─── sliceBisectLote (LOTES_SAI manual-slice.js:404-580) ────────────
 
-export function sliceBisectLote(
+function sliceBisectLote(
   wp: Pt[],
   targetAreaM2: number,
   cutDirX: number,

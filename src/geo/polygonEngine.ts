@@ -135,7 +135,7 @@ function polysOverlap(a: Pt[], b: Pt[]): boolean {
 }
 
 /** Área aproximada de superposición entre dos polígonos (clip del primero contra el segundo) */
-export function approxOverlapArea(polyA: Pt[], polyB: Pt[]): number {
+function approxOverlapArea(polyA: Pt[], polyB: Pt[]): number {
   let clipped = polyA.map((p) => [p[0], p[1]]) as Pt[];
   const n = polyB.length;
   for (let i = 0; i < n; i++) {

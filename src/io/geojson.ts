@@ -40,10 +40,6 @@ export function parseGeoJson(raw: string, name?: string): GeoUrbanProject {
   return project;
 }
 
-export function featuresToGeoJson(features: FeatureCollection): string {
-  return JSON.stringify(features, null, 2);
-}
-
 export function readOlFeaturesFromProject(project: GeoUrbanProject) {
   return geoJsonFormat.readFeatures(project.data, {
     featureProjection: 'EPSG:3857',
@@ -70,10 +66,4 @@ export function downloadTextFile(filename: string, content: string, mime = 'appl
   URL.revokeObjectURL(url);
 }
 
-export async function readFileAsText(file: File) {
-  return file.text();
-}
 
-export async function readFileAsArrayBuffer(file: File) {
-  return file.arrayBuffer();
-}

@@ -16,9 +16,6 @@ import { UTM_19S } from '../geo/customProjections';
 
 const modeLabels: Record<string, { label: string; color: string }> = {
   select: { label: 'SELECCIÓN', color: 'var(--cad-text-dim)' },
-  pan: { label: 'MOVER', color: 'var(--cad-text-dim)' },
-  polygon: { label: 'POLÍGONO', color: 'var(--cad-accent)' },
-  line: { label: 'LÍNEA', color: 'var(--cad-accent)' },
   none: { label: 'INACTIVO', color: 'var(--cad-text-muted)' },
 };
 

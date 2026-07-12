@@ -6,7 +6,6 @@ import VectorSource from 'ol/source/Vector.js';
 import GeoJSON from 'ol/format/GeoJSON.js';
 import { area, length, lineString, polygon, along, centroid } from '@turf/turf';
 import type {
-  FeatureCollection,
   LineString as GeoJsonLineString,
   Polygon as GeoJsonPolygon,
 } from 'geojson';
@@ -174,16 +173,4 @@ export function formatMetricArea(valueM2?: number) {
   return `${(valueM2 ?? 0).toFixed(2)} m²`;
 }
 
-export function featureCollectionMetricsSummary(collection: FeatureCollection) {
-  let totalArea = 0;
-  let totalLength = 0;
-  collection.features.forEach((feature) => {
-    if (feature.geometry?.type === 'Polygon') {
-      totalArea += Math.abs(area(feature.geometry));
-    }
-    if (feature.geometry?.type === 'LineString') {
-      totalLength += length(feature, { units: 'meters' });
-    }
-  });
-  return { totalArea, totalLength };
-}
+
