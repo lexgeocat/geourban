@@ -11,13 +11,22 @@ import Draw from 'ol/interaction/Draw.js';
 import Modify from 'ol/interaction/Modify.js';
 import Snap from 'ol/interaction/Snap.js';
 import Select from 'ol/interaction/Select.js';
+import DragPan from 'ol/interaction/DragPan.js';
 import SafeTranslate from './safeTranslate';
 import { unByKey } from 'ol/Observable.js';
 import { toLonLat, fromLonLat } from 'ol/proj.js';
-import { Fill, Stroke, Style, Circle as CircleStyle } from 'ol/style.js';
+import { Fill, Stroke, Style, Circle as CircleStyle, RegularShape } from 'ol/style.js';
 import Feature from 'ol/Feature.js';
 import Point from 'ol/geom/Point.js';
+import LineString from 'ol/geom/LineString.js';
+import Polygon from 'ol/geom/Polygon.js';
+import MultiPoint from 'ol/geom/MultiPoint.js';
 import type Geometry from 'ol/geom/Geometry.js';
+
+// Función para calcular el zoom a partir de la resolución (usada en styleFactory.ts)
+function getZoomFromResolution(resolution: number) {
+  return Math.log2(156543.03392804097 / resolution);
+}
 import { click as clickCondition, pointerMove } from 'ol/events/condition.js';
 import { useLayerStore } from '../store/layerStore';
 import { useMapStore } from '../store/mapStore';
@@ -26,9 +35,33 @@ import { useHistoryStore } from '../store/historyStore';
 import { useSelectionStore } from '../store/selectionStore';
 import { updateFeatureMetrics } from '../geo/metrics';
 import { findSnap, createSnapPoints, SNAP_COLORS } from './advancedSnap';
-import { createDemoLayers } from './demoLayers';
 import { BASE_MAP_DEFS } from './baseMaps';
-import { createMeasurementStyle } from './styleFactory';
+import { createMeasurementStyle, drawSegmentLabels, createLiveDrawingLabelStyle } from './styleFactory';
+import { useStreetStore } from '../store/streetStore';
+import { recomputeManzanos } from '../store/mapStore';
+import { computeStreetFillets, filletArcPoints } from '../geo/streetEngine';
+import { polyArea } from '../geo/polygonEngine';
+import { getOrCreateSpatialIndex } from './demoDataset';
+import { cadBaseMapBundles } from './cadGridLayer';
+import LayerGroup from 'ol/layer/Group.js';
+
+// ─── willReadFrequently: parche global único ─────────────────────────────
+// OpenLayers usa getImageData internamente para hit-testing en capas Canvas2D.
+// Sin willReadFrequently=true el browser emite una advertencia de performance
+// cada vez que se leen píxeles (múltiples readback operations).
+if (!(HTMLCanvasElement.prototype as any).__willReadFreqPatched) {
+  const origGetContext = HTMLCanvasElement.prototype.getContext;
+  (HTMLCanvasElement.prototype as any).__willReadFreqPatched = true;
+  HTMLCanvasElement.prototype.getContext = function (this: HTMLCanvasElement, type: string, ...args: any[]) {
+    if (type === '2d' || type === 'bitmaprenderer') {
+      const attrs = (args[0] || {}) as CanvasRenderingContext2DSettings;
+      if (!attrs.willReadFrequently) {
+        args[0] = { ...attrs, willReadFrequently: true };
+      }
+    }
+    return origGetContext.call(this, type, ...args);
+  } as typeof HTMLCanvasElement.prototype.getContext;
+}
 
 export default function MapView() {
   const mapDivRef = useRef<HTMLDivElement>(null);
@@ -37,12 +70,13 @@ export default function MapView() {
   const baseLayerCleanupRef = useRef<(() => void) | null>(null);
   const baseMapInitializedRef = useRef(false);
   const baseMapEffectPrimedRef = useRef(false);
-  const demoLayersRef = useRef<ReturnType<typeof createDemoLayers> | null>(null);
   const measurementLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
+  const drawLayerRef = useRef<WebGLVectorLayer | null>(null);
   const drawSrcRef = useRef<VectorSource | null>(null);
+  const streetLayerSrcRef = useRef<VectorSource | null>(null);
+  const gridSnapSrcRef = useRef<VectorSource | null>(null);
   const selectInteractionRef = useRef<Select | null>(null);
   const baseMapId = useLayerStore((s) => s.baseMap);
-  const demoVisible = useLayerStore((s) => s.visibility.demo);
   const measurementsVisible = useLayerStore((s) => s.visibility.measurements);
   const viewConfig = useMapStore((s) => s.viewConfig);
   const drawMode = useDrawStore().mode;
@@ -55,24 +89,44 @@ export default function MapView() {
     const baseLayer = def.create() as BaseLayer;
     baseLayerRef.current = baseLayer;
 
-    // --- Capa de demo: 3 sub-capas WebGL (LOD 0/1/2) ---
-    const demoLayers = createDemoLayers(100);
-    demoLayersRef.current = demoLayers;
-    const demoLayerList = [demoLayers.lod2, demoLayers.lod1, demoLayers.lod0];
-
     // --- Capa de dibujo persistente (features del usuario) ---
     const drawSrc = new VectorSource();
     drawSrcRef.current = drawSrc;
     useMapStore.getState().setDrawSource(drawSrc);
+    // WebGL layer: fill/stroke base para TODOS los features.
+    // Manzanos con colores cíclicos vía match expression (reemplaza postrender fill).
+    const MZN_COLORS_22 = [
+      'rgba(88,166,255,0.13)', 'rgba(63,185,80,0.13)', 'rgba(245,158,11,0.13)',
+      'rgba(239,68,68,0.13)', 'rgba(139,92,246,0.13)', 'rgba(236,72,153,0.13)',
+      'rgba(20,184,166,0.13)', 'rgba(249,115,22,0.13)', 'rgba(6,182,212,0.13)',
+      'rgba(132,204,22,0.13)',
+    ];
+    const MZN_COLORS_STR = [
+      '#58a6ff', '#3fb950', '#f59e0b', '#ef4444', '#8b5cf6',
+      '#ec4899', '#14b8a6', '#f97316', '#06b6d4', '#84cc16',
+    ];
+    const mznFillExpr = ['match', ['get', 'colorIdx'],
+      0, MZN_COLORS_22[0], 1, MZN_COLORS_22[1], 2, MZN_COLORS_22[2],
+      3, MZN_COLORS_22[3], 4, MZN_COLORS_22[4], 5, MZN_COLORS_22[5],
+      6, MZN_COLORS_22[6], 7, MZN_COLORS_22[7], 8, MZN_COLORS_22[8],
+      9, MZN_COLORS_22[9], 'rgba(16,185,129,0.30)',
+    ] as any[];
+    const mznStrokeExpr = ['match', ['get', 'colorIdx'],
+      0, MZN_COLORS_STR[0], 1, MZN_COLORS_STR[1], 2, MZN_COLORS_STR[2],
+      3, MZN_COLORS_STR[3], 4, MZN_COLORS_STR[4], 5, MZN_COLORS_STR[5],
+      6, MZN_COLORS_STR[6], 7, MZN_COLORS_STR[7], 8, MZN_COLORS_STR[8],
+      9, MZN_COLORS_STR[9], '#10b981',
+    ] as any[];
     const drawLayer = new WebGLVectorLayer({
       source: drawSrc,
       disableHitDetection: true,
       style: {
-        'fill-color': 'rgba(16, 185, 129, 0.30)',
-        'stroke-color': '#10b981',
+        'fill-color': ['case', ['==', ['get', 'type'], 'manzana'], mznFillExpr, 'rgba(16,185,129,0.30)'],
+        'stroke-color': ['case', ['==', ['get', 'type'], 'manzana'], mznStrokeExpr, '#10b981'],
         'stroke-width': 2,
       },
     });
+    drawLayerRef.current = drawLayer;
     const measurementLayer = new VectorLayer({
       source: drawSrc,
       visible: measurementsVisible,
@@ -81,9 +135,33 @@ export default function MapView() {
     });
     measurementLayerRef.current = measurementLayer;
 
+    // --- Capa de calles ---
+    const streetLayerSrc = new VectorSource();
+    streetLayerSrcRef.current = streetLayerSrc;
+    const streetLayer = new VectorLayer({
+      source: streetLayerSrc,
+      style: new Style({
+        stroke: new Stroke({
+          color: 'rgba(255, 166, 87, 0.85)',
+          width: 3,
+          lineCap: 'round',
+        }),
+      }),
+    });
+
+    // --- Capa Canvas2D dedicada para postrender (labels, cotas, fillets) ---
+    // Esta capa siempre visible garantiza que el postrender tenga un
+    // CanvasRenderingContext2D válido, incluso si el usuario oculta las
+    // mediciones o la capa de calles.
+    const postrenderLayer = new VectorLayer({
+      source: new VectorSource(),
+      style: () => null,
+      renderOrder: null,
+    });
+
     const map = new Map({
       target: mapDivRef.current!,
-      layers: [baseLayer, ...demoLayerList, drawLayer, measurementLayer],
+      layers: [baseLayer, drawLayer, measurementLayer, streetLayer, postrenderLayer],
       view: new View({
         center: fromLonLat(viewConfig.center),
         zoom: viewConfig.zoom,
@@ -95,6 +173,267 @@ export default function MapView() {
         }),
       ]),
     });
+
+    // Reemplazar el DragPan por defecto (left-click) con uno de click derecho+medio
+    // 1. Encontrar y remover el DragPan por defecto
+    const interactions = map.getInteractions();
+    const toRemove: any[] = [];
+    interactions.forEach((interaction) => {
+      if (interaction instanceof DragPan) {
+        toRemove.push(interaction);
+      }
+    });
+    toRemove.forEach((interaction) => interactions.remove(interaction));
+
+    // 2. Agregar DragPan con click derecho (button 2) o click medio (button 1)
+    const dragPan = new DragPan({
+      condition: (event) => {
+        const oe = event.originalEvent;
+        if (!oe || typeof oe.button !== 'number') return false;
+        return oe.button === 1 || oe.button === 2;
+      },
+    });
+    interactions.push(dragPan);
+
+    // Prevenir menu contextual del click derecho en el mapa
+    map.getViewport().addEventListener('contextmenu', (e) => e.preventDefault());
+
+    // Cursor "manito" (grab) cuando se hace pan con click derecho o medio
+    const viewport = map.getViewport();
+    const onPointerDown = (e: PointerEvent) => {
+      if (e.button === 1 || e.button === 2) {
+        viewport.style.cursor = 'grabbing';
+      }
+    };
+    const onPointerUp = () => {
+      viewport.style.cursor = '';
+    };
+    viewport.addEventListener('pointerdown', onPointerDown);
+    viewport.addEventListener('pointerup', onPointerUp);
+    viewport.addEventListener('pointerleave', onPointerUp);
+
+    // ─── Post-render cache (performance) ─────────────────────────────
+    const MZN_COLORS = [
+      '#58a6ff', '#3fb950', '#f59e0b', '#ef4444', '#8b5cf6',
+      '#ec4899', '#14b8a6', '#f97316', '#06b6d4', '#84cc16',
+    ];
+    const renderCache = {
+      lastZoom: -1,
+      lastFeatureCount: -1,
+      lastStreetHash: '',
+      cachedFillets: [] as ReturnType<typeof computeStreetFillets>,
+      cachedMznAreas: new globalThis.Map<string, number>(),
+      dirty: true,
+    };
+    function streetsHash(streets: any[]): string {
+      return streets.map((s) => `${s.id}:${s.start[0]},${s.start[1]}-${s.end[0]},${s.end[1]}:${s.widthM}`).join('|');
+    }
+
+    // Marcar dirty cuando cambian features
+    const onFeatureChange = () => { renderCache.dirty = true; };
+    drawSrc.on('addfeature', onFeatureChange);
+    drawSrc.on('removefeature', onFeatureChange);
+    drawSrc.on('change', onFeatureChange);
+
+    // --- Post-render para dibujar acotaciones manualmente (LOTES_SAI style) ---
+    const postRenderHandler = (event: any) => {
+      const ctx = event.context as CanvasRenderingContext2D | undefined;
+      // ctx es undefined cuando el mapa usa solo renderer WebGL (WebGLVectorLayer).
+      // Como dibujamos labels Canvas2D, necesitamos postrender sobre una capa Canvas.
+      // Si no hay contexto, nos rendimos temprano.
+      if (!ctx) return;
+      const resolution = map.getView().getResolution() ?? 1;
+      const zoom = getZoomFromResolution(resolution);
+      const features = drawSrcRef.current?.getFeatures() ?? [];
+      const canvasScale = Math.max(0.2, Math.min(1.0, (zoom - 12) / 8));
+
+      // Detectar si algo cambió desde el último frame
+      const currentFeatureCount = features.length;
+      const streets = useStreetStore.getState().streets;
+      const currentStreetHash = streetsHash(streets);
+      const featuresChanged = currentFeatureCount !== renderCache.lastFeatureCount;
+      const streetsChanged = currentStreetHash !== renderCache.lastStreetHash;
+
+      // Memoizar fillets: solo recalcular cuando calles cambian
+      if (streetsChanged || renderCache.dirty) {
+        renderCache.cachedFillets = computeStreetFillets(streets);
+        renderCache.lastStreetHash = currentStreetHash;
+      }
+
+      // Pre-computar áreas de manzanos (solo cuando features cambian)
+      if (featuresChanged || renderCache.dirty) {
+        renderCache.cachedMznAreas.clear();
+        for (const f of features) {
+          if (f.get('type') === 'manzana') {
+            const geom = f.getGeometry();
+            if (geom instanceof Polygon) {
+              const coords = geom.getCoordinates()[0];
+              if (coords && coords.length >= 3) {
+                const area = polyArea(coords.map((c: number[]) => [c[0], c[1]] as [number, number]));
+                renderCache.cachedMznAreas.set(f.getId() as string, area);
+              }
+            }
+          }
+        }
+      }
+
+      renderCache.lastZoom = zoom;
+      renderCache.lastFeatureCount = currentFeatureCount;
+      renderCache.dirty = false;
+
+      // ─── Dibujar labels de manzanos + cotas (fill/stroke va en WebGL) ───
+      for (let fi = 0; fi < features.length; fi++) {
+        const feature = features[fi];
+        const geometry = feature.getGeometry();
+        if (!geometry) continue;
+
+        const isManzana = feature.get('type') === 'manzana';
+        const colorIdx = feature.get('colorIdx') ?? 0;
+
+        if (geometry instanceof Polygon) {
+          const coordinates = geometry.getCoordinates()[0] ?? [];
+          if (coordinates.length < 3) continue;
+
+          // Etiqueta del manzano (Mzo. N + área) — solo texto, el fill va en WebGL
+          if (isManzana && zoom > 14) {
+            const centroid = coordinates.reduce(
+              (acc: number[], c: number[]) => [acc[0] + c[0] / coordinates.length, acc[1] + c[1] / coordinates.length],
+              [0, 0]
+            );
+            const cenPx = map.getPixelFromCoordinate(centroid);
+            if (cenPx) {
+              const color = MZN_COLORS[colorIdx % MZN_COLORS.length];
+              const fs = Math.max(11, Math.min(16, 11.5 * zoom / 18));
+              ctx.save();
+              ctx.font = `bold ${fs}px Courier New`;
+              ctx.textAlign = 'center';
+              ctx.textBaseline = 'middle';
+              ctx.fillStyle = color + 'dd';
+              ctx.fillText(`Mzo. ${colorIdx + 1}`, cenPx[0], cenPx[1] - fs * 0.5);
+              if (zoom > 16) {
+                const cachedArea = renderCache.cachedMznAreas.get(feature.getId() as string);
+                const fs2 = Math.max(9, Math.min(13, 10 * zoom / 18));
+                ctx.font = `${fs2}px Courier New`;
+                ctx.fillStyle = 'rgba(139, 148, 158, 0.7)';
+                ctx.fillText(`${(cachedArea ?? 0).toFixed(0)} m²`, cenPx[0], cenPx[1] + fs2 * 0.6);
+              }
+              ctx.restore();
+            }
+          }
+
+          // Cotas del segmento
+          if (coordinates.length >= 2) {
+            drawSegmentLabels(ctx, coordinates, canvasScale, isManzana, resolution);
+          }
+        } else if (geometry instanceof LineString) {
+          const coordinates = geometry.getCoordinates() ?? [];
+          if (coordinates.length >= 2) {
+            drawSegmentLabels(ctx, coordinates, canvasScale, false, resolution);
+          }
+        }
+      }
+
+      // ─── Calles (con fillets cacheados) ───
+      const streetVisible = useStreetStore.getState().visible;
+      if (streetVisible && streets.length > 0) {
+        const fillets = renderCache.cachedFillets;
+        const toPx = (coord: [number, number]): [number, number] => {
+          const px = map.getPixelFromCoordinate(coord);
+          return px ? [px[0], px[1]] : [0, 0];
+        };
+
+        for (let si = 0; si < streets.length; si++) {
+          const s = streets[si];
+          const sPx = toPx(s.start);
+          const ePx = toPx(s.end);
+          const dx = ePx[0] - sPx[0], dy = ePx[1] - sPx[1];
+          const len = Math.hypot(dx, dy);
+          if (len < 1) continue;
+          const nx = -dy / len, ny = dx / len;
+          const halfPx = (s.widthM / 2) / resolution;
+
+          // Cuerpo de calle
+          ctx.save();
+          ctx.fillStyle = 'rgba(247, 129, 102, 0.08)';
+          ctx.beginPath();
+          ctx.moveTo(sPx[0] + nx * halfPx, sPx[1] + ny * halfPx);
+          ctx.lineTo(ePx[0] + nx * halfPx, ePx[1] + ny * halfPx);
+          ctx.lineTo(ePx[0] - nx * halfPx, ePx[1] - ny * halfPx);
+          ctx.lineTo(sPx[0] - nx * halfPx, sPx[1] - ny * halfPx);
+          ctx.closePath();
+          ctx.fill();
+          ctx.restore();
+
+          // Bordes sólidos
+          ctx.save();
+          ctx.strokeStyle = 'rgba(247, 129, 102, 0.55)';
+          ctx.lineWidth = 1.5;
+          ctx.lineCap = 'round';
+          for (const side of [1, -1]) {
+            const ox = nx * halfPx * side;
+            const oy = ny * halfPx * side;
+            ctx.beginPath();
+            ctx.moveTo(sPx[0] + ox, sPx[1] + oy);
+            ctx.lineTo(ePx[0] + ox, ePx[1] + oy);
+            ctx.stroke();
+          }
+          ctx.restore();
+
+          // Eje central punteado
+          ctx.save();
+          ctx.strokeStyle = 'rgba(247, 129, 102, 0.75)';
+          ctx.lineWidth = 1;
+          ctx.setLineDash([7, 5]);
+          ctx.beginPath();
+          ctx.moveTo(sPx[0], sPx[1]);
+          ctx.lineTo(ePx[0], ePx[1]);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.restore();
+
+          // Etiquetas
+          if (zoom > 12) {
+            const midPx: [number, number] = [(sPx[0] + ePx[0]) / 2, (sPx[1] + ePx[1]) / 2];
+            let ang = Math.atan2(dy, dx);
+            if (ang > Math.PI / 2 || ang < -Math.PI / 2) ang += Math.PI;
+            const fs1 = Math.max(9, Math.min(13, 10 * zoom / 18));
+            const fs2 = Math.max(8, Math.min(11, 9 * zoom / 18));
+            ctx.save();
+            ctx.translate(midPx[0], midPx[1]);
+            ctx.rotate(ang);
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.font = `bold ${fs1}px Courier New`;
+            ctx.fillStyle = 'rgba(247, 129, 102, 0.85)';
+            ctx.fillText(`--- ${s.name} (Ancho de Vía ${s.widthM.toFixed(2)}m) ---`, 0, -fs1 * 0.8);
+            ctx.font = `${fs2}px Courier New`;
+            ctx.fillStyle = 'rgba(247, 129, 102, 0.55)';
+            ctx.fillText('E   J   E    D   E     V   Í   A', 0, fs2 * 0.8);
+            ctx.restore();
+          }
+        }
+
+        // Fillets cacheados
+        ctx.save();
+        ctx.strokeStyle = 'rgba(247, 129, 102, 0.65)';
+        ctx.lineWidth = 2;
+        ctx.lineCap = 'round';
+        for (const fillet of fillets) {
+          const arcPts = filletArcPoints(fillet, 16);
+          if (arcPts.length < 2) continue;
+          const firstPx = toPx(arcPts[0]);
+          ctx.beginPath();
+          ctx.moveTo(firstPx[0], firstPx[1]);
+          for (let i = 1; i < arcPts.length; i++) {
+            const px = toPx(arcPts[i]);
+            ctx.lineTo(px[0], px[1]);
+          }
+          ctx.stroke();
+        }
+        ctx.restore();
+      };
+    };
+    postrenderLayer.on('postrender', postRenderHandler);
 
     // --- Live cursor coordinates & zoom ---
     const setCursorCoords = useMapStore.getState().setCursorCoords;
@@ -110,14 +449,12 @@ export default function MapView() {
       const z = view.getZoom();
       if (z !== undefined) {
         setZoom(z);
-        demoLayers.updateVisibility(z);
       }
     };
     view.on('change:resolution', onZoomChange);
     const initialZoom = view.getZoom();
     if (initialZoom !== undefined) {
       setZoom(initialZoom);
-      demoLayers.updateVisibility(initialZoom);
     }
 
     // --- Indicador visual de snap (capa overlay, agregada al final) ---
@@ -134,28 +471,63 @@ export default function MapView() {
     });
     map.addLayer(snapIndicatorLayer);
 
+    // Pre-crear estilos de snap (uno por tipo, reutilizados en cada frame)
+    const snapStyles = new globalThis.Map<string, Style>();
+    for (const [type, color] of Object.entries(SNAP_COLORS)) {
+      snapStyles.set(type, new Style({
+        image: new CircleStyle({
+          radius: 6,
+          fill: new Fill({ color }),
+          stroke: new Stroke({ color: '#fff', width: 1.5 }),
+        }),
+      }));
+    }
+
+    // Spatial Index para snap O(log n)
+    const spatialIndex = getOrCreateSpatialIndex();
+    spatialIndex.load(drawSrc.getFeatures() as Feature<Polygon>[]);
+
+    // Actualizar índice cuando cambian features
+    const onSpatialInsert = (evt: any) => {
+      if (evt.feature instanceof Feature) spatialIndex.insert(evt.feature as Feature<Polygon>);
+    };
+    const onSpatialRemove = (evt: any) => {
+      if (evt.feature instanceof Feature) spatialIndex.remove(evt.feature as Feature<Polygon>);
+    };
+    drawSrc.on('addfeature', onSpatialInsert);
+    drawSrc.on('removefeature', onSpatialRemove);
+
+    // Grid snap source (del CAD base map)
+    // Buscar el grid snap source en el mapa
+    map.getLayers().forEach((layer) => {
+      if (layer instanceof LayerGroup) {
+        const bundle = (cadBaseMapBundles as any).get(layer);
+        if (bundle?.snapSource) gridSnapSrcRef.current = bundle.snapSource;
+      }
+    });
+
     const pmKey = map.on('pointermove', (evt) => {
       const mode = useDrawStore.getState().mode;
-      // Indicador solo activo en modos donde se usa snap (dibujo)
-      if (mode !== 'polygon' && mode !== 'line') {
+      if (mode === 'polyline' || mode === 'erase') {
         snapIndicatorSrc.clear();
         return;
       }
       const ds = drawSrcRef.current;
       if (!ds) return;
-      const result = findSnap(evt.coordinate, ds);
+
+      // Snap a features del proyecto
+      let result = findSnap(evt.coordinate, ds, 5, undefined, spatialIndex);
+
+       // Snap a grilla (si está habilitada y el snap de features no encontró nada mejor)
+       if (useLayerStore.getState().visibility.gridSnap && gridSnapSrcRef.current) {
+         const gridResult = findSnap(evt.coordinate, gridSnapSrcRef.current, 8);
+         if (gridResult && (!result || gridResult.dist < result.dist)) {
+          result = gridResult;
+        }
+      }
       snapIndicatorSrc.clear();
       if (result) {
-        const color = SNAP_COLORS[result.type];
-        snapIndicatorLayer.setStyle(
-          new Style({
-            image: new CircleStyle({
-              radius: 6,
-              fill: new Fill({ color }),
-              stroke: new Stroke({ color: '#fff', width: 1.5 }),
-            }),
-          })
-        );
+        snapIndicatorLayer.setStyle(snapStyles.get(result.type) ?? snapStyles.get('vertex')!);
         snapIndicatorSrc.addFeature(
           new Feature({
             geometry: new Point(result.point),
@@ -177,6 +549,12 @@ export default function MapView() {
       baseLayerCleanupRef.current?.();
       baseLayerCleanupRef.current = null;
       unByKey(pmKey);
+      postrenderLayer.un('postrender', postRenderHandler);
+      drawSrc.un('addfeature', onFeatureChange);
+      drawSrc.un('removefeature', onFeatureChange);
+      drawSrc.un('change', onFeatureChange);
+      drawSrc.un('addfeature', onSpatialInsert);
+      drawSrc.un('removefeature', onSpatialRemove);
       useMapStore.getState().setMap(null);
       useMapStore.getState().setDrawSource(null);
       const m = mapInstanceRef.current;
@@ -213,21 +591,6 @@ export default function MapView() {
     }
   }, [baseMapId]);
 
-  // --- Visibilidad de la capa de demo (10K lotes) ---
-  useEffect(() => {
-    const layers = demoLayersRef.current;
-    const map = mapInstanceRef.current;
-    if (!layers || !map) return;
-    if (demoVisible) {
-      const z = map.getView().getZoom() ?? 17;
-      layers.updateVisibility(z);
-    } else {
-      layers.lod0.setVisible(false);
-      layers.lod1.setVisible(false);
-      layers.lod2.setVisible(false);
-    }
-  }, [demoVisible]);
-
   // --- Visibilidad de cotas automáticas ---
   useEffect(() => {
     if (measurementLayerRef.current) {
@@ -241,102 +604,193 @@ export default function MapView() {
     const src = drawSrcRef.current;
     if (!map || !src) return;
 
+    // Cursor: crosshair (+) tipo AutoCAD solo en modos de dibujo.
+    const viewport = map.getViewport();
+    const previousCursor = viewport.getAttribute('data-cursor');
+    if (drawMode === 'polyline') {
+      viewport.setAttribute('data-cursor', drawMode);
+    } else {
+      viewport.removeAttribute('data-cursor');
+    }
+
     const toClean: (() => void)[] = [];
 
- // Limpia interaccion Select previa antes de crear una nueva
+    // Helper: dispara redraw de AMBAS capas (WebGL + Canvas). La
+    // measurementLayer (Canvas) es la que usa OL para hit-test, pero
+    // la drawLayer (WebGL) es la que el usuario VE como el poligono
+    // "guardado". Sin forzar el redraw de la WebGL, las ediciones
+    // (modify, translate) no se reflejan visualmente hasta el
+    // siguiente zoom/pan. Llamamos changed() en ambas.
+    const refreshLayers = () => {
+      measurementLayerRef.current?.changed();
+      drawLayerRef.current?.changed();
+    };
+
+    // Limpia interaccion Select previa antes de crear una nueva
     if (selectInteractionRef.current) {
       map.removeInteraction(selectInteractionRef.current);
       selectInteractionRef.current = null;
     }
 
-    // Las capas WebGL (drawLayer, demoLayers) tienen disableHitDetection:true
-    // y NO soportan forEachFeatureAtCoordinate. Select/Translate deben
-    // restringirse SOLO a measurementLayer (capa Canvas normal), o crashean
-    // al mover el mouse. Se usa un array explicito (no funcion) para maxima
-    // compatibilidad con el hit-detection interno de OL.
+    // La capa WebGL drawLayer tiene disableHitDetection:true y NO soporta
+    // forEachFeatureAtCoordinate. Select/Modify/Translate deben restringirse
+    // SOLO a measurementLayer (capa Canvas normal), o crashean al mover el
+    // mouse. Se usa un array explicito (no funcion) para maxima compatibilidad
+    // con el hit-detection interno de OL.
     const hitDetectionLayers = measurementLayerRef.current
       ? [measurementLayerRef.current]
       : [];
 
-    // Modo SELECT: Select (multi con Shift) + Modify + Translate
-    if (drawMode === 'select') {
+    // Helper: maneja el "select" event de OL de manera CAD-like.
+    //   click normal      -> reemplaza la seleccion por el feature clickeado
+    //   shift+click       -> toggle (agrega o quita)
+    //   click en vacio    -> limpia la seleccion
+    // Se usa tanto en modo 'select' como en 'edit' (en edit, click en el
+    // exterior limpia la seleccion y permite empezar de nuevo).
+    const wireSelectBehavior = (select: Select) => {
+      select.on('select', (evt) => {
+        const oe = (evt as any).originalEvent as MouseEvent | undefined;
+        const shift = !!oe?.shiftKey;
+        const selected = select.getFeatures().getArray();
+        const clickedFeature =
+          ((evt as any).selected?.[0] as Feature<Geometry> | undefined) ??
+          (selected[selected.length - 1] as Feature<Geometry> | undefined);
+
+        // click en el vacio: limpia la seleccion
+        if (selected.length === 0) {
+          useSelectionStore.getState().clear();
+          refreshLayers();
+          return;
+        }
+
+        // Construye la nueva lista de ids a partir de los features
+        // actualmente seleccionados por el Select de OL.
+        const nextIds: Array<string | number> = [];
+        let primary: string | number | null = null;
+        selected.forEach((f) => {
+          const id = f.getId();
+          if (id !== undefined && id !== null) {
+            nextIds.push(id as string | number);
+            if (primary === null) primary = id as string | number;
+          }
+        });
+
+        if (shift && clickedFeature) {
+          // Shift+click sobre un feature que ya estaba -> toggle fuera.
+          // El Select de OL con multi:false NO acumula por si solo; lo
+          // hacemos manualmente leyendo el estado previo de selectionStore.
+          const clickedId = clickedFeature.getId();
+          if (clickedId !== undefined && clickedId !== null) {
+            const prev = useSelectionStore.getState().selectedIds;
+            if (prev.has(clickedId)) {
+              // ya estaba: lo quitamos
+              useSelectionStore.getState().remove(clickedId as string | number);
+              // Y como OL solo deja UNO en selected, sincronizamos el resto
+              const remaining: Array<string | number> = [];
+              prev.forEach((id) => {
+                if (id !== clickedId) remaining.push(id as string | number);
+              });
+              select.getFeatures().clear();
+              remaining.forEach((id) => {
+                const f = src.getFeatureById(id);
+                if (f) select.getFeatures().push(f);
+              });
+              useSelectionStore.setState({
+                primaryId: remaining.length > 0 ? (remaining[0] as string | number) : null,
+              });
+              refreshLayers();
+              return;
+            }
+            // no estaba: lo agregamos al acumulador
+            useSelectionStore.getState().add(clickedId as string | number);
+            // OL ya lo puso en selected; no hace falta tocar select.getFeatures()
+            useSelectionStore.setState({ primaryId: clickedId as string | number });
+            refreshLayers();
+            return;
+          }
+        }
+
+        // click normal: reemplazar la seleccion
+        const prev = useSelectionStore.getState().selectedIds;
+        prev.forEach((id) => useSelectionStore.getState().remove(id));
+        nextIds.forEach((id) => useSelectionStore.getState().add(id));
+        useSelectionStore.setState({ primaryId: primary });
+        refreshLayers();
+      });
+    };
+
+    // === Modo SELECT: solo click-to-select (sin edicion implicita) ===
+    if (drawMode === 'select' || drawMode === 'edit') {
       const select = new Select({
         layers: hitDetectionLayers,
         style: new Style({
           fill: new Fill({ color: 'rgba(0, 212, 255, 0.15)' }),
           stroke: new Stroke({ color: '#00d4ff', width: 2.5 }),
         }),
-        multi: true,
+        // multi:false -> click normal REEMPLAZA la seleccion (comportamiento
+        // CAD). El shift+click se maneja en wireSelectBehavior().
+        multi: false,
         condition: (event) => clickCondition(event) && !pointerMove(event),
       });
-
-      // Re-sincroniza selectionStore <-> Select cada vez que cambia
-      select.on('select', () => {
-        const selected = select.getFeatures();
-        const ids: Array<string | number> = [];
-        let primary: string | number | null = null;
-        selected.forEach((f) => {
-          const id = f.getId();
-          if (id !== undefined) {
-            ids.push(id as string | number);
-            if (primary === null) primary = id as string | number;
-          }
-        });
-        const prev = useSelectionStore.getState().selectedIds;
-        prev.forEach((id) => {
-          if (!ids.includes(id)) useSelectionStore.getState().remove(id);
-        });
-        ids.forEach((id) => {
-          if (!prev.has(id)) useSelectionStore.getState().add(id);
-        });
-        useSelectionStore.setState({ primaryId: primary });
-        measurementLayerRef.current?.changed();
-      });
+      wireSelectBehavior(select);
       map.addInteraction(select);
       selectInteractionRef.current = select;
       toClean.push(() => map.removeInteraction(select));
+    }
 
-      // Modify (edicion de vertices)
-      const modify = new Modify({
-        source: src,
-        style: new Style({
-          fill: new Fill({ color: 'rgba(245, 158, 11, 0.2)' }),
-          stroke: new Stroke({ color: '#f59e0b', width: 2 }),
-        }),
-      });
-      modify.on('modifyend', (event) => {
-        event.features.forEach((feature) => {
-          updateFeatureMetrics(feature as Feature<Geometry>);
+    // === Modo EDIT: Modify + Translate sobre la seleccion actual ===
+    // Solo si hay al menos 1 feature seleccionado. Si no hay, Select ya
+    // esta activo (de la rama de arriba) y permite elegir uno.
+    if (drawMode === 'edit') {
+      const sel = selectInteractionRef.current;
+      if (sel) {
+        const primaryId = useSelectionStore.getState().primaryId;
+        const selectedFeatures: Feature<Geometry>[] = [];
+        useSelectionStore.getState().selectedIds.forEach((id) => {
+          const f = src.getFeatureById(id) as Feature<Geometry> | null;
+          if (f) selectedFeatures.push(f);
         });
-        measurementLayerRef.current?.changed();
-        useHistoryStore.getState().pushState(src.getFeatures());
-      });
-      map.addInteraction(modify);
-      toClean.push(() => map.removeInteraction(modify));
 
-      // Translate (mover features completos) — implementación propia
-      // (SafeTranslate) en vez de ol/interaction/Translate: la versión
-      // nativa hace hit-test SIN restricción de capa en cada pointermove
-      // (para el cursor "mover"), lo cual revienta contra WebGLVectorLayer
-      // con disableHitDetection:true apenas el mouse pasa por el mapa en
-      // modo select. Ver src/map/safeTranslate.ts para el detalle.
-      if (measurementLayerRef.current) {
-        const translate = new SafeTranslate({
-          features: select.getFeatures(),
-          hitDetectionLayer: measurementLayerRef.current,
-        });
-        translate.on('translateend', () => {
-          select.getFeatures().forEach((f) => updateFeatureMetrics(f as Feature<Geometry>));
-          measurementLayerRef.current?.changed();
-          useHistoryStore.getState().pushState(src.getFeatures());
-        });
-        map.addInteraction(translate);
-        toClean.push(() => map.removeInteraction(translate));
+        // Modify solo si hay un poligono seleccionado (Modify no soporta
+        // multi bien; traducimos todo a uno solo si hay varios).
+        if (primaryId && selectedFeatures.length > 0) {
+          const modify = new Modify({
+            features: sel.getFeatures(),
+            style: new Style({
+              fill: new Fill({ color: 'rgba(245, 158, 11, 0.2)' }),
+              stroke: new Stroke({ color: '#f59e0b', width: 2 }),
+            }),
+          });
+          modify.on('modifyend', (event) => {
+            event.features.forEach((feature) => {
+              updateFeatureMetrics(feature as Feature<Geometry>);
+            });
+            refreshLayers();
+            useHistoryStore.getState().pushState(src.getFeatures());
+          });
+          map.addInteraction(modify);
+          toClean.push(() => map.removeInteraction(modify));
+
+          // Translate: arrastra los features seleccionados completos
+          if (measurementLayerRef.current) {
+            const translate = new SafeTranslate({
+              features: sel.getFeatures(),
+              hitDetectionLayer: measurementLayerRef.current,
+            });
+            translate.on('translateend', () => {
+              sel.getFeatures().forEach((f) => updateFeatureMetrics(f as Feature<Geometry>));
+              refreshLayers();
+              useHistoryStore.getState().pushState(src.getFeatures());
+            });
+            map.addInteraction(translate);
+            toClean.push(() => map.removeInteraction(translate));
+          }
+        }
       }
     }
 
-    // Modo POLYGON / LINE: snap nativo + snap en puntos medios + Draw
-    if (drawMode === 'polygon' || drawMode === 'line') {
+    // === Modo POLYLINE: snap nativo + snap en puntos medios + Draw ===
+    if (drawMode === 'polyline') {
       // Snap nativo (vertex/edge)
       const snap = new Snap({ source: src, pixelTolerance: 10, edge: true, vertex: true });
       map.addInteraction(snap);
@@ -355,28 +809,300 @@ export default function MapView() {
         toClean.push(() => map.removeInteraction(midSnap));
       }
 
-       // Dibujo
-      const drawType = drawMode === 'polygon' ? 'Polygon' : 'LineString';
-      const draw = new Draw({ source: src, type: drawType });
+       // Snap a intersecciones de grilla (si está habilitado)
+       if (useLayerStore.getState().visibility.gridSnap && gridSnapSrcRef.current && gridSnapSrcRef.current.getFeatures().length > 0) {
+         const gridSnap = new Snap({
+           source: gridSnapSrcRef.current,
+           pixelTolerance: 12,
+           vertex: true,
+           edge: false,
+         });
+        map.addInteraction(gridSnap);
+        toClean.push(() => map.removeInteraction(gridSnap));
+      }
+
+      // Dibujo. El `style` se aplica al sketch (linea de rubber-band
+      // mientras se dibuja) y a los vertices pendientes: la usamos para
+      // que la linea de preview sea segmentada (dashed) y los vertices
+      // ya confirmados se vean como circulos semitransparentes (estilo
+      // CAD pro).
+      // POLYLINE usa Polygon (snap de cierre nativo de OL, iman perfecto).
+      const drawType = 'Polygon';
+      const draw = new Draw({
+        source: src,
+        type: drawType,
+        style: (feature) => {
+          const geom = feature.getGeometry();
+          // Para geometrias de tipo "Point" (cada click genera un vertex
+          // virtual con geometry Point), dibujamos un punto. Esto
+          // ocurre cuando OL crea features intermedias para los
+          // vertices pendientes; en la practica, para Polygon/LineString
+          // el feature principal es la LineString/Polygon del sketch y
+          // los vertices anteriores son parte de sus coordenadas.
+          // Estilo 1: linea de rubber-band segmentada.
+          // Estilo 2: vertices ya confirmados como circulos
+          // semitransparentes (geometry function los extrae).
+          // Estilo 3: si el cursor esta cerca del primer vertice,
+          // mostramos un cuadrado (snap de cierre).
+          const sketchCoords =
+            geom instanceof LineString
+              ? geom.getCoordinates()
+              : geom instanceof Polygon
+                ? (geom.getCoordinates()[0] ?? [])
+                : [];
+
+          // Vertices confirmados: circulos semitransparentes.
+          const confirmedCoords =
+            sketchCoords.length > 1 ? sketchCoords.slice(0, -1) : [];
+          const vertexStyle =
+            confirmedCoords.length > 0
+              ? new Style({
+                  geometry: new MultiPoint(confirmedCoords as number[][]),
+                  image: new CircleStyle({
+                    radius: 5,
+                    fill: new Fill({ color: 'rgba(0, 212, 255, 0.25)' }),
+                    stroke: new Stroke({
+                      color: 'rgba(0, 212, 255, 0.95)',
+                      width: 1.5,
+                    }),
+                  }),
+                })
+              : null;
+
+          // Linea de rubber-band segmentada.
+          const lineStyle = new Style({
+            stroke: new Stroke({
+              color: 'rgba(0, 212, 255, 0.95)',
+              width: 2,
+              lineDash: [6, 4],
+              lineCap: 'round',
+            }),
+          });
+
+          // Snap de cierre: cuadrado verde cuando el cursor esta cerca
+          // del primer vertice (solo en modo polyline). Indica que un
+          // click ahi finalizara la polilinea.
+          const closeSnapStyle = (() => {
+            if (drawMode !== 'polyline') return null;
+            if (sketchCoords.length < 3) return null;
+            const first = sketchCoords[0];
+            const last = sketchCoords[sketchCoords.length - 1];
+            if (!first || !last) return null;
+            const resolution = map.getView().getResolution() ?? 1;
+            const closeRadiusMap = 12 * resolution;
+            const dx = first[0] - last[0];
+            const dy = first[1] - last[1];
+            if (Math.hypot(dx, dy) > closeRadiusMap) return null;
+            // Cuadrado (RegularShape points:4, rotation=PI/4) en el
+            // primer vertice para indicar "click para finalizar".
+            return new Style({
+              geometry: new Point(first as number[]),
+              image: new RegularShape({
+                points: 4,
+                radius: 10,
+                rotation: Math.PI / 4,
+                fill: new Fill({ color: 'rgba(6, 248, 19, 0.95)' }),
+                stroke: new Stroke({ color: '#0d1117', width: 2 }),
+              }),
+            });
+          })();
+
+          // Live segment labels — replica exacta de LOTES_SAI render.js:799-868.
+          // Segmentos confirmados: azul manzana (#58a6ff). Último segmento
+          // (al cursor): naranja (#ffa657). Fuente Courier New 10px.
+          const segmentLabels: Style[] = [];
+          const skRes = map.getView().getResolution() ?? 1;
+          const PX_OFF = 14;
+          const totalSegments = sketchCoords.length >= 2 ? sketchCoords.length - 1 : 0;
+          if (sketchCoords.length >= 2) {
+            for (let i = 0; i < sketchCoords.length - 1; i++) {
+              const a = sketchCoords[i];
+              const b = sketchCoords[i + 1];
+              if (!a || !b) continue;
+              const sdx = b[0] - a[0];
+              const sdy = b[1] - a[1];
+              const segLen = Math.hypot(sdx, sdy);
+              if (segLen < 0.3) continue;
+              // Longitud geodésica aprox usando haversine
+              const aLL = toLonLat(a);
+              const bLL = toLonLat(b);
+              const R = 6371000;
+              const dLat = (bLL[1] - aLL[1]) * Math.PI / 180;
+              const dLon = (bLL[0] - aLL[0]) * Math.PI / 180;
+              const lat1 = aLL[1] * Math.PI / 180;
+              const lat2 = bLL[1] * Math.PI / 180;
+              const sinDLat2 = Math.sin(dLat / 2);
+              const sinDLon2 = Math.sin(dLon / 2);
+              const h = sinDLat2 * sinDLat2 + sinDLon2 * sinDLon2 * Math.cos(lat1) * Math.cos(lat2);
+              const liveLen = 2 * R * Math.asin(Math.sqrt(Math.min(h, 1)));
+              if (liveLen < 0.3) continue;
+              const midX = (a[0] + b[0]) / 2;
+              const midY = (a[1] + b[1]) / 2;
+              const angle = Math.atan2(sdy, sdx);
+              let textAngle = angle;
+              if (textAngle > Math.PI / 2 || textAngle < -Math.PI / 2) {
+                textAngle += Math.PI;
+              }
+              const perpLen = PX_OFF * skRes;
+              const perpNx = -sdy / segLen;
+              const perpNy = sdx / segLen;
+              const labelX = midX + perpNx * perpLen;
+              const labelY = midY + perpNy * perpLen;
+
+              const isLastSegment = i === totalSegments - 1;
+              const label = liveLen >= 100
+                ? liveLen.toFixed(1) + ' m'
+                : liveLen.toFixed(2) + ' m';
+
+              segmentLabels.push(
+                createLiveDrawingLabelStyle(
+                  label,
+                  [labelX, labelY],
+                  textAngle,
+                  true,
+                  isLastSegment
+                )
+              );
+            }
+          }
+
+          return [lineStyle, vertexStyle, closeSnapStyle, ...segmentLabels].filter(
+            (s): s is Style => s !== null
+          );
+        },
+      });
+
+      // Snap "imán" custom: para los tipos de snap que OL no maneja
+      // nativamente (midpoint extendido, perpendicular, parallel,
+      // intersection), sobrescribimos la coordenada del sketch para
+      // que la linea de rubber-band "salte" al punto snap. Tambien
+      // agregamos snap al primer vertice del sketch (cierre del
+      // poligono) que no se detecta por findSnap porque todavia no
+      // esta en el drawSrc.
+      const drawPointerMoveKey = map.on('pointermove', (evt) => {
+        const overlaySrc = draw.getOverlay().getSource();
+        if (!overlaySrc) return;
+        const sketch = overlaySrc.getFeatures()[0];
+        if (!sketch) return;
+        const sketchGeom = sketch.getGeometry();
+        if (!sketchGeom) return;
+        const ds = drawSrcRef.current;
+        if (!ds) return;
+
+        // Coordenada final a aplicar: por defecto la del evento.
+        let target: number[] | null = null;
+
+        // 1) Snap de cierre: con Polygon (polyline), iman al primer vertice
+        //    cuando hay ≥ 3 segmentos. El sketch es Polygon con ring abierto.
+        if (drawType === 'Polygon') {
+          const rings =
+            sketchGeom instanceof Polygon
+              ? sketchGeom.getCoordinates()
+              : sketchGeom instanceof LineString
+                ? [sketchGeom.getCoordinates()]
+                : [];
+          const ring = rings[0];
+          if (ring && ring.length >= 4) {
+            const first = ring[0];
+            const resolution = map.getView().getResolution() ?? 1;
+            const closeRadiusMap = 12 * resolution;
+            const dx = first[0] - evt.coordinate[0];
+            const dy = first[1] - evt.coordinate[1];
+            if (Math.hypot(dx, dy) <= closeRadiusMap) {
+              target = first as number[];
+            }
+          }
+        }
+
+        // 2) Snap general (vertex/midpoint/perpendicular/etc).
+        if (target === null) {
+          const snap = findSnap(evt.coordinate, ds);
+          if (snap) target = snap.point as number[];
+        }
+
+        if (target === null) return;
+
+        // Reemplaza la ultima coordenada del sketch con el punto snap.
+        if (sketchGeom instanceof LineString) {
+          const coords = sketchGeom.getCoordinates();
+          if (coords.length === 0) return;
+          coords[coords.length - 1] = [target[0], target[1]] as [number, number];
+          sketchGeom.setCoordinates(coords);
+        } else if (sketchGeom instanceof Polygon) {
+          const rings = sketchGeom.getCoordinates();
+          if (!rings.length || !rings[0]?.length) return;
+          const ring = rings[0];
+          ring[ring.length - 1] = [target[0], target[1]] as [number, number];
+          sketchGeom.setCoordinates(rings);
+        }
+      });
+      toClean.push(() => unByKey(drawPointerMoveKey));
+
       draw.on('drawend', (event) => {
         const feature = event.feature as Feature<Geometry>;
-        if (drawType === 'LineString') {
-          // Draw no asigna id solo; se lo damos para que la subdivision
-          // "manual" pueda referenciar esta linea como corte.
-          const lineId =
-            feature.getId() ?? `line-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-          feature.setId(lineId);
-          useDrawStore.getState().setLastDrawnLineId(lineId);
+
+        if (feature.getId() == null) {
+          const prefix = 'poly';
+          const newId = `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+          feature.setId(newId);
         }
+        useDrawStore.getState().setLastDrawnLineId(feature.getId() as string);
         updateFeatureMetrics(feature);
-        measurementLayerRef.current?.changed();
+        refreshLayers();
         useHistoryStore.getState().pushState(src.getFeatures());
       });
       map.addInteraction(draw);
       toClean.push(() => map.removeInteraction(draw));
     }
 
-    // Modo ERASE: cada click sobre una feature la borra
+    // === Modo STREET: trazado de calles (2 clicks, guarda en streetStore) ===
+    if (drawMode === 'street') {
+      const snap = new Snap({ source: src, pixelTolerance: 10, edge: true, vertex: true });
+      map.addInteraction(snap);
+      toClean.push(() => map.removeInteraction(snap));
+
+      const draw = new Draw({
+        source: new VectorSource(),
+        type: 'LineString',
+        maxPoints: 2,
+        style: new Style({
+          stroke: new Stroke({
+            color: 'rgba(255, 166, 87, 0.95)',
+            width: 2.5,
+            lineDash: [6, 4],
+            lineCap: 'round',
+          }),
+        }),
+      });
+
+      draw.on('drawend', (event) => {
+        const feature = event.feature as Feature<Geometry>;
+        const geom = feature.getGeometry();
+        if (!geom || !(geom instanceof LineString)) return;
+        const coords = geom.getCoordinates();
+        if (coords.length < 2) return;
+
+        const streetStore = useStreetStore.getState();
+        streetStore.addStreet({
+          start: coords[0] as [number, number],
+          end: coords[coords.length - 1] as [number, number],
+          widthM: streetStore.defaultWidthM,
+        });
+
+        // Forzar re-render de la capa de calles
+        streetLayerSrcRef.current?.changed();
+
+        // Recortar polígonos por la nueva calle → generar manzanos
+        recomputeManzanos();
+
+        useHistoryStore.getState().pushState(src.getFeatures());
+      });
+
+      map.addInteraction(draw);
+      toClean.push(() => map.removeInteraction(draw));
+    }
+
+    // === Modo ERASE: cada click sobre una feature la borra ===
     if (drawMode === 'erase') {
       const select = new Select({
         layers: hitDetectionLayers,
@@ -393,7 +1119,7 @@ export default function MapView() {
         const ids: Array<string | number> = [];
         selected.forEach((f: Feature<Geometry>) => {
           const id = f.getId();
-          if (id !== undefined) ids.push(id as string | number);
+          if (id !== undefined && id !== null) ids.push(id as string | number);
         });
         ids.forEach((id) => useMapStore.getState().deleteFeatureById(id));
         // Limpia la seleccion interna de Select para evitar "fantasmas"
@@ -406,6 +1132,12 @@ export default function MapView() {
 
     return () => {
       toClean.forEach((fn) => fn());
+      // Restaurar el cursor del viewport.
+      if (previousCursor === null) {
+        viewport.removeAttribute('data-cursor');
+      } else {
+        viewport.setAttribute('data-cursor', previousCursor);
+      }
     };
   }, [drawMode]);
 

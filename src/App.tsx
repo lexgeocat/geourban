@@ -6,6 +6,7 @@ import TopBar from './components/TopBar';
 import StatusBar from './components/StatusBar';
 import SubdivisionDialog from './components/SubdivisionDialog';
 import PropertyPanel from './components/PropertyPanel';
+import StatsPanel from './components/StatsPanel';
 import { startAutosave } from './io/persistence';
 import { writeProjectFromOlFeatures } from './io/geojson';
 import { useMapStore } from './store/mapStore';
@@ -64,6 +65,9 @@ function App() {
         </div>
         <div style={{ pointerEvents: 'auto' }}>
           <LayerPanel />
+        </div>
+        <div style={{ pointerEvents: 'auto' }}>
+          <StatsPanel />
         </div>
       </div>
 

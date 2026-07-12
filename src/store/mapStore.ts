@@ -5,11 +5,14 @@ import VectorSource from 'ol/source/Vector.js';
 import GeoJSON from 'ol/format/GeoJSON.js';
 import { extend as extendExtent, Extent } from 'ol/extent.js';
 import { refreshSourceMetrics } from '../geo/metrics';
+import { clipPolygonByAllStreets, type Pt } from '../geo/polygonEngine';
 import { useSelectionStore } from './selectionStore';
 import { useHistoryStore } from './historyStore';
+import { useStreetStore } from './streetStore';
 import { mergePolygonsInWorker, validateTopologyInWorker } from '../workers/geoWorkerClient';
 import type { FeatureCollection } from 'geojson';
 import Feature from 'ol/Feature.js';
+import PolygonGeom from 'ol/geom/Polygon.js';
 import type Geometry from 'ol/geom/Geometry.js';
 
 const geoJsonFormat = new GeoJSON();
@@ -59,8 +62,8 @@ export const useMapStore = create<MapState>()(
     mapInstance: null,
     drawSource: null,
     cursorCoords: null,
-    zoom: 17,
-    viewConfig: { center: [-68.3, -16.65], zoom: 17 },
+    zoom: 19,
+    viewConfig: { center: [-68.3, -16.65], zoom: 19 },
     setMap: (map) =>
       set((state) => {
         // @ts-expect-error – immer draft vs OL class instance
@@ -79,6 +82,7 @@ export const useMapStore = create<MapState>()(
       src.clear();
       src.addFeatures(features as any);
       refreshSourceMetrics(src);
+      src.changed();
       useSelectionStore.getState().clear();
     },
     setCursorCoords: (coords) =>
@@ -240,3 +244,63 @@ export const useMapStore = create<MapState>()(
     },
   }))
 );
+
+/**
+ * Recomputa manzanos — recorta todos los polígonos del drawSource
+ * por cada calle activa, generando los manzanos resultantes.
+ * Port de LOTES_SAI recomputeManzanos() (polygon-engine.js:241-382).
+ */
+export function recomputeManzanos() {
+  const src = useMapStore.getState().drawSource;
+  if (!src) return;
+
+  const streets = useStreetStore.getState().streets;
+  if (streets.length === 0) return;
+
+  // Obtener todos los polígonos del drawSource
+  const polygonsToClip: Array<{ feature: Feature<Geometry>; pts: Pt[] }> = [];
+  src.forEachFeature((f) => {
+    const geom = f.getGeometry();
+    if (!geom) return;
+    if (geom.getType() !== 'Polygon') return;
+    const coords = (geom as import('ol/geom/Polygon.js').default).getCoordinates();
+    if (!coords[0] || coords[0].length < 4) return;
+    const pts: Pt[] = coords[0].map((c: number[]) => [c[0], c[1]]);
+    polygonsToClip.push({ feature: f as Feature<Geometry>, pts });
+  });
+
+  if (polygonsToClip.length === 0) return;
+
+  const streetData = streets.map((s) => ({ start: s.start, end: s.end, widthM: s.widthM }));
+
+  for (const { feature, pts } of polygonsToClip) {
+    const manzanos = clipPolygonByAllStreets(pts, streetData);
+    if (manzanos.length === 1 && manzanos[0] === pts) continue;
+
+    src.removeFeature(feature);
+
+    for (let i = 0; i < manzanos.length; i++) {
+      const ring = manzanos[i];
+      if (ring.length < 3) continue;
+      const closedRing = [...ring];
+      if (closedRing[0][0] !== closedRing[closedRing.length - 1][0] ||
+          closedRing[0][1] !== closedRing[closedRing.length - 1][1]) {
+        closedRing.push([closedRing[0][0], closedRing[0][1]]);
+      }
+      const newGeom = new PolygonGeom([closedRing]);
+      const newFeat = new Feature({ geometry: newGeom });
+      const origId = feature.getId();
+      newFeat.setId(origId ? `${origId}-mzn-${i}` : `mzn-${Date.now()}-${i}`);
+      newFeat.setProperties({
+        type: 'manzana',
+        colorIdx: i % 10,
+        createdAt: new Date().toISOString(),
+      });
+      src.addFeature(newFeat);
+    }
+  }
+
+  refreshSourceMetrics(src);
+  src.changed();
+  useHistoryStore.getState().pushState(src.getFeatures());
+}

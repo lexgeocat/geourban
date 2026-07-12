@@ -14,7 +14,6 @@ type SubdivisionState = {
   targetFeatureId: string | number | null;
   method: SubdivisionMethod;
   options: SubdivisionOptions;
-  /** Resultado de la última subdivision (para preview antes de aplicar) */
   preview: { count: number; warnings: string[] } | null;
   loading: boolean;
   errorMessage: string | null;
@@ -30,25 +29,22 @@ type SubdivisionState = {
 };
 
 const DEFAULT_OPTIONS: SubdivisionOptions = {
-  method: 'grid',
-  lotWidthM: 10,
-  lotDepthM: 20,
-  innerStreetWidthM: 0,
-  targetCount: 4,
-  offsetDistanceM: 5,
+  method: 'auto',
+  targetAreaM2: 250,
+  frontMinM: 12,
 };
 
 export const useSubdivisionStore = create<SubdivisionState>()(
   immer((set) => ({
     isOpen: false,
     targetFeatureId: null,
-    method: 'grid',
+    method: 'auto',
     options: { ...DEFAULT_OPTIONS },
     preview: null,
     loading: false,
     errorMessage: null,
 
-    open: (targetFeatureId, method = 'grid') =>
+    open: (targetFeatureId, method = 'auto') =>
       set((state) => {
         state.isOpen = true;
         state.targetFeatureId = targetFeatureId;
@@ -99,7 +95,7 @@ export const useSubdivisionStore = create<SubdivisionState>()(
       set((state) => {
         state.isOpen = false;
         state.targetFeatureId = null;
-        state.method = 'grid';
+        state.method = 'auto';
         state.options = { ...DEFAULT_OPTIONS };
         state.preview = null;
         state.loading = false;

@@ -4,6 +4,7 @@ import { useHistoryStore } from '../store/historyStore';
 import { useMapStore } from '../store/mapStore';
 import { useSelectionStore } from '../store/selectionStore';
 import { useSubdivisionStore } from '../store/subdivisionStore';
+import { useStreetStore } from '../store/streetStore';
 
 /* ─── SVG Icon Components (inline, no dependencies) ─── */
 
@@ -21,22 +22,6 @@ const IconCursor = () => (
   </svg>
 );
 
-const IconPan = () => (
-  <svg
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <path d="M18 11V6a2 2 0 0 0-4 0v5" />
-    <path d="M14 10V4a2 2 0 0 0-4 0v6" />
-    <path d="M10 10.5V6a2 2 0 0 0-4 0v8" />
-    <path d="M18 11a2 2 0 1 1 4 0v3a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15" />
-  </svg>
-);
-
 const IconPolygon = () => (
   <svg
     viewBox="0 0 24 24"
@@ -47,21 +32,6 @@ const IconPolygon = () => (
     strokeLinejoin="round"
   >
     <path d="M12 2l8.5 6.2-3.2 9.8H6.7L3.5 8.2z" />
-  </svg>
-);
-
-const IconLine = () => (
-  <svg
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <circle cx="5" cy="19" r="2" />
-    <circle cx="19" cy="5" r="2" />
-    <line x1="6.4" y1="17.6" x2="17.6" y2="6.4" />
   </svg>
 );
 
@@ -123,6 +93,20 @@ const IconTrash = () => (
   </svg>
 );
 
+const IconEdit = () => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="M12 20h9" />
+    <path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+  </svg>
+);
+
 const IconMerge = () => (
   <svg
     viewBox="0 0 24 24"
@@ -155,6 +139,38 @@ const IconSubdivide = () => (
   </svg>
 );
 
+const IconLots = () => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <rect x="2" y="2" width="9" height="9" rx="1" />
+    <rect x="13" y="2" width="9" height="9" rx="1" />
+    <rect x="2" y="13" width="9" height="9" rx="1" />
+    <rect x="13" y="13" width="9" height="9" rx="1" />
+  </svg>
+);
+
+const IconStreet = () => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="M4 19L8 5" />
+    <path d="M16 5l4 14" />
+    <path d="M6 10h12" />
+    <path d="M5 14h14" />
+  </svg>
+);
+
 /* ─── Tool definitions ─── */
 
 type ToolDef = {
@@ -166,14 +182,82 @@ type ToolDef = {
 
 const navTools: ToolDef[] = [
   { mode: 'select', icon: <IconCursor />, tooltip: 'Seleccionar', shortcut: 'V' },
-  { mode: 'pan', icon: <IconPan />, tooltip: 'Mover mapa', shortcut: 'H' },
 ];
 
 const drawTools: ToolDef[] = [
-  { mode: 'polygon', icon: <IconPolygon />, tooltip: 'Dibujar polígono', shortcut: 'P' },
-  { mode: 'line', icon: <IconLine />, tooltip: 'Dibujar línea', shortcut: 'L' },
+  { mode: 'polyline', icon: <IconPolygon />, tooltip: 'Dibujar polilínea', shortcut: 'P' },
+  { mode: 'street', icon: <IconStreet />, tooltip: 'Trazar calle (2 clicks)', shortcut: 'T' },
   { mode: 'erase', icon: <IconEraser />, tooltip: 'Borrar features (click)', shortcut: 'E' },
 ];
+
+/* ─── Street Width Panel ─── */
+
+function StreetWidthPanel() {
+  const defaultWidthM = useStreetStore((s) => s.defaultWidthM);
+  const setDefaultWidth = useStreetStore((s) => s.setDefaultWidth);
+  const streets = useStreetStore((s) => s.streets);
+  const clearStreets = useStreetStore((s) => s.clearStreets);
+
+  return (
+    <div
+      className="cad-panel-glass"
+      style={{
+        position: 'absolute',
+        left: 56,
+        top: '50%',
+        transform: 'translateY(-50%)',
+        zIndex: 101,
+        padding: '10px 12px',
+        minWidth: 160,
+      }}
+    >
+      <div style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--cad-text-dim)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+        Ancho de vía
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+        <input
+          type="number"
+          value={defaultWidthM}
+          min={1}
+          max={50}
+          step={1}
+          onChange={(e) => setDefaultWidth(parseFloat(e.target.value) || 8)}
+          style={{
+            width: 60,
+            padding: '4px 6px',
+            background: 'var(--cad-bg-deepest)',
+            border: '1px solid var(--cad-border)',
+            borderRadius: 4,
+            color: 'var(--cad-text)',
+            fontSize: '0.75rem',
+            fontFamily: 'JetBrains Mono, monospace',
+          }}
+        />
+        <span style={{ fontSize: '0.7rem', color: 'var(--cad-text-muted)' }}>m</span>
+      </div>
+      {streets.length > 0 && (
+        <>
+          <div style={{ fontSize: '0.65rem', color: 'var(--cad-text-muted)', marginBottom: 4 }}>
+            {streets.length} calle{streets.length > 1 ? 's' : ''} trazada{streets.length > 1 ? 's' : ''}
+          </div>
+          <button
+            onClick={clearStreets}
+            className="cad-icon-btn"
+            style={{
+              width: '100%',
+              height: 'auto',
+              padding: '4px 8px',
+              fontSize: '0.65rem',
+              color: 'var(--cad-accent-red)',
+            }}
+          >
+            Limpiar calles
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
 
 /* ─── Component ─── */
 
@@ -186,6 +270,7 @@ export default function Toolbar() {
   const primarySelected = useSelectionStore((s) => s.primaryId !== null);
   const openSubdivision = useSubdivisionStore((s) => s.open);
   const [mergeBusy, setMergeBusy] = React.useState(false);
+  const [lotsBusy, setLotsBusy] = React.useState(false);
 
   const renderTool = (tool: ToolDef) => {
     const tip = tool.shortcut ? `${tool.tooltip} (${tool.shortcut})` : tool.tooltip;
@@ -250,6 +335,111 @@ export default function Toolbar() {
     openSubdivision(primaryId);
   };
 
+  const handleGenerateLots = async () => {
+    if (lotsBusy) return;
+    const src = useMapStore.getState().drawSource;
+    if (!src) return;
+
+    // Encontrar todos los manzanos
+    const manzanos: Array<{ id: string | number; geom: any }> = [];
+    src.forEachFeature((f) => {
+      if (f.get('type') === 'manzana') {
+        const id = f.getId();
+        const geom = f.getGeometry();
+        if (id !== undefined && geom) manzanos.push({ id, geom });
+      }
+    });
+
+    if (manzanos.length === 0) {
+      alert('No hay manzanos para subdividir. Trazá calles primero para generar manzanos.');
+      return;
+    }
+
+    setLotsBusy(true);
+    try {
+      const { subdivideManzanoAuto } = await import('../geo/subdivisionAlgorithms');
+      const { updateFeatureMetrics, refreshSourceMetrics } = await import('../geo/metrics');
+      const GeoJSON = (await import('ol/format/GeoJSON.js')).default;
+      const Feature = (await import('ol/Feature.js')).default;
+      const PolygonGeom = (await import('ol/geom/Polygon.js')).default;
+      const geoJsonFormat = new GeoJSON();
+
+      const targetAreaM2 = 250;
+      const frontMinM = 12;
+      let totalLots = 0;
+
+      for (const { id, geom } of manzanos) {
+        const gj = geoJsonFormat.writeGeometryObject(geom, {
+          featureProjection: 'EPSG:3857',
+          dataProjection: 'EPSG:3857',
+        });
+        if (gj.type !== 'Polygon') continue;
+        const ring = (gj as any).coordinates[0] as [number, number][];
+        if (!ring || ring.length < 4) continue;
+
+        const lots = subdivideManzanoAuto(ring, targetAreaM2, frontMinM);
+        if (lots.length === 0) continue;
+
+        // Eliminar el manzano original
+        const feat = src.getFeatureById(id);
+        if (feat) src.removeFeature(feat);
+
+        // Agregar los lotes
+        for (let i = 0; i < lots.length; i++) {
+          const lot = lots[i];
+          if (lot.pts.length < 3) continue;
+          const closedRing = [...lot.pts];
+          if (closedRing[0][0] !== closedRing[closedRing.length - 1][0] ||
+              closedRing[0][1] !== closedRing[closedRing.length - 1][1]) {
+            closedRing.push([closedRing[0][0], closedRing[0][1]]);
+          }
+          const newGeom = new PolygonGeom([closedRing]);
+          const newFeat = new Feature({ geometry: newGeom });
+          newFeat.setId(`lot-${Date.now()}-${totalLots + i}`);
+          newFeat.setProperties({
+            subdivision: 'auto',
+            label: lot.isRemnant ? `Remanente ${totalLots + i + 1}` : `Lote ${totalLots + i + 1}`,
+            areaM2: lot.areaM2,
+            frontM: lot.frontM,
+            depthM: lot.depthM,
+            isRemnant: lot.isRemnant,
+            createdAt: new Date().toISOString(),
+          });
+          src.addFeature(newFeat);
+          updateFeatureMetrics(newFeat);
+        }
+        totalLots += lots.length;
+      }
+
+      refreshSourceMetrics(src);
+      src.changed();
+      useHistoryStore.getState().pushState(src.getFeatures());
+
+      if (totalLots > 0) {
+        alert(`${totalLots} lotes generados automáticamente.`);
+      } else {
+        alert('No se pudieron generar lotes. Verificá que los manzanos sean lo suficientemente grandes.');
+      }
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Error al generar lotes');
+    } finally {
+      setLotsBusy(false);
+    }
+  };
+
+  const handleToggleEdit = () => {
+    if (mode === 'edit') {
+      setMode('select');
+      return;
+    }
+    const primaryId = useSelectionStore.getState().primaryId;
+    if (!primaryId) {
+      alert('Seleccioná un polígono para editar sus vértices.');
+      return;
+    }
+    setMode('edit');
+  };
+
   const tooltip = (txt: string, suffix = ' (Del)') => `${txt}${suffix}`;
 
   return (
@@ -278,7 +468,7 @@ export default function Toolbar() {
 
       <div className="cad-separator" />
 
-      {/* Fusionar / Subdividir */}
+      {/* Fusionar / Subdividir / Editar */}
       <button
         onClick={handleMergeSelected}
         disabled={selectedCount < 2 || mergeBusy}
@@ -300,6 +490,28 @@ export default function Toolbar() {
         aria-label="Subdividir selección"
       >
         <IconSubdivide />
+      </button>
+      <button
+        onClick={handleGenerateLots}
+        disabled={lotsBusy}
+        className={`cad-icon-btn cad-tooltip ${lotsBusy ? 'disabled' : ''}`}
+        data-tooltip={lotsBusy ? 'Generando lotes...' : 'Generar lotes automáticos (todos los manzanos)'}
+        aria-label="Generar lotes automáticos"
+      >
+        <IconLots />
+      </button>
+      <button
+        onClick={handleToggleEdit}
+        disabled={!primarySelected}
+        className={`cad-icon-btn cad-tooltip ${mode === 'edit' ? 'active' : ''} ${!primarySelected ? 'disabled' : ''}`}
+        data-tooltip={
+          mode === 'edit'
+            ? 'Salir de edición (Esc)'
+            : 'Editar vértices del seleccionado'
+        }
+        aria-label="Editar vértices"
+      >
+        <IconEdit />
       </button>
 
       <div className="cad-separator" />
@@ -364,6 +576,11 @@ export default function Toolbar() {
       >
         <IconRedo />
       </button>
+
+      {/* Panel de ancho de vía (solo en modo street) */}
+      {mode === 'street' && (
+        <StreetWidthPanel />
+      )}
     </div>
   );
 }

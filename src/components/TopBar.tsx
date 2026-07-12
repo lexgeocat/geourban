@@ -62,6 +62,7 @@ export default function TopBar() {
       drawSource.clear();
       drawSource.addFeatures(features as never);
       refreshSourceMetrics(drawSource);
+      drawSource.changed();
       fitToExtent();
       if (warnings.length) console.warn('Import warnings:', warnings);
     } catch (err) {
@@ -154,7 +155,7 @@ export default function TopBar() {
               borderRadius: '50%',
               background: modeInfo.color,
               boxShadow:
-                mode === 'polygon' || mode === 'line' ? '0 0 6px var(--cad-accent)' : 'none',
+                mode === 'polyline' ? '0 0 6px var(--cad-accent)' : 'none',
             }}
           />
           <span

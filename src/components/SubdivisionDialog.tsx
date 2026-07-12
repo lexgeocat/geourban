@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import { useSubdivisionStore } from '../store/subdivisionStore';
 import { useMapStore } from '../store/mapStore';
 import { useHistoryStore } from '../store/historyStore';
@@ -6,6 +6,7 @@ import { useSelectionStore } from '../store/selectionStore';
 import { useDrawStore } from '../store/drawStore';
 import { subdivide } from '../geo/subdivisionAlgorithms';
 import { updateFeatureMetrics, refreshSourceMetrics } from '../geo/metrics';
+import { polyArea, centroid, type Pt } from '../geo/polygonEngine';
 import type { Polygon as GeoJsonPolygon, LineString as GeoJsonLineString } from 'geojson';
 import GeoJSON from 'ol/format/GeoJSON.js';
 import Feature from 'ol/Feature';
@@ -14,17 +15,15 @@ import type Geometry from 'ol/geom/Geometry';
 const geoJsonFormat = new GeoJSON();
 
 const METHOD_LABELS: Record<string, string> = {
-  grid: 'Grilla regular',
-  proportional: 'Proporcional por área',
-  manual: 'Corte manual (con línea)',
-  offset: 'Offsets paralelos al frente',
+  auto: 'Automática',
+  exact: 'Área exacta',
+  'manual-slice': 'Manual (bisección)',
 };
 
 const METHOD_DESCRIPTIONS: Record<string, string> = {
-  grid: 'Divide el polígono en una grilla uniforme de ancho × profundidad. Opcionalmente con calle interna.',
-  proportional: 'Genera N lotes del mismo tamaño aproximado, optimizando el aspect ratio.',
-  manual: 'Traza una línea de corte sobre el polígono (en mapa) y lo divide en dos partes.',
-  offset: 'Genera lotes paralelos al frente del polígono, espaciados por la distancia indicada.',
+  auto: 'Subdivide usando el eje principal (PCA). Detecta polígonos angostos y adapta la dirección de corte automáticamente. Genera lotes con el área objetivo indicada.',
+  exact: 'Similar a automática, pero busca que cada lote tenga exactamente el área objetivo. Último lote puede ser remanente.',
+  'manual-slice': 'Seleccioná un frente del polígono y un segmento auxiliar (dirección de corte). El sistema bisecta para generar un sub-manzano con el área indicada.',
 };
 
 export default function SubdivisionDialog() {
@@ -45,11 +44,6 @@ export default function SubdivisionDialog() {
   const targetId = useSubdivisionStore((s) => s.targetFeatureId);
   const lastDrawnLineId = useDrawStore((s) => s.lastDrawnLineId);
 
-  // Hooks deben estar siempre
-  // En vez de sincronizar el estado de la geometria en useEffect (que dispara
-  // re-renders innecesarios), lo derivamos en cada render a partir de
-  // targetId/drawSource/isOpen. Solo cacheamos el GeoJSON como estado si el
-  // target cambio; para evitar el set-state-in-effect usamos un useMemo.
   const targetGeom = useMemo<GeoJsonPolygon | null>(() => {
     if (!isOpen || !drawSource || targetId == null) return null;
     const feat = drawSource.getFeatureById(targetId) as Feature<Geometry> | null;
@@ -71,10 +65,10 @@ export default function SubdivisionDialog() {
     if (drawSource.getFeatureById(targetId) == null) return 'Feature no encontrada';
     if (targetGeom == null) return 'La geometría no es un polígono';
     return null;
-   }, [isOpen, targetId, drawSource, targetGeom]);
+  }, [isOpen, targetId, drawSource, targetGeom]);
 
   const manualSplitLine = useMemo<GeoJsonLineString | null>(() => {
-    if (!isOpen || method !== 'manual' || !drawSource || lastDrawnLineId == null) return null;
+    if (!isOpen || method !== 'manual-slice' || !drawSource || lastDrawnLineId == null) return null;
     const lineFeat = drawSource.getFeatureById(lastDrawnLineId) as Feature<Geometry> | null;
     const g = lineFeat?.getGeometry();
     if (!g || g.getType() !== 'LineString') return null;
@@ -86,23 +80,22 @@ export default function SubdivisionDialog() {
   }, [isOpen, method, drawSource, lastDrawnLineId]);
 
   if (!isOpen) return null;
-  // Combinar el loadError con el errorMessage del store
   const combinedError = errorMessage ?? loadError;
 
-  // Live preview: recalcular subdivision con los options actuales
   const runPreview = () => {
     setError(null);
     if (!targetGeom) {
       setError('No hay polígono target');
       return;
     }
-    if (method === 'manual' && !manualSplitLine) {
+    if (method === 'manual-slice' && !manualSplitLine) {
       setError('Trazá una línea (tecla L) que cruce el polígono antes de previsualizar.');
       setPreview(null);
       return;
     }
-    const effectiveOptions =
-      method === 'manual' ? { ...options, splitLine: manualSplitLine } : options;
+    const effectiveOptions = method === 'manual-slice' && manualSplitLine
+      ? { ...options, cutLine: { p1: manualSplitLine.coordinates[0] as [number, number], p2: manualSplitLine.coordinates[manualSplitLine.coordinates.length - 1] as [number, number] } }
+      : options;
     const r = subdivide(targetGeom, effectiveOptions);
     if (!r.ok) {
       setError(r.error ?? 'No se pudo generar el preview');
@@ -114,30 +107,29 @@ export default function SubdivisionDialog() {
 
   const applySubdivision = () => {
     if (!drawSource || targetId == null) return;
-    if (method === 'manual' && !manualSplitLine) {
+    if (method === 'manual-slice' && !manualSplitLine) {
       setError('Trazá una línea (tecla L) que cruce el polígono antes de aplicar.');
       return;
     }
     setLoading(true);
     setError(null);
     try {
-      // targetGeom ya esta en EPSG:3857
-      const effectiveOptions =
-        method === 'manual' ? { ...options, splitLine: manualSplitLine } : options;
-      const r = subdivide(targetGeom!, effectiveOptions);      if (!r.ok) {
+      const effectiveOptions = method === 'manual-slice' && manualSplitLine
+        ? { ...options, cutLine: { p1: manualSplitLine.coordinates[0] as [number, number], p2: manualSplitLine.coordinates[manualSplitLine.coordinates.length - 1] as [number, number] } }
+        : options;
+      const r = subdivide(targetGeom!, effectiveOptions);
+      if (!r.ok) {
         setError(r.error ?? 'Subdivisión falló');
         return;
       }
-      // Eliminar el feature original
       const target = drawSource.getFeatureById(targetId);
       if (target) drawSource.removeFeature(target);
 
-      // Convertir los GeoJSON resultantes (EPSG:3857) a features OL
       r.features.forEach((f) => {
-        const wgs = f.geometry.type === 'Polygon' ? (f.geometry as GeoJsonPolygon) : null;
-        if (!wgs) return;
+        const geom = f.geometry.type === 'Polygon' ? (f.geometry as GeoJsonPolygon) : null;
+        if (!geom) return;
         const geom3857 = geoJsonFormat.readGeometry(
-          { type: 'Polygon', coordinates: wgs.coordinates },
+          { type: 'Polygon', coordinates: geom.coordinates },
           { featureProjection: 'EPSG:3857', dataProjection: 'EPSG:3857' }
         );
         const olFeat = new Feature({ geometry: geom3857 as Geometry });
@@ -152,12 +144,9 @@ export default function SubdivisionDialog() {
         updateFeatureMetrics(olFeat as Feature<Geometry>);
       });
 
-      // Recalcular metricas y refrescar
       refreshSourceMetrics(drawSource);
       drawSource.changed();
       useHistoryStore.getState().pushState(drawSource.getFeatures());
-
-      // Limpiar seleccion y cerrar
       useSelectionStore.getState().clear();
       close();
     } catch (err) {
@@ -216,7 +205,7 @@ export default function SubdivisionDialog() {
               letterSpacing: '0.02em',
             }}
           >
-            Subdividir polígono
+            Subdividir manzano
           </h2>
           <button
             onClick={close}
@@ -224,13 +213,7 @@ export default function SubdivisionDialog() {
             aria-label="Cerrar"
             style={{ width: 28, height: 28 }}
           >
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              style={{ width: 14, height: 14 }}
-            >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 14, height: 14 }}>
               <line x1="18" y1="6" x2="6" y2="18" />
               <line x1="6" y1="6" x2="18" y2="18" />
             </svg>
@@ -240,12 +223,12 @@ export default function SubdivisionDialog() {
         {/* Method selector */}
         <div style={{ marginBottom: 14 }}>
           <label style={labelStyle}>Método</label>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
             {Object.entries(METHOD_LABELS).map(([key, label]) => (
               <button
                 key={key}
                 onClick={() => setMethod(key as never)}
-                className={`cad-icon-btn`}
+                className="cad-icon-btn"
                 style={{
                   ...methodBtnStyle,
                   ...(method === key ? methodBtnActiveStyle : {}),
@@ -258,16 +241,49 @@ export default function SubdivisionDialog() {
           <p style={helpStyle}>{METHOD_DESCRIPTIONS[method]}</p>
         </div>
 
-        {/* Options por metodo */}
-        {method === 'grid' && (
-          <GridOptions options={options} setOption={setOption} />
+        {/* Parámetros comunes */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
+          <NumberField
+            label="Área objetivo"
+            value={options.targetAreaM2}
+            onChange={(v) => setOption('targetAreaM2', v)}
+            step={10}
+            unit="m²"
+          />
+          <NumberField
+            label="Frente mínimo"
+            value={options.frontMinM}
+            onChange={(v) => setOption('frontMinM', v)}
+            step={1}
+            unit="m"
+          />
+        </div>
+
+        {/* Manual slice instructions */}
+        {method === 'manual-slice' && (
+          <div
+            style={{
+              padding: 10,
+              background: 'var(--cad-bg-surface)',
+              borderRadius: 6,
+              fontSize: '0.75rem',
+              color: 'var(--cad-text-dim)',
+              marginBottom: 10,
+            }}
+          >
+            <p style={{ marginBottom: 6 }}>
+              <strong>Cómo usarlo:</strong> activá el modo <em>Dibujo de línea</em> (tecla
+              <kbd style={kbdStyle}>L</kbd>) y trazá una línea que cruce el polígono. La línea define la dirección de corte del sub-manzano.
+            </p>
+            <p>
+              El sistema bisectará el polígono para generar un fragmento con el área objetivo indicada, manteniendo el frente seleccionado.
+            </p>
+          </div>
         )}
-        {method === 'proportional' && (
-          <ProportionalOptions options={options} setOption={setOption} />
-        )}
-        {method === 'manual' && <ManualOptions />}
-        {method === 'offset' && (
-          <OffsetOptions options={options} setOption={setOption} />
+
+        {/* Info del polígono target */}
+        {targetGeom && (
+          <TargetInfo geom={targetGeom} />
         )}
 
         {/* Error */}
@@ -351,7 +367,36 @@ export default function SubdivisionDialog() {
   );
 }
 
-/* ---------- Sub-componentes de opciones ---------- */
+/* ---------- Info del polígono target ---------- */
+
+function TargetInfo({ geom }: { geom: GeoJsonPolygon }) {
+  const ring = geom.coordinates[0] as [number, number][];
+  if (!ring || ring.length < 3) return null;
+  const pts: Pt[] = ring.map(c => [c[0], c[1]]);
+  const areaM2 = polyArea(pts);
+  const cen = centroid(pts);
+
+  return (
+    <div
+      style={{
+        marginBottom: 10,
+        padding: '6px 10px',
+        background: 'var(--cad-bg-surface)',
+        borderRadius: 6,
+        fontSize: '0.72rem',
+        color: 'var(--cad-text-muted)',
+        display: 'flex',
+        gap: 16,
+      }}
+    >
+      <span>Área: <strong style={{ color: '#3fb950' }}>{areaM2.toFixed(1)} m²</strong></span>
+      <span>Vértices: <strong>{ring.length - 1}</strong></span>
+      <span>Centroide: <strong>{cen[0].toFixed(1)}, {cen[1].toFixed(1)}</strong></span>
+    </div>
+  );
+}
+
+/* ---------- NumberField ---------- */
 
 function NumberField({
   label,
@@ -369,7 +414,7 @@ function NumberField({
   unit?: string;
 }) {
   return (
-    <div style={{ marginBottom: 10 }}>
+    <div>
       <label style={labelStyle}>
         {label} <span style={{ color: 'var(--cad-text-muted)' }}>({unit})</span>
       </label>
@@ -384,118 +429,6 @@ function NumberField({
     </div>
   );
 }
-
-function GridOptions({
-  options,
-  setOption,
-}: {
-  options: any;
-  setOption: (k: any, v: any) => void;
-}) {
-  return (
-    <div>
-      <NumberField
-        label="Ancho de lote"
-        value={options.lotWidthM}
-        onChange={(v) => setOption('lotWidthM', v)}
-        step={0.5}
-      />
-      <NumberField
-        label="Profundidad de lote"
-        value={options.lotDepthM}
-        onChange={(v) => setOption('lotDepthM', v)}
-        step={0.5}
-      />
-      <NumberField
-        label="Calle interna (opcional)"
-        value={options.innerStreetWidthM}
-        onChange={(v) => setOption('innerStreetWidthM', v)}
-        step={0.5}
-      />
-    </div>
-  );
-}
-
-function ProportionalOptions({
-  options,
-  setOption,
-}: {
-  options: any;
-  setOption: (k: any, v: any) => void;
-}) {
-  return (
-    <div>
-      <NumberField
-        label="Número de lotes objetivo"
-        value={options.targetCount}
-        onChange={(v) => {
-          setOption('targetCount', v);
-          setOption('targetAreaM2', undefined);
-        }}
-        step={1}
-        unit="lotes"
-      />
-      <div style={{ textAlign: 'center', color: 'var(--cad-text-muted)', fontSize: '0.7rem', margin: '4px 0' }}>
-        — o —
-      </div>
-      <NumberField
-        label="Área objetivo por lote"
-        value={options.targetAreaM2}
-        onChange={(v) => {
-          setOption('targetAreaM2', v);
-          setOption('targetCount', undefined);
-        }}
-        step={10}
-        unit="m²"
-      />
-    </div>
-  );
-}
-
-function ManualOptions() {
-  return (
-    <div
-      style={{
-        padding: 10,
-        background: 'var(--cad-bg-surface)',
-        borderRadius: 6,
-        fontSize: '0.75rem',
-        color: 'var(--cad-text-dim)',
-      }}
-    >
-      <p style={{ marginBottom: 6 }}>
-        <strong>Cómo usarlo:</strong> active el modo <em>Dibujo de línea</em> (tecla
-        <kbd style={kbdStyle}>L</kbd>) y trace una línea cruzando el polígono seleccionado. La
-        subdivisión se aplicará al aplicar.
-      </p>
-      <p>
-        La línea de corte es la última <code>LineString</code> dibujada que intersecte el
-        polígono target.
-      </p>
-    </div>
-  );
-}
-
-function OffsetOptions({
-  options,
-  setOption,
-}: {
-  options: any;
-  setOption: (k: any, v: any) => void;
-}) {
-  return (
-    <div>
-      <NumberField
-        label="Distancia entre lotes (offset)"
-        value={options.offsetDistanceM}
-        onChange={(v) => setOption('offsetDistanceM', v)}
-        step={0.5}
-      />
-    </div>
-  );
-}
-
-/* ---------- Helpers ---------- */
 
 /* ---------- Estilos ---------- */
 

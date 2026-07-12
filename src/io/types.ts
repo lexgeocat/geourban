@@ -39,7 +39,7 @@ export function createEmptyProject(name = 'Sin título'): GeoUrbanProject {
     updatedAt: now,
     baseMap: 'osm',
     layers: [{ id: 'draw', name: 'Dibujo', visible: true, type: 'mixed' }],
-    view: { center: [-68.3, -16.65], zoom: 17 },
+    view: { center: [-68.3, -16.65], zoom: 19 },
     data: { type: 'FeatureCollection', features: [] },
   };
 }

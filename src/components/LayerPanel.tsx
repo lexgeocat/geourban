@@ -79,6 +79,9 @@ const IconCad = () => (
 const BASE_MAP_ICONS: Record<BaseMapId, React.ReactNode> = {
   cad: <IconCad />,
   osm: <IconMap />,
+  'esri-sat': <IconMap />,
+  'carto-light': <IconMap />,
+  'carto-dark': <IconMap />,
 };
 
 /* ─── Component ─── */
@@ -229,50 +232,6 @@ export default function LayerPanel() {
             >
               <input
                 type="checkbox"
-                checked={visibility.demo}
-                onChange={(e) => setVisibility('demo', e.target.checked)}
-                className="cad-toggle"
-              />
-              <span style={{ color: 'var(--cad-text-dim)', display: 'flex', alignItems: 'center' }}>
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  style={{ width: 14, height: 14 }}
-                >
-                  <rect x="3" y="3" width="7" height="7" />
-                  <rect x="14" y="3" width="7" height="7" />
-                  <rect x="14" y="14" width="7" height="7" />
-                  <rect x="3" y="14" width="7" height="7" />
-                </svg>
-              </span>
-              <span
-                style={{
-                  fontSize: '0.75rem',
-                  color: visibility.demo ? 'var(--cad-text)' : 'var(--cad-text-muted)',
-                }}
-              >
-                Lotes de prueba (10K)
-              </span>
-            </label>
-            <label
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                cursor: 'pointer',
-                padding: '4px 6px',
-                borderRadius: 6,
-                transition: 'background 150ms ease',
-              }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--cad-bg-hover)')}
-              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-            >
-              <input
-                type="checkbox"
                 checked={visibility.measurements}
                 onChange={(e) => setVisibility('measurements', e.target.checked)}
                 className="cad-toggle"
@@ -302,6 +261,43 @@ export default function LayerPanel() {
                 }}
               >
                 Cotas automáticas
+              </span>
+            </label>
+            <label
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                cursor: 'pointer',
+                padding: '4px 6px',
+                borderRadius: 6,
+                transition: 'background 150ms ease',
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--cad-bg-hover)')}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+            >
+              <input
+                type="checkbox"
+                checked={visibility.gridSnap}
+                onChange={(e) => setVisibility('gridSnap', e.target.checked)}
+                className="cad-toggle"
+              />
+              <span style={{ color: 'var(--cad-text-dim)', display: 'flex', alignItems: 'center' }}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: 14, height: 14 }}>
+                  <circle cx="12" cy="12" r="1" />
+                  <path d="M12 2v4" />
+                  <path d="M12 18v4" />
+                  <path d="M2 12h4" />
+                  <path d="M18 12h4" />
+                </svg>
+              </span>
+              <span
+                style={{
+                  fontSize: '0.75rem',
+                  color: visibility.gridSnap ? 'var(--cad-text)' : 'var(--cad-text-muted)',
+                }}
+              >
+                Snap a grilla
               </span>
             </label>
           </div>

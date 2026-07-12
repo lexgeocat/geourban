@@ -2,24 +2,25 @@ import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import type { BaseMapId } from '../map/baseMaps';
 
-type LayerKey = 'demo' | 'measurements';
+type LayerKey = 'measurements' | 'gridSnap';
 
 type LayerState = {
-  /** Mapa base activo (solo uno a la vez) */
   baseMap: BaseMapId;
-  /** Visibilidad de capas adicionales */
   visibility: Record<LayerKey, boolean>;
+  gridOrigin: [number, number];
   setBaseMap: (id: BaseMapId) => void;
   setVisibility: (key: LayerKey, visible: boolean) => void;
+  setGridOrigin: (o: [number, number]) => void;
 };
 
 export const useLayerStore = create<LayerState>()(
   immer((set) => ({
     baseMap: 'cad' as BaseMapId,
     visibility: {
-      demo: false,
       measurements: true,
+      gridSnap: true,
     },
+    gridOrigin: [0, 0],
     setBaseMap: (id) =>
       set((state) => {
         state.baseMap = id;
@@ -28,5 +29,10 @@ export const useLayerStore = create<LayerState>()(
       set((state) => {
         state.visibility[key] = visible;
       }),
+    setGridOrigin: (o) =>
+      set((state) => {
+        state.gridOrigin = o;
+      }),
   }))
 );
+

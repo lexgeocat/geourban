@@ -80,21 +80,20 @@ export function useKeyboardShortcuts() {
         return;
       }
 
-      // Escape: salir a modo 'none'
+      // Escape: sale de cualquier modo y vuelve a 'select'
       if (key === 'Escape') {
         e.preventDefault();
-        useDrawStore.getState().setMode('none');
+        useDrawStore.getState().setMode('select');
         return;
       }
 
       // Single-key shortcuts (sin modifier)
       if (ctrlOrCmd) return;
       const lower = key.toLowerCase();
-      const map: Record<string, 'select' | 'pan' | 'polygon' | 'line' | 'erase' | 'none'> = {
+      const map: Record<string, 'select' | 'polyline' | 'street' | 'erase' | 'none'> = {
         v: 'select',
-        h: 'pan',
-        p: 'polygon',
-        l: 'line',
+        p: 'polyline',
+        t: 'street',
         e: 'erase',
       };
       const next = map[lower];

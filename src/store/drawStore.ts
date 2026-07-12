@@ -1,7 +1,13 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 
-export type DrawMode = 'select' | 'pan' | 'polygon' | 'line' | 'erase' | 'none';
+export type DrawMode =
+  | 'select'
+  | 'polyline'
+  | 'street'
+  | 'erase'
+  | 'edit'
+  | 'none';
 
 type DrawState = {
   mode: DrawMode;

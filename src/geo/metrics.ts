@@ -170,7 +170,7 @@ export function formatMetricLength(valueM?: number) {
 
 export function formatMetricArea(valueM2?: number) {
   if (!Number.isFinite(valueM2)) return '';
-  if ((valueM2 ?? 0) >= 10000) return `${((valueM2 ?? 0) / 10000).toFixed(2)} ha`;
+  if ((valueM2 ?? 0) >= 10000) return `${((valueM2 ?? 0) / 10000).toFixed(4)} ha`;
   return `${(valueM2 ?? 0).toFixed(2)} m²`;
 }
 

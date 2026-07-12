@@ -1,160 +1,113 @@
 import Feature from 'ol/Feature';
 import Polygon from 'ol/geom/Polygon';
-import { fromLonLat } from 'ol/proj';
-import * as turf from '@turf/turf';
-import { Geometry } from 'ol/geom';
-import GeoJSON from 'ol/format/GeoJSON';
 import RBush from 'rbush';
 
 /* ================================================================
-   DATASET SINTETICO CON LOD + INDICE ESPACIAL (R-Tree via RBush)
+   SpatialIndex — R-Tree (rbush 4.x) para busquedas O(log n)
    ================================================================
-   1. LOD: cada feature tiene 3 niveles de geometria y el estilo
-      WebGL elige cual usar segun el zoom.
-   2. Indice espacial: R-Tree real (rbush 4.x) para consulta O(log n).
+   Wrapper tipado de rbush para busquedas espaciales rapidas sobre
+   features vectoriales. Soporta insert/remove incremental.
    ================================================================ */
-
-/* ---------- Geometria ---------- */
-
-const SIMPLIFY_THRESHOLDS = [0, 0.5, 2.5]; // niveles lod 0,1,2
-
-const simplifyGeometry = (geom: Geometry, tolerance: number): Geometry => {
-  const format = new GeoJSON();
-  const geojson = format.writeGeometryObject(geom);
-  const simplified = turf.simplify(geojson, { tolerance, highQuality: true });
-  return format.readGeometry(simplified);
-};
-
-/**
- * Genera una cuadricula sintetica de NxN poligonos centrada en Viacha.
- * Cada celda es de 4x4 m con separacion de 1 m (simula lotes/manzanas).
- * Cada feature lleva 3 geometrias LOD para zooms diferentes.
- */
-export function generateDemoGrid(countPerSide: number = 100): Feature<Polygon>[] {
-  const cellSize = 4;
-  const gap = 1;
-  const step = cellSize + gap;
-  const totalSize = countPerSide * step;
-  const half = totalSize / 2;
-
-  const [cx, cy] = fromLonLat([-68.3, -16.65]);
-  const startX = cx - half;
-  const startY = cy - half;
-
-  const features: Feature<Polygon>[] = [];
-
-  for (let i = 0; i < countPerSide; i++) {
-    for (let j = 0; j < countPerSide; j++) {
-      const x = startX + i * step;
-      const y = startY + j * step;
-
-      const polygon = new Polygon([
-        [
-          [x, y],
-          [x + cellSize, y],
-          [x + cellSize, y + cellSize],
-          [x, y + cellSize],
-          [x, y],
-        ],
-      ]);
-
-      const lod0 = polygon;
-      const lod1 =
-        countPerSide > 50
-          ? (simplifyGeometry(polygon, SIMPLIFY_THRESHOLDS[1]) as Polygon)
-          : lod0;
-      const lod2 =
-        countPerSide > 50
-          ? (simplifyGeometry(polygon, SIMPLIFY_THRESHOLDS[2]) as Polygon)
-          : lod1;
-
-      const feature = new Feature({ geometry: lod0 });
-      feature.setId(`${i}_${j}`);
-      feature.set('lod_0', lod0);
-      feature.set('lod_1', lod1);
-      feature.set('lod_2', lod2);
-      feature.set('cell_id', `${i}_${j}`);
-
-      features.push(feature);
-    }
-  }
-
-  return features;
-}
-
-/* ---------- Indice espacial (R-Tree via rbush) ---------- */
 
 interface RBushItem {
   minX: number;
   minY: number;
   maxX: number;
   maxY: number;
-  feature: Feature<Polygon>;
+  featureId: string | number;
 }
 
-/**
- * Wrapper tipado de rbush 4.x para busquedas espaciales O(log n).
- * Sustituye el array lineal con bbox check que tenia antes.
- */
 export class SpatialIndex {
   private tree: RBush<RBushItem>;
+  private _size = 0;
+  private featureMap = new Map<string | number, Feature<Polygon>>();
 
-  constructor(features: Feature<Polygon>[]) {
+  constructor() {
     this.tree = new RBush<RBushItem>(16);
-    this.load(features);
   }
 
-  /** Carga (o recarga) el indice a partir de un array de features */
+  /** Carga masiva (reemplaza todo el índice) */
   load(features: Feature<Polygon>[]): void {
-    const items: RBushItem[] = features.map((f) => {
-      const extent = f.getGeometry()!.getExtent();
-      return {
-        minX: extent[0],
-        minY: extent[1],
-        maxX: extent[2],
-        maxY: extent[3],
-        feature: f,
-      };
-    });
+    const items: RBushItem[] = [];
+    this.featureMap.clear();
+    for (const f of features) {
+      const geom = f.getGeometry();
+      if (!geom) continue;
+      const extent = geom.getExtent();
+      const id = f.getId();
+      if (id === undefined) continue;
+      items.push({ minX: extent[0], minY: extent[1], maxX: extent[2], maxY: extent[3], featureId: id });
+      this.featureMap.set(id, f);
+    }
     this.tree.clear();
     this.tree.load(items);
+    this._size = items.length;
   }
 
-  /** Consulta BBox: devuelve features cuyo extent intersecta el rectangulo */
+  /** Insert incremental (un feature) */
+  insert(feature: Feature<Polygon>): void {
+    const geom = feature.getGeometry();
+    if (!geom) return;
+    const id = feature.getId();
+    if (id === undefined) return;
+    const extent = geom.getExtent();
+    this.tree.insert({ minX: extent[0], minY: extent[1], maxX: extent[2], maxY: extent[3], featureId: id });
+    this.featureMap.set(id, feature);
+    this._size++;
+  }
+
+  /** Remove incremental (un feature) */
+  remove(feature: Feature<Polygon>): void {
+    const id = feature.getId();
+    if (id === undefined) return;
+    const geom = feature.getGeometry();
+    if (!geom) return;
+    const extent = geom.getExtent();
+    this.tree.remove({ minX: extent[0], minY: extent[1], maxX: extent[2], maxY: extent[3], featureId: id });
+    this.featureMap.delete(id);
+    this._size--;
+  }
+
+  /** Buscar features por bbox */
   search(minX: number, minY: number, maxX: number, maxY: number): Feature<Polygon>[] {
-    return this.tree.search({ minX, minY, maxX, maxY }).map((i) => i.feature);
+    const results = this.tree.search({ minX, minY, maxX, maxY });
+    const features: Feature<Polygon>[] = [];
+    for (const item of results) {
+      const f = this.featureMap.get(item.featureId);
+      if (f) features.push(f);
+    }
+    return features;
   }
 
-  /** Consulta por punto (con tolerancia en metros) */
-  searchPoint(x: number, y: number, tolerance = 0.1): Feature<Polygon>[] {
+  /** Buscar features cerca de un punto */
+  searchPoint(x: number, y: number, tolerance: number): Feature<Polygon>[] {
     return this.search(x - tolerance, y - tolerance, x + tolerance, y + tolerance);
   }
 
-  /** Cantidad de items indexados */
   get size(): number {
-    return this.tree.all().length;
+    return this._size;
   }
 
-  /** Libera memoria */
   clear(): void {
     this.tree.clear();
+    this.featureMap.clear();
+    this._size = 0;
   }
 }
 
 let globalSpatialIndex: SpatialIndex | null = null;
 
-/** Crea o reusa el indice espacial global para el dataset demo */
-export function buildSpatialIndex(features: Feature<Polygon>[]): SpatialIndex {
-  globalSpatialIndex = new SpatialIndex(features);
+export function getOrCreateSpatialIndex(): SpatialIndex {
+  if (!globalSpatialIndex) {
+    globalSpatialIndex = new SpatialIndex();
+  }
   return globalSpatialIndex;
 }
 
-/** Devuelve el indice global si existe, sino null */
 export function getSpatialIndex(): SpatialIndex | null {
   return globalSpatialIndex;
 }
 
-/** Invalida el indice espacial (llamar tras modificar features) */
 export function invalidateSpatialIndex(): void {
   globalSpatialIndex?.clear();
   globalSpatialIndex = null;
