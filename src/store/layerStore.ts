@@ -8,9 +8,11 @@ type LayerState = {
   baseMap: BaseMapId;
   visibility: Record<LayerKey, boolean>;
   gridOrigin: [number, number];
+  statsPanelVisible: boolean;
   setBaseMap: (id: BaseMapId) => void;
   setVisibility: (key: LayerKey, visible: boolean) => void;
   setGridOrigin: (o: [number, number]) => void;
+  setStatsPanelVisible: (v: boolean) => void;
 };
 
 export const useLayerStore = create<LayerState>()(
@@ -21,6 +23,7 @@ export const useLayerStore = create<LayerState>()(
       gridSnap: true,
     },
     gridOrigin: [0, 0],
+    statsPanelVisible: false,
     setBaseMap: (id) =>
       set((state) => {
         state.baseMap = id;
@@ -32,6 +35,10 @@ export const useLayerStore = create<LayerState>()(
     setGridOrigin: (o) =>
       set((state) => {
         state.gridOrigin = o;
+      }),
+    setStatsPanelVisible: (v) =>
+      set((state) => {
+        state.statsPanelVisible = v;
       }),
   }))
 );

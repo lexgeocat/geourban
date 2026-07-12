@@ -1,16 +1,11 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useRef, useCallback } from 'react';
 import { useMapStore } from '../store/mapStore';
 import { useStreetStore } from '../store/streetStore';
+import { useLayerStore } from '../store/layerStore';
 import { polyArea, type Pt } from '../geo/polygonEngine';
 import Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
 import Polygon from 'ol/geom/Polygon.js';
-
-/**
- * Panel de estadísticas — port de LOTES_SAI stats-view-menu.js updateStatsPanel().
- * Muestra: área total, lotes, manzanos, calles, equipamiento.
- * Posicionado en la parte inferior derecha.
- */
 
 const MZN_COLORS = [
   '#58a6ff', '#3fb950', '#f59e0b', '#ef4444', '#8b5cf6',
@@ -109,10 +104,34 @@ function computeStats(drawSource: any, streets: any[]): StatsData {
 export default function StatsPanel() {
   const drawSource = useMapStore((s) => s.drawSource);
   const streets = useStreetStore((s) => s.streets);
+  const visible = useLayerStore((s) => s.statsPanelVisible);
+  const setStatsPanelVisible = useLayerStore((s) => s.setStatsPanelVisible);
+
+  const [pos, setPos] = useState({ x: window.innerWidth - 250, y: window.innerHeight - 350 });
+  const dragRef = useRef<{ startX: number; startY: number; posX: number; posY: number } | null>(null);
 
   const stats = useMemo(() => computeStats(drawSource, streets), [drawSource, streets]);
 
-  // No mostrar si no hay nada que estadisticar
+  const onMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    dragRef.current = { startX: e.clientX, startY: e.clientY, posX: pos.x, posY: pos.y };
+    const onMove = (ev: MouseEvent) => {
+      if (!dragRef.current) return;
+      setPos({
+        x: dragRef.current.posX + (ev.clientX - dragRef.current.startX),
+        y: dragRef.current.posY + (ev.clientY - dragRef.current.startY),
+      });
+    };
+    const onUp = () => {
+      dragRef.current = null;
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }, [pos.x, pos.y]);
+
+  if (!visible) return null;
   if (stats.totalAreaM2 === 0 && stats.streetCount === 0) return null;
 
   const pctLots = stats.totalAreaM2 > 0 ? (stats.lotAreaM2 / stats.totalAreaM2) * 100 : 0;
@@ -123,27 +142,51 @@ export default function StatsPanel() {
     <div
       className="cad-panel-glass"
       style={{
-        position: 'absolute',
-        bottom: 10,
-        right: 10,
-        zIndex: 100,
+        position: 'fixed',
+        left: pos.x,
+        top: pos.y,
+        zIndex: 1000,
         padding: '10px 14px',
         minWidth: 220,
         maxWidth: 300,
         fontSize: '0.72rem',
+        cursor: 'default',
       }}
     >
       {/* Header */}
-      <div style={{
-        fontWeight: 700,
-        color: 'var(--cad-text)',
-        marginBottom: 8,
-        fontSize: '0.78rem',
-        letterSpacing: '0.03em',
-        borderBottom: '1px solid var(--cad-border)',
-        paddingBottom: 6,
-      }}>
-        Estadísticas del proyecto
+      <div
+        onMouseDown={onMouseDown}
+        style={{
+          fontWeight: 700,
+          color: 'var(--cad-text)',
+          marginBottom: 8,
+          fontSize: '0.78rem',
+          letterSpacing: '0.03em',
+          borderBottom: '1px solid var(--cad-border)',
+          paddingBottom: 6,
+          cursor: 'grab',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          userSelect: 'none',
+        }}
+      >
+        <span>Estadísticas del proyecto</span>
+        <button
+          onClick={() => setStatsPanelVisible(false)}
+          style={{
+            background: 'none',
+            border: 'none',
+            color: 'var(--cad-text-dim)',
+            cursor: 'pointer',
+            fontSize: '0.85rem',
+            lineHeight: 1,
+            padding: '0 2px',
+          }}
+          title="Cerrar"
+        >
+          ✕
+        </button>
       </div>
 
       {/* Tabla de estadísticas */}

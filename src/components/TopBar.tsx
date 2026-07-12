@@ -1,5 +1,5 @@
 import React, { useRef } from 'react';
-import { FolderOpen, Save, Download } from 'lucide-react';
+import { FolderOpen, Save, BarChart3 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useMapStore } from '../store/mapStore';
 import { useDrawStore } from '../store/drawStore';
@@ -30,6 +30,8 @@ export default function TopBar() {
   const viewConfig = useMapStore((s) => s.viewConfig);
   const mode = useDrawStore((s) => s.mode);
   const baseMap = useLayerStore((s) => s.baseMap);
+  const statsPanelVisible = useLayerStore((s) => s.statsPanelVisible);
+  const setStatsPanelVisible = useLayerStore((s) => s.setStatsPanelVisible);
   const modeInfo = modeLabels[mode] || modeLabels.none;
 
   const getCurrentProject = () => {
@@ -223,6 +225,23 @@ export default function TopBar() {
           <option value="shp">Shapefile (.shp)</option>
           <option value="dxf">DXF (.dxf)</option>
         </select>
+
+        <div style={{ width: 1, height: 16, background: 'var(--cad-border)' }} />
+
+        <button
+          onClick={() => setStatsPanelVisible(!statsPanelVisible)}
+          className="cad-icon-btn cad-tooltip-bottom cad-tooltip"
+          data-tooltip="Estadísticas"
+          aria-label="Estadísticas"
+          style={{
+            width: 28,
+            height: 28,
+            color: statsPanelVisible ? 'var(--cad-accent)' : 'var(--cad-text-dim)',
+            opacity: statsPanelVisible ? 1 : 0.5,
+          }}
+        >
+          <BarChart3 size={15} />
+        </button>
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
