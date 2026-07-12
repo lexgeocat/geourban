@@ -1,7 +1,9 @@
-import React from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useSelectionStore } from '../store/selectionStore';
 import { useMapStore } from '../store/mapStore';
 import { useSubdivisionStore } from '../store/subdivisionStore';
+import { useDrawStore } from '../store/drawStore';
+import { useLayerStore } from '../store/layerStore';
 import { formatMetricArea, formatMetricLength, type SegmentMetric } from '../geo/metrics';
 
 /* ================================================================
@@ -11,14 +13,28 @@ import { formatMetricArea, formatMetricLength, type SegmentMetric } from '../geo
    - Metricas del feature primario seleccionado
    - Lista de lados / segmentos con su longitud
    - Acciones rapidas: Subdividir, Fusionar con otro, Eliminar
+   Solo visible en modo select/edit y si el panel está habilitado.
+   Arrastrable por el header.
    ================================================================ */
 
 const panelStyle: React.CSSProperties = {
   position: 'absolute',
   top: 10,
-  right: 240, // a la izquierda del LayerPanel
+  right: 10,
   zIndex: 100,
   width: 240,
+};
+
+const headerStyle: React.CSSProperties = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  marginBottom: 10,
+  paddingBottom: 8,
+  borderBottom: '1px solid var(--cad-border)',
+  cursor: 'grab',
+  userSelect: 'none',
+  WebkitUserSelect: 'none',
 };
 
 const sectionTitleStyle: React.CSSProperties = {
@@ -46,16 +62,70 @@ const valueStyle: React.CSSProperties = {
 };
 
 export default function PropertyPanel() {
+  const drawMode = useDrawStore((s) => s.mode);
+  const propertiesVisible = useLayerStore((s) => s.panelVisibility.properties);
   const primaryId = useSelectionStore((s) => s.primaryId);
   const selectedCount = useSelectionStore((s) => s.selectedIds.size);
   const drawSource = useMapStore((s) => s.drawSource);
   const openSubdivision = useSubdivisionStore((s) => s.open);
 
+  const [position, setPosition] = useState({ top: 10, right: 10 });
+  const dragRef = useRef({ isDragging: false, startX: 0, startY: 0, startTop: 0, startRight: 0 });
+
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    dragRef.current = {
+      isDragging: true,
+      startX: e.clientX,
+      startY: e.clientY,
+      startTop: position.top,
+      startRight: position.right,
+    };
+    document.body.style.cursor = 'grabbing';
+    document.body.style.userSelect = 'none';
+    e.stopPropagation();
+  }, [position]);
+
+  const handleMouseMove = useCallback((e: MouseEvent) => {
+    if (!dragRef.current.isDragging) return;
+    const dx = e.clientX - dragRef.current.startX;
+    const dy = e.clientY - dragRef.current.startY;
+    const newTop = dragRef.current.startTop + dy;
+    const newRight = dragRef.current.startRight - dx;
+    // Keep within viewport bounds
+    const maxTop = window.innerHeight - 150;
+    const maxRight = window.innerWidth - 260;
+    setPosition({
+      top: Math.max(10, Math.min(maxTop, newTop)),
+      right: Math.max(10, Math.min(maxRight, newRight)),
+    });
+  }, []);
+
+  const handleMouseUp = useCallback(() => {
+    dragRef.current.isDragging = false;
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [handleMouseMove, handleMouseUp]);
+
+  // Solo mostrar en modo select o edit, y si el panel está habilitado
+  if (drawMode !== 'select' && drawMode !== 'edit') return null;
+  if (!propertiesVisible) return null;
+
   if (!primaryId || !drawSource) {
     return (
-      <div style={panelStyle} className="cad-panel-glass animate-fade-in">
+      <div style={{ ...panelStyle, top: position.top, right: position.right }} className="cad-panel-glass animate-fade-in">
         <div style={{ padding: '10px 12px' }}>
-          <span style={sectionTitleStyle}>Propiedades</span>
+          <div style={headerStyle} onMouseDown={handleMouseDown}>
+            <span style={sectionTitleStyle}>Propiedades</span>
+          </div>
           <p style={{ fontSize: '0.7rem', color: 'var(--cad-text-muted)' }}>
             Selecciona un polígono para ver sus propiedades.
           </p>
@@ -78,18 +148,9 @@ export default function PropertyPanel() {
   const isPolygon = areaM2 !== undefined;
 
   return (
-    <div style={panelStyle} className="cad-panel-glass animate-fade-in">
+    <div style={{ ...panelStyle, top: position.top, right: position.right }} className="cad-panel-glass animate-fade-in">
       <div style={{ padding: '10px 12px' }}>
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginBottom: 10,
-            paddingBottom: 8,
-            borderBottom: '1px solid var(--cad-border)',
-          }}
-        >
+        <div style={headerStyle} onMouseDown={handleMouseDown}>
           <span style={sectionTitleStyle}>Propiedades</span>
           <span
             style={{

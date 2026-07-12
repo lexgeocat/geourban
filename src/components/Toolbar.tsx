@@ -398,6 +398,7 @@ export default function Toolbar() {
           newFeat.setId(`lot-${Date.now()}-${totalLots + i}`);
           newFeat.setProperties({
             subdivision: 'auto',
+            lotGroupId: String(id), // agrupa todos los lotes salidos del mismo manzano -> cotas internas
             label: lot.isRemnant ? `Remanente ${totalLots + i + 1}` : `Lote ${totalLots + i + 1}`,
             areaM2: lot.areaM2,
             frontM: lot.frontM,

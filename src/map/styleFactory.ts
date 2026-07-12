@@ -1,82 +1,23 @@
-import Feature from 'ol/Feature.js';
+import type Feature from 'ol/Feature.js';
 import Point from 'ol/geom/Point.js';
 import type Geometry from 'ol/geom/Geometry.js';
 import type { StyleFunction } from 'ol/style/Style.js';
 import { Fill, Stroke, Style, Text } from 'ol/style.js';
-import { formatMetricArea, formatMetricLength, type SegmentMetric } from '../geo/metrics';
+import type { SegmentMetric } from '../geo/metrics';
 
 // ─── Colores LOTES_SAI (fuente de verdad) ───────────────────────────
 const LOTES_SAI_MANZANA_COLOR = '#58a6ff';
 const LOTES_SAI_TEXT_BG = 'rgba(13, 17, 23, 0.72)';
 const LOTES_SAI_LIVE_BG = 'rgba(13, 17, 23, 0.80)';
 
-// ─── Estilos OL para etiquetas estáticas (Pipeline 2) ────────────────
-const CAD_TEXT_FILL = new Fill({ color: '#dffcff' });
-const CAD_TEXT_STROKE = new Stroke({ color: 'rgba(0, 0, 0, 0.72)', width: 3 });
-const CAD_TEXT_BG = new Fill({ color: 'rgba(8, 13, 22, 0.82)' });
-const CAD_SELECTED_BG = new Fill({ color: 'rgba(88, 166, 255, 0.18)' });
+// ─── Cotas (dimension lines) — estilo CAD profesional ────────────────
+const DIM_LINE_COLOR_LOTE = 'rgba(226, 232, 240, 0.55)';
+const DIM_LINE_COLOR_MZN = 'rgba(88, 166, 255, 0.60)';
+const DIM_EXT_GAP_PX = 3;  // separación entre el vértice real y el inicio de la línea de extensión
+const DIM_TICK_PX = 5;     // tamaño de las marcas terminales (ticks a 45°, estilo CAD)
 
-function getZoomFromResolution(resolution: number) {
-  return Math.log2(156543.03392804097 / resolution);
-}
-
-/**
- * Centroide simple de un anillo de puntos (promedio de coordenadas).
- * Idéntico al `centroid()` de LOTES_SAI.
- */
-function ringCentroid(points: number[][]): [number, number] {
-  let cx = 0, cy = 0;
-  const n = points.length;
-  for (let i = 0; i < n; i++) {
-    cx += points[i][0];
-    cy += points[i][1];
-  }
-  return [cx / n, cy / n];
-}
-
-// ─── Etiqueta de texto OL (estática, para measurementLayer) ──────────
-function makeTextStyle(
-  text: string,
-  coordinate: [number, number],
-  options?: {
-    rotation?: number;
-    offsetX?: number;
-    offsetY?: number;
-    selected?: boolean;
-    isManzana?: boolean;
-  }
-) {
-  const isManzana = options?.isManzana ?? true;
-  return new Style({
-    geometry: new Point(coordinate),
-    text: new Text({
-      text,
-      font: isManzana
-        ? '600 11px Courier New'
-        : '500 10px Courier New',
-      fill: options?.selected
-        ? new Fill({ color: '#111827' })
-        : isManzana
-          ? CAD_TEXT_FILL
-          : new Fill({ color: '#ffffff' }),
-      stroke: options?.selected ? undefined : CAD_TEXT_STROKE,
-      backgroundFill: options?.selected
-        ? CAD_SELECTED_BG
-        : isManzana
-          ? CAD_TEXT_BG
-          : undefined,
-      padding: isManzana ? [2, 5, 2, 5] : undefined,
-      placement: 'point',
-      rotation: options?.rotation ?? 0,
-      rotateWithView: true,
-      offsetX: options?.offsetX ?? 0,
-      offsetY: options?.offsetY ?? 0,
-    }),
-  });
-}
-
-function getApproxScreenArea(feature: Feature<Geometry>, resolution: number) {
-  const geometry = feature.getGeometry();
+/** Área aproximada en pantalla (px²) del bbox de una geometría. */
+export function getApproxScreenArea(geometry: Geometry | null | undefined, resolution: number): number {
   if (!geometry) return 0;
   const extent = geometry.getExtent();
   const widthPx = Math.abs(extent[2] - extent[0]) / resolution;
@@ -84,116 +25,163 @@ function getApproxScreenArea(feature: Feature<Geometry>, resolution: number) {
   return widthPx * heightPx;
 }
 
-const SIDE_OFFSET_PX = 18;
+// ─── Orientación de cotas (interna/externa) ──────────────────────────
+
+export type DimensionOrientation = 'inward' | 'outward';
 
 /**
- * Calcula la normal perpendicular hacia AFUERA del polígono usando el
- * método de LOTES_SAI: dot product entre la normal del segmento y el
- * vector desde el centroide hasta el midpoint. Si el dot >= 0, la normal
- * apunta hacia afuera; si no, se invierte.
- *
- * Para lotes se invierte la lógica (hacia adentro).
+ * type === 'manzana'                       -> siempre AFUERA (linda con calle).
+ * tiene lotGroupId compartido por 2+ features -> ADENTRO (lote con hermanos,
+ *   una cota saliente se superpondría con el lote vecino).
+ * cualquier otro caso (polígono suelto, subdivisión de 1 solo lote) -> AFUERA.
  */
-function computeSegmentNormal(
-  midpoint: [number, number],
-  angle: number,
-  centroid: [number, number] | undefined,
-  outward: boolean
-): [number, number] {
-  const cos = Math.cos(angle);
-  const sin = Math.sin(angle);
+export function resolveDimensionOrientation(
+  feature: Feature<Geometry>,
+  lotGroupCounts: Map<string, number>,
+): DimensionOrientation {
+  if (feature.get('type') === 'manzana') return 'outward';
+  const groupId = feature.get('lotGroupId') as string | undefined;
+  if (groupId && (lotGroupCounts.get(groupId) ?? 0) >= 2) return 'inward';
+  return 'outward';
+}
 
-  // Normales perpendiculares al segmento
-  const n1: [number, number] = [-sin, cos];
-  const n2: [number, number] = [sin, -cos];
-
-  if (centroid) {
-    const vx = centroid[0] - midpoint[0];
-    const vy = centroid[1] - midpoint[1];
-    const dot = n1[0] * vx + n1[1] * vy;
-
-    // dot >= 0 → n1 apunta hacia el centroide (inward)
-    // dot <  0 → n1 apunta hacia afuera
-    if (outward) {
-      return dot >= 0 ? n2 : n1;
-    } else {
-      return dot >= 0 ? n1 : n2;
-    }
+/** Cuenta cuántos features comparten cada `lotGroupId` (hermanos de la misma subdivisión). */
+export function computeLotGroupCounts(features: Feature<Geometry>[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const f of features) {
+    const gid = f.get('lotGroupId') as string | undefined;
+    if (!gid) continue;
+    counts.set(gid, (counts.get(gid) ?? 0) + 1);
   }
+  return counts;
+}
 
-  return outward ? n1 : n1;
+// ─── Primitivas de dibujo CAD ─────────────────────────────────────────
+
+function drawExtensionLine(
+  ctx: CanvasRenderingContext2D,
+  vertexPx: [number, number],
+  dirX: number,
+  dirY: number,
+  offsetPx: number,
+  color: string,
+) {
+  const startX = vertexPx[0] + dirX * DIM_EXT_GAP_PX;
+  const startY = vertexPx[1] + dirY * DIM_EXT_GAP_PX;
+  const endX = vertexPx[0] + dirX * offsetPx;
+  const endY = vertexPx[1] + dirY * offsetPx;
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(startX, startY);
+  ctx.lineTo(endX, endY);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawDimTick(
+  ctx: CanvasRenderingContext2D,
+  atPx: [number, number],
+  angle: number,
+  color: string,
+) {
+  const half = DIM_TICK_PX / 2;
+  ctx.save();
+  ctx.translate(atPx[0], atPx[1]);
+  ctx.rotate(angle + Math.PI / 4);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.25;
+  ctx.beginPath();
+  ctx.moveTo(-half, 0);
+  ctx.lineTo(half, 0);
+  ctx.stroke();
+  ctx.restore();
 }
 
 /**
- * Dibuja acotaciones de segmentos en el canvas, replicando el estilo
- * exacto de LOTES_SAI render.js líneas 203-303.
+ * Dibuja las cotas de distancia de cada lado de un anillo/línea: línea de
+ * extensión desde cada vértice + línea de cota paralela + ticks terminales +
+ * texto centrado y rotado según la orientación del segmento (nunca al revés).
  *
- * MANZANAS: label hacia AFUERA, fondo oscuro, color manzana (#58a6ff).
- * LOTES:    label hacia ADENTRO (al centroide), texto blanco sin fondo.
+ * `points` son coordenadas de MUNDO (EPSG:3857, mismo sistema que
+ * `geometry.getCoordinates()`). El ctx del postrender de OL está en espacio
+ * de PIXELES: todo punto pasa por `toPixel()` antes de cualquier operación
+ * de dibujo (antes esto NO se hacía y se mezclaban ambos espacios).
  *
- * @param ctx Contexto del canvas.
- * @param points Coordenadas del polígono en el sistema del mundo (EPSG:3857).
- * @param zoom Nivel de zoom actual.
- * @param isManzana Si es una manzana (afecta dirección, colores y fondo).
- * @param resolution Resolución actual del mapa.
+ * Las longitudes NO se recalculan acá: se leen de `segmentLengths`
+ * (Turf, geodésico, calculado una sola vez en geo/metrics.ts). Antes se
+ * recalculaba mezclando metros de mundo con un factor de resolución/pixel,
+ * lo que daba valores ínfimos que nunca superaban el umbral mínimo — las
+ * cotas de lado nunca llegaban a dibujarse.
  */
 export function drawSegmentLabels(
   ctx: CanvasRenderingContext2D,
   points: number[][],
-  zoom: number,
+  segmentLengths: SegmentMetric[] | undefined,
+  centroidWorld: [number, number] | undefined,
+  orientation: DimensionOrientation,
+  toPixel: (coord: number[]) => [number, number],
   isManzana: boolean = false,
-  resolution: number = 1
-) {
-  const MPP = resolution / 156543.03392804097;
-  const MIN_SEGMENT_LENGTH_M = 0.5;
-  const MIN_SEGMENT_PX = 28;
+): void {
+  if (!segmentLengths || segmentLengths.length === 0) return;
+  // Si no coincide 1 a 1 con los lados del anillo, no arriesgar cotas mal ubicadas.
+  if (segmentLengths.length !== points.length - 1) return;
 
-  // Centroide del polígono (método LOTES_SAI)
-  const cen = ringCentroid(points);
+  const MIN_SEGMENT_PX = 34;
+  const color = isManzana ? DIM_LINE_COLOR_MZN : DIM_LINE_COLOR_LOTE;
+  const offsetPx = isManzana ? 17 : 13;
+  const fs = isManzana ? 12 : 10.5;
+  const cenPx = centroidWorld ? toPixel(centroidWorld) : null;
 
-  for (let i = 0; i < points.length; i++) {
-    const pA = points[i];
-    const pB = points[(i + 1) % points.length];
-    const dx = pB[0] - pA[0];
-    const dy = pB[1] - pA[1];
-    const lenM = Math.hypot(dx, dy) * MPP;
-    const lenPx = Math.hypot(dx, dy) / resolution;
+  for (let i = 0; i < segmentLengths.length; i++) {
+    const meta = segmentLengths[i];
+    if (!meta || !Number.isFinite(meta.lengthM) || meta.lengthM <= 0) continue;
 
-    if (lenM < MIN_SEGMENT_LENGTH_M || lenPx < MIN_SEGMENT_PX) continue;
+    const aPx = toPixel(points[i]);
+    const bPx = toPixel(points[i + 1]);
+    const dxPx = bPx[0] - aPx[0];
+    const dyPx = bPx[1] - aPx[1];
+    const lenPx = Math.hypot(dxPx, dyPx);
+    if (lenPx < MIN_SEGMENT_PX) continue;
 
-    const midX = (pA[0] + pB[0]) / 2;
-    const midY = (pA[1] + pB[1]) / 2;
-    let ang = Math.atan2(dy, dx);
+    let ang = Math.atan2(dyPx, dxPx);
     if (ang > Math.PI / 2 || ang < -Math.PI / 2) ang += Math.PI;
 
-    // Normal perpendicular del segmento
-    const segLen = Math.hypot(dx, dy) || 1;
-    const nxSeg = -dy / segLen;
-    const nySeg = dx / segLen;
+    let nx = -dyPx / lenPx;
+    let ny = dxPx / lenPx;
 
-    // Dot product con centroide → decide dirección (LOTES_SAI exacto)
-    const dotOut = (midX - cen[0]) * nxSeg + (midY - cen[1]) * nySeg;
-
-    let dirX: number, dirY: number, offsetPx: number, fs: number;
-
-    if (isManzana) {
-      // MANZANA: hacia afuera, fondo oscuro, color manzana
-      dirX = dotOut >= 0 ? nxSeg : -nxSeg;
-      dirY = dotOut >= 0 ? nySeg : -nySeg;
-      offsetPx = Math.max(10, 13 * zoom);
-      fs = Math.max(10, Math.min(15, 11 * zoom));
-    } else {
-      // LOTE: hacia adentro (al centroide), texto blanco sin fondo
-      dirX = dotOut >= 0 ? -nxSeg : nxSeg;
-      dirY = dotOut >= 0 ? -nySeg : nySeg;
-      offsetPx = Math.max(7, 9 * zoom);
-      fs = Math.max(9, Math.min(13, 10 * zoom));
+    if (cenPx) {
+      const midPx: [number, number] = [(aPx[0] + bPx[0]) / 2, (aPx[1] + bPx[1]) / 2];
+      const pointsAway = (midPx[0] - cenPx[0]) * nx + (midPx[1] - cenPx[1]) * ny >= 0;
+      const wantOutward = orientation === 'outward';
+      if (pointsAway !== wantOutward) {
+        nx = -nx;
+        ny = -ny;
+      }
     }
 
-    const txC = midX + dirX * offsetPx;
-    const tyC = midY + dirY * offsetPx;
+    drawExtensionLine(ctx, aPx, nx, ny, offsetPx, color);
+    drawExtensionLine(ctx, bPx, nx, ny, offsetPx, color);
 
-    const label = lenM >= 100 ? lenM.toFixed(1) + ' m' : lenM.toFixed(2) + ' m';
+    const dimA: [number, number] = [aPx[0] + nx * offsetPx, aPx[1] + ny * offsetPx];
+    const dimB: [number, number] = [bPx[0] + nx * offsetPx, bPx[1] + ny * offsetPx];
+
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(dimA[0], dimA[1]);
+    ctx.lineTo(dimB[0], dimB[1]);
+    ctx.stroke();
+    ctx.restore();
+
+    drawDimTick(ctx, dimA, ang, color);
+    drawDimTick(ctx, dimB, ang, color);
+
+    const txC = (dimA[0] + dimB[0]) / 2;
+    const tyC = (dimA[1] + dimB[1]) / 2;
+    const label = meta.lengthM >= 100 ? meta.lengthM.toFixed(1) + ' m' : meta.lengthM.toFixed(2) + ' m';
 
     ctx.save();
     ctx.translate(txC, tyC);
@@ -201,105 +189,79 @@ export function drawSegmentLabels(
     ctx.font = isManzana ? `600 ${fs}px Courier New` : `500 ${fs}px Courier New`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-
-    if (isManzana) {
-      const tw = ctx.measureText(label).width;
-      ctx.fillStyle = LOTES_SAI_TEXT_BG;
-      ctx.fillRect(-tw / 2 - 2, -fs / 2 - 1, tw + 4, fs + 2);
-      ctx.fillStyle = LOTES_SAI_MANZANA_COLOR + 'ee';
-    } else {
-      ctx.fillStyle = '#ffffff';
-    }
+    const tw = ctx.measureText(label).width;
+    ctx.fillStyle = LOTES_SAI_TEXT_BG;
+    ctx.fillRect(-tw / 2 - 3, -fs / 2 - 1.5, tw + 6, fs + 3);
+    ctx.fillStyle = isManzana ? LOTES_SAI_MANZANA_COLOR + 'ee' : '#e2e8f0ee';
     ctx.fillText(label, 0, 0);
     ctx.restore();
   }
 }
 
 /**
- * Calcula estilos de segmentos para la measurementLayer (OL StyleFunction).
- * Replica la lógica de LOTES_SAI: manzanas outward+bg, lotes inward+sin bg.
+ * Cota principal (área para polígonos, longitud para líneas), siempre en
+ * `labelPoint` — el centroide real calculado por Turf en geo/metrics.ts,
+ * nunca un promedio simple de vértices (se distorsiona en polígonos cóncavos).
  */
-function getSegmentStyles(
-  segments: SegmentMetric[],
-  labelPoint: [number, number] | undefined,
-  geometry: Geometry | null,
-  zoom: number,
-  selected: boolean,
-  isManzana: boolean
-) {
-  if (!selected && zoom < 19) return [];
+export function drawMainMetricLabel(
+  ctx: CanvasRenderingContext2D,
+  labelPointWorld: [number, number],
+  toPixel: (coord: number[]) => [number, number],
+  text: string,
+  isManzana: boolean,
+  options?: { extraLine?: string; color?: string },
+): void {
+  const px = toPixel(labelPointWorld);
+  const fs = isManzana ? 13 : 11.5;
+  const mainColor = options?.color ?? (isManzana ? LOTES_SAI_MANZANA_COLOR : '#dffcff');
 
-  return segments.map((segment) => {
-    const angle = segment.angleRad;
-    const cos = Math.cos(angle);
-    const sin = Math.sin(angle);
+  ctx.save();
+  ctx.font = `700 ${fs}px Courier New`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  const tw = ctx.measureText(text).width;
+  ctx.fillStyle = LOTES_SAI_TEXT_BG;
+  ctx.fillRect(px[0] - tw / 2 - 4, px[1] - fs / 2 - 2, tw + 8, fs + 4);
+  ctx.fillStyle = mainColor + 'ee';
+  ctx.fillText(text, px[0], px[1]);
 
-    const outward = isManzana;
-    const [nx, ny] = computeSegmentNormal(segment.midpoint, angle, labelPoint, outward);
-
-    const offsetX = (nx * cos + ny * sin) * SIDE_OFFSET_PX;
-    const offsetY = (nx * -sin + ny * cos) * SIDE_OFFSET_PX;
-
-    return makeTextStyle(formatMetricLength(segment.lengthM), segment.midpoint, {
-      rotation: angle,
-      offsetX,
-      offsetY,
-      selected,
-      isManzana,
-    });
-  });
+  if (options?.extraLine) {
+    const fs2 = fs * 0.8;
+    ctx.font = `500 ${fs2}px Courier New`;
+    const tw2 = ctx.measureText(options.extraLine).width;
+    const y2 = px[1] + fs * 0.5 + fs2 * 0.6 + 2;
+    ctx.fillStyle = LOTES_SAI_TEXT_BG;
+    ctx.fillRect(px[0] - tw2 / 2 - 3, y2 - fs2 / 2 - 1.5, tw2 + 6, fs2 + 3);
+    ctx.fillStyle = 'rgba(148, 163, 184, 0.85)';
+    ctx.fillText(options.extraLine, px[0], y2);
+  }
+  ctx.restore();
 }
 
+/**
+ * Style de `measurementLayer`. Ya NO dibuja texto — eso lo hace en
+ * exclusiva el postrender de Map.tsx (drawSegmentLabels / drawMainMetricLabel).
+ * Antes ambos sistemas dibujaban las mismas cotas de lado por separado,
+ * duplicándose en pantalla cuando zoom >= 19.
+ *
+ * Esta capa sigue existiendo porque Select/Modify/Translate/Erase la usan
+ * como `hitDetectionLayer`. Antes no tenía Fill/Stroke sobre la geometría
+ * real (solo Text con geometry:Point), así que clickear el interior de un
+ * polígono lejos del label no registraba hit. Ahora expone un Fill/Stroke
+ * invisible pero "sólido" para el hit-canvas de OL (alpha casi 0, pero no
+ * exactamente 0 por seguridad de compatibilidad).
+ */
 export function createMeasurementStyle(): StyleFunction {
-  return (rawFeature, resolution) => {
-    const feature = rawFeature as Feature<Geometry>;
-    const zoom = getZoomFromResolution(resolution);
-    const selected = feature.get('selected') === true;
-    const labelPoint = feature.get('labelPoint') as [number, number] | undefined;
-    const segmentLengths = (feature.get('segmentLengths') as SegmentMetric[] | undefined) ?? [];
-    const isManzana = feature.get('type') === 'manzana';
-    const styles: Style[] = [];
-
-    if (!labelPoint) return styles;
-
-    const screenArea = getApproxScreenArea(feature, resolution);
-    const canShowMainLabel = selected || zoom >= 17 || screenArea >= 5200;
-
-    if (canShowMainLabel) {
-      const areaM2 = feature.get('areaM2') as number | undefined;
-      const lengthM = feature.get('lengthM') as number | undefined;
-      const mainText = areaM2 !== undefined
-        ? formatMetricArea(areaM2)
-        : lengthM !== undefined
-          ? formatMetricLength(lengthM)
-          : '';
-
-      if (mainText) {
-        styles.push(makeTextStyle(mainText, labelPoint, { selected, isManzana }));
-      }
-    }
-
-    styles.push(
-      ...getSegmentStyles(
-        segmentLengths,
-        labelPoint,
-        feature.getGeometry(),
-        zoom,
-        selected,
-        isManzana
-      )
-    );
-    return styles;
-  };
+  const hitStyle = new Style({
+    fill: new Fill({ color: 'rgba(0, 0, 0, 0.001)' }),
+    stroke: new Stroke({ color: 'rgba(0, 0, 0, 0.001)', width: 6 }),
+  });
+  return () => hitStyle;
 }
 
 /**
  * Estilos para labels en vivo durante el dibujo (rubber-band).
- * Replica exactamente LOTES_SAI render.js líneas 799-868.
- *
- * @param isPolygon Si el sketch es un polígono (true) o línea (false).
- * @param isLastSegment Si es el último segmento (el que va al cursor).
- *                       LOTES_SAI lo pinta naranja (#ffa657).
+ * Sin cambios — replica LOTES_SAI render.js líneas 799-868.
  */
 export function createLiveDrawingLabelStyle(
   text: string,

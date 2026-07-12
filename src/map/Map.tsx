@@ -33,14 +33,22 @@ import { useMapStore } from '../store/mapStore';
 import { useDrawStore } from '../store/drawStore';
 import { useHistoryStore } from '../store/historyStore';
 import { useSelectionStore } from '../store/selectionStore';
-import { updateFeatureMetrics } from '../geo/metrics';
-import { findSnap, createSnapPoints, SNAP_COLORS } from './advancedSnap';
+import { updateFeatureMetrics, formatMetricArea, formatMetricLength, type SegmentMetric } from '../geo/metrics';
+import { findSnap, createSnapPoints, SNAP_COLORS, type SnapGuideVisual } from './advancedSnap';
+import { useSnapSettingsStore } from '../store/snapSettingsStore';
 import { BASE_MAP_DEFS } from './baseMaps';
-import { createMeasurementStyle, drawSegmentLabels, createLiveDrawingLabelStyle } from './styleFactory';
+import {
+  createMeasurementStyle,
+  drawSegmentLabels,
+  createLiveDrawingLabelStyle,
+  drawMainMetricLabel,
+  resolveDimensionOrientation,
+  computeLotGroupCounts,
+  getApproxScreenArea,
+} from './styleFactory';
 import { useStreetStore } from '../store/streetStore';
 import { recomputeManzanos } from '../store/mapStore';
 import { computeStreetFillets, filletArcPoints } from '../geo/streetEngine';
-import { polyArea } from '../geo/polygonEngine';
 import { getOrCreateSpatialIndex } from './demoDataset';
 import { cadBaseMapBundles } from './cadGridLayer';
 import LayerGroup from 'ol/layer/Group.js';
@@ -72,12 +80,14 @@ export default function MapView() {
   const baseMapEffectPrimedRef = useRef(false);
   const measurementLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
   const drawLayerRef = useRef<WebGLVectorLayer | null>(null);
+  const streetLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
   const drawSrcRef = useRef<VectorSource | null>(null);
   const streetLayerSrcRef = useRef<VectorSource | null>(null);
   const gridSnapSrcRef = useRef<VectorSource | null>(null);
+  const snapGuideRef = useRef<SnapGuideVisual | null>(null);
   const selectInteractionRef = useRef<Select | null>(null);
   const baseMapId = useLayerStore((s) => s.baseMap);
-  const measurementsVisible = useLayerStore((s) => s.visibility.measurements);
+  const workVisibility = useLayerStore((s) => s.workVisibility);
   const viewConfig = useMapStore((s) => s.viewConfig);
   const drawMode = useDrawStore().mode;
 
@@ -129,7 +139,7 @@ export default function MapView() {
     drawLayerRef.current = drawLayer;
     const measurementLayer = new VectorLayer({
       source: drawSrc,
-      visible: measurementsVisible,
+      visible: workVisibility.measurements,
       declutter: true,
       style: createMeasurementStyle(),
     });
@@ -140,6 +150,7 @@ export default function MapView() {
     streetLayerSrcRef.current = streetLayerSrc;
     const streetLayer = new VectorLayer({
       source: streetLayerSrc,
+      visible: workVisibility.streets,
       style: new Style({
         stroke: new Stroke({
           color: 'rgba(255, 166, 87, 0.85)',
@@ -148,6 +159,7 @@ export default function MapView() {
         }),
       }),
     });
+    streetLayerRef.current = streetLayer;
 
     // --- Capa Canvas2D dedicada para postrender (labels, cotas, fillets) ---
     // Esta capa siempre visible garantiza que el postrender tenga un
@@ -155,8 +167,8 @@ export default function MapView() {
     // mediciones o la capa de calles.
     const postrenderLayer = new VectorLayer({
       source: new VectorSource(),
-      style: () => null,
-      renderOrder: null,
+      style: () => undefined,
+      renderOrder: undefined,
     });
 
     const map = new Map({
@@ -188,8 +200,8 @@ export default function MapView() {
     // 2. Agregar DragPan con click derecho (button 2) o click medio (button 1)
     const dragPan = new DragPan({
       condition: (event) => {
-        const oe = event.originalEvent;
-        if (!oe || typeof oe.button !== 'number') return false;
+        const oe = event.originalEvent as unknown;
+        if (!(oe instanceof MouseEvent)) return false;
         return oe.button === 1 || oe.button === 2;
       },
     });
@@ -222,7 +234,7 @@ export default function MapView() {
       lastFeatureCount: -1,
       lastStreetHash: '',
       cachedFillets: [] as ReturnType<typeof computeStreetFillets>,
-      cachedMznAreas: new globalThis.Map<string, number>(),
+      lotGroupCounts: new globalThis.Map<string, number>(),
       dirty: true,
     };
     function streetsHash(streets: any[]): string {
@@ -245,7 +257,6 @@ export default function MapView() {
       const resolution = map.getView().getResolution() ?? 1;
       const zoom = getZoomFromResolution(resolution);
       const features = drawSrcRef.current?.getFeatures() ?? [];
-      const canvasScale = Math.max(0.2, Math.min(1.0, (zoom - 12) / 8));
 
       // Detectar si algo cambió desde el último frame
       const currentFeatureCount = features.length;
@@ -260,28 +271,24 @@ export default function MapView() {
         renderCache.lastStreetHash = currentStreetHash;
       }
 
-      // Pre-computar áreas de manzanos (solo cuando features cambian)
+      // Recalcular agrupación de lotes (solo cuando features cambian) — decide
+      // qué features comparten `lotGroupId` para elegir cotas internas/externas.
       if (featuresChanged || renderCache.dirty) {
-        renderCache.cachedMznAreas.clear();
-        for (const f of features) {
-          if (f.get('type') === 'manzana') {
-            const geom = f.getGeometry();
-            if (geom instanceof Polygon) {
-              const coords = geom.getCoordinates()[0];
-              if (coords && coords.length >= 3) {
-                const area = polyArea(coords.map((c: number[]) => [c[0], c[1]] as [number, number]));
-                renderCache.cachedMznAreas.set(f.getId() as string, area);
-              }
-            }
-          }
-        }
+        renderCache.lotGroupCounts = computeLotGroupCounts(features as Feature<Geometry>[]);
       }
 
       renderCache.lastZoom = zoom;
       renderCache.lastFeatureCount = currentFeatureCount;
       renderCache.dirty = false;
 
-      // ─── Dibujar labels de manzanos + cotas (fill/stroke va en WebGL) ───
+      // ─── toPx compartido: mundo (EPSG:3857) -> pixeles de canvas ───────
+      const toPx = (coord: number[]): [number, number] => {
+        const px = map.getPixelFromCoordinate(coord as [number, number]);
+        return px ? [px[0], px[1]] : [0, 0];
+      };
+      const selectedIds = useSelectionStore.getState().selectedIds;
+
+      // ─── Dibujar labels de manzanos/lotes + cotas (fill/stroke va en WebGL) ───
       for (let fi = 0; fi < features.length; fi++) {
         const feature = features[fi];
         const geometry = feature.getGeometry();
@@ -289,47 +296,63 @@ export default function MapView() {
 
         const isManzana = feature.get('type') === 'manzana';
         const colorIdx = feature.get('colorIdx') ?? 0;
+        const featureId = feature.getId();
+        const isSelected = featureId != null && selectedIds.has(featureId as string | number);
+        const orientation = resolveDimensionOrientation(feature as Feature<Geometry>, renderCache.lotGroupCounts);
+        const labelPoint = feature.get('labelPoint') as [number, number] | undefined;
 
         if (geometry instanceof Polygon) {
           const coordinates = geometry.getCoordinates()[0] ?? [];
           if (coordinates.length < 3) continue;
 
-          // Etiqueta del manzano (Mzo. N + área) — solo texto, el fill va en WebGL
-          if (isManzana && zoom > 14) {
-            const centroid = coordinates.reduce(
-              (acc: number[], c: number[]) => [acc[0] + c[0] / coordinates.length, acc[1] + c[1] / coordinates.length],
-              [0, 0]
-            );
-            const cenPx = map.getPixelFromCoordinate(centroid);
-            if (cenPx) {
-              const color = MZN_COLORS[colorIdx % MZN_COLORS.length];
-              const fs = Math.max(11, Math.min(16, 11.5 * zoom / 18));
-              ctx.save();
-              ctx.font = `bold ${fs}px Courier New`;
-              ctx.textAlign = 'center';
-              ctx.textBaseline = 'middle';
-              ctx.fillStyle = color + 'dd';
-              ctx.fillText(`Mzo. ${colorIdx + 1}`, cenPx[0], cenPx[1] - fs * 0.5);
-              if (zoom > 16) {
-                const cachedArea = renderCache.cachedMznAreas.get(feature.getId() as string);
-                const fs2 = Math.max(9, Math.min(13, 10 * zoom / 18));
-                ctx.font = `${fs2}px Courier New`;
-                ctx.fillStyle = 'rgba(139, 148, 158, 0.7)';
-                ctx.fillText(`${(cachedArea ?? 0).toFixed(0)} m²`, cenPx[0], cenPx[1] + fs2 * 0.6);
+          const showMainLabel =
+            isSelected || zoom > 15.5 || getApproxScreenArea(geometry, resolution) >= 4200;
+          if (showMainLabel && labelPoint) {
+            const areaM2 = feature.get('areaM2') as number | undefined;
+            if (areaM2 !== undefined) {
+              if (isManzana) {
+                const mznColor = MZN_COLORS[colorIdx % MZN_COLORS.length];
+                drawMainMetricLabel(ctx, labelPoint, toPx, `Mzo. ${colorIdx + 1}`, true, {
+                  extraLine: formatMetricArea(areaM2),
+                  color: mznColor,
+                });
+              } else {
+                drawMainMetricLabel(ctx, labelPoint, toPx, formatMetricArea(areaM2), false);
               }
-              ctx.restore();
             }
           }
 
-          // Cotas del segmento
-          if (coordinates.length >= 2) {
-            drawSegmentLabels(ctx, coordinates, canvasScale, isManzana, resolution);
-          }
+          // Cotas de cada lado
+          drawSegmentLabels(
+            ctx,
+            coordinates,
+            feature.get('segmentLengths') as SegmentMetric[] | undefined,
+            labelPoint,
+            orientation,
+            toPx,
+            isManzana,
+          );
         } else if (geometry instanceof LineString) {
           const coordinates = geometry.getCoordinates() ?? [];
-          if (coordinates.length >= 2) {
-            drawSegmentLabels(ctx, coordinates, canvasScale, false, resolution);
+          if (coordinates.length < 2) continue;
+
+          const showMainLabel = isSelected || zoom > 15.5;
+          if (showMainLabel && labelPoint) {
+            const lengthM = feature.get('lengthM') as number | undefined;
+            if (lengthM !== undefined) {
+              drawMainMetricLabel(ctx, labelPoint, toPx, formatMetricLength(lengthM), false);
+            }
           }
+
+          drawSegmentLabels(
+            ctx,
+            coordinates,
+            feature.get('segmentLengths') as SegmentMetric[] | undefined,
+            labelPoint,
+            orientation,
+            toPx,
+            false,
+          );
         }
       }
 
@@ -337,10 +360,6 @@ export default function MapView() {
       const streetVisible = useStreetStore.getState().visible;
       if (streetVisible && streets.length > 0) {
         const fillets = renderCache.cachedFillets;
-        const toPx = (coord: [number, number]): [number, number] => {
-          const px = map.getPixelFromCoordinate(coord);
-          return px ? [px[0], px[1]] : [0, 0];
-        };
 
         for (let si = 0; si < streets.length; si++) {
           const s = streets[si];
@@ -432,6 +451,66 @@ export default function MapView() {
         }
         ctx.restore();
       };
+      // ─── Guía visual de snap (línea punteada, escuadra, segmento resaltado) ───
+      const guide = snapGuideRef.current;
+      if (guide) {
+        if (guide.highlightSegment) {
+          const [ga, gb] = guide.highlightSegment;
+          const gaPx = map.getPixelFromCoordinate(ga);
+          const gbPx = map.getPixelFromCoordinate(gb);
+          if (gaPx && gbPx) {
+            ctx.save();
+            ctx.strokeStyle = 'rgba(245, 158, 11, 0.55)';
+            ctx.lineWidth = 2.5;
+            ctx.beginPath();
+            ctx.moveTo(gaPx[0], gaPx[1]);
+            ctx.lineTo(gbPx[0], gbPx[1]);
+            ctx.stroke();
+            ctx.restore();
+          }
+        }
+        if (guide.dashedLine) {
+          const [da, db] = guide.dashedLine;
+          const daPx = map.getPixelFromCoordinate(da);
+          const dbPx = map.getPixelFromCoordinate(db);
+          if (daPx && dbPx) {
+            ctx.save();
+            ctx.strokeStyle = 'rgba(0, 212, 255, 0.85)';
+            ctx.lineWidth = 1.25;
+            ctx.setLineDash([5, 4]);
+            ctx.beginPath();
+            ctx.moveTo(daPx[0], daPx[1]);
+            ctx.lineTo(dbPx[0], dbPx[1]);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.restore();
+          }
+        }
+        if (guide.rightAngleSquare) {
+          const { point, size } = guide.rightAngleSquare;
+          const centerPx = map.getPixelFromCoordinate(point);
+          if (centerPx) {
+            const sizePx = Math.max(6, size / resolution);
+            ctx.save();
+            ctx.strokeStyle = '#f59e0b';
+            ctx.lineWidth = 1.5;
+            ctx.strokeRect(centerPx[0] - sizePx / 2, centerPx[1] - sizePx / 2, sizePx, sizePx);
+            ctx.restore();
+          }
+        }
+        if (guide.distanceLabel) {
+          const { point, text } = guide.distanceLabel;
+          const px = map.getPixelFromCoordinate(point);
+          if (px) {
+            ctx.save();
+            ctx.font = '10px Courier New';
+            ctx.fillStyle = 'rgba(0, 212, 255, 0.9)';
+            ctx.textAlign = 'center';
+            ctx.fillText(text, px[0], px[1] - 6);
+            ctx.restore();
+          }
+        }
+      }
     };
     postrenderLayer.on('postrender', postRenderHandler);
 
@@ -510,24 +589,38 @@ export default function MapView() {
       const mode = useDrawStore.getState().mode;
       if (mode === 'polyline' || mode === 'erase') {
         snapIndicatorSrc.clear();
+        snapGuideRef.current = null;
         return;
       }
       const ds = drawSrcRef.current;
       if (!ds) return;
 
-      // Snap a features del proyecto
-      let result = findSnap(evt.coordinate, ds, 5, undefined, spatialIndex);
+      const resolution = map.getView().getResolution() ?? 1;
+      const enabled = useSnapSettingsStore.getState().settings;
 
-       // Snap a grilla (si está habilitada y el snap de features no encontró nada mejor)
-       if (useLayerStore.getState().visibility.gridSnap && gridSnapSrcRef.current) {
-         const gridResult = findSnap(evt.coordinate, gridSnapSrcRef.current, 8);
-         if (gridResult && (!result || gridResult.dist < result.dist)) {
+      // Snap a features del proyecto
+      let result = findSnap(evt.coordinate, ds, {
+        resolution,
+        pixelTolerance: 10,
+        spatialIndex,
+        enabled,
+      });
+
+      // Snap a grilla (si está habilitada y el snap de features no encontró nada mejor)
+      if (useLayerStore.getState().baseVisibility.gridSnap && gridSnapSrcRef.current) {
+        const gridResult = findSnap(evt.coordinate, gridSnapSrcRef.current, {
+          resolution,
+          pixelTolerance: 12,
+        });
+        if (gridResult && (!result || gridResult.dist < result.dist)) {
           result = gridResult;
         }
       }
+
       snapIndicatorSrc.clear();
+      snapGuideRef.current = result?.guide ?? null;
       if (result) {
-        snapIndicatorLayer.setStyle(snapStyles.get(result.type) ?? snapStyles.get('vertex')!);
+        snapIndicatorLayer.setStyle(snapStyles.get(result.type) ?? snapStyles.get('endpoint')!);
         snapIndicatorSrc.addFeature(
           new Feature({
             geometry: new Point(result.point),
@@ -535,6 +628,7 @@ export default function MapView() {
           })
         );
       }
+      postrenderLayer.changed();
     });
 
     useMapStore.getState().setMap(map);
@@ -594,9 +688,23 @@ export default function MapView() {
   // --- Visibilidad de cotas automáticas ---
   useEffect(() => {
     if (measurementLayerRef.current) {
-      measurementLayerRef.current.setVisible(measurementsVisible);
+      measurementLayerRef.current.setVisible(workVisibility.measurements);
     }
-  }, [measurementsVisible]);
+  }, [workVisibility.measurements]);
+
+  // --- Visibilidad de calles/viales ---
+  useEffect(() => {
+    if (streetLayerRef.current) {
+      streetLayerRef.current.setVisible(workVisibility.streets);
+    }
+  }, [workVisibility.streets]);
+
+  // --- Visibilidad de lotes/manzanos (WebGL layer) ---
+  useEffect(() => {
+    if (drawLayerRef.current) {
+      drawLayerRef.current.setVisible(workVisibility.lots);
+    }
+  }, [workVisibility.lots]);
 
   // --- Interacciones según modo activo ---
   useEffect(() => {
@@ -810,7 +918,7 @@ export default function MapView() {
       }
 
        // Snap a intersecciones de grilla (si está habilitado)
-       if (useLayerStore.getState().visibility.gridSnap && gridSnapSrcRef.current && gridSnapSrcRef.current.getFeatures().length > 0) {
+       if (useLayerStore.getState().baseVisibility.gridSnap && gridSnapSrcRef.current && gridSnapSrcRef.current.getFeatures().length > 0) {
          const gridSnap = new Snap({
            source: gridSnapSrcRef.current,
            pixelTolerance: 12,
@@ -988,6 +1096,7 @@ export default function MapView() {
         if (!sketchGeom) return;
         const ds = drawSrcRef.current;
         if (!ds) return;
+        const spatialIndex = getOrCreateSpatialIndex();
 
         // Coordenada final a aplicar: por defecto la del evento.
         let target: number[] | null = null;
@@ -1014,9 +1123,25 @@ export default function MapView() {
           }
         }
 
-        // 2) Snap general (vertex/midpoint/perpendicular/etc).
+        // 2) Snap general (endpoint/midpoint/perpendicular/etc).
         if (target === null) {
-          const snap = findSnap(evt.coordinate, ds);
+          const resolution = map.getView().getResolution() ?? 1;
+          const ring =
+            sketchGeom instanceof Polygon
+              ? sketchGeom.getCoordinates()[0]
+              : sketchGeom instanceof LineString
+                ? sketchGeom.getCoordinates()
+                : [];
+          // El penúltimo vértice confirmado del sketch actúa de "anchor"
+          // para perpendicular/parallel (igual que el "from point" de AutoCAD).
+          const anchor = ring.length >= 2 ? (ring[ring.length - 2] as number[]) : undefined;
+          const snap = findSnap(evt.coordinate, ds, {
+            resolution,
+            pixelTolerance: 10,
+            anchor,
+            spatialIndex,
+            enabled: useSnapSettingsStore.getState().settings,
+          });
           if (snap) target = snap.point as number[];
         }
 

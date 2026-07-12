@@ -96,7 +96,9 @@ function calculatePolygonMetrics(geometry: Polygon): FeatureMetrics {
 
   const outerRing = geo.coordinates[0] as [number, number][];
   const areaM2 = Math.abs(area(polygon(geo.coordinates)));
-  const perimeterM = length(lineString([...outerRing, outerRing[0]]), { units: 'meters' });
+  // outerRing ya viene cerrado (primer punto == último) por convención GeoJSON;
+  // agregar outerRing[0] otra vez sumaba un segmento fantasma de largo cero.
+  const perimeterM = length(lineString(outerRing), { units: 'meters' });
   const center = centroid(polygon(geo.coordinates));
   const labelCoord = center.geometry.coordinates as [number, number];
 
@@ -169,7 +171,7 @@ export function formatMetricLength(valueM?: number) {
 
 export function formatMetricArea(valueM2?: number) {
   if (!Number.isFinite(valueM2)) return '';
-  if ((valueM2 ?? 0) >= 10000) return `${((valueM2 ?? 0) / 10000).toFixed(4)} ha`;
+  if ((valueM2 ?? 0) >= 10000) return `${((valueM2 ?? 0) / 10000).toFixed(2)} ha`;
   return `${(valueM2 ?? 0).toFixed(2)} m²`;
 }
 

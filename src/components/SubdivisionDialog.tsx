@@ -137,6 +137,7 @@ export default function SubdivisionDialog() {
         olFeat.setId(newId);
         olFeat.setProperties({
           ...(f.properties ?? {}),
+          lotGroupId: String(targetId), // agrupa las piezas de esta subdivisión -> cotas internas si son 2+
           createdAt: new Date().toISOString(),
           method: options.method,
         });

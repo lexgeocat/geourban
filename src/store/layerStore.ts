@@ -2,15 +2,21 @@ import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import type { BaseMapId } from '../map/baseMaps';
 
-type LayerKey = 'measurements' | 'gridSnap';
+type WorkLayerKey = 'lots' | 'streets' | 'measurements';
+type BaseLayerKey = 'gridSnap';
+type PanelKey = 'properties';
 
 type LayerState = {
   baseMap: BaseMapId;
-  visibility: Record<LayerKey, boolean>;
+  workVisibility: Record<WorkLayerKey, boolean>;
+  baseVisibility: Record<BaseLayerKey, boolean>;
+  panelVisibility: Record<PanelKey, boolean>;
   gridOrigin: [number, number];
   statsPanelVisible: boolean;
   setBaseMap: (id: BaseMapId) => void;
-  setVisibility: (key: LayerKey, visible: boolean) => void;
+  setWorkVisibility: (key: WorkLayerKey, visible: boolean) => void;
+  setBaseVisibility: (key: BaseLayerKey, visible: boolean) => void;
+  setPanelVisibility: (key: PanelKey, visible: boolean) => void;
   setGridOrigin: (o: [number, number]) => void;
   setStatsPanelVisible: (v: boolean) => void;
 };
@@ -18,9 +24,16 @@ type LayerState = {
 export const useLayerStore = create<LayerState>()(
   immer((set) => ({
     baseMap: 'cad' as BaseMapId,
-    visibility: {
+    workVisibility: {
+      lots: true,
+      streets: true,
       measurements: true,
+    },
+    baseVisibility: {
       gridSnap: true,
+    },
+    panelVisibility: {
+      properties: false,
     },
     gridOrigin: [0, 0],
     statsPanelVisible: false,
@@ -28,9 +41,17 @@ export const useLayerStore = create<LayerState>()(
       set((state) => {
         state.baseMap = id;
       }),
-    setVisibility: (key, visible) =>
+    setWorkVisibility: (key, visible) =>
       set((state) => {
-        state.visibility[key] = visible;
+        state.workVisibility[key] = visible;
+      }),
+    setBaseVisibility: (key, visible) =>
+      set((state) => {
+        state.baseVisibility[key] = visible;
+      }),
+    setPanelVisibility: (key, visible) =>
+      set((state) => {
+        state.panelVisibility[key] = visible;
       }),
     setGridOrigin: (o) =>
       set((state) => {

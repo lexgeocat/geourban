@@ -62,7 +62,9 @@ function computeStats(drawSource: any, streets: any[]): StatsData {
     const coords = (geom as Polygon).getCoordinates();
     if (!coords[0] || coords[0].length < 4) return;
     const pts: Pt[] = coords[0].map((c: number[]) => [c[0], c[1]]);
-    const area = polyArea(pts);
+    // Preferí el área geodésica de Turf (ya calculada por metrics.ts al crear/editar el
+    // feature); polyArea() crudo sobre EPSG:3857 sobreestima según la latitud (~9% acá).
+    const area = (f.get('areaM2') as number | undefined) ?? polyArea(pts);
 
     result.totalAreaM2 += area;
 
