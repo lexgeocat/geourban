@@ -6,24 +6,38 @@ import LineString from 'ol/geom/LineString.js';
 import MultiPolygon from 'ol/geom/MultiPolygon.js';
 import { getUid } from 'ol/util.js';
 
-/**
- * Sistema de snapping profesional — inspirado en Object Snap (OSNAP) de AutoCAD.
- *
- * Tipos soportados (prioridad de mayor a menor):
- *  1. endpoint            — vértice existente de una entidad
- *  2. intersection         — intersección real entre dos segmentos (dentro de ambos)
- *  3. apparentIntersection — intersección de la extensión infinita de dos segmentos
- *  4. extension            — extensión de un segmento más allá de su endpoint
- *  5. midpoint              — punto medio de un segmento
- *  6. perpendicular         — pie perpendicular desde un punto ancla (último vértice dibujado)
- *  7. parallel              — proyección paralela desde un ancla, según dirección de un segmento de referencia
- *  8. nearest               — punto más cercano sobre cualquier segmento (fallback)
- *
- * La zona de snap se define en PÍXELES de pantalla (no en metros), para que
- * el comportamiento sea consistente en cualquier nivel de zoom.
- */
+/* ================================================================
+   ADVANCED SNAP ENGINE — OSNAP profesional (estilo AutoCAD) — v2
+   ================================================================
+   Cambios respecto a la versión anterior:
 
-// ─── Tipos ──────────────────────────────────────────────────────────
+   1) Broad-phase por bounding-box antes de evaluar cada segmento.
+      Antes se armaba `segmentEntries` con TODOS los segmentos de cada
+      feature "cercana" (según el índice espacial), sin filtrar por
+      vértice — en un manzano de 40 lados, 39 de esos segmentos podían
+      estar a metros del cursor y se evaluaban igual.
+
+   2) Tolerancia diferenciada POR TIPO (TYPE_TOLERANCE_FACTOR):
+      endpoint/intersection son imanes fuertes; nearest es el fallback
+      más débil (no debe "tapar" a los demás).
+
+   3) Histéresis anti-parpadeo (applySticky): cerca del límite de
+      tolerancia, dos candidatos de prioridad similar pueden alternar
+      entre frames. Se sostiene el snap previo mientras siga válido.
+
+   4) `excludeFeature`: ignora la feature que se está editando (evita
+      que un vértice se enganche a sí mismo durante Modify).
+
+   5) 'grid' pasa a ser un SnapType de primera clase, con su propia
+      prioridad/color/tolerancia — ver gridSnap.ts para el cálculo
+      analítico (reemplaza el escaneo O(n²) contra un VectorSource).
+
+   6) `pickBetterSnap()`: combina resultados de distintas FUENTES
+      (features + grilla) respetando PRIORIDAD antes que distancia
+      cruda — antes la fusión en Map.tsx comparaba solo `dist`, lo que
+      podía dejar que un punto de grilla "ganara" a una intersección
+      real de features por estar un pixel más cerca.
+   ================================================================ */
 
 export type SnapType =
   | 'endpoint'
@@ -33,7 +47,8 @@ export type SnapType =
   | 'extension'
   | 'intersection'
   | 'apparentIntersection'
-  | 'parallel';
+  | 'parallel'
+  | 'grid';
 
 export interface SnapGuideVisual {
   dashedLine?: [number[], number[]];
@@ -47,7 +62,7 @@ export interface SnapResult {
   type: SnapType;
   /** Distancia (unidades de mapa) del cursor al punto de snap. */
   dist: number;
-  /** Feature de origen, si aplica (no aplica a intersecciones sintéticas). */
+  /** Feature de origen, si aplica (no aplica a intersecciones sintéticas ni a grilla). */
   feature?: Feature;
   guide?: SnapGuideVisual;
 }
@@ -63,7 +78,63 @@ export const DEFAULT_SNAP_SETTINGS: SnapSettings = {
   intersection: true,
   apparentIntersection: true,
   parallel: true,
+  grid: true,
 };
+
+/** Agrupación semántica — la usa la UI (SnapPanel) para organizar los toggles. */
+export const SNAP_GROUPS: { label: string; types: SnapType[] }[] = [
+  { label: 'Geométricos', types: ['endpoint', 'midpoint', 'intersection', 'apparentIntersection'] },
+  { label: 'Construcción', types: ['perpendicular', 'parallel', 'extension', 'nearest'] },
+  { label: 'Referencia', types: ['grid'] },
+];
+
+/** Prioridad de resolución cuando varios snaps caen en tolerancia (menor = gana). */
+export const SNAP_TYPE_PRIORITY: Record<SnapType, number> = {
+  endpoint: 0,
+  intersection: 1,
+  apparentIntersection: 2,
+  extension: 3,
+  midpoint: 4,
+  perpendicular: 5,
+  parallel: 6,
+  grid: 7,
+  nearest: 8,
+};
+
+/** Radio de captura por tipo, como multiplicador del pixelTolerance base. */
+const TYPE_TOLERANCE_FACTOR: Record<Exclude<SnapType, 'grid'>, number> = {
+  endpoint: 1.15,
+  intersection: 1.0,
+  apparentIntersection: 1.0,
+  extension: 1.6,
+  midpoint: 1.0,
+  perpendicular: 1.0,
+  parallel: 1.0,
+  nearest: 0.85,
+};
+
+/** Radio (px) del broad-phase para descartar segmentos irrelevantes. */
+const APPARENT_SEARCH_RADIUS_PX = 260;
+
+/** Banda de histéresis (px) para sostener el snap previo y evitar parpadeo. */
+const STICKY_BAND_PX = 3;
+
+export interface SpatialIndexLike {
+  searchPoint(x: number, y: number, tolerance: number): unknown[];
+}
+
+export interface FindSnapOptions {
+  resolution: number;
+  pixelTolerance?: number;
+  anchor?: number[];
+  parallelRefSegment?: [number[], number[]];
+  spatialIndex?: SpatialIndexLike;
+  enabled?: Partial<SnapSettings>;
+  /** Resultado del frame anterior — habilita histéresis anti-parpadeo. */
+  previous?: SnapResult | null;
+  /** Feature a excluir (ej. la que se está editando/arrastrando). */
+  excludeFeature?: Feature | null;
+}
 
 interface SnapCandidate {
   point: number[];
@@ -71,21 +142,6 @@ interface SnapCandidate {
   feature?: Feature;
   dist: number;
   guide?: SnapGuideVisual;
-}
-
-export interface FindSnapOptions {
-  /** Resolución actual del mapa (map units / px). Requerida para tolerancia consistente. */
-  resolution: number;
-  /** Radio de snap en píxeles de pantalla (default 10). */
-  pixelTolerance?: number;
-  /** Punto ancla activo (ej. último vértice del sketch en curso) para perpendicular/parallel. */
-  anchor?: number[];
-  /** Segmento de referencia activo para 'parallel' (lado ya dibujado que se quiere replicar). */
-  parallelRefSegment?: [number[], number[]];
-  /** Índice espacial opcional para acotar features cercanas (O(log n) en vez de O(n)). */
-  spatialIndex?: { searchPoint: (x: number, y: number, tol: number) => unknown[] };
-  /** Tipos de snap habilitados; por defecto todos. */
-  enabled?: Partial<SnapSettings>;
 }
 
 // ─── Helpers geométricos ────────────────────────────────────────────
@@ -107,7 +163,19 @@ function isOnSegment(p: number[], a: number[], b: number[], eps = 1e-6): boolean
   );
 }
 
-/** Punto más cercano sobre el segmento [a,b] (clamped a t∈[0,1]) — osnap "Nearest". */
+/** Broad-phase: ¿puede este segmento aportar algún candidato cerca del cursor? */
+function segmentMayBeNear(cursor: number[], a: number[], b: number[], margin: number): boolean {
+  const minX = (a[0] < b[0] ? a[0] : b[0]) - margin;
+  if (cursor[0] < minX) return false;
+  const maxX = (a[0] > b[0] ? a[0] : b[0]) + margin;
+  if (cursor[0] > maxX) return false;
+  const minY = (a[1] < b[1] ? a[1] : b[1]) - margin;
+  if (cursor[1] < minY) return false;
+  const maxY = (a[1] > b[1] ? a[1] : b[1]) + margin;
+  if (cursor[1] > maxY) return false;
+  return true;
+}
+
 function nearestPointOnSegment(p: number[], a: number[], b: number[]): number[] | null {
   const ab = [b[0] - a[0], b[1] - a[1]];
   const ap = [p[0] - a[0], p[1] - a[1]];
@@ -118,27 +186,16 @@ function nearestPointOnSegment(p: number[], a: number[], b: number[]): number[] 
   return [a[0] + t * ab[0], a[1] + t * ab[1]];
 }
 
-/**
- * Pie perpendicular desde `anchor` sobre el segmento a-b (clamped al segmento).
- * A diferencia de nearestPointOnSegment, esto representa el osnap
- * PERPENDICULAR real de AutoCAD: exige un punto de referencia activo
- * (típicamente el último vértice dibujado).
- */
 function perpendicularFromAnchor(anchor: number[], a: number[], b: number[]): number[] | null {
   const ab = [b[0] - a[0], b[1] - a[1]];
   const ab2 = ab[0] * ab[0] + ab[1] * ab[1];
   if (ab2 < 1e-10) return null;
   const tRaw = ((anchor[0] - a[0]) * ab[0] + (anchor[1] - a[1]) * ab[1]) / ab2;
-  if (tRaw < -0.001 || tRaw > 1.001) return null; // el pie debe caer dentro del segmento
+  if (tRaw < -0.001 || tRaw > 1.001) return null;
   const t = Math.max(0, Math.min(1, tRaw));
   return [a[0] + t * ab[0], a[1] + t * ab[1]];
 }
 
-/**
- * Snap "parallel": dado un segmento de referencia (a,b) y un ancla (último
- * vértice del sketch en curso), construye la recta que pasa por `anchor`
- * con la misma dirección que a→b, y proyecta el cursor sobre ella.
- */
 function parallelFromAnchor(cursor: number[], anchor: number[], a: number[], b: number[]): number[] | null {
   const dx = b[0] - a[0], dy = b[1] - a[1];
   const len = Math.hypot(dx, dy);
@@ -152,13 +209,12 @@ function lineLineIntersection(a1: number[], a2: number[], b1: number[], b2: numb
   const x1 = a1[0], y1 = a1[1], x2 = a2[0], y2 = a2[1];
   const x3 = b1[0], y3 = b1[1], x4 = b2[0], y4 = b2[1];
   const denom = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
-  if (Math.abs(denom) < 1e-12) return null; // paralelas o coincidentes
+  if (Math.abs(denom) < 1e-12) return null;
   const px = ((x1 * y2 - y1 * x2) * (x3 - x4) - (x1 - x2) * (x3 * y4 - y3 * x4)) / denom;
   const py = ((x1 * y2 - y1 * x2) * (y3 - y4) - (y1 - y2) * (x3 * y4 - y3 * x4)) / denom;
   return [px, py];
 }
 
-/** Extensión de un segmento más allá de alguno de sus endpoints (osnap EXTENSION). */
 function segExtendSnap(
   cursor: number[],
   a: number[],
@@ -175,7 +231,7 @@ function segExtendSnap(
     if (alen < 1e-10) continue;
     const aux = adx / alen, auy = ady / alen;
     const dotVal = (cursor[0] - anchor[0]) * aux + (cursor[1] - anchor[1]) * auy;
-    if (dotVal > 0) continue; // el cursor debe estar "detrás" del endpoint (extensión real)
+    if (dotVal > 0) continue;
     const projX = anchor[0] + dotVal * aux;
     const projY = anchor[1] + dotVal * auy;
     const d = Math.hypot(cursor[0] - projX, cursor[1] - projY);
@@ -208,6 +264,35 @@ function collectSegments(src: VectorSource): Array<[number[], number[]]> {
   return segments;
 }
 
+// ─── Histéresis anti-parpadeo ────────────────────────────────────────
+
+function applySticky(
+  best: SnapResult | null,
+  previous: SnapResult | null | undefined,
+  cursor: number[],
+  tolerance: number,
+  resolution: number,
+): SnapResult | null {
+  if (!previous) return best;
+  const stickyRadius = STICKY_BAND_PX * resolution;
+  const prevStillClose = dist(cursor, previous.point) < tolerance + stickyRadius;
+  if (!prevStillClose) return best;
+  if (!best) return previous;
+  if (dist(best.point, previous.point) < stickyRadius * 0.5) return best;
+  if (SNAP_TYPE_PRIORITY[previous.type] <= SNAP_TYPE_PRIORITY[best.type]) return previous;
+  return best;
+}
+
+/** Compara dos resultados de fuentes distintas (ej. features vs. grilla) por prioridad y luego distancia. */
+export function pickBetterSnap(a: SnapResult | null, b: SnapResult | null): SnapResult | null {
+  if (!a) return b;
+  if (!b) return a;
+  const pa = SNAP_TYPE_PRIORITY[a.type];
+  const pb = SNAP_TYPE_PRIORITY[b.type];
+  if (pa !== pb) return pa < pb ? a : b;
+  return a.dist <= b.dist ? a : b;
+}
+
 // ─── findSnap principal ─────────────────────────────────────────────
 
 const DEFAULT_PIXEL_TOLERANCE = 10;
@@ -220,21 +305,24 @@ export function findSnap(cursor: number[], src: VectorSource, options: FindSnapO
     parallelRefSegment,
     spatialIndex,
     enabled,
+    previous,
+    excludeFeature,
   } = options;
 
   const settings: SnapSettings = { ...DEFAULT_SNAP_SETTINGS, ...enabled };
-  // Tolerancia en unidades de mapa, consistente en pantalla a cualquier zoom.
-  const tolerance = pixelTolerance * resolution;
-  const extendTolerance = tolerance * 2;
+  const baseTolerance = pixelTolerance * resolution;
+  const extendTolerance = baseTolerance * TYPE_TOLERANCE_FACTOR.extension;
+  const broadPhaseMargin = Math.max(APPARENT_SEARCH_RADIUS_PX * resolution, extendTolerance * 1.25);
 
   const candidates: SnapCandidate[] = [];
   const segmentEntries: Array<{ a: number[]; b: number[]; ringId: string; idx: number }> = [];
 
   const nearbyFeatures = spatialIndex
-    ? (spatialIndex.searchPoint(cursor[0], cursor[1], tolerance * 3) as Feature[])
+    ? (spatialIndex.searchPoint(cursor[0], cursor[1], broadPhaseMargin * 1.5) as Feature[])
     : null;
 
   const processFeature = (feat: Feature) => {
+    if (excludeFeature && feat === excludeFeature) return;
     const geom = feat.getGeometry();
     if (!geom) return;
     const fid = feat.getId() != null ? String(feat.getId()) : getUid(feat);
@@ -244,17 +332,23 @@ export function findSnap(cursor: number[], src: VectorSource, options: FindSnapO
       for (let i = 0; i < ring.length - 1; i++) {
         const a = ring[i];
         const b = ring[i + 1];
+
+        // Broad-phase: descarta segmentos que, con la tolerancia máxima
+        // posible de este frame (extension/apparent), no pueden aportar
+        // ningún candidato. Evita recorrer polígonos grandes vértice a
+        // vértice cuando el cursor está lejos de la mayoría de sus lados.
+        if (!segmentMayBeNear(cursor, a, b, broadPhaseMargin)) continue;
+
         segmentEntries.push({ a, b, ringId, idx: i });
 
-        // 1. Endpoint
         if (settings.endpoint) {
+          const tol = baseTolerance * TYPE_TOLERANCE_FACTOR.endpoint;
           for (const coord of [a, b]) {
             const d = dist(cursor, coord);
-            if (d < tolerance) candidates.push({ point: coord, type: 'endpoint', feature: feat, dist: d });
+            if (d < tol) candidates.push({ point: coord, type: 'endpoint', feature: feat, dist: d });
           }
         }
 
-        // 2. Extension
         if (settings.extension) {
           const ext = segExtendSnap(cursor, a, b, extendTolerance);
           if (ext) {
@@ -274,19 +368,19 @@ export function findSnap(cursor: number[], src: VectorSource, options: FindSnapO
           }
         }
 
-        // 3. Midpoint
         if (settings.midpoint) {
+          const tol = baseTolerance * TYPE_TOLERANCE_FACTOR.midpoint;
           const mp = midpoint(a, b);
           const dM = dist(cursor, mp);
-          if (dM < tolerance) candidates.push({ point: mp, type: 'midpoint', feature: feat, dist: dM });
+          if (dM < tol) candidates.push({ point: mp, type: 'midpoint', feature: feat, dist: dM });
         }
 
-        // 4. Perpendicular (requiere anchor activo: último vértice del sketch en curso)
         if (settings.perpendicular && anchor) {
           const pp = perpendicularFromAnchor(anchor, a, b);
           if (pp) {
+            const tol = baseTolerance * TYPE_TOLERANCE_FACTOR.perpendicular;
             const d = dist(cursor, pp);
-            if (d < tolerance) {
+            if (d < tol) {
               candidates.push({
                 point: pp,
                 type: 'perpendicular',
@@ -302,12 +396,12 @@ export function findSnap(cursor: number[], src: VectorSource, options: FindSnapO
           }
         }
 
-        // 5. Parallel (requiere anchor + segmento de referencia acquired)
         if (settings.parallel && anchor && parallelRefSegment) {
           const par = parallelFromAnchor(cursor, anchor, parallelRefSegment[0], parallelRefSegment[1]);
           if (par) {
+            const tol = baseTolerance * TYPE_TOLERANCE_FACTOR.parallel;
             const d = dist(cursor, par);
-            if (d < tolerance) {
+            if (d < tol) {
               candidates.push({
                 point: par,
                 type: 'parallel',
@@ -318,12 +412,12 @@ export function findSnap(cursor: number[], src: VectorSource, options: FindSnapO
           }
         }
 
-        // 6. Nearest (fallback siempre disponible)
         if (settings.nearest) {
           const np = nearestPointOnSegment(cursor, a, b);
           if (np) {
+            const tol = baseTolerance * TYPE_TOLERANCE_FACTOR.nearest;
             const d = dist(cursor, np);
-            if (d < tolerance) candidates.push({ point: np, type: 'nearest', feature: feat, dist: d });
+            if (d < tol) candidates.push({ point: np, type: 'nearest', feature: feat, dist: d });
           }
         }
       }
@@ -336,28 +430,26 @@ export function findSnap(cursor: number[], src: VectorSource, options: FindSnapO
     src.forEachFeature((feat) => processFeature(feat));
   }
 
-  // 7 & 8: Intersección real / aparente — una sola pasada por par de segmentos,
-  // excluyendo pares del mismo anillo que comparten vértice (adyacentes),
-  // que de otro modo generarían una "intersección" espuria en cada esquina.
+  // Intersección real / aparente — pairwise SOLO sobre segmentos que ya
+  // pasaron el broad-phase (normalmente unas pocas decenas, nunca miles).
   if (settings.intersection || settings.apparentIntersection) {
-    for (let i = 0; i < segmentEntries.length; i++) {
-      for (let j = i + 1; j < segmentEntries.length; j++) {
-        const s1 = segmentEntries[i];
+    const n = segmentEntries.length;
+    for (let i = 0; i < n; i++) {
+      const s1 = segmentEntries[i];
+      for (let j = i + 1; j < n; j++) {
         const s2 = segmentEntries[j];
         if (s1.ringId === s2.ringId && Math.abs(s1.idx - s2.idx) <= 1) continue;
 
         const hit = lineLineIntersection(s1.a, s1.b, s2.a, s2.b);
         if (!hit) continue;
         const d = dist(cursor, hit);
-        if (d >= tolerance) continue;
+        if (d >= baseTolerance) continue;
 
         const onA = isOnSegment(hit, s1.a, s1.b);
         const onB = isOnSegment(hit, s2.a, s2.b);
 
         if (onA && onB) {
-          if (settings.intersection) {
-            candidates.push({ point: hit, type: 'intersection', dist: d });
-          }
+          if (settings.intersection) candidates.push({ point: hit, type: 'intersection', dist: d });
         } else if (settings.apparentIntersection) {
           candidates.push({
             point: hit,
@@ -373,26 +465,18 @@ export function findSnap(cursor: number[], src: VectorSource, options: FindSnapO
     }
   }
 
-  if (candidates.length === 0) return null;
-
-  const TYPE_PRIORITY: Record<SnapType, number> = {
-    endpoint: 0,
-    intersection: 1,
-    apparentIntersection: 2,
-    extension: 3,
-    midpoint: 4,
-    perpendicular: 5,
-    parallel: 6,
-    nearest: 7,
-  };
+  if (candidates.length === 0) {
+    return applySticky(null, previous, cursor, baseTolerance, resolution);
+  }
 
   candidates.sort((a, b) => {
-    const pa = TYPE_PRIORITY[a.type], pb = TYPE_PRIORITY[b.type];
+    const pa = SNAP_TYPE_PRIORITY[a.type], pb = SNAP_TYPE_PRIORITY[b.type];
     return pa !== pb ? pa - pb : a.dist - b.dist;
   });
 
   const best = candidates[0];
-  return { point: best.point, type: best.type, dist: best.dist, feature: best.feature, guide: best.guide };
+  const result: SnapResult = { point: best.point, type: best.type, dist: best.dist, feature: best.feature, guide: best.guide };
+  return applySticky(result, previous, cursor, baseTolerance, resolution);
 }
 
 // ─── createSnapPoints (para OL native Snap interaction) ─────────────
@@ -422,6 +506,7 @@ export const SNAP_COLORS: Record<SnapType, string> = {
   intersection: '#ef4444',
   apparentIntersection: '#c026d3',
   parallel: '#7c3aed',
+  grid: '#38bdf8',
 };
 
 export const SNAP_LABELS: Record<SnapType, string> = {
@@ -433,4 +518,5 @@ export const SNAP_LABELS: Record<SnapType, string> = {
   intersection: 'Intersección',
   apparentIntersection: 'Intersección aparente',
   parallel: 'Paralelo',
+  grid: 'Grilla',
 };

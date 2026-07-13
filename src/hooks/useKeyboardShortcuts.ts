@@ -3,6 +3,7 @@ import { useDrawStore } from '../store/drawStore';
 import { useHistoryStore } from '../store/historyStore';
 import { useMapStore } from '../store/mapStore';
 import { useSelectionStore } from '../store/selectionStore';
+import { useSnapSettingsStore } from '../store/snapSettingsStore';
 
 // No se disparan si el foco esta en un input/textarea/contentEditable
 
@@ -67,6 +68,12 @@ export function useKeyboardShortcuts() {
       if (key === 'Escape') {
         e.preventDefault();
         useDrawStore.getState().setMode('select');
+        return;
+      }
+      // F3: alterna el motor de snap completo (OSNAP maestro, como AutoCAD)
+      if (key === 'F3') {
+        e.preventDefault();
+        useSnapSettingsStore.getState().toggleEnabled();
         return;
       }
 

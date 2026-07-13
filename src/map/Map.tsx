@@ -35,8 +35,10 @@ import { useHistoryStore } from '../store/historyStore';
 import { useSelectionStore } from '../store/selectionStore';
 import { useProjectCrsStore } from '../store/projectCrsStore';
 import { updateFeatureMetrics, formatMetricArea, formatMetricLength, type SegmentMetric } from '../geo/metrics';
-import { findSnap, createSnapPoints, SNAP_COLORS, type SnapGuideVisual } from './advancedSnap';
-import { useSnapSettingsStore } from '../store/snapSettingsStore';
+import { findSnap, createSnapPoints, pickBetterSnap, SNAP_COLORS, type SnapGuideVisual, type SnapResult } from './advancedSnap';
+import { findGridSnap } from './gridSnap';
+import { getEffectiveSnapSettings } from '../store/snapSettingsStore';
+import { useSnapLiveStore } from '../store/snapStateStore';
 import { BASE_MAP_DEFS } from './baseMaps';
 import {
   createMeasurementStyle,
@@ -52,8 +54,6 @@ import { recomputeManzanos } from '../store/mapStore';
 import { computeStreetFillets, filletArcPoints } from '../geo/streetEngine';
 import { getOrCreateSpatialIndex } from './demoDataset';
 import { ensureUtmZoneRegistered } from '../geo/utmZones';
-import { cadBaseMapBundles } from './cadGridLayer';
-import LayerGroup from 'ol/layer/Group.js';
 
 // ─── willReadFrequently: parche global único ─────────────────────────────
 // OpenLayers usa getImageData internamente para hit-testing en capas Canvas2D.
@@ -85,9 +85,9 @@ export default function MapView() {
   const streetLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
   const drawSrcRef = useRef<VectorSource | null>(null);
   const streetLayerSrcRef = useRef<VectorSource | null>(null);
-  const gridSnapSrcRef = useRef<VectorSource | null>(null);
   const snapGuideRef = useRef<SnapGuideVisual | null>(null);
   const selectInteractionRef = useRef<Select | null>(null);
+  const evaluateSnapAtRef = useRef<((coordinate: number[], opts?: { anchor?: number[] }) => SnapResult | null) | null>(null);
   const baseMapId = useLayerStore((s) => s.baseMap);
   const workVisibility = useLayerStore((s) => s.workVisibility);
   const viewConfig = useMapStore((s) => s.viewConfig);
@@ -603,59 +603,86 @@ export default function MapView() {
     drawSrc.on('addfeature', onSpatialInsert);
     drawSrc.on('removefeature', onSpatialRemove);
 
-    // Grid snap source (del CAD base map)
-    // Buscar el grid snap source en el mapa
-    map.getLayers().forEach((layer) => {
-      if (layer instanceof LayerGroup) {
-        const bundle = (cadBaseMapBundles as any).get(layer);
-        if (bundle?.snapSource) gridSnapSrcRef.current = bundle.snapSource;
-      }
-    });
+    // ────────────────────────────────────────────────────────────────
+    // Motor de snap unificado — UNA evaluación por frame (rAF), reusada
+    // tanto por el indicador visual como por el sketch de Draw en modo
+    // polilínea. Antes había DOS listeners 'pointermove' llamando a
+    // findSnap() cada uno por separado. También se fusiona acá el snap
+    // a grilla (antes un findSnap() aparte y roto — ver gridSnap.ts).
+    // ────────────────────────────────────────────────────────────────
+    let lastSnapResult: SnapResult | null = null;
 
-    const pmKey = map.on('pointermove', (evt) => {
+    const evaluateSnapAt = (coordinate: number[], opts?: { anchor?: number[] }): SnapResult | null => {
       const mode = useDrawStore.getState().mode;
-      if (mode === 'polyline' || mode === 'erase') {
+      const ds = drawSrcRef.current;
+
+      if (mode === 'erase' || !ds) {
         snapIndicatorSrc.clear();
         snapGuideRef.current = null;
-        return;
+        useSnapLiveStore.getState().setActive(null);
+        lastSnapResult = null;
+        postrenderLayer.changed();
+        return null;
       }
-      const ds = drawSrcRef.current;
-      if (!ds) return;
 
       const resolution = map.getView().getResolution() ?? 1;
-      const enabled = useSnapSettingsStore.getState().settings;
+      const effective = getEffectiveSnapSettings();
 
-      // Snap a features del proyecto
-      let result = findSnap(evt.coordinate, ds, {
+      // Evita que una feature en edición se enganche contra sí misma.
+      let excludeFeature: Feature<Geometry> | undefined;
+      if (mode === 'edit') {
+        const primaryId = useSelectionStore.getState().primaryId;
+        const f = primaryId != null ? ds.getFeatureById(primaryId) : null;
+        if (f) excludeFeature = f as Feature<Geometry>;
+      }
+
+      let result = findSnap(coordinate, ds, {
         resolution,
         pixelTolerance: 10,
         spatialIndex,
-        enabled,
+        enabled: effective,
+        previous: lastSnapResult,
+        anchor: opts?.anchor,
+        excludeFeature,
       });
 
-      // Snap a grilla (si está habilitada y el snap de features no encontró nada mejor)
-      if (useLayerStore.getState().baseVisibility.gridSnap && gridSnapSrcRef.current) {
-        const gridResult = findSnap(evt.coordinate, gridSnapSrcRef.current, {
+      if (effective.grid !== false) {
+        const gridResult = findGridSnap(coordinate, {
           resolution,
           pixelTolerance: 12,
+          origin: useLayerStore.getState().gridOrigin,
         });
-        if (gridResult && (!result || gridResult.dist < result.dist)) {
-          result = gridResult;
-        }
+        result = pickBetterSnap(result, gridResult);
       }
+
+      lastSnapResult = result;
+      useSnapLiveStore.getState().setActive(result);
 
       snapIndicatorSrc.clear();
       snapGuideRef.current = result?.guide ?? null;
       if (result) {
         snapIndicatorLayer.setStyle(snapStyles.get(result.type) ?? snapStyles.get('endpoint')!);
         snapIndicatorSrc.addFeature(
-          new Feature({
-            geometry: new Point(result.point),
-            snapType: result.type,
-          })
+          new Feature({ geometry: new Point(result.point), snapType: result.type })
         );
       }
       postrenderLayer.changed();
+      return result;
+    };
+    evaluateSnapAtRef.current = evaluateSnapAt;
+
+    // Throttle a 1 evaluación por frame — pointermove puede dispararse
+    // a >100Hz; recalcular bbox-scans + intersecciones en cada evento
+    // crudo es trabajo que nunca alcanza a pintarse más de una vez.
+    let snapRafId: number | null = null;
+    let pendingCoord: number[] | null = null;
+    const pmKey = map.on('pointermove', (evt) => {
+      pendingCoord = evt.coordinate;
+      if (snapRafId !== null) return;
+      snapRafId = requestAnimationFrame(() => {
+        snapRafId = null;
+        if (pendingCoord) evaluateSnapAt(pendingCoord);
+      });
     });
 
     useMapStore.getState().setMap(map);
@@ -671,6 +698,7 @@ export default function MapView() {
       baseLayerCleanupRef.current = null;
       unByKey(pmKey);
       unByKey(moveEndKey);
+      if (snapRafId !== null) cancelAnimationFrame(snapRafId);
       postrenderLayer.un('postrender', postRenderHandler);
       drawSrc.un('addfeature', onFeatureChange);
       drawSrc.un('removefeature', onFeatureChange);
@@ -945,18 +973,6 @@ export default function MapView() {
         toClean.push(() => map.removeInteraction(midSnap));
       }
 
-       // Snap a intersecciones de grilla (si está habilitado)
-       if (useLayerStore.getState().baseVisibility.gridSnap && gridSnapSrcRef.current && gridSnapSrcRef.current.getFeatures().length > 0) {
-         const gridSnap = new Snap({
-           source: gridSnapSrcRef.current,
-           pixelTolerance: 12,
-           vertex: true,
-           edge: false,
-         });
-        map.addInteraction(gridSnap);
-        toClean.push(() => map.removeInteraction(gridSnap));
-      }
-
       // Dibujo. El `style` se aplica al sketch (linea de rubber-band
       // mientras se dibuja) y a los vertices pendientes: la usamos para
       // que la linea de preview sea segmentada (dashed) y los vertices
@@ -1122,10 +1138,7 @@ export default function MapView() {
         if (!sketch) return;
         const sketchGeom = sketch.getGeometry();
         if (!sketchGeom) return;
-        const ds = drawSrcRef.current;
-        if (!ds) return;
-        const spatialIndex = getOrCreateSpatialIndex();
-
+        
         // Coordenada final a aplicar: por defecto la del evento.
         let target: number[] | null = null;
 
@@ -1151,28 +1164,23 @@ export default function MapView() {
           }
         }
 
-        // 2) Snap general (endpoint/midpoint/perpendicular/etc).
+        // 2) Snap general — reutiliza el motor unificado (evaluateSnapAt,
+        //    que ya corre por rAF desde el listener de arriba). Acá solo
+       //    se pasa el anchor para habilitar perpendicular/parallel
+        //    durante el trazado, sin duplicar el cómputo de candidatos.
         if (target === null) {
-          const resolution = map.getView().getResolution() ?? 1;
           const ring =
             sketchGeom instanceof Polygon
               ? sketchGeom.getCoordinates()[0]
               : sketchGeom instanceof LineString
                 ? sketchGeom.getCoordinates()
                 : [];
-          // El penúltimo vértice confirmado del sketch actúa de "anchor"
-          // para perpendicular/parallel (igual que el "from point" de AutoCAD).
-          const anchor = ring.length >= 2 ? (ring[ring.length - 2] as number[]) : undefined;
-          const snap = findSnap(evt.coordinate, ds, {
-            resolution,
-            pixelTolerance: 10,
-            anchor,
-            spatialIndex,
-            enabled: useSnapSettingsStore.getState().settings,
-          });
-          if (snap) target = snap.point as number[];
-        }
 
+          const anchor = ring.length >= 2 ? (ring[ring.length - 2] as number[]) : undefined;
+          const snap = evaluateSnapAtRef.current?.(evt.coordinate, { anchor });
+          if (snap) target = snap.point as number[];
+         }
+    
         if (target === null) return;
 
         // Reemplaza la ultima coordenada del sketch con el punto snap.

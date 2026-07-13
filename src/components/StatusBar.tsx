@@ -1,10 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useMapStore } from '../store/mapStore';
 import { useLayerStore } from '../store/layerStore';
-import { useSnapSettingsStore } from '../store/snapSettingsStore';
+
 import { useProjectCrsStore, type ProjectCrsMode } from '../store/projectCrsStore';
 import { BASE_MAP_DEFS, type BaseMapId } from '../map/baseMaps';
-import { SNAP_LABELS, type SnapType } from '../map/advancedSnap';
+import SnapPanel from './SnapPanel';
 
 /* ─── Icons ─── */
 
@@ -23,23 +23,6 @@ const IconMap = () => (
     <circle cx="12" cy="12" r="10" />
     <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" />
     <path d="M2 12h20" />
-  </svg>
-);
-
-const IconGrid = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: 13, height: 13 }}>
-    <circle cx="12" cy="12" r="1" />
-    <path d="M12 2v4" />
-    <path d="M12 18v4" />
-    <path d="M2 12h4" />
-    <path d="M18 12h4" />
-  </svg>
-);
-
-const IconSnap = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: 13, height: 13 }}>
-    <path d="M15.7 3.7a2.5 2.5 0 0 1 3.5 0l4 4a2.5 2.5 0 0 1 0 3.5l-4 4a2.5 2.5 0 0 1-3.5 0l-4-4a2.5 2.5 0 0 1 0-3.5z" />
-    <path d="M8.3 11.3a2.5 2.5 0 0 0 0 3.5l4 4a2.5 2.5 0 0 0 3.5 0l4-4a2.5 2.5 0 0 0 0-3.5l-4-4a2.5 2.5 0 0 0-3.5 0z" />
   </svg>
 );
 
@@ -76,21 +59,14 @@ const CRS_MODE_LABELS: Record<ProjectCrsMode, string> = {
   none: 'Dibujo libre (plano local)',
 };
 
-const SNAP_TYPES: SnapType[] = ['endpoint', 'midpoint', 'nearest', 'perpendicular', 'extension', 'intersection', 'apparentIntersection', 'parallel'];
-
 export default function StatusBar() {
   const coords = useMapStore((s) => s.cursorCoords);
   const zoom = useMapStore((s) => s.zoom);
   const viewConfig = useMapStore((s) => s.viewConfig);
   const baseMap = useLayerStore((s) => s.baseMap);
   const setBaseMap = useLayerStore((s) => s.setBaseMap);
-  const baseVisibility = useLayerStore((s) => s.baseVisibility);
-  const setBaseVisibility = useLayerStore((s) => s.setBaseVisibility);
   const panelVisibility = useLayerStore((s) => s.panelVisibility);
   const setPanelVisibility = useLayerStore((s) => s.setPanelVisibility);
-  const snapSettings = useSnapSettingsStore((s) => s.settings);
-  const toggleSnap = useSnapSettingsStore((s) => s.toggle);
-  const anySnapEnabled = Object.values(snapSettings).some((v) => v);
 
   const crsMode = useProjectCrsStore((s) => s.mode);
   const utmZone = useProjectCrsStore((s) => s.utmZone);
@@ -102,16 +78,13 @@ export default function StatusBar() {
   const requestReconfigure = useProjectCrsStore((s) => s.requestReconfigure);
 
   const [baseMapOpen, setBaseMapOpen] = useState(false);
-  const [snapOpen, setSnapOpen] = useState(false);
   const [crsOpen, setCrsOpen] = useState(false);
   const baseMapRef = useRef<HTMLDivElement>(null);
-  const snapRef = useRef<HTMLDivElement>(null);
   const crsRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (baseMapRef.current && !baseMapRef.current.contains(e.target as Node)) setBaseMapOpen(false);
-      if (snapRef.current && !snapRef.current.contains(e.target as Node)) setSnapOpen(false);
       if (crsRef.current && !crsRef.current.contains(e.target as Node)) setCrsOpen(false);
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -354,82 +327,8 @@ export default function StatusBar() {
 
         <span style={{ opacity: 0.2, margin: '0 4px' }}>│</span>
 
-        {/* OSNAP Dropdown */}
-        <div ref={snapRef} style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-          <button
-            onClick={() => setSnapOpen(!snapOpen)}
-            className="cad-icon-btn cad-tooltip"
-            data-tooltip="OSNAP — Tipos de snap"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              padding: '2px 6px',
-              borderRadius: 4,
-              background: snapOpen || anySnapEnabled ? 'var(--cad-bg-active)' : 'transparent',
-              border: '1px solid var(--cad-border)',
-              color: anySnapEnabled ? 'var(--cad-accent)' : 'var(--cad-text-dim)',
-              fontSize: '0.65rem',
-            }}
-          >
-            <IconSnap />
-            <span style={{ textTransform: 'uppercase', letterSpacing: '0.04em' }}>OSNAP</span>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 10, height: 10 }}><path d="m6 9 6 6 6-6" /></svg>
-          </button>
-          {snapOpen && (
-            <div
-              className="cad-panel-glass animate-fade-in"
-              style={{
-                position: 'absolute',
-                bottom: '100%',
-                left: 0,
-                marginBottom: 4,
-                minWidth: 180,
-                padding: 6,
-                borderRadius: 6,
-                zIndex: 200,
-              }}
-            >
-              <div style={{ padding: '2px 6px 6px', fontSize: '0.55rem', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--cad-text-muted)', borderBottom: '1px solid var(--cad-border)', marginBottom: 4 }}>
-                Tipos de snap
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                {SNAP_TYPES.map((key) => (
-                  <label
-                    key={key}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 8,
-                      cursor: 'pointer',
-                      padding: '4px 6px',
-                      borderRadius: 4,
-                      transition: 'background 100ms ease',
-                    }}
-                    onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--cad-bg-hover)')}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={snapSettings[key]}
-                      onChange={() => toggleSnap(key)}
-                      className="cad-toggle"
-                    />
-                    <span
-                      style={{
-                        fontSize: '0.7rem',
-                        color: snapSettings[key] ? 'var(--cad-text)' : 'var(--cad-text-muted)',
-                        textTransform: 'capitalize',
-                      }}
-                    >
-                      {SNAP_LABELS[key]}
-                    </span>
-                  </label>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
+        {/* OSNAP — panel unificado: tipos de snap + grilla + master switch (F3) */}
+        <SnapPanel />
 
         <span style={{ opacity: 0.2, margin: '0 4px' }}>│</span>
 
@@ -459,36 +358,6 @@ export default function StatusBar() {
           />
           <IconProperties />
           <span style={{ textTransform: 'uppercase', letterSpacing: '0.04em' }}>Props</span>
-        </label>
-
-        <span style={{ opacity: 0.2, margin: '0 4px' }}>│</span>
-
-        {/* Grid Snap */}
-        <label
-          className="cad-tooltip"
-          data-tooltip="Snap a grilla"
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-            padding: '2px 6px',
-            borderRadius: 4,
-            background: baseVisibility.gridSnap ? 'var(--cad-bg-active)' : 'transparent',
-            border: '1px solid var(--cad-border)',
-            color: baseVisibility.gridSnap ? 'var(--cad-accent)' : 'var(--cad-text-dim)',
-            fontSize: '0.65rem',
-            cursor: 'pointer',
-          }}
-        >
-          <input
-            type="checkbox"
-            checked={baseVisibility.gridSnap}
-            onChange={(e) => setBaseVisibility('gridSnap', e.target.checked)}
-            className="cad-toggle"
-            style={{ marginRight: 4 }}
-          />
-          <IconGrid />
-          <span style={{ textTransform: 'uppercase', letterSpacing: '0.04em' }}>Grilla</span>
         </label>
       </div>
 

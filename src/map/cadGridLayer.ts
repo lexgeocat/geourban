@@ -34,7 +34,7 @@ const GRID_STYLES: Record<GridKind, Style> = {
   }),
 };
 
-function snapSpacing(meters: number) {
+export function snapSpacing(meters: number) {
   for (const step of NICE_STEPS) {
     if (step >= meters) return step;
   }
