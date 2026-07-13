@@ -14,7 +14,7 @@ import Select from 'ol/interaction/Select.js';
 import DragPan from 'ol/interaction/DragPan.js';
 import SafeTranslate from './safeTranslate';
 import { unByKey } from 'ol/Observable.js';
-import { toLonLat, fromLonLat } from 'ol/proj.js';
+import { toLonLat, fromLonLat, transform } from 'ol/proj.js';
 import { Fill, Stroke, Style, Circle as CircleStyle, RegularShape } from 'ol/style.js';
 import Feature from 'ol/Feature.js';
 import Point from 'ol/geom/Point.js';
@@ -33,6 +33,7 @@ import { useMapStore } from '../store/mapStore';
 import { useDrawStore } from '../store/drawStore';
 import { useHistoryStore } from '../store/historyStore';
 import { useSelectionStore } from '../store/selectionStore';
+import { useProjectCrsStore } from '../store/projectCrsStore';
 import { updateFeatureMetrics, formatMetricArea, formatMetricLength, type SegmentMetric } from '../geo/metrics';
 import { findSnap, createSnapPoints, SNAP_COLORS, type SnapGuideVisual } from './advancedSnap';
 import { useSnapSettingsStore } from '../store/snapSettingsStore';
@@ -50,6 +51,7 @@ import { useStreetStore } from '../store/streetStore';
 import { recomputeManzanos } from '../store/mapStore';
 import { computeStreetFillets, filletArcPoints } from '../geo/streetEngine';
 import { getOrCreateSpatialIndex } from './demoDataset';
+import { ensureUtmZoneRegistered } from '../geo/utmZones';
 import { cadBaseMapBundles } from './cadGridLayer';
 import LayerGroup from 'ol/layer/Group.js';
 
@@ -519,9 +521,18 @@ export default function MapView() {
     const setZoom = useMapStore.getState().setZoom;
     const view = map.getView();
 
-    map.on('pointermove', (evt) => {
-      const lonLat = toLonLat(evt.coordinate);
-      setCursorCoords({ x: lonLat[0], y: lonLat[1] });
+     map.on('pointermove', (evt) => {
+      const crs = useProjectCrsStore.getState();
+      if (crs.mode === 'utm') {
+        // Con UTM activo, mostramos las coordenadas REALES proyectadas
+        // (metros), no lon/lat — es lo que un CAD/GIS mostraría.
+        const epsg = ensureUtmZoneRegistered(crs.utmZone, crs.utmHemisphere);
+        const projected = transform(evt.coordinate, 'EPSG:3857', epsg) as [number, number];
+        setCursorCoords({ x: projected[0], y: projected[1], isProjected: true });
+      } else {
+        const lonLat = toLonLat(evt.coordinate);
+        setCursorCoords({ x: lonLat[0], y: lonLat[1], isProjected: false });
+      }
     });
 
     const onZoomChange = () => {
@@ -535,6 +546,22 @@ export default function MapView() {
     if (initialZoom !== undefined) {
       setZoom(initialZoom);
     }
+
+    // Mantiene viewConfig (mapStore) sincronizado con la posición REAL del
+    // mapa. Antes viewConfig.center quedaba congelado en su valor default
+    // — nunca se actualizaba al hacer pan/zoom — lo que rompía "Detectar
+    // zona UTM desde la vista actual" (siempre detectaba la ubicación
+    // default) y también el autosave/guardado (siempre guardaba la vista
+    // inicial, no la última vista real del usuario).
+    const onMoveEnd = () => {
+      const center = view.getCenter();
+      const currentZoom = view.getZoom();
+      if (center && currentZoom !== undefined) {
+        const lonLat = toLonLat(center) as [number, number];
+        useMapStore.getState().setViewConfig({ center: lonLat, zoom: currentZoom });
+      }
+    };
+    const moveEndKey = map.on('moveend', onMoveEnd);
 
     // --- Indicador visual de snap (capa overlay, agregada al final) ---
     const snapIndicatorSrc = new VectorSource();
@@ -643,6 +670,7 @@ export default function MapView() {
       baseLayerCleanupRef.current?.();
       baseLayerCleanupRef.current = null;
       unByKey(pmKey);
+      unByKey(moveEndKey);
       postrenderLayer.un('postrender', postRenderHandler);
       drawSrc.un('addfeature', onFeatureChange);
       drawSrc.un('removefeature', onFeatureChange);

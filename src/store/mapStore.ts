@@ -17,7 +17,7 @@ import type Geometry from 'ol/geom/Geometry.js';
 
 const geoJsonFormat = new GeoJSON();
 
-type CursorCoords = { x: number; y: number } | null;
+type CursorCoords = { x: number; y: number; isProjected?: boolean } | null;
 
 export type ViewConfig = {
   /** Centro del mapa en [lng, lat] (EPSG:4326) */

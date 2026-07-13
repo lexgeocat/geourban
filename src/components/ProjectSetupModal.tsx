@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { useProjectCrsStore } from '../store/projectCrsStore';
 import { useMapStore } from '../store/mapStore';
+import { useLayerStore } from '../store/layerStore';
 import { utmZoneFromLonLat, type UtmHemisphere, type ProjectCrsMode } from '../geo/utmZones';
-
 export default function ProjectSetupModal() {
   const confirmed = useProjectCrsStore((s) => s.confirmed);
   const mode = useProjectCrsStore((s) => s.mode);
@@ -12,6 +12,7 @@ export default function ProjectSetupModal() {
   const setUtmZone = useProjectCrsStore((s) => s.setUtmZone);
   const confirm = useProjectCrsStore((s) => s.confirm);
   const viewConfig = useMapStore((s) => s.viewConfig);
+  const setBaseMap = useLayerStore((s) => s.setBaseMap);
 
   const [localMode, setLocalMode] = useState<ProjectCrsMode>(mode);
   const [localZone, setLocalZone] = useState(utmZone);
@@ -49,7 +50,7 @@ export default function ProjectSetupModal() {
         </p>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
-          <button onClick={() => setLocalMode('utm')} className="cad-icon-btn" style={{
+          <button onClick={() => { setLocalMode('utm'); setBaseMap('osm'); }} className="cad-icon-btn" style={{
             width: '100%', height: 'auto', padding: '10px 12px', textAlign: 'left', justifyContent: 'flex-start',
             background: localMode === 'utm' ? 'var(--cad-bg-active)' : 'var(--cad-bg-surface)',
             border: `1px solid ${localMode === 'utm' ? 'var(--cad-accent)' : 'var(--cad-border)'}`,

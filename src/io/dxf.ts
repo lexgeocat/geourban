@@ -2,12 +2,10 @@ import DxfParser, { type IEntity } from 'dxf-parser';
 import Drawing from 'dxf-writer';
 import { createEmptyProject, type GeoUrbanProject, type ImportResult } from './types';
 import type { Feature, FeatureCollection, LineString, Point, Polygon } from 'geojson';
-import { fromLonLat, toLonLat } from 'ol/proj.js';
 import { useMapStore } from '../store/mapStore';
 import { useProjectCrsStore } from '../store/projectCrsStore';
 import { ensureUtmZoneRegistered, utmZoneLabel } from '../geo/utmZones';
-import { reprojectFeatureCollection, collectionCentroidLonLat, mapFeatureCollectionCoords, utmWkt } from '../geo/crsTransform';
-
+import { reprojectFeatureCollection, mapFeatureCollectionCoords, utmWkt } from '../geo/crsTransform';
 const GEOGRAPHIC = 'EPSG:4326';
 
 /**
@@ -42,13 +40,21 @@ export async function importDxf(file: File): Promise<ImportResult> {
       `Si el DXF viene de otra zona, cambiala primero en "CRS del proyecto".`
     );
   } else {
-    // Modo 'none': el DXF nunca tuvo anclaje real. Único criterio consistente:
-    // reubicarlo relativo al centro de vista actual (mismo criterio del export
-    // en este modo). No es reproyección geodésica, es reposicionamiento.
-    const viewCenter = useMapStore.getState().viewConfig.center;
-    const centerMerc = fromLonLat(viewCenter) as [number, number];
+    // Modo 'none': el DXF nunca tuvo anclaje real. Se reposiciona con el
+    // MISMO criterio equirectangular (metros reales de terreno, escalados
+    // por cos(latitud)) que usa exportDxf() en esta rama. Antes se usaba
+    // fromLonLat/toLonLat (metros Web Mercator), que NO es la inversa del
+    // export y metía un error de escala de varios % según la latitud del
+    // proyecto — un DXF "libre" exportado y reimportado aparecía deformado.
+    const [centerLon, centerLat] = useMapStore.getState().viewConfig.center;
+    const mPerDegLat = 111320;
+    const mPerDegLon = 111320 * Math.cos((centerLat * Math.PI) / 180);
+    const toViewLngLat = ([x, y]: number[]): [number, number] => [
+      centerLon + x / mPerDegLon,
+      centerLat + y / mPerDegLat,
+    ];
     for (const feature of collection.features) {
-      translateFeatureGeometryToView(feature, centerMerc);
+      translateFeatureGeometryToView(feature, toViewLngLat);
     }
   }
 
@@ -93,11 +99,9 @@ function entityToFeature(entity: IEntity): Feature | null {
   return null;
 }
 
-function translateFeatureGeometryToView(feature: Feature, centerMerc: [number, number]) {
+function translateFeatureGeometryToView(feature: Feature, toViewLngLat: (c: number[]) => [number, number]) {
   const geom = feature.geometry;
   if (!geom) return;
-  const toViewLngLat = ([x, y]: number[]): [number, number] =>
-    toLonLat([x + centerMerc[0], y + centerMerc[1]]) as [number, number];
   if (geom.type === 'Point') geom.coordinates = toViewLngLat(geom.coordinates);
   else if (geom.type === 'LineString') geom.coordinates = geom.coordinates.map(toViewLngLat);
   else if (geom.type === 'Polygon') geom.coordinates = geom.coordinates.map((ring) => ring.map(toViewLngLat));
@@ -132,10 +136,13 @@ export function exportDxf(project: GeoUrbanProject): DxfExportResult {
       `QGIS no detecta el CRS de un DXF solo: click derecho en la capa → ` +
       `"Asignar SRC de capa" → buscar "${epsg.replace('EPSG:', '')}".`;
   } else {
-    // Modo 'none': plano local en metros reales, centrado en el centroide
-    // del propio dibujo. No se registra como CRS reutilizable (a propósito:
-    // eso fue lo que rompía la reimportación antes).
-    const [lon, lat] = collectionCentroidLonLat(collection);
+    // Modo 'none': plano local en metros reales, centrado en la VISTA
+    // ACTUAL del proyecto — el mismo punto de anclaje que usa importDxf()
+    // en este modo. Antes se anclaba al centroide de los propios datos, lo
+    // que desincronizaba import/export: si la vista se movía entre
+    // exportar y volver a importar, el dibujo reaparecía desplazado del
+    // lugar original.
+    const [lon, lat] = useMapStore.getState().viewConfig.center;
     const mPerDegLat = 111320;
     const mPerDegLon = 111320 * Math.cos((lat * Math.PI) / 180);
     projected = mapFeatureCollectionCoords(collection, ([x, y]) => [
@@ -143,7 +150,7 @@ export function exportDxf(project: GeoUrbanProject): DxfExportResult {
       (y - lat) * mPerDegLat,
     ]);
     instructions =
-      'DXF exportado sin georreferenciar ("Dibujo libre"): (0,0) es el centro del dibujo. ' +
+      'DXF exportado sin georreferenciar ("Dibujo libre"): (0,0) es el centro de la vista actual del mapa. ' +
       'Para anclarlo a un CRS real, configurá una zona UTM en "CRS del proyecto" y reexportá.';
   }
 

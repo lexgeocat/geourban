@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useMapStore } from '../store/mapStore';
 import { useLayerStore } from '../store/layerStore';
 import { useSnapSettingsStore } from '../store/snapSettingsStore';
+import { useProjectCrsStore, type ProjectCrsMode } from '../store/projectCrsStore';
 import { BASE_MAP_DEFS, type BaseMapId } from '../map/baseMaps';
 import { SNAP_LABELS, type SnapType } from '../map/advancedSnap';
 
@@ -52,6 +53,14 @@ const IconProperties = () => (
   </svg>
 );
 
+const IconCrs = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: 13, height: 13 }}>
+    <circle cx="12" cy="12" r="10" />
+    <path d="M2 12h20" />
+    <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+  </svg>
+);
+
 const BASE_MAP_ICONS: Record<BaseMapId, React.ReactNode> = {
   cad: <IconCad />,
   osm: <IconMap />,
@@ -62,11 +71,17 @@ const BASE_MAP_LABELS: Record<BaseMapId, string> = {
   osm: 'OpenStreetMap',
 };
 
+const CRS_MODE_LABELS: Record<ProjectCrsMode, string> = {
+  utm: 'UTM (zona proyectada)',
+  none: 'Dibujo libre (plano local)',
+};
+
 const SNAP_TYPES: SnapType[] = ['endpoint', 'midpoint', 'nearest', 'perpendicular', 'extension', 'intersection', 'apparentIntersection', 'parallel'];
 
 export default function StatusBar() {
   const coords = useMapStore((s) => s.cursorCoords);
   const zoom = useMapStore((s) => s.zoom);
+  const viewConfig = useMapStore((s) => s.viewConfig);
   const baseMap = useLayerStore((s) => s.baseMap);
   const setBaseMap = useLayerStore((s) => s.setBaseMap);
   const baseVisibility = useLayerStore((s) => s.baseVisibility);
@@ -77,19 +92,47 @@ export default function StatusBar() {
   const toggleSnap = useSnapSettingsStore((s) => s.toggle);
   const anySnapEnabled = Object.values(snapSettings).some((v) => v);
 
+  const crsMode = useProjectCrsStore((s) => s.mode);
+  const utmZone = useProjectCrsStore((s) => s.utmZone);
+  const utmHemisphere = useProjectCrsStore((s) => s.utmHemisphere);
+  const exportEpsg = useProjectCrsStore((s) => s.exportEpsg);
+  const setCrsMode = useProjectCrsStore((s) => s.setMode);
+  const setUtmZone = useProjectCrsStore((s) => s.setUtmZone);
+  const autoDetectFromLonLat = useProjectCrsStore((s) => s.autoDetectFromLonLat);
+  const requestReconfigure = useProjectCrsStore((s) => s.requestReconfigure);
+
   const [baseMapOpen, setBaseMapOpen] = useState(false);
   const [snapOpen, setSnapOpen] = useState(false);
+  const [crsOpen, setCrsOpen] = useState(false);
   const baseMapRef = useRef<HTMLDivElement>(null);
   const snapRef = useRef<HTMLDivElement>(null);
+  const crsRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (baseMapRef.current && !baseMapRef.current.contains(e.target as Node)) setBaseMapOpen(false);
       if (snapRef.current && !snapRef.current.contains(e.target as Node)) setSnapOpen(false);
+      if (crsRef.current && !crsRef.current.contains(e.target as Node)) setCrsOpen(false);
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  const epsgLabel = crsMode === 'utm' ? (exportEpsg ?? 'EPSG:UTM') : 'Local';
+
+  const handleCrsModeSelect = (m: ProjectCrsMode) => {
+    setCrsMode(m);
+    // Al pasar a UTM activamos OSM para tener contexto real de ubicación
+    // (mapa de calles/satélite) en vez de la grilla CAD abstracta —
+    // ayuda a ubicarse antes de confiar en la zona detectada/elegida.
+    if (m === 'utm') setBaseMap('osm');
+  };
+
+  const handleCrsAutoDetect = () => {
+    const [lon, lat] = viewConfig.center;
+    autoDetectFromLonLat(lon, lat);
+    setBaseMap('osm');
+  };
 
   return (
     <div
@@ -123,9 +166,12 @@ export default function StatusBar() {
           </svg>
           {coords ? (
             <span>
-              <span style={{ color: 'var(--cad-accent)' }}>X</span> {coords.x.toFixed(4)}
+              <span style={{ color: 'var(--cad-accent)' }}>X</span>{' '}
+              {coords.isProjected ? coords.x.toFixed(2) : coords.x.toFixed(4)}
               <span style={{ margin: '0 6px', opacity: 0.3 }}>│</span>
-              <span style={{ color: 'var(--cad-accent)' }}>Y</span> {coords.y.toFixed(4)}
+              <span style={{ color: 'var(--cad-accent)' }}>Y</span>{' '}
+              {coords.isProjected ? coords.y.toFixed(2) : coords.y.toFixed(4)}
+              {coords.isProjected && <span style={{ marginLeft: 6, opacity: 0.5 }}>m</span>}
             </span>
           ) : (
             <span style={{ opacity: 0.5 }}>— sin posición —</span>
@@ -135,8 +181,114 @@ export default function StatusBar() {
 
       {/* Center: CRS + Base Map + OSNAP + Grid Snap */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, flex: 1, justifyContent: 'center' }}>
-        {/* CRS */}
-        <span style={{ opacity: 0.6, marginRight: 8 }}>EPSG:3857</span>
+        {/* CRS del proyecto — antes era un panel flotante aparte + un texto
+            fijo "EPSG:3857" acá; ahora es un único badge vivo que muestra
+            el EPSG real (o "Local" en modo dibujo libre). */}
+        <div ref={crsRef} style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+          <button
+            onClick={() => setCrsOpen(!crsOpen)}
+            className="cad-icon-btn cad-tooltip"
+            data-tooltip="CRS del proyecto"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '2px 6px',
+              borderRadius: 4,
+              background: crsOpen ? 'var(--cad-bg-active)' : 'transparent',
+              border: '1px solid var(--cad-border)',
+              color: crsMode === 'utm' ? 'var(--cad-accent)' : 'var(--cad-text-dim)',
+              fontSize: '0.65rem',
+            }}
+          >
+            <IconCrs />
+            <span style={{ letterSpacing: '0.03em' }}>{epsgLabel}</span>
+          </button>
+          {crsOpen && (
+            <div
+              className="cad-panel-glass animate-fade-in"
+              style={{
+                position: 'absolute',
+                bottom: '100%',
+                left: 0,
+                marginBottom: 4,
+                minWidth: 230,
+                padding: 10,
+                borderRadius: 6,
+                zIndex: 200,
+              }}
+            >
+              <div style={{ fontSize: '0.6rem', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--cad-text-dim)', marginBottom: 8, borderBottom: '1px solid var(--cad-border)', paddingBottom: 6 }}>
+                CRS del proyecto
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 8 }}>
+                {(Object.keys(CRS_MODE_LABELS) as ProjectCrsMode[]).map((m) => (
+                  <button
+                    key={m}
+                    onClick={() => handleCrsModeSelect(m)}
+                    className="cad-icon-btn"
+                    style={{
+                      width: '100%', height: 'auto', padding: '6px 8px', fontSize: '0.7rem', fontWeight: 500,
+                      textAlign: 'left', justifyContent: 'flex-start',
+                      background: crsMode === m ? 'var(--cad-bg-active)' : 'var(--cad-bg-surface)',
+                      border: `1px solid ${crsMode === m ? 'var(--cad-accent)' : 'var(--cad-border)'}`,
+                      color: crsMode === m ? 'var(--cad-accent)' : 'var(--cad-text-dim)',
+                      borderRadius: 4,
+                    }}
+                  >
+                    {CRS_MODE_LABELS[m]}
+                  </button>
+                ))}
+              </div>
+
+              {crsMode === 'utm' && (
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 8 }}>
+                  <input
+                    type="number"
+                    min={1}
+                    max={60}
+                    value={utmZone}
+                    onChange={(e) => setUtmZone(Math.min(60, Math.max(1, parseInt(e.target.value, 10) || 1)), utmHemisphere)}
+                    style={{ width: 56, padding: '4px 6px', background: 'var(--cad-bg-deepest)', border: '1px solid var(--cad-border)', borderRadius: 4, color: 'var(--cad-text)', fontSize: '0.75rem', fontFamily: 'JetBrains Mono, monospace' }}
+                  />
+                  <select
+                    value={utmHemisphere}
+                    onChange={(e) => setUtmZone(utmZone, e.target.value as 'N' | 'S')}
+                    style={{ padding: '4px 6px', background: 'var(--cad-bg-deepest)', border: '1px solid var(--cad-border)', borderRadius: 4, color: 'var(--cad-text)', fontSize: '0.75rem' }}
+                  >
+                    <option value="N">Norte</option>
+                    <option value="S">Sur</option>
+                  </select>
+                  <button
+                    onClick={handleCrsAutoDetect}
+                    className="cad-icon-btn cad-tooltip"
+                    data-tooltip="Detectar zona desde la vista actual"
+                    style={{ width: 'auto', height: 'auto', padding: '4px 8px', fontSize: '0.65rem', color: 'var(--cad-accent)' }}
+                  >
+                    Auto
+                  </button>
+                </div>
+              )}
+
+              <div style={{ fontSize: '0.62rem', color: 'var(--cad-text-muted)' }}>
+                Exportación DXF usa:{' '}
+                <strong style={{ color: 'var(--cad-text-dim)' }}>
+                  {crsMode === 'utm' ? exportEpsg : 'Plano local (centrado en la vista actual)'}
+                </strong>
+                <button
+                  onClick={() => { requestReconfigure(); setCrsOpen(false); }}
+                  className="cad-icon-btn"
+                  style={{ width: '100%', height: 'auto', padding: '5px 8px', fontSize: '0.65rem', color: 'var(--cad-text-muted)', border: '1px solid var(--cad-border)', borderRadius: 4, marginTop: 6 }}
+                >
+                  Reconfigurar (reabrir asistente)
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <span style={{ opacity: 0.2, margin: '0 4px' }}>│</span>
 
         {/* Base Map Selector */}
         <div ref={baseMapRef} style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
@@ -200,7 +352,6 @@ export default function StatusBar() {
           )}
         </div>
 
-        {/* Separator */}
         <span style={{ opacity: 0.2, margin: '0 4px' }}>│</span>
 
         {/* OSNAP Dropdown */}
@@ -280,7 +431,6 @@ export default function StatusBar() {
           )}
         </div>
 
-        {/* Separator */}
         <span style={{ opacity: 0.2, margin: '0 4px' }}>│</span>
 
         {/* Properties Panel */}
@@ -311,7 +461,6 @@ export default function StatusBar() {
           <span style={{ textTransform: 'uppercase', letterSpacing: '0.04em' }}>Props</span>
         </label>
 
-        {/* Separator */}
         <span style={{ opacity: 0.2, margin: '0 4px' }}>│</span>
 
         {/* Grid Snap */}

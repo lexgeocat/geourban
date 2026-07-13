@@ -13,7 +13,6 @@ import { useMapStore } from './store/mapStore';
 import { useLayerStore } from './store/layerStore';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import ProjectSetupModal from './components/ProjectSetupModal';
-import ProjectCrsPanel from './components/ProjectCrsPanel';
 
 function App() {
   useKeyboardShortcuts();
@@ -70,8 +69,7 @@ function App() {
         </div>
       </div>
 <ProjectSetupModal />
-<ProjectCrsPanel />
-      <SubdivisionDialog />
+<SubdivisionDialog />
 
       <LayerPanel />
 
