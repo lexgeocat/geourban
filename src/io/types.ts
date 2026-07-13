@@ -1,5 +1,6 @@
 import type { FeatureCollection } from 'geojson';
 import type { BaseMapId } from '../map/baseMaps';
+import type { ProjectCrsConfig } from '../geo/utmZones';
 
 export type GeoUrbanLayerMeta = {
   id: string;
@@ -15,20 +16,17 @@ export type GeoUrbanProject = {
   updatedAt: string;
   baseMap: BaseMapId;
   layers: GeoUrbanLayerMeta[];
-  view: {
-    center: [number, number];
-    zoom: number;
-  };
+  view: { center: [number, number]; zoom: number };
+  /** CRS de referencia — independiente del storage interno (siempre WGS84).
+   *  Fuente de verdad única para export/import DXF. Ver projectCrsStore.ts. */
+  crs: ProjectCrsConfig;
   data: FeatureCollection;
 };
 
 export type ImportFormat = 'geourban' | 'geojson' | 'kml' | 'kmz' | 'shp' | 'gpkg' | 'dxf';
 export type ExportFormat = ImportFormat;
 
-export type ImportResult = {
-  project: GeoUrbanProject;
-  warnings: string[];
-};
+export type ImportResult = { project: GeoUrbanProject; warnings: string[] };
 
 export function createEmptyProject(name = 'Sin título'): GeoUrbanProject {
   const now = new Date().toISOString();
@@ -40,6 +38,7 @@ export function createEmptyProject(name = 'Sin título'): GeoUrbanProject {
     baseMap: 'osm',
     layers: [{ id: 'draw', name: 'Dibujo', visible: true, type: 'mixed' }],
     view: { center: [-68.3, -16.65], zoom: 19 },
+    crs: { mode: 'utm', utmZone: 19, utmHemisphere: 'S' },
     data: { type: 'FeatureCollection', features: [] },
   };
 }

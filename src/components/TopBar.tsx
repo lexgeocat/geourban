@@ -12,7 +12,8 @@ import {
   type ExportFormat,
 } from '../io';
 import { refreshSourceMetrics } from '../geo/metrics';
-import { UTM_19S } from '../geo/customProjections';
+import { useProjectCrsStore, getProjectCrsConfig } from '../store/projectCrsStore';
+import { ensureUtmZoneRegistered } from '../geo/utmZones';
 
 const modeLabels: Record<string, { label: string; color: string }> = {
   select: { label: 'SELECCIÓN', color: 'var(--cad-text-dim)' },
@@ -34,53 +35,50 @@ export default function TopBar() {
   const setStatsPanelVisible = useLayerStore((s) => s.setStatsPanelVisible);
   const modeInfo = modeLabels[mode] || modeLabels.none;
 
-  const getCurrentProject = () => {
-    const features = drawSource?.getFeatures() ?? [];
-    const project = writeProjectFromOlFeatures(features);
-    project.name = 'Proyecto GeoUrban';
-    project.baseMap = baseMap;
-    project.view = { center: viewConfig.center, zoom: viewConfig.zoom };
-    return project;
-  };
+const getCurrentProject = () => {
+  const features = drawSource?.getFeatures() ?? [];
+  const project = writeProjectFromOlFeatures(features);
+  project.name = 'Proyecto GeoUrban';
+  project.baseMap = baseMap;
+  project.view = { center: viewConfig.center, zoom: viewConfig.zoom };
+  project.crs = getProjectCrsConfig(); // CRS viaja con el archivo
+  return project;
+};
 
-  const handleImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file || !drawSource) return;
-    try {
-      const isDxf = file.name.toLowerCase().endsWith('.dxf');
-      const dxfSourceCrs = isDxf
-        ? window.confirm(
-            '¿Este DXF está georreferenciado en coordenadas reales (UTM 19S / EPSG:32719, como en AutoCAD Map 3D)?\n\nAceptar = Sí, georreferenciado\nCancelar = No, coordenadas locales'
-          )
-          ? UTM_19S
-          : 'local'
-        : undefined;
-
-      const { project, warnings } = await importFile(file, undefined, { dxfSourceCrs });
-      const features = readOlFeaturesFromProject(project);
-      drawSource.clear();
-      drawSource.addFeatures(features as never);
-      refreshSourceMetrics(drawSource);
-      drawSource.changed();
-      fitToExtent();
-      if (warnings.length) console.warn('Import warnings:', warnings);
-    } catch (err) {
-      console.error(err);
-      alert(err instanceof Error ? err.message : 'Error al importar archivo');
-    } finally {
-      event.target.value = '';
+const handleImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const file = event.target.files?.[0];
+  if (!file || !drawSource) return;
+  try {
+    const { project, warnings } = await importFile(file);
+    // Solo un .geourban trae config de CRS propia; los demás formatos
+    // (geojson/kml/shp/dxf) usan el CRS YA configurado del proyecto activo.
+    if (file.name.toLowerCase().endsWith('.geourban')) {
+      useProjectCrsStore.getState().loadConfig(project.crs);
     }
-  };
+    const features = readOlFeaturesFromProject(project);
+    drawSource.clear();
+    drawSource.addFeatures(features as never);
+    refreshSourceMetrics(drawSource);
+    drawSource.changed();
+    fitToExtent();
+    if (warnings.length) alert(warnings.join('\n'));
+  } catch (err) {
+    console.error(err);
+    alert(err instanceof Error ? err.message : 'Error al importar archivo');
+  } finally {
+    event.target.value = '';
+  }
+};
 
-  const handleExport = async (format: ExportFormat) => {
-    try {
-      await exportProject(getCurrentProject(), format, 'geourban-proyecto');
-    } catch (err) {
-      console.error(err);
-      alert(err instanceof Error ? err.message : 'Error al exportar');
-    }
-  };
-
+const handleExport = async (format: ExportFormat) => {
+  try {
+    const result = await exportProject(getCurrentProject(), format, 'geourban-proyecto');
+    if (result?.message) alert(result.message);
+  } catch (err) {
+    console.error(err);
+    alert(err instanceof Error ? err.message : 'Error al exportar');
+  }
+};
   return (
     <div
       style={{

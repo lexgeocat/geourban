@@ -18,29 +18,17 @@ export * from './gpkg';
 export * from './dxf';
 export * from './persistence';
 
-export async function importFile(
-  file: File,
-  format?: ImportFormat,
-  options?: { dxfSourceCrs?: string }
-): Promise<ImportResult> {
+export async function importFile(file: File, format?: ImportFormat): Promise<ImportResult> {
   const ext = format ?? inferFormat(file.name);
   switch (ext) {
-    case 'geourban':
-      return { project: parseGeoUrbanJson(await file.text()), warnings: [] };
-    case 'geojson':
-      return { project: parseGeoJson(await file.text(), file.name), warnings: [] };
-    case 'kml':
-      return importKml(file);
-    case 'kmz':
-      return importKmz(file);
-    case 'shp':
-      return importShp([file]);
-    case 'gpkg':
-      return importGpkg(file);
-    case 'dxf':
-      return importDxf(file, options?.dxfSourceCrs ?? 'local');
-    default:
-      throw new Error(`Formato no soportado: ${ext}`);
+    case 'geourban': return { project: parseGeoUrbanJson(await file.text()), warnings: [] };
+    case 'geojson':  return { project: parseGeoJson(await file.text(), file.name), warnings: [] };
+    case 'kml':  return importKml(file);
+    case 'kmz':  return importKmz(file);
+    case 'shp':  return importShp([file]);
+    case 'gpkg': return importGpkg(file);
+    case 'dxf':  return importDxf(file); // ya no recibe options — el CRS sale del store
+    default: throw new Error(`Formato no soportado: ${ext}`);
   }
 }
 
@@ -48,7 +36,7 @@ export async function exportProject(
   project: GeoUrbanProject,
   format: ExportFormat,
   filename: string
-) {
+): Promise<{ message?: string } | void> {
   switch (format) {
     case 'geourban':
       downloadTextFile(`${filename}.geourban`, serializeGeoUrbanProject(project));
@@ -75,9 +63,12 @@ export async function exportProject(
       downloadBlob(`${filename}.prj`, prj);
       break;
     }
-    case 'dxf':
-      downloadTextFile(`${filename}.dxf`, exportDxf(project), 'application/dxf');
-      break;
+    case 'dxf': {
+      const { dxfText, prjWkt, instructions } = exportDxf(project);
+      downloadTextFile(`${filename}.dxf`, dxfText, 'application/dxf');
+      if (prjWkt) downloadTextFile(`${filename}.prj`, prjWkt, 'text/plain');
+      return { message: instructions };
+    }
     case 'gpkg':
       throw new Error('Exportación GPKG aún no implementada');
     default:
