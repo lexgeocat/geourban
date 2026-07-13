@@ -680,7 +680,6 @@ export default function MapView() {
     const snapEngine = new SnapEngine({
       getSource: () => drawSrcRef.current,
       spatialIndex,
-      getGridOrigin: () => useLayerStore.getState().gridOrigin,
       getEnabled,
       shouldSnapCoordinate,
       getAnchor,

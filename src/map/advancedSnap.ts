@@ -47,8 +47,7 @@ export type SnapType =
   | 'extension'
   | 'intersection'
   | 'apparentIntersection'
-  | 'parallel'
-  | 'grid';
+  | 'parallel';
 
 export interface SnapGuideVisual {
   dashedLine?: [number[], number[]];
@@ -78,14 +77,12 @@ export const DEFAULT_SNAP_SETTINGS: SnapSettings = {
   intersection: true,
   apparentIntersection: true,
   parallel: true,
-  grid: true,
 };
 
 /** Agrupación semántica — la usa la UI (SnapPanel) para organizar los toggles. */
 export const SNAP_GROUPS: { label: string; types: SnapType[] }[] = [
   { label: 'Geométricos', types: ['endpoint', 'midpoint', 'intersection', 'apparentIntersection'] },
   { label: 'Construcción', types: ['perpendicular', 'parallel', 'extension', 'nearest'] },
-  { label: 'Referencia', types: ['grid'] },
 ];
 
 /** Prioridad de resolución cuando varios snaps caen en tolerancia (menor = gana). */
@@ -97,12 +94,11 @@ export const SNAP_TYPE_PRIORITY: Record<SnapType, number> = {
   midpoint: 4,
   perpendicular: 5,
   parallel: 6,
-  grid: 7,
-  nearest: 8,
+  nearest: 7,
 };
 
 /** Radio de captura por tipo, como multiplicador del pixelTolerance base. */
-const TYPE_TOLERANCE_FACTOR: Record<Exclude<SnapType, 'grid'>, number> = {
+const TYPE_TOLERANCE_FACTOR: Record<SnapType, number> = {
   endpoint: 1.15,
   intersection: 1.0,
   apparentIntersection: 1.0,
@@ -506,7 +502,6 @@ export const SNAP_COLORS: Record<SnapType, string> = {
   intersection: '#ef4444',
   apparentIntersection: '#c026d3',
   parallel: '#7c3aed',
-  grid: '#38bdf8',
 };
 
 export const SNAP_LABELS: Record<SnapType, string> = {
@@ -518,5 +513,4 @@ export const SNAP_LABELS: Record<SnapType, string> = {
   intersection: 'Intersección',
   apparentIntersection: 'Intersección aparente',
   parallel: 'Paralelo',
-  grid: 'Grilla',
 };
