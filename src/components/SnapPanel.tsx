@@ -17,6 +17,31 @@ const IconPower = () => (
   </svg>
 );
 
+const SnapIcon = ({ type, color, size = 12 }: { type: SnapType; color: string; size?: number }) => {
+  const s = size;
+  const props = { fill: 'none', stroke: color, strokeWidth: '1.5', strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, style: { width: s, height: s, flexShrink: 0 } as const };
+  switch (type) {
+    case 'endpoint':
+      return <svg viewBox="0 0 12 12" {...props}><rect x="2" y="2" width="8" height="8" /></svg>;
+    case 'midpoint':
+      return <svg viewBox="0 0 12 12" {...props}><polygon points="6,1.5 9.9,8.3 2.1,8.3" /></svg>;
+    case 'intersection':
+      return <svg viewBox="0 0 12 12" {...props}><line x1="2" y1="2" x2="10" y2="10" /><line x1="10" y1="2" x2="2" y2="10" /></svg>;
+    case 'apparentIntersection':
+      return <svg viewBox="0 0 12 12" {...props}><polygon points="6,1 11,6 6,11 1,6" /></svg>;
+    case 'extension':
+      return <svg viewBox="0 0 12 12" {...props}><line x1="6" y1="2" x2="6" y2="10" /><line x1="2" y1="6" x2="10" y2="6" /></svg>;
+    case 'perpendicular':
+      return <svg viewBox="0 0 12 12" {...props}><polygon points="6,1.5 10.3,4.6 8.6,9.6 3.4,9.6 1.7,4.6" /></svg>;
+    case 'parallel':
+      return <svg viewBox="0 0 12 12" {...props}><polygon points="6,1.5 9.9,3.8 9.9,8.3 6,10.5 2.1,8.3 2.1,3.8" /></svg>;
+    case 'nearest':
+      return <svg viewBox="0 0 12 12" {...props}><circle cx="6" cy="6" r="4.5" /></svg>;
+    default:
+      return <svg viewBox="0 0 12 12" {...props}><circle cx="6" cy="6" r="4.5" /></svg>;
+  }
+};
+
 export default function SnapPanel() {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -59,18 +84,7 @@ export default function SnapPanel() {
       >
         <IconSnap />
         <span style={{ textTransform: 'uppercase', letterSpacing: '0.04em' }}>OSNAP</span>
-        {active && (
-          <span
-            title={SNAP_LABELS[active.type]}
-            style={{
-              width: 6,
-              height: 6,
-              borderRadius: '50%',
-              background: SNAP_COLORS[active.type],
-              boxShadow: `0 0 4px ${SNAP_COLORS[active.type]}`,
-            }}
-          />
-        )}
+        {active && <SnapIcon type={active.type} color={SNAP_COLORS[active.type]} size={10} />}
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 10, height: 10 }}>
           <path d="m6 9 6 6 6-6" />
         </svg>
@@ -129,7 +143,7 @@ export default function SnapPanel() {
                       onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                     >
                       <input type="checkbox" checked={settings[key]} onChange={() => toggle(key)} className="cad-toggle" />
-                      <span style={{ width: 7, height: 7, borderRadius: '50%', background: SNAP_COLORS[key], flexShrink: 0 }} />
+                      <SnapIcon type={key} color={SNAP_COLORS[key]} size={11} />
                       <span style={{ fontSize: '0.7rem', color: settings[key] ? 'var(--cad-text)' : 'var(--cad-text-muted)' }}>
                         {SNAP_LABELS[key]}
                       </span>

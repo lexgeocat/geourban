@@ -567,24 +567,38 @@ export default function MapView() {
       source: snapIndicatorSrc,
       style: new Style({
         image: new CircleStyle({
-          radius: 6,
-          fill: new Fill({ color: '#f59e0b' }),
-          stroke: new Stroke({ color: '#fff', width: 1.5 }),
+          radius: 5,
+          stroke: new Stroke({ color: '#00d4ff', width: 2 }),
         }),
       }),
     });
     map.addLayer(snapIndicatorLayer);
 
     // Pre-crear estilos de snap (uno por tipo, reutilizados en cada frame)
+    // Cada tipo tiene forma geométrica distinta (estilo CAD) sin relleno
     const snapStyles = new globalThis.Map<string, Style>();
+    const SNAP_SHAPES: Record<string, { points?: number; radius: number; radius2?: number; angle?: number }> = {
+      endpoint:             { radius: 7,  points: 4,               angle: Math.PI / 4 }, // Cuadrado □
+      midpoint:             { radius: 8,  points: 3,               angle: -Math.PI / 2 }, // Triángulo △
+      intersection:         { radius: 8,  points: 4, radius2: 2,  angle: Math.PI / 4 },  // Cruz (X)
+      apparentIntersection: { radius: 7,  points: 4,               angle: 0 },            // Diamante ◇
+      extension:            { radius: 7,  points: 4, radius2: 2,  angle: 0 },             // Cruz (+)
+      perpendicular:        { radius: 7,  points: 5,               angle: -Math.PI / 2 }, // Pentágono
+      parallel:             { radius: 7,  points: 6,               angle: -Math.PI / 2 }, // Hexágono
+      nearest:              { radius: 5 },                                                // Círculo
+    };
     for (const [type, color] of Object.entries(SNAP_COLORS)) {
-      snapStyles.set(type, new Style({
-        image: new CircleStyle({
-          radius: 6,
-          fill: new Fill({ color }),
-          stroke: new Stroke({ color: '#fff', width: 1.5 }),
-        }),
-      }));
+      const cfg = SNAP_SHAPES[type]!;
+      const image = cfg.points
+        ? new RegularShape({
+            points: cfg.points,
+            radius: cfg.radius,
+            radius2: cfg.radius2,
+            angle: cfg.angle ?? 0,
+            stroke: new Stroke({ color, width: 2 }),
+          })
+        : new CircleStyle({ radius: cfg.radius, stroke: new Stroke({ color, width: 2 }) });
+      snapStyles.set(type, new Style({ image }));
     }
 
     // Spatial Index para snap O(log n)
