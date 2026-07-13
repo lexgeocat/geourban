@@ -1,10 +1,11 @@
 import TileLayer from 'ol/layer/Tile';
+import XYZ from 'ol/source/XYZ.js';
 import type BaseLayer from 'ol/layer/Base';
 import type Map from 'ol/Map';
 import { OSM } from 'ol/source';
 import { createCadBaseMap, CAD_BASE_MAP_ATTRIBUTION, cadBaseMapBundles } from './cadGridLayer';
 
-export type BaseMapId = 'cad' | 'osm';
+export type BaseMapId = 'cad' | 'osm' | 'googleSatellite' | 'googleRoadmap';
 
 export interface BaseMapDef {
   id: BaseMapId;
@@ -14,7 +15,9 @@ export interface BaseMapDef {
   attribution?: string;
 }
 
-export const BASE_MAP_DEFS: BaseMapDef[] = [
+// ─── Base Map Definitions ─────────────────────────────────────────
+
+const defs: BaseMapDef[] = [
   {
     id: 'cad',
     label: 'CAD — Grilla',
@@ -35,4 +38,28 @@ export const BASE_MAP_DEFS: BaseMapDef[] = [
     attribution: '© OpenStreetMap contributors',
     create: () => new TileLayer({ source: new OSM() }),
   },
+  {
+    id: 'googleSatellite',
+    label: 'Google Satelital',
+    attribution: '© Google',
+    create: () => new TileLayer({
+      source: new XYZ({
+        url: 'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
+        maxZoom: 20,
+      }),
+    }),
+  },
+  {
+    id: 'googleRoadmap',
+    label: 'Google Maps',
+    attribution: '© Google',
+    create: () => new TileLayer({
+      source: new XYZ({
+        url: 'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}',
+        maxZoom: 20,
+      }),
+    }),
+  },
 ];
+
+export const BASE_MAP_DEFS = defs;

@@ -26,6 +26,21 @@ const IconMap = () => (
   </svg>
 );
 
+const IconSatellite = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: 13, height: 13 }}>
+    <path d="m2 22 20-20" />
+    <path d="M12 2a10 10 0 0 1 10 10" />
+    <circle cx="12" cy="12" r="3" />
+  </svg>
+);
+
+const IconGoogleMaps = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: 13, height: 13 }}>
+    <path d="M12 2a8 8 0 0 0-8 8c0 5 4 11 8 13 4-2 8-8 8-13a8 8 0 0 0-8-8z" />
+    <circle cx="12" cy="10" r="3" />
+  </svg>
+);
+
 const IconProperties = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: 13, height: 13 }}>
     <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" />
@@ -47,11 +62,15 @@ const IconCrs = () => (
 const BASE_MAP_ICONS: Record<BaseMapId, React.ReactNode> = {
   cad: <IconCad />,
   osm: <IconMap />,
+  googleSatellite: <IconSatellite />,
+  googleRoadmap: <IconGoogleMaps />,
 };
 
 const BASE_MAP_LABELS: Record<BaseMapId, string> = {
   cad: 'CAD — Grilla',
   osm: 'OpenStreetMap',
+  googleSatellite: 'Google Satelital',
+  googleRoadmap: 'Google Maps',
 };
 
 const CRS_MODE_LABELS: Record<ProjectCrsMode, string> = {
@@ -282,7 +301,7 @@ export default function StatusBar() {
             }}
           >
             {BASE_MAP_ICONS[baseMap]}
-            <span style={{ textTransform: 'uppercase', letterSpacing: '0.04em' }}>{baseMap === 'cad' ? 'CAD' : 'OSM'}</span>
+            <span style={{ textTransform: 'uppercase', letterSpacing: '0.04em' }}>{baseMap === 'cad' ? 'CAD' : baseMap === 'osm' ? 'OSM' : baseMap === 'googleSatellite' ? 'SAT' : 'MAPS'}</span>
           </button>
           {baseMapOpen && (
             <div
