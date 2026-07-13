@@ -9,7 +9,6 @@ import Attribution from 'ol/control/Attribution.js';
 import VectorSource from 'ol/source/Vector.js';
 import Draw from 'ol/interaction/Draw.js';
 import Modify from 'ol/interaction/Modify.js';
-import Snap from 'ol/interaction/Snap.js';
 import Select from 'ol/interaction/Select.js';
 import DragPan from 'ol/interaction/DragPan.js';
 import SafeTranslate from './safeTranslate';
@@ -35,10 +34,8 @@ import { useHistoryStore } from '../store/historyStore';
 import { useSelectionStore } from '../store/selectionStore';
 import { useProjectCrsStore } from '../store/projectCrsStore';
 import { updateFeatureMetrics, formatMetricArea, formatMetricLength, type SegmentMetric } from '../geo/metrics';
-import { findSnap, createSnapPoints, pickBetterSnap, SNAP_COLORS, type SnapGuideVisual, type SnapResult } from './advancedSnap';
-import { findGridSnap } from './gridSnap';
-import { getEffectiveSnapSettings } from '../store/snapSettingsStore';
-import { useSnapLiveStore } from '../store/snapStateStore';
+import { SNAP_COLORS, type SnapGuideVisual } from './advancedSnap';
+import SnapEngine from './snapInteraction';
 import { BASE_MAP_DEFS } from './baseMaps';
 import {
   createMeasurementStyle,
@@ -87,7 +84,8 @@ export default function MapView() {
   const streetLayerSrcRef = useRef<VectorSource | null>(null);
   const snapGuideRef = useRef<SnapGuideVisual | null>(null);
   const selectInteractionRef = useRef<Select | null>(null);
-  const evaluateSnapAtRef = useRef<((coordinate: number[], opts?: { anchor?: number[] }) => SnapResult | null) | null>(null);
+  const snapEngineRef = useRef<SnapEngine | null>(null);
+  const activeDrawRef = useRef<Draw | null>(null);
   const baseMapId = useLayerStore((s) => s.baseMap);
   const workVisibility = useLayerStore((s) => s.workVisibility);
   const viewConfig = useMapStore((s) => s.viewConfig);
@@ -603,87 +601,108 @@ export default function MapView() {
     drawSrc.on('addfeature', onSpatialInsert);
     drawSrc.on('removefeature', onSpatialRemove);
 
+// ────────────────────────────────────────────────────────────────
+    // Motor de snap unificado — SnapEngine (interaction de OL) corrige
+    // evt.coordinate/evt.pixel ANTES que Draw/Modify/Translate/Select
+    // procesen el evento. Esto es lo que hace que el click real quede
+    // pegado EXACTO al punto de snap mostrado (antes solo se movía el
+    // sketch de preview, y el click final usaba la coordenada cruda del
+    // mouse). Ver src/map/snapInteraction.ts.
     // ────────────────────────────────────────────────────────────────
-    // Motor de snap unificado — UNA evaluación por frame (rAF), reusada
-    // tanto por el indicador visual como por el sketch de Draw en modo
-    // polilínea. Antes había DOS listeners 'pointermove' llamando a
-    // findSnap() cada uno por separado. También se fusiona acá el snap
-    // a grilla (antes un findSnap() aparte y roto — ver gridSnap.ts).
-    // ────────────────────────────────────────────────────────────────
-    let lastSnapResult: SnapResult | null = null;
-
-    const evaluateSnapAt = (coordinate: number[], opts?: { anchor?: number[] }): SnapResult | null => {
-      const mode = useDrawStore.getState().mode;
-      const ds = drawSrcRef.current;
-
-      if (mode === 'erase' || !ds) {
-        snapIndicatorSrc.clear();
-        snapGuideRef.current = null;
-        useSnapLiveStore.getState().setActive(null);
-        lastSnapResult = null;
-        postrenderLayer.changed();
-        return null;
-      }
-
-      const resolution = map.getView().getResolution() ?? 1;
-      const effective = getEffectiveSnapSettings();
-
-      // Evita que una feature en edición se enganche contra sí misma.
-      let excludeFeature: Feature<Geometry> | undefined;
-      if (mode === 'edit') {
-        const primaryId = useSelectionStore.getState().primaryId;
-        const f = primaryId != null ? ds.getFeatureById(primaryId) : null;
-        if (f) excludeFeature = f as Feature<Geometry>;
-      }
-
-      let result = findSnap(coordinate, ds, {
-        resolution,
-        pixelTolerance: 10,
-        spatialIndex,
-        enabled: effective,
-        previous: lastSnapResult,
-        anchor: opts?.anchor,
-        excludeFeature,
-      });
-
-      if (effective.grid !== false) {
-        const gridResult = findGridSnap(coordinate, {
-          resolution,
-          pixelTolerance: 12,
-          origin: useLayerStore.getState().gridOrigin,
-        });
-        result = pickBetterSnap(result, gridResult);
-      }
-
-      lastSnapResult = result;
-      useSnapLiveStore.getState().setActive(result);
-
-      snapIndicatorSrc.clear();
-      snapGuideRef.current = result?.guide ?? null;
-      if (result) {
-        snapIndicatorLayer.setStyle(snapStyles.get(result.type) ?? snapStyles.get('endpoint')!);
-        snapIndicatorSrc.addFeature(
-          new Feature({ geometry: new Point(result.point), snapType: result.type })
-        );
-      }
-      postrenderLayer.changed();
-      return result;
+    const getAnchor = (): number[] | undefined => {
+      const draw = activeDrawRef.current;
+      if (!draw) return undefined;
+      const overlaySrc = draw.getOverlay().getSource();
+      const sketch = overlaySrc?.getFeatures()[0];
+      const sketchGeom = sketch?.getGeometry();
+      if (!sketchGeom) return undefined;
+      const ring =
+        sketchGeom instanceof Polygon
+          ? sketchGeom.getCoordinates()[0]
+          : sketchGeom instanceof LineString
+            ? sketchGeom.getCoordinates()
+            : [];
+      return ring.length >= 2 ? (ring[ring.length - 2] as number[]) : undefined;
     };
-    evaluateSnapAtRef.current = evaluateSnapAt;
 
-    // Throttle a 1 evaluación por frame — pointermove puede dispararse
-    // a >100Hz; recalcular bbox-scans + intersecciones en cada evento
-    // crudo es trabajo que nunca alcanza a pintarse más de una vez.
-    let snapRafId: number | null = null;
-    let pendingCoord: number[] | null = null;
-    const pmKey = map.on('pointermove', (evt) => {
-      pendingCoord = evt.coordinate;
-      if (snapRafId !== null) return;
-      snapRafId = requestAnimationFrame(() => {
-        snapRafId = null;
-        if (pendingCoord) evaluateSnapAt(pendingCoord);
-      });
+    const getExcludeFeature = (): Feature<Geometry> | undefined => {
+      const mode = useDrawStore.getState().mode;
+      if (mode !== 'edit') return undefined;
+      const ds = drawSrcRef.current;
+      const primaryId = useSelectionStore.getState().primaryId;
+      const f = ds && primaryId != null ? ds.getFeatureById(primaryId) : null;
+      return (f as Feature<Geometry>) ?? undefined;
+    };
+
+    // Snap de cierre de polígono: iman al primer vértice del sketch
+    // activo cuando el cursor entra en el radio de cierre. Prioridad
+    // absoluta sobre cualquier otro snap.
+    const getCloseTarget = (coordinate: number[]): number[] | null => {
+      if (useDrawStore.getState().mode !== 'polyline') return null;
+      const draw = activeDrawRef.current;
+      if (!draw) return null;
+      const overlaySrc = draw.getOverlay().getSource();
+      const sketch = overlaySrc?.getFeatures()[0];
+      const sketchGeom = sketch?.getGeometry();
+      if (!sketchGeom) return null;
+      const rings =
+        sketchGeom instanceof Polygon
+          ? sketchGeom.getCoordinates()
+          : sketchGeom instanceof LineString
+            ? [sketchGeom.getCoordinates()]
+            : [];
+      const ring = rings[0];
+      if (!ring || ring.length < 4) return null;
+      const first = ring[0] as number[];
+      const resolution = map.getView().getResolution() ?? 1;
+      const closeRadiusMap = 12 * resolution;
+      const dx = first[0] - coordinate[0];
+      const dy = first[1] - coordinate[1];
+      return Math.hypot(dx, dy) <= closeRadiusMap ? first : null;
+    };
+
+    const getEnabled = () => useDrawStore.getState().mode !== 'erase';
+
+    // Qué tipos de evento "imantan" (sobreescriben) la coordenada real:
+    //  - polyline/street: TODOS — el vértice que Draw termina agregando
+    //    es EXACTO al punto de snap mostrado, no una aproximación del
+    //    click del mouse.
+    //  - edit: solo 'pointerdrag' — arrastrar un vértice (Modify) o una
+    //    feature completa (Translate) se pega a otros puntos, sin tocar
+    //    los clicks de selección (Select sigue usando el click real).
+    const shouldSnapCoordinate = (eventType: string): boolean => {
+      const mode = useDrawStore.getState().mode;
+      if (mode === 'polyline' || mode === 'street') return true;
+      if (mode === 'edit' && eventType === 'pointerdrag') return true;
+      return false;
+    };
+
+    const snapEngine = new SnapEngine({
+      getSource: () => drawSrcRef.current,
+      spatialIndex,
+      getGridOrigin: () => useLayerStore.getState().gridOrigin,
+      getEnabled,
+      shouldSnapCoordinate,
+      getAnchor,
+      getExcludeFeature,
+      getPriorityTarget: getCloseTarget,
+      pixelTolerance: 10,
+      onResultChange: (result) => {
+        snapIndicatorSrc.clear();
+        if (result) {
+          snapIndicatorLayer.setStyle(snapStyles.get(result.type) ?? snapStyles.get('endpoint')!);
+          snapIndicatorSrc.addFeature(
+            new Feature({ geometry: new Point(result.point), snapType: result.type })
+          );
+        }
+      },
+      onGuideChange: (guide) => {
+        snapGuideRef.current = guide;
+        postrenderLayer.changed();
+      },
     });
+    snapEngineRef.current = snapEngine;
+    map.addInteraction(snapEngine);
 
     useMapStore.getState().setMap(map);
     mapInstanceRef.current = map;
@@ -696,9 +715,9 @@ export default function MapView() {
     return () => {
       baseLayerCleanupRef.current?.();
       baseLayerCleanupRef.current = null;
-      unByKey(pmKey);
+      map.removeInteraction(snapEngine);
+      snapEngineRef.current = null;
       unByKey(moveEndKey);
-      if (snapRafId !== null) cancelAnimationFrame(snapRafId);
       postrenderLayer.un('postrender', postRenderHandler);
       drawSrc.un('addfeature', onFeatureChange);
       drawSrc.un('removefeature', onFeatureChange);
@@ -953,25 +972,12 @@ export default function MapView() {
       }
     }
 
-    // === Modo POLYLINE: snap nativo + snap en puntos medios + Draw ===
+    // === Modo POLYLINE: Draw + SnapEngine (imán unificado) ===
     if (drawMode === 'polyline') {
-      // Snap nativo (vertex/edge)
-      const snap = new Snap({ source: src, pixelTolerance: 10, edge: true, vertex: true });
-      map.addInteraction(snap);
-      toClean.push(() => map.removeInteraction(snap));
-
-      // Snap en puntos medios como vertices virtuales
-      const snapPointsSrc = createSnapPoints(src);
-      if (snapPointsSrc.getFeatures().length > 0) {
-        const midSnap = new Snap({
-          source: snapPointsSrc,
-          pixelTolerance: 10,
-          vertex: true,
-          edge: false,
-        });
-        map.addInteraction(midSnap);
-        toClean.push(() => map.removeInteraction(midSnap));
-      }
+      // El Snap nativo de OL (vertex/edge/midpoint) se quitó: quedaba
+      // mal ordenado respecto a Draw y es redundante con SnapEngine,
+      // que ya cubre 'endpoint'/'midpoint' (y corrige el click real,
+      // no solo el preview) — ver snapInteraction.ts.
 
       // Dibujo. El `style` se aplica al sketch (linea de rubber-band
       // mientras se dibuja) y a los vertices pendientes: la usamos para
@@ -1124,81 +1130,11 @@ export default function MapView() {
         },
       });
 
-      // Snap "imán" custom: para los tipos de snap que OL no maneja
-      // nativamente (midpoint extendido, perpendicular, parallel,
-      // intersection), sobrescribimos la coordenada del sketch para
-      // que la linea de rubber-band "salte" al punto snap. Tambien
-      // agregamos snap al primer vertice del sketch (cierre del
-      // poligono) que no se detecta por findSnap porque todavia no
-      // esta en el drawSrc.
-      const drawPointerMoveKey = map.on('pointermove', (evt) => {
-        const overlaySrc = draw.getOverlay().getSource();
-        if (!overlaySrc) return;
-        const sketch = overlaySrc.getFeatures()[0];
-        if (!sketch) return;
-        const sketchGeom = sketch.getGeometry();
-        if (!sketchGeom) return;
-        
-        // Coordenada final a aplicar: por defecto la del evento.
-        let target: number[] | null = null;
-
-        // 1) Snap de cierre: con Polygon (polyline), iman al primer vertice
-        //    cuando hay ≥ 3 segmentos. El sketch es Polygon con ring abierto.
-        if (drawType === 'Polygon') {
-          const rings =
-            sketchGeom instanceof Polygon
-              ? sketchGeom.getCoordinates()
-              : sketchGeom instanceof LineString
-                ? [sketchGeom.getCoordinates()]
-                : [];
-          const ring = rings[0];
-          if (ring && ring.length >= 4) {
-            const first = ring[0];
-            const resolution = map.getView().getResolution() ?? 1;
-            const closeRadiusMap = 12 * resolution;
-            const dx = first[0] - evt.coordinate[0];
-            const dy = first[1] - evt.coordinate[1];
-            if (Math.hypot(dx, dy) <= closeRadiusMap) {
-              target = first as number[];
-            }
-          }
-        }
-
-        // 2) Snap general — reutiliza el motor unificado (evaluateSnapAt,
-        //    que ya corre por rAF desde el listener de arriba). Acá solo
-       //    se pasa el anchor para habilitar perpendicular/parallel
-        //    durante el trazado, sin duplicar el cómputo de candidatos.
-        if (target === null) {
-          const ring =
-            sketchGeom instanceof Polygon
-              ? sketchGeom.getCoordinates()[0]
-              : sketchGeom instanceof LineString
-                ? sketchGeom.getCoordinates()
-                : [];
-
-          const anchor = ring.length >= 2 ? (ring[ring.length - 2] as number[]) : undefined;
-          const snap = evaluateSnapAtRef.current?.(evt.coordinate, { anchor });
-          if (snap) target = snap.point as number[];
-         }
-    
-        if (target === null) return;
-
-        // Reemplaza la ultima coordenada del sketch con el punto snap.
-        if (sketchGeom instanceof LineString) {
-          const coords = sketchGeom.getCoordinates();
-          if (coords.length === 0) return;
-          coords[coords.length - 1] = [target[0], target[1]] as [number, number];
-          sketchGeom.setCoordinates(coords);
-        } else if (sketchGeom instanceof Polygon) {
-          const rings = sketchGeom.getCoordinates();
-          if (!rings.length || !rings[0]?.length) return;
-          const ring = rings[0];
-          ring[ring.length - 1] = [target[0], target[1]] as [number, number];
-          sketchGeom.setCoordinates(rings);
-        }
-      });
-      toClean.push(() => unByKey(drawPointerMoveKey));
-
+// El "imán" del sketch ya NO se hace acá mutando la geometría a
+      // mano: SnapEngine (agregado al final de este efecto, después de
+      // `draw`) corrige evt.coordinate directamente en pointermove y en
+      // el click de confirmación — el sketch de Draw recibe el punto ya
+      // correcto sin código extra. Ver src/map/snapInteraction.ts.
       draw.on('drawend', (event) => {
         const feature = event.feature as Feature<Geometry>;
 
@@ -1212,16 +1148,18 @@ export default function MapView() {
         refreshLayers();
         useHistoryStore.getState().pushState(src.getFeatures());
       });
+      activeDrawRef.current = draw;
       map.addInteraction(draw);
-      toClean.push(() => map.removeInteraction(draw));
+      toClean.push(() => {
+        map.removeInteraction(draw);
+        if (activeDrawRef.current === draw) activeDrawRef.current = null;
+      });
     }
 
     // === Modo STREET: trazado de calles (2 clicks, guarda en streetStore) ===
     if (drawMode === 'street') {
-      const snap = new Snap({ source: src, pixelTolerance: 10, edge: true, vertex: true });
-      map.addInteraction(snap);
-      toClean.push(() => map.removeInteraction(snap));
-
+      // Snap nativo removido: SnapEngine (agregado al final de este
+      // efecto) ya imanta el click real en este modo.
       const draw = new Draw({
         source: new VectorSource(),
         type: 'LineString',
@@ -1259,8 +1197,12 @@ export default function MapView() {
         useHistoryStore.getState().pushState(src.getFeatures());
       });
 
+      activeDrawRef.current = draw;
       map.addInteraction(draw);
-      toClean.push(() => map.removeInteraction(draw));
+      toClean.push(() => {
+        map.removeInteraction(draw);
+        if (activeDrawRef.current === draw) activeDrawRef.current = null;
+      });
     }
 
     // === Modo ERASE: cada click sobre una feature la borra ===
@@ -1289,6 +1231,15 @@ export default function MapView() {
       map.addInteraction(select);
       selectInteractionRef.current = select;
       toClean.push(() => map.removeInteraction(select));
+    }
+
+    // SnapEngine debe quedar SIEMPRE como la última interacción
+    // agregada al mapa (OL despacha eventos de la última hacia la
+    // primera): así corrige evt.coordinate ANTES que cualquier
+    // Draw/Modify/Translate/Select recién (re)creado en este efecto.
+    if (snapEngineRef.current) {
+      map.removeInteraction(snapEngineRef.current);
+      map.addInteraction(snapEngineRef.current);
     }
 
     return () => {
