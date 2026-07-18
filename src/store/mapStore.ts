@@ -7,13 +7,16 @@ import { extend as extendExtent, Extent } from 'ol/extent.js';
 import { refreshSourceMetrics } from '../geo/metrics';
 import { clipPolygonByAllStreets, type Pt } from '../geo/polygonEngine';
 import { useSelectionStore } from './selectionStore';
-import { useHistoryStore } from './historyStore';
 import { useStreetStore } from './streetStore';
-import { mergePolygonsInWorker, validateTopologyInWorker } from '../workers/geoWorkerClient';
+import { validateTopologyInWorker } from '../workers/geoWorkerClient';
 import type { FeatureCollection } from 'geojson';
 import Feature from 'ol/Feature.js';
 import PolygonGeom from 'ol/geom/Polygon.js';
 import type Geometry from 'ol/geom/Geometry.js';
+import { runCommand } from '../commands/CommandStack';
+import { DeleteFeaturesCommand } from '../commands/DeleteFeaturesCommand';
+import { MergeFeaturesCommand } from '../commands/MergeFeaturesCommand';
+import { ensureKind } from '../core/objectModel';
 
 const geoJsonFormat = new GeoJSON();
 
@@ -132,101 +135,22 @@ export const useMapStore = create<MapState>()(
       if (z !== undefined) view.animate({ zoom: z - 1, duration: 200 });
     },
     deleteSelected: () => {
-      const src = get().drawSource;
-      if (!src) return 0;
-      const selectedIds = useSelectionStore.getState().selectedIds;
-      if (selectedIds.size === 0) return 0;
-
-     let removed = 0;
-      const toRemove: Array<string | number> = [];
-      src.forEachFeature((f) => {
-        const id = f.getId();
-        if (id !== undefined && selectedIds.has(id as string | number)) {
-          toRemove.push(id as string | number);
-          removed++;
-        }
-      });
-      toRemove.forEach((id) => {
-        const feat = src.getFeatureById(id);
-        if (feat) src.removeFeature(feat);
-      });
-      useSelectionStore.getState().clear();
-      src.changed();
-      if (removed > 0) {
-        useHistoryStore.getState().pushState(src.getFeatures());
-      }
-      return removed;
+      const selectedIds = Array.from(useSelectionStore.getState().selectedIds);
+      if (selectedIds.length === 0) return 0;
+      void runCommand(new DeleteFeaturesCommand(selectedIds));
+      return selectedIds.length;
     },
     deleteFeatureById: (id) => {
-      const src = get().drawSource;
-      if (!src) return false;
-      const feat = src.getFeatureById(id);
-      if (!feat) return false;
-      src.removeFeature(feat);
-      useSelectionStore.getState().remove(id);
-      src.changed();
-      useHistoryStore.getState().pushState(src.getFeatures());
+      void runCommand(new DeleteFeaturesCommand([id]));
       return true;
     },
     mergeSelected: async () => {
-      const src = get().drawSource;
-      if (!src) return null;
-      const selectedIds = useSelectionStore.getState().selectedIds;
-      if (selectedIds.size < 2) return null;
-
-      const selectedFeatures: Feature<Geometry>[] = [];
-      selectedIds.forEach((id) => {
-        const f = src.getFeatureById(id) as Feature<Geometry> | null;
-        if (f) selectedFeatures.push(f);
-      });
-      if (selectedFeatures.length < 2) return null;
-
-      const collection: FeatureCollection = {
-        type: 'FeatureCollection',
-        features: selectedFeatures.map((f) =>
-          geoJsonFormat.writeFeatureObject(f, {
-            featureProjection: 'EPSG:3857',
-            dataProjection: 'EPSG:3857',
-          })
-        ),
-      };
-
-      const merged = await mergePolygonsInWorker(collection);
-      if (!merged.features.length) return null;
-
-      // Construimos y validamos el feature resultante ANTES de tocar los
-      // originales. Antes se borraban los originales primero y recien
-      // despues se chequeaba si el resultado era legible -> si fallaba,
-      // se perdian los poligonos de origen sin dejar nada en su lugar.
-      const olFeats = geoJsonFormat.readFeatures(merged, {
-        featureProjection: 'EPSG:3857',
-        dataProjection: 'EPSG:3857',
-      });
-      if (olFeats.length === 0) return null;
-
-      const target = olFeats[0] as Feature<Geometry>;
-      if (target.getGeometry()?.getType() === 'MultiPolygon') {
-        // Los poligonos seleccionados no son contiguos (no se tocan):
-        // JSTS devuelve un MultiPolygon en vez de fusionarlos en un solo
-        // anillo. metrics.ts no sabe calcular area/perimetro de un
-        // MultiPolygon, asi que en vez de insertar un feature "mudo"
-        // (sin cotas, sin aviso), tratamos esto como fusion fallida.
-        return null;
-      }
-
-      const newId = `merged-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-      target.setId(newId);
-      target.set('mergedFrom', Array.from(selectedIds));
-      target.set('mergedAt', new Date().toISOString());
-
-      // Recien ahora, con el resultado validado, reemplazamos los originales.
-      selectedFeatures.forEach((f) => src.removeFeature(f));
-      useSelectionStore.getState().clear();
-      src.addFeature(target);
-      refreshSourceMetrics(src);
-      src.changed();
-      useHistoryStore.getState().pushState(src.getFeatures());
-      return newId;
+      const selectedIds = Array.from(useSelectionStore.getState().selectedIds);
+      if (selectedIds.length < 2) return null;
+      const result = await runCommand(new MergeFeaturesCommand(selectedIds));
+      if (!result.ok) return null;
+      // Tras la ejecución, el nuevo id es el del feature seleccionado.
+      return useSelectionStore.getState().primaryId;
     },
    validateProjectTopology: async () => {
       const src = get().drawSource;
@@ -291,16 +215,23 @@ export function recomputeManzanos() {
       const newFeat = new Feature({ geometry: newGeom });
       const origId = feature.getId();
       newFeat.setId(origId ? `${origId}-mzn-${i}` : `mzn-${Date.now()}-${i}`);
-      newFeat.setProperties({
-        type: 'manzana',
-        colorIdx: i % 10,
-        createdAt: new Date().toISOString(),
-      });
+      newFeat.setProperties(
+        ensureKind(
+          {
+            type: 'manzana',
+            colorIdx: i % 10,
+            createdAt: new Date().toISOString(),
+          },
+          'manzana',
+        ),
+      );
       src.addFeature(newFeat);
     }
   }
 
   refreshSourceMetrics(src);
   src.changed();
-  useHistoryStore.getState().pushState(src.getFeatures());
+  // NOTA: el snapshot del historial lo registra CommandStack en
+  // AddStreetCommand.execute. Esta función ya no debe llamar a
+  // pushState directamente.
 }

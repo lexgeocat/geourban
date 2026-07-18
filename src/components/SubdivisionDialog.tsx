@@ -1,11 +1,10 @@
 import React, { useMemo } from 'react';
 import { useSubdivisionStore } from '../store/subdivisionStore';
 import { useMapStore } from '../store/mapStore';
-import { useHistoryStore } from '../store/historyStore';
-import { useSelectionStore } from '../store/selectionStore';
+import { useCommandStack } from '../commands/CommandStack';
+import { SubdivideCommand } from '../commands/SubdivideCommand';
 import { useDrawStore } from '../store/drawStore';
 import { subdivide } from '../geo/subdivisionAlgorithms';
-import { updateFeatureMetrics, refreshSourceMetrics } from '../geo/metrics';
 import { polyArea, centroid, type Pt } from '../geo/polygonEngine';
 import type { Polygon as GeoJsonPolygon, LineString as GeoJsonLineString } from 'geojson';
 import GeoJSON from 'ol/format/GeoJSON.js';
@@ -105,7 +104,7 @@ export default function SubdivisionDialog() {
     setPreview({ count: r.features.length, warnings: r.warnings });
   };
 
-  const applySubdivision = () => {
+  const applySubdivision = async () => {
     if (!drawSource || targetId == null) return;
     if (method === 'manual-slice' && !manualSplitLine) {
       setError('Trazá una línea (tecla L) que cruce el polígono antes de aplicar.');
@@ -117,38 +116,14 @@ export default function SubdivisionDialog() {
       const effectiveOptions = method === 'manual-slice' && manualSplitLine
         ? { ...options, cutLine: { p1: manualSplitLine.coordinates[0] as [number, number], p2: manualSplitLine.coordinates[manualSplitLine.coordinates.length - 1] as [number, number] } }
         : options;
-      const r = subdivide(targetGeom!, effectiveOptions);
-      if (!r.ok) {
-        setError(r.error ?? 'Subdivisión falló');
+      const targetGeomCopy = targetGeom;
+      const result = await useCommandStack
+        .getState()
+        .run(new SubdivideCommand({ targetId, options: effectiveOptions, targetGeom: targetGeomCopy }));
+      if (!result.ok) {
+        setError(result.error);
         return;
       }
-      const target = drawSource.getFeatureById(targetId);
-      if (target) drawSource.removeFeature(target);
-
-      r.features.forEach((f) => {
-        const geom = f.geometry.type === 'Polygon' ? (f.geometry as GeoJsonPolygon) : null;
-        if (!geom) return;
-        const geom3857 = geoJsonFormat.readGeometry(
-          { type: 'Polygon', coordinates: geom.coordinates },
-          { featureProjection: 'EPSG:3857', dataProjection: 'EPSG:3857' }
-        );
-        const olFeat = new Feature({ geometry: geom3857 as Geometry });
-        const newId = `subdiv-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-        olFeat.setId(newId);
-        olFeat.setProperties({
-          ...(f.properties ?? {}),
-          lotGroupId: String(targetId), // agrupa las piezas de esta subdivisión -> cotas internas si son 2+
-          createdAt: new Date().toISOString(),
-          method: options.method,
-        });
-        drawSource.addFeature(olFeat);
-        updateFeatureMetrics(olFeat as Feature<Geometry>);
-      });
-
-      refreshSourceMetrics(drawSource);
-      drawSource.changed();
-      useHistoryStore.getState().pushState(drawSource.getFeatures());
-      useSelectionStore.getState().clear();
       close();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));

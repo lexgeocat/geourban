@@ -1,10 +1,11 @@
 import React from 'react';
 import { useDrawStore, type DrawMode } from '../store/drawStore';
-import { useHistoryStore } from '../store/historyStore';
+import { useCommandStack, undo, redo } from '../commands/CommandStack';
 import { useMapStore } from '../store/mapStore';
 import { useSelectionStore } from '../store/selectionStore';
 import { useSubdivisionStore } from '../store/subdivisionStore';
 import { useStreetStore } from '../store/streetStore';
+import { GenerateLotsCommand } from '../commands/GenerateLotsCommand';
 
 /* ─── SVG Icon Components (inline, no dependencies) ─── */
 
@@ -264,8 +265,8 @@ function StreetWidthPanel() {
 export default function Toolbar() {
   const mode = useDrawStore((s) => s.mode);
   const setMode = useDrawStore((s) => s.setMode);
-  const canUndo = useHistoryStore((s) => s.canUndo);
-  const canRedo = useHistoryStore((s) => s.canRedo);
+  const canUndo = useCommandStack((s) => s.canUndo);
+  const canRedo = useCommandStack((s) => s.canRedo);
   const selectedCount = useSelectionStore((s) => s.selectedIds.size);
   const primarySelected = useSelectionStore((s) => s.primaryId !== null);
   const openSubdivision = useSubdivisionStore((s) => s.open);
@@ -288,17 +289,11 @@ export default function Toolbar() {
   };
 
   const handleUndo = () => {
-    const state = useHistoryStore.getState().undo();
-    if (state) {
-      useMapStore.getState().restoreDrawFeatures(state);
-    }
+    undo();
   };
 
   const handleRedo = () => {
-    const state = useHistoryStore.getState().redo();
-    if (state) {
-      useMapStore.getState().restoreDrawFeatures(state);
-    }
+    redo();
   };
 
   const handleDeleteSelected = () => {
@@ -341,83 +336,42 @@ export default function Toolbar() {
     if (!src) return;
 
     // Encontrar todos los manzanos
-    const manzanos: Array<{ id: string | number; geom: any }> = [];
+    let manzanoCount = 0;
     src.forEachFeature((f) => {
-      if (f.get('type') === 'manzana') {
-        const id = f.getId();
-        const geom = f.getGeometry();
-        if (id !== undefined && geom) manzanos.push({ id, geom });
-      }
+      if (f.get('type') === 'manzana') manzanoCount++;
     });
 
-    if (manzanos.length === 0) {
+    if (manzanoCount === 0) {
       alert('No hay manzanos para subdividir. Trazá calles primero para generar manzanos.');
       return;
     }
 
     setLotsBusy(true);
     try {
-      const { subdivideManzanoAuto } = await import('../geo/subdivisionAlgorithms');
-      const { updateFeatureMetrics, refreshSourceMetrics } = await import('../geo/metrics');
-      const GeoJSON = (await import('ol/format/GeoJSON.js')).default;
-      const Feature = (await import('ol/Feature.js')).default;
-      const PolygonGeom = (await import('ol/geom/Polygon.js')).default;
-      const geoJsonFormat = new GeoJSON();
-
       const targetAreaM2 = 250;
       const frontMinM = 12;
-      let totalLots = 0;
 
-      for (const { id, geom } of manzanos) {
-        const gj = geoJsonFormat.writeGeometryObject(geom, {
-          featureProjection: 'EPSG:3857',
-          dataProjection: 'EPSG:3857',
-        });
-        if (gj.type !== 'Polygon') continue;
-        const ring = (gj as any).coordinates[0] as [number, number][];
-        if (!ring || ring.length < 4) continue;
+      const result = await useCommandStack
+        .getState()
+        .run(new GenerateLotsCommand({ targetAreaM2, frontMinM }));
 
-        const lots = subdivideManzanoAuto(ring, targetAreaM2, frontMinM);
-        if (lots.length === 0) continue;
-
-        // Eliminar el manzano original
-        const feat = src.getFeatureById(id);
-        if (feat) src.removeFeature(feat);
-
-        // Agregar los lotes
-        for (let i = 0; i < lots.length; i++) {
-          const lot = lots[i];
-          if (lot.pts.length < 3) continue;
-          const closedRing = [...lot.pts];
-          if (closedRing[0][0] !== closedRing[closedRing.length - 1][0] ||
-              closedRing[0][1] !== closedRing[closedRing.length - 1][1]) {
-            closedRing.push([closedRing[0][0], closedRing[0][1]]);
-          }
-          const newGeom = new PolygonGeom([closedRing]);
-          const newFeat = new Feature({ geometry: newGeom });
-          newFeat.setId(`lot-${Date.now()}-${totalLots + i}`);
-          newFeat.setProperties({
-            subdivision: 'auto',
-            lotGroupId: String(id), // agrupa todos los lotes salidos del mismo manzano -> cotas internas
-            label: lot.isRemnant ? `Remanente ${totalLots + i + 1}` : `Lote ${totalLots + i + 1}`,
-            areaM2: lot.areaM2,
-            frontM: lot.frontM,
-            depthM: lot.depthM,
-            isRemnant: lot.isRemnant,
-            createdAt: new Date().toISOString(),
-          });
-          src.addFeature(newFeat);
-          updateFeatureMetrics(newFeat);
-        }
-        totalLots += lots.length;
+      if (!result.ok) {
+        alert(result.error);
+        return;
       }
 
-      refreshSourceMetrics(src);
-      src.changed();
-      useHistoryStore.getState().pushState(src.getFeatures());
+      // El comando no devuelve el conteo (es fire-and-forget). Lo
+      // recalculamos rápido contando los nuevos features con kind=lote.
+      let newLotes = 0;
+      src.forEachFeature((f) => {
+        const k = (f.get('kind') as string | undefined) ?? (f.get('type') as string | undefined);
+        if (k === 'lote' || (typeof f.get('label') === 'string' && f.get('label')?.toString().startsWith('Lote'))) {
+          newLotes++;
+        }
+      });
 
-      if (totalLots > 0) {
-        alert(`${totalLots} lotes generados automáticamente.`);
+      if (newLotes > 0) {
+        alert(`${newLotes} lotes generados automáticamente.`);
       } else {
         alert('No se pudieron generar lotes. Verificá que los manzanos sean lo suficientemente grandes.');
       }

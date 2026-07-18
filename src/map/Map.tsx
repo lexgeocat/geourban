@@ -30,9 +30,12 @@ import { click as clickCondition, pointerMove } from 'ol/events/condition.js';
 import { useLayerStore } from '../store/layerStore';
 import { useMapStore } from '../store/mapStore';
 import { useDrawStore } from '../store/drawStore';
-import { useHistoryStore } from '../store/historyStore';
 import { useSelectionStore } from '../store/selectionStore';
 import { useProjectCrsStore } from '../store/projectCrsStore';
+import { runCommand } from '../commands/CommandStack';
+import { AddFeatureCommand } from '../commands/AddFeatureCommand';
+import { ModifyGeometryCommand } from '../commands/ModifyGeometryCommand';
+import { AddStreetCommand } from '../commands/AddStreetCommand';
 import { updateFeatureMetrics, formatMetricArea, formatMetricLength, type SegmentMetric } from '../geo/metrics';
 import { SNAP_COLORS, type SnapGuideVisual } from './advancedSnap';
 import SnapEngine from './snapInteraction';
@@ -47,7 +50,6 @@ import {
   getApproxScreenArea,
 } from './styleFactory';
 import { useStreetStore } from '../store/streetStore';
-import { recomputeManzanos } from '../store/mapStore';
 import { computeStreetFillets, filletArcPoints } from '../geo/streetEngine';
 import { getOrCreateSpatialIndex } from './demoDataset';
 import { ensureUtmZoneRegistered } from '../geo/utmZones';
@@ -957,12 +959,27 @@ export default function MapView() {
               stroke: new Stroke({ color: '#f59e0b', width: 2 }),
             }),
           });
+          // Captura "antes" en modifystart para que undo funcione aunque
+          // coalescing agrupe varios vértices modificados en el mismo
+          // drag. Ver ModifyGeometryCommand.
+          let pendingModify: ModifyGeometryCommand | null = null;
+          modify.on('modifystart', (event) => {
+            const targets = event.features.getArray().filter(
+              (f) => f.getId() != null,
+            );
+            pendingModify = new ModifyGeometryCommand(targets, 'Editar vértices');
+            pendingModify.captureBefore();
+          });
           modify.on('modifyend', (event) => {
-            event.features.forEach((feature) => {
-              updateFeatureMetrics(feature as Feature<Geometry>);
-            });
-            refreshLayers();
-            useHistoryStore.getState().pushState(src.getFeatures());
+            if (pendingModify) {
+              void runCommand(pendingModify);
+              pendingModify = null;
+            } else {
+              event.features.forEach((feature) => {
+                updateFeatureMetrics(feature as Feature<Geometry>);
+              });
+              refreshLayers();
+            }
           });
           map.addInteraction(modify);
           toClean.push(() => map.removeInteraction(modify));
@@ -973,10 +990,22 @@ export default function MapView() {
               features: sel.getFeatures(),
               hitDetectionLayer: measurementLayerRef.current,
             });
+            let pendingTranslate: ModifyGeometryCommand | null = null;
+            translate.on('translatestart' as any, (event: any) => {
+              const feats =
+                (event.features as Array<Feature<Geometry>> | undefined) ??
+                sel.getFeatures().getArray();
+              pendingTranslate = new ModifyGeometryCommand(feats, 'Mover');
+              pendingTranslate.captureBefore();
+            });
             translate.on('translateend', () => {
-              sel.getFeatures().forEach((f) => updateFeatureMetrics(f as Feature<Geometry>));
-              refreshLayers();
-              useHistoryStore.getState().pushState(src.getFeatures());
+              if (pendingTranslate) {
+                void runCommand(pendingTranslate);
+                pendingTranslate = null;
+              } else {
+                sel.getFeatures().forEach((f) => updateFeatureMetrics(f as Feature<Geometry>));
+                refreshLayers();
+              }
             });
             map.addInteraction(translate);
             toClean.push(() => map.removeInteraction(translate));
@@ -1150,16 +1179,15 @@ export default function MapView() {
       // correcto sin código extra. Ver src/map/snapInteraction.ts.
       draw.on('drawend', (event) => {
         const feature = event.feature as Feature<Geometry>;
-
-        if (feature.getId() == null) {
-          const prefix = 'poly';
-          const newId = `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-          feature.setId(newId);
-        }
+        // El feature ya fue agregado por la interacción Draw; lo
+        // "claim"-eamos vía AddFeatureCommand para que el historial
+        // registre el snapshot post y undo borre el dibujo.
+        void runCommand(
+          new AddFeatureCommand(feature, { mode: 'claim', label: 'Dibujar polígono' }),
+        );
         useDrawStore.getState().setLastDrawnLineId(feature.getId() as string);
         updateFeatureMetrics(feature);
         refreshLayers();
-        useHistoryStore.getState().pushState(src.getFeatures());
       });
       activeDrawRef.current = draw;
       map.addInteraction(draw);
@@ -1195,19 +1223,16 @@ export default function MapView() {
         if (coords.length < 2) return;
 
         const streetStore = useStreetStore.getState();
-        streetStore.addStreet({
-          start: coords[0] as [number, number],
-          end: coords[coords.length - 1] as [number, number],
-          widthM: streetStore.defaultWidthM,
-        });
+        void runCommand(
+          new AddStreetCommand(
+            coords[0] as [number, number],
+            coords[coords.length - 1] as [number, number],
+            streetStore.defaultWidthM,
+          ),
+        );
 
         // Forzar re-render de la capa de calles
         streetLayerSrcRef.current?.changed();
-
-        // Recortar polígonos por la nueva calle → generar manzanos
-        recomputeManzanos();
-
-        useHistoryStore.getState().pushState(src.getFeatures());
       });
 
       activeDrawRef.current = draw;

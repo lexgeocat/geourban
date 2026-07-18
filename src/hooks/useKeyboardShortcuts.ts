@@ -1,9 +1,11 @@
 import { useEffect } from 'react';
 import { useDrawStore } from '../store/drawStore';
-import { useHistoryStore } from '../store/historyStore';
+import { undo, redo, useCommandStack } from '../commands/CommandStack';
 import { useMapStore } from '../store/mapStore';
 import { useSelectionStore } from '../store/selectionStore';
 import { useSnapSettingsStore } from '../store/snapSettingsStore';
+import { DeleteFeaturesCommand } from '../commands/DeleteFeaturesCommand';
+import { runCommand } from '../commands/CommandStack';
 
 // No se disparan si el foco esta en un input/textarea/contentEditable
 
@@ -24,22 +26,18 @@ export function useKeyboardShortcuts() {
       const ctrlOrCmd = e.ctrlKey || e.metaKey;
       const key = e.key;
 
-      // Undo / Redo
+      // Undo / Redo (delegan al CommandStack)
       if (ctrlOrCmd && (key === 'z' || key === 'Z')) {
         e.preventDefault();
-        if (e.shiftKey) {
-          const s = useHistoryStore.getState().redo();
-          if (s) useMapStore.getState().restoreDrawFeatures(s);
-        } else {
-          const s = useHistoryStore.getState().undo();
-          if (s) useMapStore.getState().restoreDrawFeatures(s);
-        }
+        if (e.shiftKey) redo();
+        else undo();
+        useCommandStack.getState().refresh();
         return;
       }
       if (ctrlOrCmd && (key === 'y' || key === 'Y')) {
         e.preventDefault();
-        const s = useHistoryStore.getState().redo();
-        if (s) useMapStore.getState().restoreDrawFeatures(s);
+        redo();
+        useCommandStack.getState().refresh();
         return;
       }
 
@@ -57,10 +55,13 @@ export function useKeyboardShortcuts() {
         return;
       }
 
-      // Delete / Backspace: borrar seleccion
+      // Delete / Backspace: borrar seleccion (via comando)
       if (key === 'Delete' || key === 'Backspace') {
         e.preventDefault();
-        useMapStore.getState().deleteSelected();
+        const ids = Array.from(useSelectionStore.getState().selectedIds);
+        if (ids.length > 0) {
+          void runCommand(new DeleteFeaturesCommand(ids));
+        }
         return;
       }
 
