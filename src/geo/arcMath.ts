@@ -1,11 +1,3 @@
-// ─── Matemática de arcos ──────────────────────────────────────────────
-// Generaliza el cálculo de `computeStreetFillets` en `streetEngine.ts` a
-// cualquier par de segmentos. Se usa desde:
-//   - Draw Engine Fase 2.4: arco de 3 puntos (inicio, fin, punto-en-arco).
-//   - Edit Engine Fase 3: fillet genérico entre 2 lados de un polígono.
-// Mantiene las mismas firmas y patrones que streetEngine para que sea
-// trivial migrar a la nueva versión cuando se refactorice.
-
 export interface ArcParams {
   /** Centro del arco (map units). */
   center: [number, number];

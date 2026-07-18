@@ -7,7 +7,7 @@ import { ensureUtmZoneRegistered } from '../geo/utmZones';
 import { reprojectFeatureCollection } from '../geo/crsTransform';
 
 let sqlPromise: ReturnType<typeof initSqlJs> | null = null;
-
+ 
 async function getSql() {
   if (!sqlPromise) {
     sqlPromise = initSqlJs({ locateFile: (file) => `https://sql.js.org/dist/${file}` });
@@ -53,9 +53,6 @@ export async function importGpkg(file: File): Promise<ImportResult> {
     }
   }
 
-  // Leer gpkg_spatial_ref_sys ANTES de cerrar la DB. GPKG casi nunca viene
-  // en WGS84 puro (lo usual es UTM); asumirlo a ciegas produce el mismo
-  // bug de "chiquito y en otro lugar" que afectaba a DXF.
   const srsTable = detectedSrsId !== null ? loadSrsTable(db) : null;
   db.close();
 

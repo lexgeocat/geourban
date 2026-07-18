@@ -9,21 +9,9 @@ export interface CommandContext {
   getMap: () => Map | null;
 }
 
-/**
- * Un comando representa UNA acción del usuario que modifica el drawSource.
- * Cada subclase implementa `execute` (aplicar) y, opcionalmente, `undo`
- * (revertir). El CommandStack registra un snapshot pre y post execute en
- * historyStore para que, si la subclase no implementa su propio undo,
- * undo/redo funcione igual vía restauración de snapshot (transición
- * segura desde el patrón anterior).
- */
 export abstract class Command {
   abstract readonly label: string;
-  /** Identificador del proyecto de comando: usado por CommandStack para
-   *  coalescer comandos repetidos (p.ej. varios `ModifyGeometry` de un
-   *  mismo drag se agrupan en uno solo en el historial). */
   readonly coalesceKey?: string;
-
   abstract execute(ctx: CommandContext): void | Promise<void>;
   undo?(ctx: CommandContext): void | Promise<void>;
   redo?(ctx: CommandContext): void | Promise<void>;

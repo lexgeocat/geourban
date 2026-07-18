@@ -1,5 +1,3 @@
-/// <reference types="vite/client" />
-
 declare module 'shpjs' {
   import type { FeatureCollection } from 'geojson';
   function shp(input: ArrayBuffer | string): Promise<FeatureCollection | FeatureCollection[]>;
@@ -43,7 +41,23 @@ declare module 'dxf-parser' {
     position?: { x: number; y: number; z?: number };
     shape?: boolean;
     closed?: boolean;
+    radius?: number;
+    startAngle?: number;
+    endAngle?: number;
+}
+
+declare module 'dxf-writer' {
+  export default class Drawing {
+    constructor();
+    drawLine(x1: number, y1: number, x2: number, y2: number): void;
+    drawPolyline(points: [number, number][], closed?: boolean): void;
+    drawCircle(x: number, y: number, radius: number): void;
+    drawArc(x: number, y: number, radius: number, startAngle: number, endAngle: number): void;
+    drawLinearDimension(x1: number, y1: number, x2: number, y2: number, textX: number, textY: number, text: string): void;
+    drawPoint(x: number, y: number): void;
+    toDxfString(): string;
   }
+}
   export interface IDxf {
     entities?: IEntity[];
   }

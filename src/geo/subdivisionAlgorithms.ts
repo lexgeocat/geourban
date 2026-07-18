@@ -67,7 +67,7 @@ function toGeoJsonFeature(pts: Pt[], properties: Record<string, unknown>): GeoJs
   };
 }
 
-// ─── computeCuts (LOTES_SAI lot-subdivision.js:458-524) ─────────────
+// ─── computeCuts
 
 function computeCuts(
   halfPoly: Pt[],
@@ -124,7 +124,7 @@ function computeCuts(
   return cuts;
 }
 
-// ─── computeLotsOnHalf (LOTES_SAI lot-subdivision.js:526-590) ───────
+// ─── computeLotsOnHalf
 
 function computeLotsOnHalf(
   fullPoly: Pt[],
@@ -177,7 +177,7 @@ function computeLotsOnHalf(
   return lots;
 }
 
-// ─── subdivideHalf (LOTES_SAI lot-subdivision.js:161-254) ───────────
+// ─── subdivideHalf
 
 function subdivideHalf(
   poly: Pt[],
@@ -256,7 +256,7 @@ function subdivideHalf(
   }
 }
 
-// ─── subdivideManzanoAuto (LOTES_SAI lot-subdivision.js:256-449) ────
+// ─── subdivideManzanoAuto
 
 export function subdivideManzanoAuto(
   mznPts: Pt[],
@@ -430,7 +430,7 @@ export function subdivideManzanoExact(
   return allLots;
 }
 
-// ─── sliceBisectManzano (LOTES_SAI manual-slice.js:193-402) ─────────
+// ─── sliceBisectManzano
 
 export function sliceBisectManzano(
   wp: Pt[],
@@ -592,7 +592,7 @@ export function sliceBisectManzano(
   return best;
 }
 
-// ─── sliceBisectLote (LOTES_SAI manual-slice.js:404-580) ────────────
+// ─── sliceBisectLote
 
 function sliceBisectLote(
   wp: Pt[],

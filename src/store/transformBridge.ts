@@ -1,25 +1,6 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 
-/* ================================================================
-   TRANSFORM BRIDGE STORE
-   ================================================================
-   Bridge entre Toolbar (UI) e InteractionModeController (lógica
-   del mapa) para las operaciones de edición que requieren un
-   drag/click en el mapa: Rotate (H), Scale (K), Mirror (M).
-
-   Patrón:
-     1. Toolbar.handleRotate() → setMode('rotate') + bridge.setHandler({
-          kind: 'rotate',
-          apply: (angle, anchor) => { ... }
-        })
-     2. InteractionModeController activa el modo 'rotate', instala
-        un PointerInteraction que captura drag, y al terminar
-        llama a bridge.getHandler()?.apply(...)
-     3. Una vez aplicado, el modo vuelve a 'select' y el handler
-        se limpia.
-   ================================================================ */
-
 export type RotateApply = (angle: number, anchor: number[]) => void;
 export type ScaleApply = (factor: number, anchor: number[]) => void;
 export type MirrorApply = (a: number[], b: number[]) => void;

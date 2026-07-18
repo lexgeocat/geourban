@@ -1,13 +1,6 @@
 import React, { useState } from 'react';
 import { useMapStore } from '../store/mapStore';
 
-/* ================================================================
-   TOPOLOGY VALIDATOR PANEL
-   ================================================================
-   Botón "Validar" en el panel de capas (o propio) que dispara el
-   worker JSTS y muestra la lista de issues.
-   ================================================================ */
-
 export default function TopologyValidator() {
   const validate = useMapStore((s) => s.validateProjectTopology);
   const [result, setResult] = useState<{ valid: boolean; issues: string[] } | null>(null);

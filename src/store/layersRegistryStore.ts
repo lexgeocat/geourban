@@ -2,11 +2,6 @@ import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import type { Layer } from '../core/objectModel';
 
-/* ──────────────────────────────────────
-   Store capa-registry
-   Mantiene una lista ordenada de capas (el orden determina el z-index)
-   Provee métodos para añadir, eliminar, bloquear, ocultar y reordenar capas
-─────────────────────────────────────── */
 type LayerState = {
   /** Lista de capas ordenadas por z-index (índice en array = z-index) */
   layers: Layer[];

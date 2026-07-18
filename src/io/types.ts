@@ -17,14 +17,12 @@ export type GeoUrbanProject = {
   baseMap: BaseMapId;
   layers: GeoUrbanLayerMeta[];
   view: { center: [number, number]; zoom: number };
-  /** CRS de referencia — independiente del storage interno (siempre WGS84).
-   *  Fuente de verdad única para export/import DXF. Ver projectCrsStore.ts. */
   crs: ProjectCrsConfig;
   data: FeatureCollection;
 };
 
 export type ImportFormat = 'geourban' | 'geojson' | 'kml' | 'kmz' | 'shp' | 'gpkg' | 'dxf';
-export type ExportFormat = ImportFormat;
+export type ExportFormat = ImportFormat | 'png' | 'svg';
 
 export type ImportResult = { project: GeoUrbanProject; warnings: string[] };
 

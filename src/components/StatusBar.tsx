@@ -123,9 +123,6 @@ export default function StatusBar() {
 
   const handleCrsModeSelect = (m: ProjectCrsMode) => {
     setCrsMode(m);
-    // Al pasar a UTM activamos OSM para tener contexto real de ubicación
-    // (mapa de calles/satélite) en vez de la grilla CAD abstracta —
-    // ayuda a ubicarse antes de confiar en la zona detectada/elegida.
     if (m === 'utm') setBaseMap('osm');
   };
 

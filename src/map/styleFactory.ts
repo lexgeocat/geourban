@@ -5,7 +5,7 @@ import type { StyleFunction } from 'ol/style/Style.js';
 import { Fill, Stroke, Style, Text } from 'ol/style.js';
 import type { SegmentMetric } from '../geo/metrics';
 
-// ─── Colores LOTES_SAI (fuente de verdad) ───────────────────────────
+// ─── Colores
 const LOTES_SAI_MANZANA_COLOR = '#58a6ff';
 const LOTES_SAI_TEXT_BG = 'rgba(13, 17, 23, 0.72)';
 const LOTES_SAI_LIVE_BG = 'rgba(13, 17, 23, 0.80)';
@@ -29,12 +29,6 @@ export function getApproxScreenArea(geometry: Geometry | null | undefined, resol
 
 export type DimensionOrientation = 'inward' | 'outward';
 
-/**
- * type === 'manzana'                       -> siempre AFUERA (linda con calle).
- * tiene lotGroupId compartido por 2+ features -> ADENTRO (lote con hermanos,
- *   una cota saliente se superpondría con el lote vecino).
- * cualquier otro caso (polígono suelto, subdivisión de 1 solo lote) -> AFUERA.
- */
 export function resolveDimensionOrientation(
   feature: Feature<Geometry>,
   lotGroupCounts: Map<string, number>,
@@ -99,22 +93,6 @@ function drawDimTick(
   ctx.restore();
 }
 
-/**
- * Dibuja las cotas de distancia de cada lado de un anillo/línea: línea de
- * extensión desde cada vértice + línea de cota paralela + ticks terminales +
- * texto centrado y rotado según la orientación del segmento (nunca al revés).
- *
- * `points` son coordenadas de MUNDO (EPSG:3857, mismo sistema que
- * `geometry.getCoordinates()`). El ctx del postrender de OL está en espacio
- * de PIXELES: todo punto pasa por `toPixel()` antes de cualquier operación
- * de dibujo (antes esto NO se hacía y se mezclaban ambos espacios).
- *
- * Las longitudes NO se recalculan acá: se leen de `segmentLengths`
- * (Turf, geodésico, calculado una sola vez en geo/metrics.ts). Antes se
- * recalculaba mezclando metros de mundo con un factor de resolución/pixel,
- * lo que daba valores ínfimos que nunca superaban el umbral mínimo — las
- * cotas de lado nunca llegaban a dibujarse.
- */
 export function drawSegmentLabels(
   ctx: CanvasRenderingContext2D,
   points: number[][],
@@ -198,11 +176,6 @@ export function drawSegmentLabels(
   }
 }
 
-/**
- * Cota principal (área para polígonos, longitud para líneas), siempre en
- * `labelPoint` — el centroide real calculado por Turf en geo/metrics.ts,
- * nunca un promedio simple de vértices (se distorsiona en polígonos cóncavos).
- */
 export function drawMainMetricLabel(
   ctx: CanvasRenderingContext2D,
   labelPointWorld: [number, number],
@@ -238,19 +211,6 @@ export function drawMainMetricLabel(
   ctx.restore();
 }
 
-/**
- * Style de `measurementLayer`. Ya NO dibuja texto — eso lo hace en
- * exclusiva el postrender de Map.tsx (drawSegmentLabels / drawMainMetricLabel).
- * Antes ambos sistemas dibujaban las mismas cotas de lado por separado,
- * duplicándose en pantalla cuando zoom >= 19.
- *
- * Esta capa sigue existiendo porque Select/Modify/Translate/Erase la usan
- * como `hitDetectionLayer`. Antes no tenía Fill/Stroke sobre la geometría
- * real (solo Text con geometry:Point), así que clickear el interior de un
- * polígono lejos del label no registraba hit. Ahora expone un Fill/Stroke
- * invisible pero "sólido" para el hit-canvas de OL (alpha casi 0, pero no
- * exactamente 0 por seguridad de compatibilidad).
- */
 export function createMeasurementStyle(): StyleFunction {
   const hitStyle = new Style({
     fill: new Fill({ color: 'rgba(0, 0, 0, 0.001)' }),
@@ -259,10 +219,6 @@ export function createMeasurementStyle(): StyleFunction {
   return () => hitStyle;
 }
 
-/**
- * Estilos para labels en vivo durante el dibujo (rubber-band).
- * Sin cambios — replica LOTES_SAI render.js líneas 799-868.
- */
 export function createLiveDrawingLabelStyle(
   text: string,
   coordinate: [number, number],

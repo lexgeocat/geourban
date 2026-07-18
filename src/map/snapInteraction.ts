@@ -12,14 +12,6 @@ import {
 import { getEffectiveSnapSettings } from '../store/snapSettingsStore';
 import { useSnapLiveStore } from '../store/snapStateStore';
 
-// 'pointerup' es el evento en el que ol/interaction/Draw REALMENTE
-// confirma/agrega el vértice (Draw.handleUpEvent_ -> addToDrawing_ /
-// startDrawing_, disparado por PointerInteraction.handleEvent en
-// POINTERUP). Sin esto en el set, el indicador de snap (pointermove)
-// se veía correcto pero el vértice se creaba en la coordenada cruda
-// del cursor. 'pointerdown' ya estaba incluido, así que al corregir
-// también 'pointerup' ambos quedan pegados al mismo punto y la
-// distancia down→up que Draw usa para descartar drags no se altera.
 const SNAP_COORD_EVENT_TYPES = new Set([
   'pointermove',
   'pointerdrag',

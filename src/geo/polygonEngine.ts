@@ -1,15 +1,4 @@
-/**
- * Motor geométrico base para operaciones con polígonos.
- * Port de LOTES_SAI polygon-engine.js (09) + manual-slice.js (15).
- *
- * Proporciona primitivas low-level: clipping, intersecciones, proyecciones,
- * ejes principales, bisección y construcción de cortes.
- *
- * Sistema de coordenadas: métrico (EPSG:3857). 1 unidad = 1 metro.
- */
-
 // ─── Tipos exportados ───────────────────────────────────────────────
-
 export type Pt = [number, number];
 
 export interface LotResult {
@@ -162,11 +151,6 @@ export function pointInPoly(x: number, y: number, poly: Pt[]): boolean {
   return inside;
 }
 
-/**
- * Construye dos polígonos a partir del original wp, cortado por dos
- * puntos de intersección (hA, hB) sobre el borde.
- * Exportado para subdivisionAlgorithms.ts (manual-slice).
- */
 export function buildCutPolys(
   wp: Pt[],
   hA: { segIdx: number; u: number; pt: Pt },
@@ -331,10 +315,6 @@ function streetRect(street: StreetRectData): Pt[] | null {
   ];
 }
 
-/**
- * Corta un conjunto de polígonos con una calle.
- * Port de LOTES_SAI applyStreetToLots().
- */
 function applyStreetToPolys(polysIn: Pt[][], street: StreetRectData): Pt[][] {
   const rect = streetRect(street);
   if (!rect) return polysIn;
@@ -386,11 +366,6 @@ function applyStreetToPolys(polysIn: Pt[][], street: StreetRectData): Pt[][] {
   return result;
 }
 
-/**
- * Corta un polígono con todas las calles (secuencialmente).
- * Retorna array de Pt[][]; si ninguna calle intersecta,
- * el resultado es un array con el polígono original (misma ref).
- */
 export function clipPolygonByAllStreets(
   poly: Pt[],
   streetData: Array<{ start: Pt; end: Pt; widthM: number }>,

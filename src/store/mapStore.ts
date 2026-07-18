@@ -50,15 +50,7 @@ type MapState = {
   deleteSelected: () => number;
   /** Borra UNA feature concreta (por id OL) */
   deleteFeatureById: (id: string | number) => boolean;
-  /**
-   * Fusiona los features seleccionados (polígonos) en uno solo, vía worker JSTS.
-   * Devuelve el id del feature resultante o null si no se pudo.
-   */
   mergeSelected: () => Promise<string | number | null>;
-  /**
-   * Valida la topologia de todos los features del drawSource via worker.
-   * Devuelve el resultado del analisis.
-   */
   validateProjectTopology: () => Promise<{ valid: boolean; issues: string[] }>;
 };
 
@@ -171,11 +163,6 @@ export const useMapStore = create<MapState>()(
   }))
 );
 
-/**
- * Recomputa manzanos — recorta todos los polígonos del drawSource
- * por cada calle activa, generando los manzanos resultantes.
- * Port de LOTES_SAI recomputeManzanos() (polygon-engine.js:241-382).
- */
 export function recomputeManzanos() {
   const src = useMapStore.getState().drawSource;
   if (!src) return;

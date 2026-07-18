@@ -6,17 +6,6 @@ import { useDrawStore } from '../store/drawStore';
 import { useLayerStore } from '../store/layerStore';
 import { formatMetricArea, formatMetricLength, type SegmentMetric } from '../geo/metrics';
 
-/* ================================================================
-   PROPERTY PANEL
-   ================================================================
-   Panel lateral derecho con:
-   - Metricas del feature primario seleccionado
-   - Lista de lados / segmentos con su longitud
-   - Acciones rapidas: Subdividir, Fusionar con otro, Eliminar
-   Solo visible en modo select/edit y si el panel está habilitado.
-   Arrastrable por el header.
-   ================================================================ */
-
 const panelStyle: React.CSSProperties = {
   position: 'absolute',
   top: 10,

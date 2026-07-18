@@ -2,13 +2,6 @@ import type Map from 'ol/Map.js';
 import type BaseLayer from 'ol/layer/Base.js';
 import { BASE_MAP_DEFS, type BaseMapId } from '../baseMaps';
 
-/**
- * Encapsula la creación/cambio/limpieza del mapa base (raster).
- *
- * Responsabilidad única: dado un `baseMapId` y un `ol/Map`, instala la
- * capa raster correspondiente, devuelve un cleanup callback y permite
- * cambiarla en caliente.
- */
 export class BaseLayerManager {
   private currentLayer: BaseLayer | null = null;
   private cleanup: (() => void) | null = null;
@@ -25,10 +18,6 @@ export class BaseLayerManager {
     return null;
   }
 
-  /**
-   * Instala el mapa base en el map. Devuelve la layer creada.
-   * Si ya había una, la reemplaza.
-   */
   install(map: Map, baseMapId: BaseMapId): BaseLayer {
     this.cleanup?.();
     this.cleanup = null;

@@ -16,12 +16,6 @@ function restoreGeom(f: Feature<Geometry>, captured: unknown) {
   f.setGeometry(captured as OlGeometry);
 }
 
-/**
- * Modificación de vértices (Modify) o desplazamiento (Translate).
- * Captura geometría pre y post para que undo/redo funcionen sin
- * snapshots del historial cuando el coalescing agrupa varios cambios
- * consecutivos (varios vértices del mismo drag).
- */
 export class ModifyGeometryCommand extends Command {
   readonly label: string;
   readonly coalesceKey: string;
@@ -53,9 +47,6 @@ export class ModifyGeometryCommand extends Command {
   }
 
   execute(ctx: CommandContext): void {
-    // execute no aplica la geometría (quien dispara el comando ya la
-    // modificó). Sólo se asegura de que métricas/refresh estén al día
-    // y captura el "después".
     if (this.applied) return;
     for (const t of this.targets) {
       const id = t.getId();

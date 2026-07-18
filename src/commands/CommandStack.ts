@@ -35,14 +35,6 @@ type CommandStackState = {
 
 const COALESCE_WINDOW_MS = 250;
 
-/** API pública del Command Engine.
- *
- *  - `run(cmd)` ejecuta y registra en historial.
- *  - `undo()` / `redo()` delegan al historyStore (motor de snapshots
- *    interno, Fase 1.2). Si el comando implementa `undo()`/`redo()`
- *    propios, se llaman en lugar de la restauración por snapshot.
- *  - `canUndo` / `canRedo` se mantienen sincronizados con el historyStore.
- */
 export const useCommandStack = create<CommandStackState>()(
   immer((set, get) => ({
     lastCommandLabel: null,
@@ -54,9 +46,6 @@ export const useCommandStack = create<CommandStackState>()(
       const ctx = getCommandContext();
       if (!ctx) return { ok: false, error: 'drawSource no inicializado' };
 
-      // Coalescing: si el último comando fue dentro de COALESCE_WINDOW_MS
-      // y comparte coalesceKey, NO empuja un nuevo snapshot — el efecto
-      // visible para el usuario es "un solo undo" para todo el drag.
       const now = Date.now();
       const within = now - get().lastCommandAt < COALESCE_WINDOW_MS;
       const skipSnapshot = within && get().lastCommandLabel === (command.coalesceKey ?? command.label);

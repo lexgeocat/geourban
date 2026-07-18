@@ -11,14 +11,6 @@ import { formatMetricLength } from '../../geo/metrics';
 
 export type DimensionPhase = 'start' | 'end' | 'offset';
 
-/**
- * State machine for the manual cota (dimension) tool.
- *
- * Phase 1 (start): user clicks → records origin A.
- * Phase 2 (end):   user clicks → records origin B, enters offset placement.
- * Phase 3 (offset): user moves mouse → preview follows perpendicular offset.
- *                   user clicks → finalizes the cota feature.
- */
 export class DimensionInteraction {
   private readonly map: Map;
   private readonly drawSource: VectorSource;

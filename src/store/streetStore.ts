@@ -1,17 +1,6 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 
-/**
- * Store de calles — modelo de datos portado de LOTES_SAI.
- *
- * Una calle es un segmento definido por start/end (coordenadas EPSG:3857)
- * con un ancho en metros y un nombre auto-generado.
- * El motor de calles usa estos datos para:
- *  - Recortar manzanos (applyStreetToLots con clipHalfPlane)
- *  - Renderizar ejes punteados, bordes sólidos con fillets
- *  - Mostrar etiquetas de nombre y ancho de vía
- */
-
 export interface Street {
   id: string;
   start: [number, number];

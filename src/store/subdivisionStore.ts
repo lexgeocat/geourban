@@ -2,13 +2,6 @@ import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import type { SubdivisionMethod, SubdivisionOptions } from '../geo/subdivisionAlgorithms';
 
-/* ================================================================
-   SUBDIVISION STORE
-   ================================================================
-   Estado UI de la herramienta de subdivisión: dialog abierto/cerrado,
-   método seleccionado, opciones del formulario, polígono target.
-   ================================================================ */
-
 type SubdivisionState = {
   isOpen: boolean;
   targetFeatureId: string | number | null;

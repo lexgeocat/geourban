@@ -102,11 +102,6 @@ export function isGeoUrbanFeatureKind(value: unknown): value is GeoUrbanFeatureK
   return typeof value === 'string' && (KNOWN_KINDS as Set<string>).has(value);
 }
 
-/**
- * Lee `kind` tipado de un feature OL. Si la prop no existe (proyectos viejos
- * o features importados sin `kind` aún), infiere por la prop legacy `type`
- * para no romper la UI existente. Devuelve `null` si no se puede inferir.
- */
 export function getFeatureKind(feature: Feature<Geometry> | null | undefined): GeoUrbanFeatureKind | null {
   if (!feature) return null;
   const props = feature.getProperties() as Record<string, unknown>;

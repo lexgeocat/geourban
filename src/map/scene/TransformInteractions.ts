@@ -2,23 +2,6 @@ import Interaction from 'ol/interaction/Interaction.js';
 import type MapBrowserEvent from 'ol/MapBrowserEvent.js';
 import type Map from 'ol/Map.js';
 
-/* ================================================================
-   TransformDragInteraction
-   ================================================================
-   PointerInteraction custom para Fase 3 (Edit Engine):
-   - Modo 'rotate' (H): el primer click-down define el pivote/anchor
-     en el sistema de coords del mapa; al mover el mouse se calcula
-     el ángulo entre anchor→cursor_inicial y anchor→cursor_actual;
-     al soltar (pointerup) se envía el resultado al bridge y se sale.
-   - Modo 'scale' (K): primer click define el anchor. El factor de
-     escala es 1 + dist/50 donde dist es la distancia del anchor al
-     cursor. 50 unidades de drag = factor 2.0 (doble tamaño).
-     Para achicar, el usuario arrastra "menos" (o a un lado).
-
-   Mantener simple: el usuario puede usar el teclado para valores
-   exactos en una versión futura.
-   ================================================================ */
-
 export class TransformDragInteraction extends Interaction {
   private hostMap: Map;
   private mode: 'rotate' | 'scale';
@@ -43,8 +26,6 @@ export class TransformDragInteraction extends Interaction {
     this.onCancel = options.onCancel;
   }
 
-  /** Llamado por el InteractionModeController para mostrar la preview
-   *  (línea pivote→cursor, ángulo, etc.) en el postrender. */
   getPreview(): { value: number; anchor: number[]; mode: 'rotate' | 'scale' } | null {
     if (!this.anchor) return null;
     return { value: this.preview_.value, anchor: this.anchor, mode: this.mode };
@@ -94,14 +75,6 @@ export class TransformDragInteraction extends Interaction {
     return true;
   }
 }
-
-/* ================================================================
-   TransformClickInteraction
-   ================================================================
-   Para Mirror (M): 2 clicks definen el eje de reflexión. No hay drag.
-   El primer click fija `a`, el segundo fija `b`, y al confirmarse
-   se llama onComplete(a, b).
-   ================================================================ */
 
 export class TransformClickInteraction extends Interaction {
   private hostMap: Map;

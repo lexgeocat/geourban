@@ -2,15 +2,6 @@ import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import type { GeoUrbanFeatureKind } from '../core/objectModel';
 
-/* ================================================================
-   SELECTION STORE (Fase 4 — Selection Engine avanzada)
-   ================================================================
-   Mantiene el set de features seleccionadas (por id OL), el id del
-   highlight source, el modo de selección (click/rect/lasso) y los
-   filtros por `kind` que acotan qué tipos son elegibles al
-   seleccionar por rectángulo o lazo.
-   ================================================================ */
-
 /** Modo de selección dentro del modo "select" general. */
 export type SelectMode = 'click' | 'rect' | 'lasso';
 

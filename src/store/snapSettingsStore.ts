@@ -36,11 +36,6 @@ export const useSnapSettingsStore = create<SnapSettingsState>()(
   )
 );
 
-/**
- * Único punto de verdad para "¿qué tipos de snap están activos AHORA?".
- * Si el master switch está apagado, devuelve todo en false sin que
- * cada call site tenga que acordarse de chequear `enabled` por separado.
- */
 export function getEffectiveSnapSettings(): Partial<SnapSettings> {
   const { enabled, settings } = useSnapSettingsStore.getState();
   if (!enabled) {

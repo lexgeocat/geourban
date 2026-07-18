@@ -31,10 +31,6 @@ import SnapEngine from './snapInteraction';
 import { getOrCreateSpatialIndex } from './demoDataset';
 import { ensureUtmZoneRegistered } from '../geo/utmZones';
 
-// ─── willReadFrequently: parche global único ─────────────────────────────
-// OpenLayers usa getImageData internamente para hit-testing en capas Canvas2D.
-// Sin willReadFrequently=true el browser emite una advertencia de performance
-// cada vez que se leen píxeles (múltiples readback operations).
 if (!(HTMLCanvasElement.prototype as any).__willReadFreqPatched) {
   const origGetContext = HTMLCanvasElement.prototype.getContext;
   (HTMLCanvasElement.prototype as any).__willReadFreqPatched = true;
@@ -73,10 +69,6 @@ export default function MapView() {
   useEffect(() => {
     if (!mapDivRef.current) return;
 
-    // --- Capa de dibujo persistente (features del usuario) ---
-    // Construcción centralizada en DrawLayerRenderer (Fase 11.3) — antes
-    // este bloque tenía ~80 líneas con match expressions de WebGL y
-    // creación de 4 layers, ahora es 1 llamada.
     const drawLayers = buildDrawLayers(workVisibility);
     const drawSrc = drawLayers.source;
     drawSrcRef.current = drawSrc;
@@ -153,11 +145,6 @@ export default function MapView() {
     viewport.addEventListener('pointerup', onPointerUp);
     viewport.addEventListener('pointerleave', onPointerUp);
 
-    // ─── Post-render (PostrenderPainter — Fase 11.4) ──────────────────
-    // Encapsula todo el Canvas2D overlay: labels de features, dibujo
-    // de calles y fillets, guías visuales de snap. Mantiene su propio
-    // cache (fillets + lotGroupCounts) invalidado por eventos de la
-    // fuente.
     const postrenderPainter = new PostrenderPainter({
       map,
       drawSource: drawSrc,
@@ -196,12 +183,6 @@ export default function MapView() {
       setZoom(initialZoom);
     }
 
-    // Mantiene viewConfig (mapStore) sincronizado con la posición REAL del
-    // mapa. Antes viewConfig.center quedaba congelado en su valor default
-    // — nunca se actualizaba al hacer pan/zoom — lo que rompía "Detectar
-    // zona UTM desde la vista actual" (siempre detectaba la ubicación
-    // default) y también el autosave/guardado (siempre guardaba la vista
-    // inicial, no la última vista real del usuario).
     const onMoveEnd = () => {
       const center = view.getCenter();
       const currentZoom = view.getZoom();
@@ -226,7 +207,6 @@ export default function MapView() {
     map.addLayer(snapIndicatorLayer);
 
     // Pre-crear estilos de snap (uno por tipo, reutilizados en cada frame)
-    // Cada tipo tiene forma geométrica distinta (estilo CAD) sin relleno
     const snapStyles = new globalThis.Map<string, Style>();
     const SNAP_SHAPES: Record<string, { points?: number; radius: number; radius2?: number; angle?: number }> = {
       endpoint:             { radius: 7,  points: 4,               angle: Math.PI / 4 }, // Cuadrado □
@@ -269,12 +249,6 @@ export default function MapView() {
     drawSrc.on('addfeature', onSpatialInsert);
     drawSrc.on('removefeature', onSpatialRemove);
 
-    // ────────────────────────────────────────────────────────────────
-    // InteractionModeController — gestiona todo el ciclo de vida de
-    // interacciones según el modo activo (select/edit/draw/erase).
-    // Creado ANTES de SnapEngine para que sus callbacks puedan leer
-    // activeDrawRef del controller.
-    // ────────────────────────────────────────────────────────────────
     const interactionCtrl = new InteractionModeController({
       map,
       drawSource: drawSrc,
@@ -286,14 +260,6 @@ export default function MapView() {
     });
     interactionCtrlRef.current = interactionCtrl;
 
-    // ────────────────────────────────────────────────────────────────
-    // Motor de snap unificado — SnapEngine (interaction de OL) corrige
-    // evt.coordinate/evt.pixel ANTES que Draw/Modify/Translate/Select
-    // procesen el evento. Esto es lo que hace que el click real quede
-    // pegado EXACTO al punto de snap mostrado (antes solo se movía el
-    // sketch de preview, y el click final usaba la coordenada cruda del
-    // mouse). Ver src/map/snapInteraction.ts.
-    // ────────────────────────────────────────────────────────────────
     const getAnchor = (): number[] | undefined => {
       const draw = interactionCtrl.activeDrawRef.current;
       if (!draw) return undefined;
@@ -319,22 +285,12 @@ export default function MapView() {
       return (f as Feature<Geometry>) ?? undefined;
     };
 
-    // Snap de cierre de polígono: iman al primer vértice del sketch
-    // activo cuando el cursor entra en el radio de cierre. Prioridad
-    // absoluta sobre cualquier otro snap.
     const getCloseTarget = (_coordinate: number[]): number[] | null => {
       return null;
     };
 
     const getEnabled = () => useDrawStore.getState().mode !== 'erase';
 
-    // Qué tipos de evento "imantan" (sobreescriben) la coordenada real:
-    //  - polyline/street: TODOS — el vértice que Draw termina agregando
-    //    es EXACTO al punto de snap mostrado, no una aproximación del
-    //    click del mouse.
-    //  - edit: solo 'pointerdrag' — arrastrar un vértice (Modify) o una
-    //    feature completa (Translate) se pega a otros puntos, sin tocar
-    //    los clicks de selección (Select sigue usando el click real).
     const shouldSnapCoordinate = (eventType: string): boolean => {
       const mode = useDrawStore.getState().mode;
       // Modos de dibujo (Draw interaction): imantar SIEMPRE
@@ -434,9 +390,6 @@ export default function MapView() {
     }
   }, [workVisibility.lots]);
 
-  // --- Visibilidad reactiva desde layersRegistryStore ---
-  // Si el usuario cambia la visibilidad de una capa en el panel de capas,
-  // las capas OL se actualizan directamente (sin pasar por layerStore).
   useEffect(() => {
     const unsub = useLayersStore.subscribe((state) => {
       const anyLoteVisible = state.layers.some((l) => (l.kind === 'lote' || l.kind === 'manzana') && l.visible);

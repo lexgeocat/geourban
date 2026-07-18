@@ -178,10 +178,6 @@ export class InteractionModeController {
       this.selectInteraction = select;
       this.toClean.push(() => map.removeInteraction(select));
 
-      // ─── Fase 4: Lasso / Rect selection ───
-      // Si el sub-modo es 'rect' o 'lasso' (no 'click'), agregamos
-      // una interacción de drag que arma un extent/polígono y filtra
-      // los features por el kindFilter.
       const subMode = useSelectionStore.getState().selectMode;
       if (subMode === 'rect' || subMode === 'lasso') {
         const lassoMode: LassoMode = subMode;
@@ -257,9 +253,6 @@ export class InteractionModeController {
           map.removeInteraction(lasso);
           this.ctx.postrenderPainter?.setLassoPreview(null);
         });
-        // Engancha el preview: el controller le pregunta a la
-        // interaction cuál es el estado actual del drag y lo empuja
-        // al postrender painter.
         const onRender = () => {
           this.ctx.postrenderPainter?.setLassoPreview(lasso.getPreview());
         };

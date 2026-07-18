@@ -10,26 +10,6 @@ import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
 import type Collection from 'ol/Collection.js';
 
-/* ================================================================
-   SafeTranslate
-   ================================================================
-   Reemplazo de ol/interaction/Translate seguro para mapas que tienen
-   una WebGLVectorLayer con disableHitDetection:true.
-
-   PROBLEMA: Translate de OL llama a map.forEachFeatureAtPixel en CADA
-   pointermove (para el cursor de "mover"), pero su opcion `layers` NO
-   arma un layerFilter de bajo nivel -- solo filtra features DESPUES
-   de que el hit-test ya corrio sobre TODAS las capas del mapa. Si hay
-   una capa WebGL con disableHitDetection:true, esa capa hace
-   assert(false) y tira una excepcion no capturada apenas el mouse se
-   mueve, sin necesidad de arrastrar nada.
-
-   Esta clase reimplementa el mismo contrato de eventos
-   (translatestart / translating / translateend) pero SIEMPRE pasa un
-   layerFilter explicito restringido a una sola capa Canvas
-   (hitDetectionLayer). La capa WebGL nunca es consultada.
-   ================================================================ */
-
 export class TranslateEvent extends BaseEvent {
   features: Collection<Feature<Geometry>>;
   coordinate: [number, number];
@@ -51,9 +31,6 @@ export interface SafeTranslateOptions {
 }
 
 export default class SafeTranslate extends Interaction {
-  // Misma firma de eventos que ol/interaction/Translate: 'translatestart',
-  // 'translating', 'translateend'. Reusamos el tipo para no romper la
-  // cadena de tipos de OL y evitar redeclarar `on` con `unknown`.
   declare on: TranslateOnSignature<EventsKey>;
   declare once: TranslateOnSignature<EventsKey>;
   declare un: TranslateOnSignature<EventsKey>;
@@ -76,8 +53,6 @@ export default class SafeTranslate extends Interaction {
     const hitLayer = this.hitLayer_;
     const found = map.forEachFeatureAtPixel(pixel, (feature) => feature as Feature<Geometry>, {
       hitTolerance: this.hitTolerance_,
-      // Clave del fix: layerFilter explicito, evaluado ANTES de correr
-      // hit-detection sobre cualquier capa. La WebGL nunca se toca.
       layerFilter: (layer) => layer === hitLayer,
     });
     return found ?? null;

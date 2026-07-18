@@ -100,11 +100,6 @@ export class SubdivideCommand extends Command {
     if (this.originalRemoved) {
       const orig = ctx.drawSource.getFeatureById(this.opts.targetId);
       if (orig == null) {
-        // re-insertar — como en este flujo originalRemoved implica que se
-        // borró, pero no guardamos la feature original (el snapshot del
-        // historial se encarga). Aquí no hacemos nada: el snapshot pre
-        // lo restaura. Pero dejamos el flag en false para no intentar
-        // re-insertar indefinidamente.
       }
     }
     ctx.drawSource.changed();

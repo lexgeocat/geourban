@@ -13,14 +13,6 @@ import {
   mirrorFeature,
 } from '../geo/transforms';
 
-/* ================================================================
-   editOperations — operaciones del Edit Engine (Fase 3) que se
-   pueden invocar desde múltiples lugares (Toolbar, keyboard
-   shortcuts, context menu, etc.). Mantienen la lógica centralizada
-   para que no haya duplicación de los patterns de "capturar antes,
-   aplicar, registrar comando".
-   ================================================================ */
-
 function getSelectedFeatures(): Feature<Geometry>[] {
   const src = useMapStore.getState().drawSource;
   if (!src) return [];
@@ -34,9 +26,6 @@ function getSelectedFeatures(): Feature<Geometry>[] {
 
 const COPY_OFFSET = 3;
 
-/** Copia la selección actual: clona cada feature, lo desplaza 3m en
- *  diagonal y registra todo como un único CopyFeaturesCommand. Deja
- *  seleccionados los nuevos clones. */
 export async function copySelected(): Promise<boolean> {
   const features = getSelectedFeatures();
   if (features.length === 0) return false;
@@ -53,9 +42,6 @@ export async function copySelected(): Promise<boolean> {
   return true;
 }
 
-/** Rota la selección actual `angle` (radianes) alrededor de `anchor`.
- *  Registra un ModifyGeometryCommand. Deja seleccionados los mismos
- *  features. */
 export async function rotateSelected(angle: number, anchor: number[]): Promise<boolean> {
   const features = getSelectedFeatures();
   if (features.length === 0) return false;

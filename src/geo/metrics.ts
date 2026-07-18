@@ -23,30 +23,6 @@ export type FeatureMetrics = {
   metricsUpdatedAt: number;
 };
 
-/* ================================================================
-   PLANO MÉTRICO DEL PROYECTO
-   ================================================================
-   Antes, área/perímetro/longitudes se calculaban con Turf sobre
-   WGS84 (área geodésica real sobre el elipsoide). Eso NO coincide
-   con lo que un CAD/GIS calcula al abrir el DXF exportado: ese
-   archivo está en un plano proyectado (UTM, o local en modo "none"),
-   sin curvatura, y cualquier programa hace un shoelace/euclídeo
-   plano sobre esas coordenadas.
-
-   Para que "lo que ve GeoUrban" == "lo que mide AutoCAD/QGIS sobre
-   el DXF exportado", reproyectamos cada anillo/línea EXACTAMENTE al
-   mismo plano que usa exportDxf() (io/dxf.ts) antes de medir:
-     - modo 'utm'  -> UTM zone/hemisferio configurados (mismo EPSG)
-     - modo 'none' -> plano local equirectangular (mismo criterio,
-                      aunque anclado al centroide de cada feature en
-                      vez de a la vista actual, para no crear un
-                      import circular metrics.ts -> mapStore.ts ->
-                      metrics.ts; la escala por latitud que introduce
-                      esa diferencia de anclaje es del orden de 1e-5
-                      relativo, irrelevante para área/longitud ya que
-                      son invariantes a traslación).
-   ================================================================ */
-
 function projectRingToMetricPlane(ring3857: number[][]): [number, number][] {
   const crs = useProjectCrsStore.getState();
 
@@ -134,10 +110,6 @@ function calculatePolygonMetrics(geometry: Polygon): FeatureMetrics {
   const areaM2 = planarArea(ringMetric);
   const perimeterM = planarPathLength(ringMetric);
 
-  // Centroide simple (promedio de vértices, sin el cierre duplicado) en
-  // EPSG:3857 — solo posiciona la etiqueta en el mapa, no participa del
-  // cálculo de área/perímetro (por eso no necesita ser el centroide de
-  // área real).
   let cx = 0, cy = 0;
   const vertexCount = ring3857.length - 1;
   for (let i = 0; i < vertexCount; i++) {

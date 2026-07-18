@@ -3,22 +3,12 @@ import VectorLayer from 'ol/layer/Vector.js';
 import VectorSource from 'ol/source/Vector.js';
 import { createMeasurementStyle } from '../styleFactory';
 
-/**
- * Visibilidad de las capas de trabajo. Compartida con
- * `useLayerStore().workVisibility` pero desacoplada para que este
- * módulo sea testeable sin Zustand.
- */
 export type WorkVisibility = {
   lots: boolean;
   streets: boolean;
   measurements: boolean;
 };
 
-/**
- * Colores cíclicos para manzanos. Compartidos por WebGL (expressions
- * match) y por el postrender (etiquetas). Mantener en sync si se
- * modifican: ver MZN_COLORS en styleFactory.ts.
- */
 export const MZN_COLORS_22 = [
   'rgba(88,166,255,0.13)', 'rgba(63,185,80,0.13)', 'rgba(245,158,11,0.13)',
   'rgba(239,68,68,0.13)', 'rgba(139,92,246,0.13)', 'rgba(236,72,153,0.13)',
@@ -31,18 +21,6 @@ export const MZN_COLORS_STR = [
   '#ec4899', '#14b8a6', '#f97316', '#06b6d4', '#84cc16',
 ];
 
-/**
- * Crea y registra las dos capas que comparten la fuente de features del
- * usuario:
- *  - `webglLayer`: render GPU (fill + stroke) con match expressions
- *    por colorIdx de manzanos.
- *  - `measurementLayer`: render Canvas2D con cotas y selección.
- *  - `streetLayer`: render Canvas2D para los ejes de calle.
- *  - `postrenderLayer`: capa vacía que sirve de hook para Canvas2D
- *    overlays (labels, snap guides, fillets).
- *
- * Devuelve los refs para que Map.tsx los guarde en su state.
- */
 export interface DrawLayers {
   webglLayer: WebGLVectorLayer;
   measurementLayer: VectorLayer<VectorSource>;

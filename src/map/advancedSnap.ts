@@ -7,39 +7,6 @@ import MultiPolygon from 'ol/geom/MultiPolygon.js';
 import Circle from 'ol/geom/Circle.js';
 import { getUid } from 'ol/util.js';
 
-/* ================================================================
-   ADVANCED SNAP ENGINE — OSNAP profesional (estilo AutoCAD) — v2
-   ================================================================
-   Cambios respecto a la versión anterior:
-
-   1) Broad-phase por bounding-box antes de evaluar cada segmento.
-      Antes se armaba `segmentEntries` con TODOS los segmentos de cada
-      feature "cercana" (según el índice espacial), sin filtrar por
-      vértice — en un manzano de 40 lados, 39 de esos segmentos podían
-      estar a metros del cursor y se evaluaban igual.
-
-   2) Tolerancia diferenciada POR TIPO (TYPE_TOLERANCE_FACTOR):
-      endpoint/intersection son imanes fuertes; nearest es el fallback
-      más débil (no debe "tapar" a los demás).
-
-   3) Histéresis anti-parpadeo (applySticky): cerca del límite de
-      tolerancia, dos candidatos de prioridad similar pueden alternar
-      entre frames. Se sostiene el snap previo mientras siga válido.
-
-   4) `excludeFeature`: ignora la feature que se está editando (evita
-      que un vértice se enganche a sí mismo durante Modify).
-
-   5) 'grid' pasa a ser un SnapType de primera clase, con su propia
-      prioridad/color/tolerancia — ver gridSnap.ts para el cálculo
-      analítico (reemplaza el escaneo O(n²) contra un VectorSource).
-
-   6) `pickBetterSnap()`: combina resultados de distintas FUENTES
-      (features + grilla) respetando PRIORIDAD antes que distancia
-      cruda — antes la fusión en Map.tsx comparaba solo `dist`, lo que
-      podía dejar que un punto de grilla "ganara" a una intersección
-      real de features por estar un pixel más cerca.
-   ================================================================ */
-
 export type SnapType =
   | 'endpoint'
   | 'midpoint'
@@ -336,10 +303,6 @@ export function findSnap(cursor: number[], src: VectorSource, options: FindSnapO
     if (!geom) return;
     const fid = feat.getId() != null ? String(feat.getId()) : getUid(feat);
 
-    // Snap a centro y tangente de círculos (incluye el tipo geométrico
-    // `Circle` de OL y LineStrings/Polygons derivados de la Fase 2.4/2.3
-    // cuando tienen prop `kind: 'circle'` — la distinción se hace por
-    // tipo de geometría real).
     if (settings.center && geom instanceof Circle) {
       const c = geom.getCenter();
       const tol = baseTolerance * TYPE_TOLERANCE_FACTOR.center;
@@ -399,10 +362,6 @@ export function findSnap(cursor: number[], src: VectorSource, options: FindSnapO
         const a = ring[i];
         const b = ring[i + 1];
 
-        // Broad-phase: descarta segmentos que, con la tolerancia máxima
-        // posible de este frame (extension/apparent), no pueden aportar
-        // ningún candidato. Evita recorrer polígonos grandes vértice a
-        // vértice cuando el cursor está lejos de la mayoría de sus lados.
         if (!segmentMayBeNear(cursor, a, b, broadPhaseMargin)) continue;
 
         segmentEntries.push({ a, b, ringId, idx: i });
@@ -496,8 +455,6 @@ export function findSnap(cursor: number[], src: VectorSource, options: FindSnapO
     src.forEachFeature((feat) => processFeature(feat));
   }
 
-  // Intersección real / aparente — pairwise SOLO sobre segmentos que ya
-  // pasaron el broad-phase (normalmente unas pocas decenas, nunca miles).
   if (settings.intersection || settings.apparentIntersection) {
     const n = segmentEntries.length;
     for (let i = 0; i < n; i++) {

@@ -28,16 +28,6 @@ function streetsHash(streets: Array<{ id: string; start: [number, number]; end: 
   return streets.map((s) => `${s.id}:${s.start[0]},${s.start[1]}-${s.end[0]},${s.end[1]}:${s.widthM}`).join('|');
 }
 
-/**
- * Encapsula todo el post-render Canvas2D del mapa:
- *  - Cotas y labels de features
- *  - Dibujo de calles (cuerpo, bordes, eje, etiqueta) y fillets
- *  - Guías visuales de snap (línea punteada, escuadra, segmento resaltado)
- *
- * El painter mantiene un cache de fillets y lotGroups para no recalcular
- * en cada frame — solo cuando features/calles cambian.
- */
-
 interface PlacedBox { x: number; y: number; w: number; h: number; }
 
 function isColliding(

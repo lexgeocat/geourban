@@ -7,9 +7,6 @@ function nextId(prefix: string): string {
   return `${prefix}-${Date.now()}-${_idCounter.toString(36)}`;
 }
 
-/** Devuelve un clon del feature con un id nuevo, geometría clonada y
- *  todas las props copiadas (shallow). El clon no está en ningún source;
- *  lo agrega el llamador. */
 export function cloneFeature(
   source: Feature<Geometry>,
   options: { prefix?: string } = {},
@@ -30,32 +27,24 @@ export function cloneFeature(
   return clone;
 }
 
-/** Traslada la geometría del feature en (dx, dy) en el sistema de
- *  coordenadas del feature. Muta in-place. */
 export function translateFeature(feature: Feature<Geometry>, dx: number, dy: number): void {
   const g = feature.getGeometry();
   if (!g) return;
   g.translate(dx, dy);
 }
 
-/** Rota la geometría `angle` (radianes) alrededor de `anchor` (en el
- *  sistema de coordenadas del feature). Muta in-place. */
 export function rotateFeature(feature: Feature<Geometry>, angle: number, anchor: number[]): void {
   const g = feature.getGeometry();
   if (!g) return;
   g.rotate(angle, anchor);
 }
 
-/** Escala la geometría por `factor` respecto a `anchor`. factor>1 agranda,
- *  0<factor<1 achica. Muta in-place. */
 export function scaleFeature(feature: Feature<Geometry>, factor: number, anchor: number[]): void {
   const g = feature.getGeometry();
   if (!g) return;
   g.scale(factor, factor, anchor);
 }
 
-/** Refleja la geometría sobre el eje definido por `a` y `b` (2 puntos).
- *  Muta in-place. */
 export function mirrorFeature(feature: Feature<Geometry>, a: number[], b: number[]): void {
   const g = feature.getGeometry();
   if (!g) return;
@@ -64,9 +53,7 @@ export function mirrorFeature(feature: Feature<Geometry>, a: number[], b: number
   const dy = b[1] - a[1];
   const len2 = dx * dx + dy * dy;
   if (len2 < 1e-12) return;
-  // Transformación afín: reflejo sobre la recta que pasa por `a` con
-  // dirección (dx, dy). Proyecta el punto sobre el eje y devuelve el
-  // punto simétrico (2*proy - punto).
+
   const mirror2D: import('ol/proj.js').TransformFunction = (input, output, dimension = 2, stride = dimension) => {
     const out = output ?? input;
     for (let i = 0; i < input.length; i += stride) {

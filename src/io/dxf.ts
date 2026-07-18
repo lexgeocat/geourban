@@ -8,14 +8,6 @@ import { ensureUtmZoneRegistered, utmZoneLabel } from '../geo/utmZones';
 import { reprojectFeatureCollection, mapFeatureCollectionCoords, utmWkt } from '../geo/crsTransform';
 const GEOGRAPHIC = 'EPSG:4326';
 
-/**
- * Importa un DXF usando SIEMPRE el CRS configurado en useProjectCrsStore —
- * la misma fuente de verdad que exportDxf(). Antes cada import preguntaba
- * por separado y asumía UTM 19S a ciegas; si el DXF se había exportado con
- * otro CRS (o sin CRS), el resultado eran coordenadas sin sentido como
- * lon=-717 (fuera del rango ±180°). Con el CRS fijado una sola vez al
- * empezar el proyecto, export e import quedan sincronizados por diseño.
- */
 export async function importDxf(file: File): Promise<ImportResult> {
   const text = await file.text();
   const parser = new DxfParser();
@@ -40,12 +32,6 @@ export async function importDxf(file: File): Promise<ImportResult> {
       `Si el DXF viene de otra zona, cambiala primero en "CRS del proyecto".`
     );
   } else {
-    // Modo 'none': el DXF nunca tuvo anclaje real. Se reposiciona con el
-    // MISMO criterio equirectangular (metros reales de terreno, escalados
-    // por cos(latitud)) que usa exportDxf() en esta rama. Antes se usaba
-    // fromLonLat/toLonLat (metros Web Mercator), que NO es la inversa del
-    // export y metía un error de escala de varios % según la latitud del
-    // proyecto — un DXF "libre" exportado y reimportado aparecía deformado.
     const [centerLon, centerLat] = useMapStore.getState().viewConfig.center;
     const mPerDegLat = 111320;
     const mPerDegLon = 111320 * Math.cos((centerLat * Math.PI) / 180);
@@ -96,6 +82,30 @@ function entityToFeature(entity: IEntity): Feature | null {
     const geometry: Point = { type: 'Point', coordinates: [pos.x, pos.y] };
     return { type: 'Feature', properties: { dxfType: type }, geometry };
   }
+  if (type === 'CIRCLE') {
+    const center = entity.position;
+    const radius = entity.radius;
+    if (!center || radius == null) return null;
+    // Store as Point with radius in properties for now
+    return {
+      type: 'Feature',
+      properties: { dxfType: type, radius },
+      geometry: { type: 'Point', coordinates: [center.x, center.y] }
+    };
+  }
+  if (type === 'ARC') {
+    const center = entity.position;
+    const radius = entity.radius;
+    const startAngle = entity.startAngle ?? 0;
+    const endAngle = entity.endAngle ?? 360;
+    if (!center || radius == null) return null;
+    // Store as Point with arc properties for now
+    return {
+      type: 'Feature',
+      properties: { dxfType: type, radius, startAngle, endAngle },
+      geometry: { type: 'Point', coordinates: [center.x, center.y] }
+    };
+  }
   return null;
 }
 
@@ -111,9 +121,6 @@ export interface DxfExportResult {
   dxfText: string;
   epsg: string | null;
   prjWkt: string | null;
-  /** IMPORTANTE: QGIS/OGR no leen sidecar .prj para DXF (sí para shapefile).
-   *  El .prj se entrega igual por si el destino es AutoCAD Map3D/Civil3D o
-   *  Global Mapper, pero en QGIS el CRS hay que asignarlo a mano. */
   instructions: string;
 }
 
@@ -136,12 +143,6 @@ export function exportDxf(project: GeoUrbanProject): DxfExportResult {
       `QGIS no detecta el CRS de un DXF solo: click derecho en la capa → ` +
       `"Asignar SRC de capa" → buscar "${epsg.replace('EPSG:', '')}".`;
   } else {
-    // Modo 'none': plano local en metros reales, centrado en la VISTA
-    // ACTUAL del proyecto — el mismo punto de anclaje que usa importDxf()
-    // en este modo. Antes se anclaba al centroide de los propios datos, lo
-    // que desincronizaba import/export: si la vista se movía entre
-    // exportar y volver a importar, el dibujo reaparecía desplazado del
-    // lugar original.
     const [lon, lat] = useMapStore.getState().viewConfig.center;
     const mPerDegLat = 111320;
     const mPerDegLon = 111320 * Math.cos((lat * Math.PI) / 180);
@@ -156,7 +157,9 @@ export function exportDxf(project: GeoUrbanProject): DxfExportResult {
 
   for (const feature of projected.features) {
     const geom = feature.geometry;
+    const props = feature.properties ?? {};
     if (!geom) continue;
+
     if (geom.type === 'LineString') {
       const coords = geom.coordinates;
       for (let i = 0; i < coords.length - 1; i++) {
@@ -166,6 +169,34 @@ export function exportDxf(project: GeoUrbanProject): DxfExportResult {
       const ring = geom.coordinates[0] ?? [];
       if (ring.length >= 2) {
         dxf.drawPolyline(ring.map((c) => [c[0], c[1]] as [number, number]), true);
+      }
+    } else if (geom.type === 'Point') {
+      // Handle CIRCLE and ARC from properties
+      const dxfType = props.dxfType;
+      if (dxfType === 'CIRCLE' && props.radius != null) {
+        const [x, y] = geom.coordinates;
+        dxf.drawCircle(x, y, props.radius);
+      } else if (dxfType === 'ARC' && props.radius != null && props.startAngle != null && props.endAngle != null) {
+        const [x, y] = geom.coordinates;
+        dxf.drawArc(x, y, props.radius, props.startAngle, props.endAngle);
+      } else {
+        // Regular point
+        const [x, y] = geom.coordinates;
+        dxf.drawPoint(x, y);
+      }
+    }
+    // Handle cota features (dimensions)
+    if (props.kind === 'cota') {
+      const originStart = props.originStart as [number, number] | undefined;
+      const originEnd = props.originEnd as [number, number] | undefined;
+      const value = props.value as number | undefined;
+      if (originStart && originEnd && value != null) {
+        // DXF DIMENSION: requires definition point, text position, dimension line
+        const [x1, y1] = originStart;
+        const [x2, y2] = originEnd;
+        const midX = (x1 + x2) / 2;
+        const midY = (y1 + y2) / 2;
+        (dxf as any).drawLinearDimension(x1, y1, x2, y2, midX, midY + 5, value.toString());
       }
     }
   }

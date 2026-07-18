@@ -1,4 +1,5 @@
 import React, { useRef, useState } from 'react';
+import { Map } from 'ol';
 import {
   ChevronUp,
   Trash2,
@@ -335,6 +336,7 @@ function RibbonGroup({
    ================================================================ */
 
 export default function TopBar() {
+  const mapRef = useRef<Map | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [appMenuOpen, setAppMenuOpen] = useState(false);
   const [exportSubmenuOpen, setExportSubmenuOpen] = useState(false);
@@ -424,10 +426,49 @@ export default function TopBar() {
     }
   };
 
+  const handleExportPng = async () => {
+    setAppMenuOpen(false);
+    setExportSubmenuOpen(false);
+    try {
+      const map = mapRef.current;
+      if (!map) throw new Error('Mapa no inicializado');
+      
+      // Wait for render to complete
+      await new Promise<void>((resolve) => {
+        map.once('rendercomplete', () => {
+          const canvas = map.getViewport().querySelector('canvas') as HTMLCanvasElement;
+          if (canvas) {
+            canvas.toBlob((blob) => {
+              if (blob) {
+                const url = URL.createObjectURL(blob);
+                const anchor = document.createElement('a');
+                anchor.href = url;
+                anchor.download = 'geourban-proyecto.png';
+                anchor.click();
+                URL.revokeObjectURL(url);
+              }
+              resolve();
+            }, 'image/png');
+          } else {
+            resolve();
+          }
+        });
+        map.renderSync();
+      });
+    } catch (err) {
+      console.error(err);
+      alert(err instanceof Error ? err.message : 'Error al exportar PNG');
+    }
+  };
+
   const handleExport = async (format: ExportFormat) => {
     setAppMenuOpen(false);
     setExportSubmenuOpen(false);
     try {
+      if (format === 'png') {
+        await handleExportPng();
+        return;
+      }
       const result = await exportProject(getCurrentProject(), format, 'geourban-proyecto');
       if (result?.message) alert(result.message);
     } catch (err) {
@@ -725,12 +766,15 @@ export default function TopBar() {
                 {exportSubmenuOpen && (
                   <div className="app-menu-submenu">
                     {([
-                      { fmt: 'geourban' as ExportFormat, label: 'GeoUrban (.geourban)' },
-                      { fmt: 'geojson' as ExportFormat, label: 'GeoJSON (.geojson)' },
-                      { fmt: 'kml' as ExportFormat, label: 'KML (.kml)' },
-                      { fmt: 'kmz' as ExportFormat, label: 'KMZ (.kmz)' },
-                      { fmt: 'shp' as ExportFormat, label: 'Shapefile (.shp)' },
-                      { fmt: 'dxf' as ExportFormat, label: 'DXF (.dxf)' },
+                       { fmt: 'geourban' as ExportFormat, label: 'GeoUrban (.geourban)' },
+                       { fmt: 'geojson' as ExportFormat, label: 'GeoJSON (.geojson)' },
+                       { fmt: 'kml' as ExportFormat, label: 'KML (.kml)' },
+                       { fmt: 'kmz' as ExportFormat, label: 'KMZ (.kmz)' },
+                       { fmt: 'shp' as ExportFormat, label: 'Shapefile (.shp)' },
+                       { fmt: 'gpkg' as ExportFormat, label: 'GeoPackage (.gpkg)' },
+                       { fmt: 'dxf' as ExportFormat, label: 'DXF (.dxf)' },
+                       { fmt: 'png' as ExportFormat, label: 'PNG (.png)' },
+                       { fmt: 'svg' as ExportFormat, label: 'SVG (.svg)' },
                     ]).map((o) => (
                       <button
                         key={o.fmt}

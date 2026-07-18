@@ -8,18 +8,6 @@ const geometryFactory = new GeometryFactory();
 const reader = new GeoJSONReader(geometryFactory);
 const writer = new GeoJSONWriter();
 
-/* ================================================================
-   GEO WORKER OPERATIONS
-   ================================================================
-   Topologia pesada ejecutada en Web Worker para no bloquear la UI.
-   Soporta:
-     - union: une N features en una (OverlayOp.union)
-     - merge:  alias de union (compatibilidad con la API)
-     - subtract: resta B de A (OverlayOp.difference)
-     - intersect: interseccion de N features (OverlayOp.intersection)
-     - validate: valida N features
-   ================================================================ */
-
 export type UnionRequest = {
   type: 'union';
   features: FeatureCollection;

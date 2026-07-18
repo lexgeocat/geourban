@@ -2,24 +2,6 @@ import Interaction from 'ol/interaction/Interaction.js';
 import type MapBrowserEvent from 'ol/MapBrowserEvent.js';
 import type Map from 'ol/Map.js';
 
-/* ================================================================
-   LassoSelection interaction
-   ================================================================
-   PointerInteraction custom para Fase 4 (Selection Engine):
-   - Sub-modo 'rect': drag dibuja un rectángulo desde el punto de
-     press hasta el cursor actual. Al soltar, llama onComplete con
-     el extent [minX, minY, maxX, maxY].
-   - Sub-modo 'lasso': drag acumula puntos y forma un polígono libre.
-     Al soltar, llama onComplete con el array de coords del polígono
-     (>=3 puntos; si son <3, se ignora — equivale a un click).
-   - En cualquier sub-modo, el preview se renderiza en el postrender
-     vía getPreview().
-
-   El InteractionModeController ya no se invoca en click sin drag
-   (eso lo sigue manejando el Select nativo); acá solo entramos en
-   drag.
-   ================================================================ */
-
 export type LassoMode = 'rect' | 'lasso';
 
 export type LassoPreview =
@@ -42,8 +24,6 @@ export class LassoSelection extends Interaction {
   /** Último current point para el preview. */
   private current_: number[] | null = null;
 
-  /** Mínimo de movimiento en píxeles antes de empezar a acumular puntos
-   *  en modo lasso (evita que pequeños temblores generen miles de puntos). */
   private static readonly MIN_DRAG_PX = 3;
 
   constructor(options: {
