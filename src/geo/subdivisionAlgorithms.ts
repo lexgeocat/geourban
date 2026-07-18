@@ -376,7 +376,7 @@ export function subdivideManzanoAuto(
   return allLots;
 }
 
-// ─── subdivideManzanoExact (LOTES_SAI lot-subdivision.js:37-159) ────
+// ─── subdivideManzanoExact
 
 export function subdivideManzanoExact(
   mznPts: Pt[],

@@ -291,24 +291,24 @@ Desktop: - SQLite - GeoPackage
 > únicos gaps genuinos** a cerrar son **SQLite nativo** (Fase 10) y
 > **pdf-lib** (Fase 9).
 
-| Componente | Tecnología | Notas |
-|---|---|---|
-| Frontend | React 19 + TypeScript | — |
-| Bundler | Vite | Build web (PWA) y entrada del target Tauri |
-| Estado | Zustand (+ Immer, middleware `persist`) | — |
-| UI | Design system propio: Radix primitives + CVA + Tailwind + lucide-react | El doc declaraba "Primereact"; se mantiene por coherencia con el lenguaje visual CAD ya construido. |
-| Mapa | OpenLayers 10 | WebGL para capas masivas, Canvas2D para edición |
-| Render | GPU (`ol/layer/WebGLVector`) + CPU (postrender Canvas2D) | Cotas, snap, calles, fillets, selección |
-| GIS — topología | JSTS (port JS de JTS/GEOS) en Web Worker | El doc declaraba "GEOS"; equivalente funcional. |
-| GIS — reproyección | proj4 (port oficial JS de PROJ) | El doc declaraba "PROJ"; mismo motor. |
-| GIS — formatos vectoriales y ráster | `ol/format` + `shpjs`/`shp-write` + `dxf-parser`/`dxf-writer` + `sql.js` (SQLite-wasm, lectura de `.gpkg`) + `JSZip` | El doc declaraba "GDAL". Sidecar GDAL queda como opción futura si aparece un formato no cubierto. |
-| Geometría avanzada | Geometry Engine propio (port TS de LOTES_SAI): `polygonEngine.ts`, `subdivisionAlgorithms.ts`, `streetEngine.ts` | El doc declaraba "CGAL"; CGAL no tiene binding JS/WASM maduro y el motor propio ya está probado. |
-| Índice espacial | RBush | — |
-| DXF | `dxf-parser` (lectura) + `dxf-writer` (escritura) | Cobertura actual: LINE/LWPOLYLINE/POLYLINE/POINT; ampliación planificada en Fase 8.1. |
-| Persistencia | Dexie sobre IndexedDB (autosave) + `sql.js` solo lectura de `.gpkg` | **Gap:** SQLite nativo de Tauri (`tauri-plugin-sql`) → Fase 10. |
-| Desktop | Tauri v2 | — |
-| PDF | `pdf-lib` *(declarado, aún no instalado)* | **Gap:** se agrega con la Fase 9 (Layout Engine). |
-| Publicación | GitHub Pages (web/PWA) + GitHub Releases (instaladores Tauri) | — |
+| Componente                          | Tecnología                                                                                                           | Notas                                                                                               |
+| ----------------------------------- | -------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| Frontend                            | React 19 + TypeScript                                                                                                | —                                                                                                   |
+| Bundler                             | Vite                                                                                                                 | Build web (PWA) y entrada del target Tauri                                                          |
+| Estado                              | Zustand (+ Immer, middleware `persist`)                                                                              | —                                                                                                   |
+| UI                                  | Design system propio: Radix primitives + CVA + Tailwind + lucide-react                                               | El doc declaraba "Primereact"; se mantiene por coherencia con el lenguaje visual CAD ya construido. |
+| Mapa                                | OpenLayers 10                                                                                                        | WebGL para capas masivas, Canvas2D para edición                                                     |
+| Render                              | GPU (`ol/layer/WebGLVector`) + CPU (postrender Canvas2D)                                                             | Cotas, snap, calles, fillets, selección                                                             |
+| GIS — topología                     | JSTS (port JS de JTS/GEOS) en Web Worker                                                                             | El doc declaraba "GEOS"; equivalente funcional.                                                     |
+| GIS — reproyección                  | proj4 (port oficial JS de PROJ)                                                                                      | El doc declaraba "PROJ"; mismo motor.                                                               |
+| GIS — formatos vectoriales y ráster | `ol/format` + `shpjs`/`shp-write` + `dxf-parser`/`dxf-writer` + `sql.js` (SQLite-wasm, lectura de `.gpkg`) + `JSZip` | El doc declaraba "GDAL". Sidecar GDAL queda como opción futura si aparece un formato no cubierto.   |
+| Geometría avanzada                  | Geometry Engine propio: `polygonEngine.ts`, `subdivisionAlgorithms.ts`, `streetEngine.ts`                            | El doc declaraba "CGAL"; CGAL no tiene binding JS/WASM maduro y el motor propio ya está probado.    |
+| Índice espacial                     | RBush                                                                                                                | —                                                                                                   |
+| DXF                                 | `dxf-parser` (lectura) + `dxf-writer` (escritura)                                                                    | Cobertura actual: LINE/LWPOLYLINE/POLYLINE/POINT; ampliación planificada en Fase 8.1.               |
+| Persistencia                        | Dexie sobre IndexedDB (autosave) + `sql.js` solo lectura de `.gpkg`                                                  | **Gap:** SQLite nativo de Tauri (`tauri-plugin-sql`) → Fase 10.                                     |
+| Desktop                             | Tauri v2                                                                                                             | —                                                                                                   |
+| PDF                                 | `pdf-lib` _(declarado, aún no instalado)_                                                                            | **Gap:** se agrega con la Fase 9 (Layout Engine).                                                   |
+| Publicación                         | GitHub Pages (web/PWA) + GitHub Releases (instaladores Tauri)                                                        | —                                                                                                   |
 
 # Principio de Arquitectura
 

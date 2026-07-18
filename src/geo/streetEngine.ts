@@ -97,7 +97,7 @@ function getFilletRadiusForAngle(angleDeg: number, streetA?: Street, streetB?: S
   return 6;
 }
 
-// ─── computeStreetFillets (LOTES_SAI:83-171) ───────────────────────
+// ─── computeStreetFillets
 
 export function computeStreetFillets(streets: Street[]): StreetFillet[] {
   const results: StreetFillet[] = [];

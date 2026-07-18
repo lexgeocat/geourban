@@ -6,9 +6,9 @@ import { Fill, Stroke, Style, Text } from 'ol/style.js';
 import type { SegmentMetric } from '../geo/metrics';
 
 // ─── Colores
-const LOTES_SAI_MANZANA_COLOR = '#58a6ff';
-const LOTES_SAI_TEXT_BG = 'rgba(13, 17, 23, 0.72)';
-const LOTES_SAI_LIVE_BG = 'rgba(13, 17, 23, 0.80)';
+const GEOURBAN_MANZANA_COLOR = '#58a6ff';
+const GEOURBAN_TEXT_BG = 'rgba(13, 17, 23, 0.72)';
+const GEOURBAN_LIVE_BG = 'rgba(13, 17, 23, 0.80)';
 
 // ─── Cotas (dimension lines) — estilo CAD profesional ────────────────
 const DIM_LINE_COLOR_LOTE = 'rgba(226, 232, 240, 0.55)';
@@ -168,9 +168,9 @@ export function drawSegmentLabels(
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     const tw = ctx.measureText(label).width;
-    ctx.fillStyle = LOTES_SAI_TEXT_BG;
+    ctx.fillStyle = GEOURBAN_TEXT_BG;
     ctx.fillRect(-tw / 2 - 3, -fs / 2 - 1.5, tw + 6, fs + 3);
-    ctx.fillStyle = isManzana ? LOTES_SAI_MANZANA_COLOR + 'ee' : '#e2e8f0ee';
+    ctx.fillStyle = isManzana ? GEOURBAN_MANZANA_COLOR + 'ee' : '#e2e8f0ee';
     ctx.fillText(label, 0, 0);
     ctx.restore();
   }
@@ -186,14 +186,14 @@ export function drawMainMetricLabel(
 ): void {
   const px = toPixel(labelPointWorld);
   const fs = isManzana ? 13 : 11.5;
-  const mainColor = options?.color ?? (isManzana ? LOTES_SAI_MANZANA_COLOR : '#dffcff');
+  const mainColor = options?.color ?? (isManzana ? GEOURBAN_MANZANA_COLOR : '#dffcff');
 
   ctx.save();
   ctx.font = `700 ${fs}px Courier New`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   const tw = ctx.measureText(text).width;
-  ctx.fillStyle = LOTES_SAI_TEXT_BG;
+  ctx.fillStyle = GEOURBAN_TEXT_BG;
   ctx.fillRect(px[0] - tw / 2 - 4, px[1] - fs / 2 - 2, tw + 8, fs + 4);
   ctx.fillStyle = mainColor + 'ee';
   ctx.fillText(text, px[0], px[1]);
@@ -203,7 +203,7 @@ export function drawMainMetricLabel(
     ctx.font = `500 ${fs2}px Courier New`;
     const tw2 = ctx.measureText(options.extraLine).width;
     const y2 = px[1] + fs * 0.5 + fs2 * 0.6 + 2;
-    ctx.fillStyle = LOTES_SAI_TEXT_BG;
+    ctx.fillStyle = GEOURBAN_TEXT_BG;
     ctx.fillRect(px[0] - tw2 / 2 - 3, y2 - fs2 / 2 - 1.5, tw2 + 6, fs2 + 3);
     ctx.fillStyle = 'rgba(148, 163, 184, 0.85)';
     ctx.fillText(options.extraLine, px[0], y2);
@@ -226,7 +226,7 @@ export function createLiveDrawingLabelStyle(
   _isPolygon: boolean = true,
   isLastSegment: boolean = false
 ): Style {
-  const fillColor = isLastSegment ? '#ffa657ee' : LOTES_SAI_MANZANA_COLOR + 'ee';
+  const fillColor = isLastSegment ? '#ffa657ee' : GEOURBAN_MANZANA_COLOR + 'ee';
 
   return new Style({
     geometry: new Point(coordinate),
@@ -235,7 +235,7 @@ export function createLiveDrawingLabelStyle(
       font: '600 10px Courier New',
       fill: new Fill({ color: fillColor }),
       stroke: new Stroke({ color: 'rgba(0, 0, 0, 0.72)', width: 3 }),
-      backgroundFill: new Fill({ color: LOTES_SAI_LIVE_BG }),
+      backgroundFill: new Fill({ color: GEOURBAN_LIVE_BG }),
       padding: [2, 5, 2, 5],
       rotation,
       rotateWithView: true,

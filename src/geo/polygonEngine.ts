@@ -20,7 +20,7 @@ export interface CutResult {
   isRemnant: boolean;
 }
 
-// ─── Helpers de escala (compatibilidad LOTES_SAI) ───────────────────
+// ─── Helpers de escala
 
 const MPP = 1; // metros por unidad → 1 (EPSG:3857 es métrico)
 
