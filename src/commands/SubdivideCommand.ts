@@ -6,6 +6,7 @@ import { useSelectionStore } from '../store/selectionStore';
 import { refreshSourceMetrics, updateFeatureMetrics } from '../geo/metrics';
 import { subdivide } from '../geo/subdivisionAlgorithms';
 import { ensureKind } from '../core/objectModel';
+import { resolveLayerId } from './AddFeatureCommand';
 import type { Polygon as GeoJsonPolygon } from 'geojson';
 
 const geoJsonFormat = new GeoJSON();
@@ -80,6 +81,8 @@ export class SubdivideCommand extends Command {
         ),
       );
       ctx.drawSource.addFeature(olFeat);
+      const lid = resolveLayerId(undefined, 'lote');
+      if (lid) olFeat.set('layerId', lid);
       updateFeatureMetrics(olFeat as Feature<Geometry>);
       this.newFeatureIds.push(newId);
     });

@@ -17,14 +17,15 @@ export interface Street {
   start: [number, number];
   end: [number, number];
   widthM: number;
-  curvature?: number; // override fillet radius
-  waypoints?: [[number, number]]; // multi-segment curve
+  curvature?: number; // override fillet radius in meters (0 = use default table)
+  waypoints?: Array<[number, number]>; // intermediate points for curved streets
   name: string;
 }
 
 interface StreetState {
   streets: Street[];
   defaultWidthM: number;
+  defaultCurvatureM: number; // 0 = use angle-based default table
   visible: boolean;
 
   addStreet: (street: Omit<Street, 'id' | 'name'>) => string;
@@ -32,6 +33,7 @@ interface StreetState {
   removeStreet: (id: string) => void;
   clearStreets: () => void;
   setDefaultWidth: (w: number) => void;
+  setDefaultCurvature: (r: number) => void;
   setVisible: (v: boolean) => void;
 }
 
@@ -52,6 +54,7 @@ export const useStreetStore = create<StreetState>()(
   immer((set) => ({
     streets: [],
     defaultWidthM: 8,
+    defaultCurvatureM: 0,
     visible: true,
 
     addStreet: (street) => {
@@ -86,6 +89,11 @@ export const useStreetStore = create<StreetState>()(
     setDefaultWidth: (w) =>
       set((state) => {
         state.defaultWidthM = w;
+      }),
+
+    setDefaultCurvature: (r) =>
+      set((state) => {
+        state.defaultCurvatureM = r;
       }),
 
     setVisible: (v) =>

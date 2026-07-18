@@ -5,6 +5,7 @@ import { Command, type CommandContext } from './Command';
 import { subdivideManzanoAuto } from '../geo/subdivisionAlgorithms';
 import { refreshSourceMetrics, updateFeatureMetrics } from '../geo/metrics';
 import { ensureKind, getFeatureKind } from '../core/objectModel';
+import { resolveLayerId } from './AddFeatureCommand';
 import PolygonGeom from 'ol/geom/Polygon.js';
 import FeatureOL from 'ol/Feature.js';
 
@@ -91,6 +92,8 @@ export class GenerateLotsCommand extends Command {
           ),
         );
         ctx.drawSource.addFeature(newFeat);
+        const lid = resolveLayerId(undefined, 'lote');
+        if (lid) newFeat.set('layerId', lid);
         updateFeatureMetrics(newFeat as Feature<Geometry>);
         this.newLotIds.push(newId);
       }

@@ -115,6 +115,16 @@ const IconStreet = () => (
     <path d="M5 14h14" />
   </svg>
 );
+const IconCota = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="4" y1="8" x2="20" y2="8" />
+    <line x1="4" y1="8" x2="4" y2="18" strokeDasharray="2 2" />
+    <line x1="20" y1="8" x2="20" y2="18" strokeDasharray="2 2" />
+    <line x1="6" y1="4" x2="6" y2="12" />
+    <line x1="18" y1="4" x2="18" y2="12" />
+    <text x="12" y="6" textAnchor="middle" fill="currentColor" stroke="none" fontSize="6">m</text>
+  </svg>
+);
 const IconEraser = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21" />
@@ -371,6 +381,8 @@ export default function TopBar() {
   const openSubdivision = useSubdivisionStore((s) => s.open);
   const defaultWidthM = useStreetStore((s) => s.defaultWidthM);
   const setDefaultWidth = useStreetStore((s) => s.setDefaultWidth);
+  const defaultCurvatureM = useStreetStore((s) => s.defaultCurvatureM);
+  const setDefaultCurvature = useStreetStore((s) => s.setDefaultCurvature);
   const clearStreets = useStreetStore((s) => s.clearStreets);
   const streets = useStreetStore((s) => s.streets);
 
@@ -812,6 +824,7 @@ export default function TopBar() {
                 <RibbonTool mode="circle" icon={<IconCircle />} label="Círculo" shortcut="C" />
                 <RibbonTool mode="arc" icon={<IconArc />} label="Arco" shortcut="A" />
                 <RibbonTool mode="text" icon={<IconText />} label="Texto" shortcut="X" />
+                <RibbonTool mode="cota" icon={<IconCota />} label="Cota" shortcut="D" />
               </RibbonGroup>
 
               <RibbonGroup label="Modificar">
@@ -906,7 +919,21 @@ export default function TopBar() {
                     title="Ancho de vía (m)"
                     aria-label="Ancho de vía en metros"
                   />
-                  <span className="ribbon-inline-text">Ancho (m) · {streets.length} trazadas</span>
+                  <span className="ribbon-inline-text">Ancho (m)</span>
+                </div>
+                <div className="ribbon-inline-control">
+                  <input
+                    type="number"
+                    className="ribbon-inline-input"
+                    value={defaultCurvatureM}
+                    min={0}
+                    max={50}
+                    step={0.5}
+                    onChange={(e) => setDefaultCurvature(Math.max(0, parseFloat(e.target.value) || 0))}
+                    title="Radio de ochava (m) — 0 = automático"
+                    aria-label="Radio de ochava en metros"
+                  />
+                  <span className="ribbon-inline-text">Ochava (m) · {streets.length} trazadas</span>
                 </div>
                 {streets.length > 0 && (
                   <button
@@ -984,6 +1011,7 @@ export default function TopBar() {
                 <RibbonTool mode="circle" icon={<IconCircle />} label="Círculo" shortcut="C" />
                 <RibbonTool mode="arc" icon={<IconArc />} label="Arco" shortcut="A" />
                 <RibbonTool mode="text" icon={<IconText />} label="Texto" shortcut="X" />
+                <RibbonTool mode="cota" icon={<IconCota />} label="Cota" shortcut="D" />
                 <RibbonTool
                   icon={<IconGreen />}
                   label="Área verde"
@@ -999,7 +1027,7 @@ export default function TopBar() {
                   data-tooltip="Crear equipamiento (Shift+E)"
                 />
               </RibbonGroup>
-              <RibbonGroup label="Vialidad">
+                <RibbonGroup label="Vialidad">
                 <RibbonTool mode="street" icon={<IconStreet />} label="Trazar calle" shortcut="S" active={mode === 'street'} />
                 <div className="ribbon-inline-control">
                   <input
@@ -1014,6 +1042,20 @@ export default function TopBar() {
                     aria-label="Ancho de vía en metros"
                   />
                   <span className="ribbon-inline-text">Ancho (m)</span>
+                </div>
+                <div className="ribbon-inline-control">
+                  <input
+                    type="number"
+                    className="ribbon-inline-input"
+                    value={defaultCurvatureM}
+                    min={0}
+                    max={50}
+                    step={0.5}
+                    onChange={(e) => setDefaultCurvature(Math.max(0, parseFloat(e.target.value) || 0))}
+                    title="Radio de ochava (m) — 0 = automático"
+                    aria-label="Radio de ochava en metros"
+                  />
+                  <span className="ribbon-inline-text">Ochava (m)</span>
                 </div>
               </RibbonGroup>
               <RibbonGroup label="Subdivisión">

@@ -12,6 +12,8 @@ type LayerState = {
   layers: Layer[];
   /** Índice para búsqueda rápida por id */
   index: Map<string, number>; // id -> posición en array
+  /** Capa activa: las features nuevas se asignan a esta */
+  activeLayerId: string | null;
 
   /* ---------- Mutations ---------- */
   /** Añade una nueva capa al final (z-index más alto) */
@@ -26,6 +28,8 @@ type LayerState = {
   toggleLock: (id: string) => void;
   /** Alterna el estado de visibilidad de una capa */
   toggleVisibility: (id: string) => void;
+  /** Selecciona la capa activa (las features nuevas se asignan a esta) */
+  setActiveLayer: (id: string | null) => void;
 
   /* ---------- Queries ---------- */
   /** Obtiene una capa por id (undefined si no existe) */
@@ -36,6 +40,8 @@ type LayerState = {
   count: () => number;
   /** Verifica si alguna capa con el tipo dado está visible */
   hasKindVisible: (kind: string) => boolean;
+  /** Obtiene la primera capa que coincida con el kind dado */
+  getLayerForKind: (kind: string) => Layer | undefined;
 };
 
 export const useLayersStore = create<LayerState>()(
@@ -73,7 +79,12 @@ export const useLayersStore = create<LayerState>()(
         opacity: 1,
       },
     ],
-    index: new Map(), // Se inicializa abajo
+    index: new Map([
+      ['lots', 0],
+      ['manzanas', 1],
+      ['streets', 2],
+    ]),
+    activeLayerId: null,
 
     /* ---------- Mutations ---------- */
     add: (layer) =>
@@ -160,6 +171,11 @@ export const useLayersStore = create<LayerState>()(
         state.layers[index].visible = !state.layers[index].visible;
       }),
 
+    setActiveLayer: (id) =>
+      set((state) => {
+        state.activeLayerId = id;
+      }),
+
     /* ---------- Queries ---------- */
     getById: (id) => {
       const index = get().index.get(id);
@@ -181,14 +197,9 @@ export const useLayersStore = create<LayerState>()(
         (layer) => layer.visible && layer.kind === kind
       );
     },
+
+    getLayerForKind: (kind) => {
+      return get().layers.find((layer) => layer.kind === kind);
+    },
   }))
 );
-
-// Inicializar el mapa de índices con las capas por defecto
-const initIndex = (store: typeof useLayersStore) => {
-  const state = store.getState();
-  state.index = new Map(
-    state.layers.map((layer, idx) => [layer.id, idx])
-  );
-};
-// TODO: llamar initIndex(useLayersStore) tras creación del store

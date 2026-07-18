@@ -17,6 +17,7 @@ import LineString from 'ol/geom/LineString.js';
 import Polygon from 'ol/geom/Polygon.js';
 import type Geometry from 'ol/geom/Geometry.js';
 import { useLayerStore } from '../store/layerStore';
+import { useLayersStore } from '../store/layersRegistryStore';
 import { useMapStore } from '../store/mapStore';
 import { useDrawStore } from '../store/drawStore';
 import { useSelectionStore } from '../store/selectionStore';
@@ -432,6 +433,21 @@ export default function MapView() {
       drawLayerRef.current.setVisible(workVisibility.lots);
     }
   }, [workVisibility.lots]);
+
+  // --- Visibilidad reactiva desde layersRegistryStore ---
+  // Si el usuario cambia la visibilidad de una capa en el panel de capas,
+  // las capas OL se actualizan directamente (sin pasar por layerStore).
+  useEffect(() => {
+    const unsub = useLayersStore.subscribe((state) => {
+      const anyLoteVisible = state.layers.some((l) => (l.kind === 'lote' || l.kind === 'manzana') && l.visible);
+      const anyCalleVisible = state.layers.some((l) => l.kind === 'calle' && l.visible);
+      const anyCotaVisible = state.layers.some((l) => l.kind === 'cota' && l.visible);
+      if (drawLayerRef.current) drawLayerRef.current.setVisible(anyLoteVisible);
+      if (streetLayerRef.current) streetLayerRef.current.setVisible(anyCalleVisible);
+      if (measurementLayerRef.current) measurementLayerRef.current.setVisible(anyCotaVisible);
+    });
+    return unsub;
+  }, []);
 
   // --- Interacciones según modo activo ---
   useEffect(() => {

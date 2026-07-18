@@ -7,7 +7,7 @@ import {
 } from './geojson';
 import { importKml, importKmz, exportKml, exportKmz } from './kml';
 import { importShp, exportShp } from './shp';
-import { importGpkg } from './gpkg';
+import { importGpkg, exportGpkg } from './gpkg';
 import { importDxf, exportDxf } from './dxf';
 
 export * from './types';
@@ -69,8 +69,10 @@ export async function exportProject(
       if (prjWkt) downloadTextFile(`${filename}.prj`, prjWkt, 'text/plain');
       return { message: instructions };
     }
-    case 'gpkg':
-      throw new Error('Exportación GPKG aún no implementada');
+    case 'gpkg': {
+      await exportGpkg(project);
+      break;
+    }
     default:
       throw new Error(`Formato de exportación no soportado: ${format}`);
   }

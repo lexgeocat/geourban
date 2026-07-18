@@ -9,6 +9,7 @@ export type DrawMode =
   | 'circle'     // Circle via OL's built-in draw type
   | 'arc'        // Custom arc (3 points)
   | 'text'       // Text label feature
+  | 'cota'       // Manual linear dimension (3 clicks: start → end → offset)
   | 'street'     // Street axis (segmented line)
   | 'rotate'     // Transform selection: rotate angle
   | 'scale'      // Transform selection: scale

@@ -7,13 +7,23 @@ export class AddStreetCommand extends Command {
   private readonly start: [number, number];
   private readonly end: [number, number];
   private readonly widthM: number;
+  private readonly curvatureM: number;
+  private readonly waypoints?: Array<[number, number]>;
   private streetId: string | null = null;
 
-  constructor(start: [number, number], end: [number, number], widthM: number) {
+  constructor(
+    start: [number, number],
+    end: [number, number],
+    widthM: number,
+    waypoints?: Array<[number, number]>,
+    curvatureM = 0,
+  ) {
     super();
     this.start = start;
     this.end = end;
     this.widthM = widthM;
+    this.waypoints = waypoints;
+    this.curvatureM = curvatureM;
   }
 
   execute(_ctx: CommandContext): void {
@@ -21,10 +31,9 @@ export class AddStreetCommand extends Command {
       start: this.start,
       end: this.end,
       widthM: this.widthM,
+      curvature: this.curvatureM > 0 ? this.curvatureM : undefined,
+      waypoints: this.waypoints,
     });
-    // Recortar polígonos por la nueva calle → manzanos. Este efecto es
-    // destructivo sobre el drawSource; el snapshot pre del CommandStack
-    // permite deshacerlo.
     recomputeManzanos();
   }
 

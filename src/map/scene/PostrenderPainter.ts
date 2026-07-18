@@ -37,6 +37,29 @@ function streetsHash(streets: Array<{ id: string; start: [number, number]; end: 
  * El painter mantiene un cache de fillets y lotGroups para no recalcular
  * en cada frame — solo cuando features/calles cambian.
  */
+
+interface PlacedBox { x: number; y: number; w: number; h: number; }
+
+function isColliding(
+  ctx: CanvasRenderingContext2D,
+  coord: [number, number],
+  text: string,
+  boxes: PlacedBox[],
+  toPx: (c: number[]) => [number, number],
+): boolean {
+  const px = toPx(coord);
+  const m = ctx.measureText(text);
+  const w = Math.abs(m.actualBoundingBoxLeft) + Math.abs(m.actualBoundingBoxRight) + 12;
+  const h = Math.abs(m.actualBoundingBoxAscent) + Math.abs(m.actualBoundingBoxDescent) + 6;
+  const bx = px[0] - w / 2;
+  const by = px[1] - h / 2;
+  for (const b of boxes) {
+    if (bx < b.x + b.w && bx + w > b.x && by < b.y + b.h && by + h > b.y) return true;
+  }
+  boxes.push({ x: bx, y: by, w, h });
+  return false;
+}
+
 export class PostrenderPainter {
   private cache = {
     lastZoom: -1,
@@ -92,6 +115,7 @@ export class PostrenderPainter {
     };
 
     this.paintFeatureLabels(ctx, features, zoom, resolution, toPx);
+    this.paintManualCotaz(ctx, features, zoom, resolution, toPx);
     this.paintStreets(ctx, zoom, resolution, toPx);
     this.paintSnapGuides(ctx, resolution, toPx);
     this.paintLassoPreview(ctx, toPx);
@@ -123,8 +147,12 @@ export class PostrenderPainter {
     toPx: (c: number[]) => [number, number],
   ): void {
     const selectedIds = useSelectionStore.getState().selectedIds;
+    const placedBoxes: Array<{ x: number; y: number; w: number; h: number }> = [];
+
     for (let fi = 0; fi < features.length; fi++) {
       const feature = features[fi];
+      const kind = feature.get('kind') as string | undefined;
+      if (kind === 'cota') continue; // rendered by paintManualCotaz
       const geometry = feature.getGeometry();
       if (!geometry) continue;
 
@@ -146,14 +174,19 @@ export class PostrenderPainter {
         if (showMainLabel && labelPoint) {
           const areaM2 = feature.get('areaM2') as number | undefined;
           if (areaM2 !== undefined) {
-            if (isManzana) {
-              const mznColor = MZN_COLORS_STR[colorIdx % MZN_COLORS_STR.length];
-              drawMainMetricLabel(ctx, labelPoint, toPx, `Mzo. ${colorIdx + 1}`, true, {
-                extraLine: formatMetricArea(areaM2),
-                color: mznColor,
-              });
-            } else {
-              drawMainMetricLabel(ctx, labelPoint, toPx, formatMetricArea(areaM2), false);
+            const text = isManzana
+              ? `Mzo. ${colorIdx + 1}`
+              : formatMetricArea(areaM2);
+            if (!isColliding(ctx, labelPoint, text, placedBoxes, toPx)) {
+              if (isManzana) {
+                const mznColor = MZN_COLORS_STR[colorIdx % MZN_COLORS_STR.length];
+                drawMainMetricLabel(ctx, labelPoint, toPx, text, true, {
+                  extraLine: formatMetricArea(areaM2),
+                  color: mznColor,
+                });
+              } else {
+                drawMainMetricLabel(ctx, labelPoint, toPx, text, false);
+              }
             }
           }
         }
@@ -173,7 +206,10 @@ export class PostrenderPainter {
         if (showMainLabel && labelPoint) {
           const lengthM = feature.get('lengthM') as number | undefined;
           if (lengthM !== undefined) {
-            drawMainMetricLabel(ctx, labelPoint, toPx, formatMetricLength(lengthM), false);
+            const text = formatMetricLength(lengthM);
+            if (!isColliding(ctx, labelPoint, text, placedBoxes, toPx)) {
+              drawMainMetricLabel(ctx, labelPoint, toPx, text, false);
+            }
           }
         }
         drawSegmentLabels(
@@ -185,6 +221,111 @@ export class PostrenderPainter {
           toPx,
           false,
         );
+      }
+    }
+  }
+
+  private paintManualCotaz(
+    ctx: CanvasRenderingContext2D,
+    features: Array<Feature<Geometry>>,
+    zoom: number,
+    _resolution: number,
+    toPx: (c: number[]) => [number, number],
+  ): void {
+    if (zoom < 12) return;
+    const selectedIds = useSelectionStore.getState().selectedIds;
+
+    for (let fi = 0; fi < features.length; fi++) {
+      const feature = features[fi];
+      if (feature.get('kind') !== 'cota') continue;
+      const geom = feature.getGeometry();
+      if (!(geom instanceof LineString)) continue;
+
+      const originStart = feature.get('originStart') as [number, number] | undefined;
+      const originEnd = feature.get('originEnd') as [number, number] | undefined;
+      const value = feature.get('value') as number | undefined;
+      if (!originStart || !originEnd || value == null) continue;
+
+      const featureId = feature.getId();
+      const isSelected = featureId != null && selectedIds.has(featureId as string | number);
+
+      const dimCoords = geom.getCoordinates();
+      if (dimCoords.length < 2) continue;
+      const dimStart = dimCoords[0] as [number, number];
+      const dimEnd = dimCoords[dimCoords.length - 1] as [number, number];
+
+      const dsPx = toPx(dimStart);
+      const dePx = toPx(dimEnd);
+      const osPx = toPx(originStart);
+      const oePx = toPx(originEnd);
+
+      // Extension lines (dashed, from origins to dimension line)
+      ctx.save();
+      ctx.strokeStyle = isSelected ? 'rgba(0, 200, 255, 0.85)' : 'rgba(0, 180, 255, 0.45)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 3]);
+      ctx.beginPath();
+      ctx.moveTo(osPx[0], osPx[1]);
+      ctx.lineTo(dsPx[0], dsPx[1]);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(oePx[0], oePx[1]);
+      ctx.lineTo(dePx[0], dePx[1]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+
+      // Dimension line
+      ctx.save();
+      ctx.strokeStyle = isSelected ? 'rgba(0, 200, 255, 0.95)' : 'rgba(0, 180, 255, 0.75)';
+      ctx.lineWidth = isSelected ? 2.5 : 1.5;
+      ctx.beginPath();
+      ctx.moveTo(dsPx[0], dsPx[1]);
+      ctx.lineTo(dePx[0], dePx[1]);
+      ctx.stroke();
+      ctx.restore();
+
+      // Ticks (45-degree marks at each end)
+      const tdx = dePx[0] - dsPx[0], tdy = dePx[1] - dsPx[1];
+      const tlen = Math.hypot(tdx, tdy);
+      if (tlen > 1) {
+        const tux = tdx / tlen, tuy = tdy / tlen;
+        const tickSize = 6;
+        ctx.save();
+        ctx.strokeStyle = isSelected ? 'rgba(0, 200, 255, 0.95)' : 'rgba(0, 180, 255, 0.75)';
+        ctx.lineWidth = 1.5;
+        // Tick at start
+        ctx.beginPath();
+        ctx.moveTo(dsPx[0] + (tux - tuy) * tickSize, dsPx[1] + (tuy + tux) * tickSize);
+        ctx.lineTo(dsPx[0] - (tux - tuy) * tickSize, dsPx[1] - (tuy + tux) * tickSize);
+        ctx.stroke();
+        // Tick at end
+        ctx.beginPath();
+        ctx.moveTo(dePx[0] - (tux + tuy) * tickSize, dePx[1] - (tuy - tux) * tickSize);
+        ctx.lineTo(dePx[0] + (tux + tuy) * tickSize, dePx[1] + (tuy - tux) * tickSize);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // Value text centered above the dimension line
+      if (zoom > 13) {
+        const midPx: [number, number] = [(dsPx[0] + dePx[0]) / 2, (dsPx[1] + dePx[1]) / 2];
+        let ang = Math.atan2(tdy, tdx);
+        if (ang > Math.PI / 2 || ang < -Math.PI / 2) ang += Math.PI;
+        const fs = Math.max(9, Math.min(13, 10 * zoom / 18));
+        const text = formatMetricLength(value);
+        ctx.save();
+        ctx.translate(midPx[0], midPx[1]);
+        ctx.rotate(ang);
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+        ctx.font = `bold ${fs}px Courier New`;
+        const tw = ctx.measureText(text).width;
+        ctx.fillStyle = 'rgba(13, 17, 23, 0.72)';
+        ctx.fillRect(-tw / 2 - 4, -fs - 4, tw + 8, fs + 6);
+        ctx.fillStyle = isSelected ? '#00ccff' : '#00b4ff';
+        ctx.fillText(text, 0, -4);
+        ctx.restore();
       }
     }
   }
@@ -202,57 +343,86 @@ export class PostrenderPainter {
 
     for (let si = 0; si < streets.length; si++) {
       const s = streets[si];
-      const sPx = toPx(s.start);
-      const ePx = toPx(s.end);
-      const dx = ePx[0] - sPx[0], dy = ePx[1] - sPx[1];
-      const len = Math.hypot(dx, dy);
-      if (len < 1) continue;
-      const nx = -dy / len, ny = dx / len;
+      // Build full coordinate chain: start + waypoints + end
+      const allCoords: Array<[number, number]> = [s.start];
+      if (s.waypoints) {
+        for (const wp of s.waypoints) allCoords.push(wp);
+      }
+      allCoords.push(s.end);
+
+      const allPx = allCoords.map((c) => toPx(c));
       const halfPx = (s.widthM / 2) / resolution;
 
-      // Cuerpo de calle
+      // Compute perpendicular offsets at each vertex
+      const normals: Array<[number, number]> = [];
+      for (let i = 0; i < allPx.length; i++) {
+        const prev = allPx[Math.max(0, i - 1)];
+        const next = allPx[Math.min(allPx.length - 1, i + 1)];
+        const dx = next[0] - prev[0], dy = next[1] - prev[1];
+        const len = Math.hypot(dx, dy);
+        if (len < 0.1) {
+          normals.push(normals[i - 1] ?? [0, 1]);
+        } else {
+          normals.push([-dy / len, dx / len]);
+        }
+      }
+
+      // ── Cuerpo de calle (polygon strip) ──
       ctx.save();
       ctx.fillStyle = 'rgba(247, 129, 102, 0.08)';
       ctx.beginPath();
-      ctx.moveTo(sPx[0] + nx * halfPx, sPx[1] + ny * halfPx);
-      ctx.lineTo(ePx[0] + nx * halfPx, ePx[1] + ny * halfPx);
-      ctx.lineTo(ePx[0] - nx * halfPx, ePx[1] - ny * halfPx);
-      ctx.lineTo(sPx[0] - nx * halfPx, sPx[1] - ny * halfPx);
+      for (let i = 0; i < allPx.length; i++) {
+        const nx = normals[i][0] * halfPx, ny = normals[i][1] * halfPx;
+        if (i === 0) ctx.moveTo(allPx[i][0] + nx, allPx[i][1] + ny);
+        else ctx.lineTo(allPx[i][0] + nx, allPx[i][1] + ny);
+      }
+      for (let i = allPx.length - 1; i >= 0; i--) {
+        const nx = normals[i][0] * halfPx, ny = normals[i][1] * halfPx;
+        ctx.lineTo(allPx[i][0] - nx, allPx[i][1] - ny);
+      }
       ctx.closePath();
       ctx.fill();
       ctx.restore();
 
-      // Bordes sólidos
+      // ── Bordes sólidos ──
       ctx.save();
       ctx.strokeStyle = 'rgba(247, 129, 102, 0.55)';
       ctx.lineWidth = 1.5;
       ctx.lineCap = 'round';
       for (const side of [1, -1]) {
-        const ox = nx * halfPx * side;
-        const oy = ny * halfPx * side;
         ctx.beginPath();
-        ctx.moveTo(sPx[0] + ox, sPx[1] + oy);
-        ctx.lineTo(ePx[0] + ox, ePx[1] + oy);
+        for (let i = 0; i < allPx.length; i++) {
+          const nx = normals[i][0] * halfPx * side, ny = normals[i][1] * halfPx * side;
+          if (i === 0) ctx.moveTo(allPx[i][0] + nx, allPx[i][1] + ny);
+          else ctx.lineTo(allPx[i][0] + nx, allPx[i][1] + ny);
+        }
         ctx.stroke();
       }
       ctx.restore();
 
-      // Eje central punteado
+      // ── Eje central punteado ──
       ctx.save();
       ctx.strokeStyle = 'rgba(247, 129, 102, 0.75)';
       ctx.lineWidth = 1;
       ctx.setLineDash([7, 5]);
       ctx.beginPath();
-      ctx.moveTo(sPx[0], sPx[1]);
-      ctx.lineTo(ePx[0], ePx[1]);
+      for (let i = 0; i < allPx.length; i++) {
+        if (i === 0) ctx.moveTo(allPx[i][0], allPx[i][1]);
+        else ctx.lineTo(allPx[i][0], allPx[i][1]);
+      }
       ctx.stroke();
       ctx.setLineDash([]);
       ctx.restore();
 
       // Etiqueta de calle
       if (zoom > 12) {
-        const midPx: [number, number] = [(sPx[0] + ePx[0]) / 2, (sPx[1] + ePx[1]) / 2];
-        let ang = Math.atan2(dy, dx);
+        // Use the middle segment's midpoint and angle
+        const midIdx = Math.floor(allPx.length / 2);
+        const midA = allPx[Math.max(0, midIdx - 1)];
+        const midB = allPx[Math.min(allPx.length - 1, midIdx)];
+        const midPx: [number, number] = [(midA[0] + midB[0]) / 2, (midA[1] + midB[1]) / 2];
+        const ldx = midB[0] - midA[0], ldy = midB[1] - midA[1];
+        let ang = Math.atan2(ldy, ldx);
         if (ang > Math.PI / 2 || ang < -Math.PI / 2) ang += Math.PI;
         const fs1 = Math.max(9, Math.min(13, 10 * zoom / 18));
         const fs2 = Math.max(8, Math.min(11, 9 * zoom / 18));

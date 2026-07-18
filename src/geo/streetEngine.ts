@@ -82,7 +82,15 @@ function inSweep(ang: number, a: number, b: number): boolean {
   return rel <= sweep;
 }
 
-function getFilletRadiusForAngle(angleDeg: number): number {
+function getFilletRadiusForAngle(angleDeg: number, streetA?: Street, streetB?: Street): number {
+  // Per-street curvature override: if either street has a custom
+  // curvature value, use the smaller of the two (tighter fillet wins).
+  const overrides: number[] = [];
+  if (streetA?.curvature != null && streetA.curvature > 0) overrides.push(streetA.curvature);
+  if (streetB?.curvature != null && streetB.curvature > 0) overrides.push(streetB.curvature);
+  if (overrides.length > 0) return Math.min(...overrides);
+
+  // Default table
   if (angleDeg <= 60) return 2;
   if (angleDeg <= 95) return 3;
   if (angleDeg <= 180) return 4;
@@ -134,7 +142,7 @@ export function computeStreetFillets(streets: Street[]): StreetFillet[] {
           if (theta < 0.05 || theta > Math.PI - 0.05) continue;
 
           const cornerAngleDeg = (theta * 180) / Math.PI;
-          const filletM = getFilletRadiusForAngle(cornerAngleDeg);
+          const filletM = getFilletRadiusForAngle(cornerAngleDeg, sA, sB);
           const tol = halfA + halfB + filletM;
           if (!onSegment(ip, a0, a1, tol)) continue;
           if (!onSegment(ip, b0, b1, tol)) continue;

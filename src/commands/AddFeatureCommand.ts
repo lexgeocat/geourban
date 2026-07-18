@@ -2,6 +2,7 @@ import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
 import { Command, type CommandContext } from './Command';
 import { GeoUrbanFeatureKind } from '../core/objectModel';
+import { useLayersStore } from '../store/layersRegistryStore';
 
 let _idCounter = 0;
 function nextId(prefix: string): string {
@@ -9,21 +10,41 @@ function nextId(prefix: string): string {
   return `${prefix}-${Date.now()}-${_idCounter.toString(36)}`;
 }
 
+/**
+ * Resuelve el layerId para una feature nueva: usa el override, luego la
+ * capa activa, y por último la primera capa que coincida con el kind.
+ */
+export function resolveLayerId(override?: string, kind?: GeoUrbanFeatureKind): string | undefined {
+  if (override) return override;
+  const reg = useLayersStore.getState();
+  if (reg.activeLayerId) {
+    const active = reg.getById(reg.activeLayerId);
+    if (active) return active.id;
+  }
+  if (kind) {
+    const match = reg.getLayerForKind(kind);
+    if (match) return match.id;
+  }
+  return undefined;
+}
+
 export class AddFeatureCommand extends Command {
   readonly label: string;
   private readonly feature: Feature<Geometry>;
   private readonly mode: 'register' | 'claim';
   private readonly kind: GeoUrbanFeatureKind;
+  private readonly layerId?: string;
 
   constructor(
     feature: Feature<Geometry>,
-    options: { mode?: 'register' | 'claim'; label?: string; prefix?: string; kind?: GeoUrbanFeatureKind } = {},
+    options: { mode?: 'register' | 'claim'; label?: string; prefix?: string; kind?: GeoUrbanFeatureKind; layerId?: string } = {},
   ) {
     super();
-    const { mode = 'register', label, prefix = 'feat', kind = 'lote' } = options;
+    const { mode = 'register', label, prefix = 'feat', kind = 'lote', layerId } = options;
     this.mode = mode;
     this.feature = feature;
     this.kind = kind;
+    this.layerId = layerId;
     this.label = label ?? (mode === 'claim' ? 'Dibujar feature' : 'Agregar feature');
     if (mode === 'register' && feature.getId() == null) {
       feature.setId(nextId(prefix));
@@ -43,6 +64,8 @@ export class AddFeatureCommand extends Command {
       ctx.drawSource.addFeature(this.feature);
     }
     this.feature.set('kind', this.kind);
+    const resolvedLayerId = this.layerId ?? resolveLayerId(undefined, this.kind);
+    if (resolvedLayerId) this.feature.set('layerId', resolvedLayerId);
     ctx.drawSource.changed();
   }
 

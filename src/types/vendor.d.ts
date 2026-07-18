@@ -13,8 +13,17 @@ declare module 'sql.js' {
   export class Database {
     constructor(data?: ArrayLike<number> | Buffer | null);
     exec(sql: string): QueryExecResult[];
+    run(sql: string, params?: SqlValue[]): Database;
+    prepare(sql: string): Statement;
+    export(): Uint8Array;
     close(): void;
   }
+  export interface Statement {
+    run(params?: SqlValue[]): void;
+    free(): void;
+  }
+  // Helper type to work around Uint8Array generic variance
+  export type BufferLike = Uint8Array;
   export interface QueryExecResult {
     columns: string[];
     values: SqlValue[][];

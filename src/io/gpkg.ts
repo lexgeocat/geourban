@@ -210,6 +210,218 @@ function parseWkbGeometry(bytes: Uint8Array, offset: number): GeoJSONGeometry | 
   return readGeometry();
 }
 
-export async function exportGpkg(_project: GeoUrbanProject): Promise<never> {
-  throw new Error('Exportación GPKG pendiente de implementación completa (Fase 6)');
+export async function exportGpkg(project: GeoUrbanProject): Promise<void> {
+  const SQL = await getSql();
+  const db = new SQL.Database();
+
+  const features = project.data.features;
+  if (features.length === 0) {
+    db.close();
+    throw new Error('No hay features para exportar');
+  }
+
+  const srsId = 4326;
+  const tableName = 'geourban_features';
+
+  // --- GPKG metadata tables ---
+  db.run(`CREATE TABLE gpkg_contents (
+    table_name TEXT NOT NULL PRIMARY KEY,
+    data_type TEXT NOT NULL,
+    identifier TEXT,
+    description TEXT,
+    last_change DATETIME NOT NULL,
+    min_x DOUBLE, min_y DOUBLE, max_x DOUBLE, max_y DOUBLE,
+    srs_id INTEGER
+  )`);
+  db.run(`CREATE TABLE gpkg_geometry_columns (
+    table_name TEXT NOT NULL,
+    column_name TEXT NOT NULL,
+    geometry_type_name TEXT NOT NULL,
+    srs_id INTEGER NOT NULL,
+    z TINYINT NOT NULL,
+    m TINYINT NOT NULL,
+    UNIQUE (table_name, column_name)
+  )`);
+  db.run(`CREATE TABLE gpkg_spatial_ref_sys (
+    srs_id INTEGER NOT NULL PRIMARY KEY,
+    organization TEXT NOT NULL,
+    organization_coordsys_id INTEGER NOT NULL,
+    definition TEXT NOT NULL,
+    description TEXT
+  )`);
+  db.run(`INSERT INTO gpkg_spatial_ref_sys VALUES (
+    4326, 'EPSG', 4326,
+    'GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563]],PRIMEM["Greenwich",0],UNIT["degree",0.0174532925199433]]',
+    'WGS 84 geodetic'
+  )`);
+
+  // Detect geometry types present
+  const geomTypes = new Set<string>();
+  for (const f of features) {
+    if (f.geometry) geomTypes.add(f.geometry.type);
+  }
+  const gpkgGeomType = geomTypes.size === 1
+    ? [...geomTypes][0]
+    : 'GEOMETRY';
+
+  // --- Feature table ---
+  db.run(`CREATE TABLE "${tableName}" (
+    fid INTEGER PRIMARY KEY AUTOINCREMENT,
+    geom BLOB,
+    kind TEXT,
+    label TEXT
+  )`);
+  db.run(`INSERT INTO gpkg_contents VALUES (
+    '${tableName}', 'features', 'GeoUrban features', NULL,
+    datetime('now'), NULL, NULL, NULL, NULL, ${srsId}
+  )`);
+  db.run(`INSERT INTO gpkg_geometry_columns VALUES (
+    '${tableName}', 'geom', '${gpkgGeomType}', ${srsId}, 0, 0
+  )`);
+
+  // --- Insert features ---
+  const stmt = db.prepare(`INSERT INTO "${tableName}" (geom, kind, label) VALUES (?, ?, ?)`);
+  for (const f of features) {
+    if (!f.geometry) continue;
+    const gpbuf = geometryToGpkgBlob(f.geometry, srsId);
+    stmt.run([gpbuf, f.properties?.kind ?? null, f.properties?.label ?? null]);
+  }
+  stmt.free();
+
+  // --- Export as download ---
+  const rawBuffer: any = db.export();
+  const buf = new ArrayBuffer(rawBuffer.length);
+  const rawView = new Uint8Array(buf);
+  for (let i = 0; i < rawBuffer.length; i++) rawView[i] = rawBuffer[i];
+  db.close();
+
+  const blob = new Blob([buf], { type: 'application/geopackage+sqlite3' });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = `${project.name.replace(/[^a-zA-Z0-9_-]/g, '_')}.gpkg`;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
+/** Converts a GeoJSON geometry to a GPKG blob (GP header + WKB). */
+function geometryToGpkgBlob(geom: GeoJSONGeometry, srsId: number): Uint8Array {
+  const wkb = geometryToWkb(geom);
+  const header = new Uint8Array(8 + 4 * 8); // 8 bytes GP header + 4 doubles envelope (minx, maxx, miny, maxy)
+  const view = new DataView(header.buffer);
+  // GP header
+  header[0] = 0x47; // 'G'
+  header[1] = 0x50; // 'P'
+  header[2] = 0x00; // version
+  header[3] = 0x01; // flags: little endian, envelope indicator = 001 (x2) → minx, maxx, miny, maxy
+  view.setInt32(4, srsId, true);
+  // Envelope: compute bounding box
+  const bbox = geomToBbox(geom);
+  view.setFloat64(8, bbox[0], true);  // minx
+  view.setFloat64(16, bbox[1], true); // maxx
+  view.setFloat64(24, bbox[2], true); // miny
+  view.setFloat64(32, bbox[3], true); // maxy
+
+  const result = new Uint8Array(header.length + wkb.length);
+  result.set(header);
+  result.set(wkb, header.length);
+  return result;
+}
+
+/** Converts a GeoJSON geometry to WKB (little-endian). */
+function geometryToWkb(geom: GeoJSONGeometry): Uint8Array {
+  const le = true;
+  const chunks: Uint8Array[] = [];
+
+  function pushUint8(v: number) { const a = new Uint8Array(1); a[0] = v; chunks.push(a); }
+  function pushUint32(v: number) { const a = new Uint8Array(4); new DataView(a.buffer).setUint32(0, v, le); chunks.push(a); }
+  function pushFloat64(v: number) { const a = new Uint8Array(8); new DataView(a.buffer).setFloat64(0, v, le); chunks.push(a); }
+  function pushCoords2D(coords: [number, number][]) {
+    pushUint32(coords.length);
+    for (const c of coords) { pushFloat64(c[0]); pushFloat64(c[1]); }
+  }
+
+  switch (geom.type) {
+    case 'Point': {
+      pushUint8(1); pushUint32(1);
+      pushFloat64((geom.coordinates as [number, number])[0]);
+      pushFloat64((geom.coordinates as [number, number])[1]);
+      break;
+    }
+    case 'LineString': {
+      pushUint8(1); pushUint32(2);
+      pushCoords2D(geom.coordinates as [number, number][]);
+      break;
+    }
+    case 'Polygon': {
+      pushUint8(1); pushUint32(3);
+      const rings = geom.coordinates as [number, number][][];
+      pushUint32(rings.length);
+      for (const ring of rings) pushCoords2D(ring);
+      break;
+    }
+    case 'MultiPoint': {
+      pushUint8(1); pushUint32(4);
+      const pts = geom.coordinates as [number, number][];
+      pushUint32(pts.length);
+      for (const p of pts) {
+        const ptGeom: GeoJSONGeometry = { type: 'Point', coordinates: p };
+        const ptWkb = geometryToWkb(ptGeom);
+        chunks.push(ptWkb);
+      }
+      break;
+    }
+    case 'MultiLineString': {
+      pushUint8(1); pushUint32(5);
+      const lines = geom.coordinates as [number, number][][];
+      pushUint32(lines.length);
+      for (const line of lines) {
+        const lsGeom: GeoJSONGeometry = { type: 'LineString', coordinates: line };
+        const lsWkb = geometryToWkb(lsGeom);
+        chunks.push(lsWkb);
+      }
+      break;
+    }
+    case 'MultiPolygon': {
+      pushUint8(1); pushUint32(6);
+      const polys = geom.coordinates as [number, number][][][];
+      pushUint32(polys.length);
+      for (const poly of polys) {
+        const polyGeom: GeoJSONGeometry = { type: 'Polygon', coordinates: poly };
+        const polyWkb = geometryToWkb(polyGeom);
+        chunks.push(polyWkb);
+      }
+      break;
+    }
+  }
+
+  const total = chunks.reduce((s, c) => s + c.length, 0);
+  const result = new Uint8Array(total);
+  let offset = 0;
+  for (const c of chunks) { result.set(c, offset); offset += c.length; }
+  return result;
+}
+
+/** Computes [minx, maxx, miny, maxy] bounding box from a GeoJSON geometry. */
+function geomToBbox(geom: GeoJSONGeometry): [number, number, number, number] {
+  let minx = Infinity, maxx = -Infinity, miny = Infinity, maxy = -Infinity;
+  function processCoord(c: number[]) {
+    if (c[0] < minx) minx = c[0];
+    if (c[0] > maxx) maxx = c[0];
+    if (c[1] < miny) miny = c[1];
+    if (c[1] > maxy) maxy = c[1];
+  }
+  function processCoords(coords: number[][]) { for (const c of coords) processCoord(c); }
+  function processRings(rings: number[][][]) { for (const r of rings) processCoords(r); }
+
+  switch (geom.type) {
+    case 'Point': processCoord(geom.coordinates as number[]); break;
+    case 'LineString': processCoords(geom.coordinates as number[][]); break;
+    case 'Polygon': processRings(geom.coordinates as number[][][]); break;
+    case 'MultiPoint': processCoords(geom.coordinates as number[][]); break;
+    case 'MultiLineString': for (const l of geom.coordinates as number[][][]) processCoords(l); break;
+    case 'MultiPolygon': for (const p of geom.coordinates as number[][][][]) processRings(p); break;
+  }
+  if (!isFinite(minx)) return [0, 0, 0, 0];
+  return [minx, maxx, miny, maxy];
 }

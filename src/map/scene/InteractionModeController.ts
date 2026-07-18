@@ -33,6 +33,8 @@ import { useTransformBridge } from '../../store/transformBridge';
 import { TransformDragInteraction, TransformClickInteraction } from './TransformInteractions';
 import { LassoSelection, type LassoMode } from './LassoSelection';
 import { getFeatureKind } from '../../core/objectModel';
+import { DimensionInteraction } from './DimensionInteraction';
+import { useLayersStore } from '../../store/layersRegistryStore';
 import { pointInPoly } from '../../geo/polygonEngine';
 import type { PostrenderPainter } from './PostrenderPainter';
 export interface InteractionContext {
@@ -49,6 +51,7 @@ export class InteractionModeController {
   private ctx: InteractionContext;
   private selectInteraction: Select | null = null;
   private toClean: (() => void)[] = [];
+  activeDimInteraction: DimensionInteraction | null = null;
 
   /** Ref mutable para que SnapEngine (creado fuera) lea el Draw activo. */
   readonly activeDrawRef: { current: Draw | null } = { current: null };
@@ -70,7 +73,7 @@ export class InteractionModeController {
 // Cursor crosshair en modos de dibujo
     if (
       mode === 'polygon' || mode === 'line' ||
-      mode === 'rectangle' || mode === 'circle' || mode === 'arc' || mode === 'text'
+      mode === 'rectangle' || mode === 'circle' || mode === 'arc' || mode === 'text' || mode === 'cota'
     ) {
       viewport.setAttribute('data-cursor', mode);
     } else {
@@ -153,6 +156,13 @@ export class InteractionModeController {
 
     // === Modo SELECT / EDIT ===
     if (mode === 'select' || mode === 'edit') {
+      const isLayerLocked = (f: Feature<Geometry>): boolean => {
+        const layerId = f.get('layerId') as string | undefined;
+        if (!layerId) return false;
+        const layer = useLayersStore.getState().getById(layerId);
+        return !!layer?.locked;
+      };
+
       const select = new Select({
         layers: hitDetectionLayers,
         style: new Style({
@@ -161,6 +171,7 @@ export class InteractionModeController {
         }),
         multi: false,
         condition: (event) => clickCondition(event) && !pointerMove(event),
+        filter: (feature) => !isLayerLocked(feature as Feature<Geometry>),
       });
       wireSelectBehavior(select);
       map.addInteraction(select);
@@ -190,6 +201,11 @@ export class InteractionModeController {
               const k = getFeatureKind(f as Feature<Geometry>);
               // Si kind no se puede inferir, lo dejamos pasar (backwards compat)
               if (k !== null && !sel.isKindEnabled(k)) continue;
+              const layerId = f.get('layerId') as string | undefined;
+              if (layerId) {
+                const layer = useLayersStore.getState().getById(layerId);
+                if (layer?.locked) continue;
+              }
               const g = f.getGeometry();
               if (!g) continue;
               if (result.kind === 'rect') {
@@ -616,12 +632,27 @@ export class InteractionModeController {
       });
     }
 
+    // === Modo COTA (dimensión manual) ===
+    if (mode === 'cota') {
+      const dim = new DimensionInteraction(map, src, (feature) => {
+        void runCommand(
+          new AddFeatureCommand(feature, { mode: 'claim', label: 'Cota manual' }),
+        );
+        refreshLayers();
+      });
+      this.activeDimInteraction = dim;
+      const dimCleanup = dim.install();
+      this.toClean.push(() => {
+        dimCleanup();
+        if (this.activeDimInteraction === dim) this.activeDimInteraction = null;
+      });
+    }
+
     // === Modo STREET ===
     if (mode === 'street') {
       const draw = new Draw({
         source: this.ctx.streetSource,
         type: 'LineString',
-        maxPoints: 2,
         style: new Style({
           stroke: new Stroke({
             color: 'rgba(255, 166, 87, 0.95)',
@@ -640,12 +671,13 @@ export class InteractionModeController {
         if (coords.length < 2) return;
 
         const streetStore = useStreetStore.getState();
+        const start = coords[0] as [number, number];
+        const end = coords[coords.length - 1] as [number, number];
+        const waypoints = coords.length > 2
+          ? (coords.slice(1, -1) as Array<[number, number]>)
+          : undefined;
         void runCommand(
-          new AddStreetCommand(
-            coords[0] as [number, number],
-            coords[coords.length - 1] as [number, number],
-            streetStore.defaultWidthM,
-          ),
+          new AddStreetCommand(start, end, streetStore.defaultWidthM, waypoints, streetStore.defaultCurvatureM),
         );
 
         this.ctx.streetSource?.changed();
@@ -797,5 +829,6 @@ export class InteractionModeController {
       this.selectInteraction = null;
     }
     this.activeDrawRef.current = null;
+    this.activeDimInteraction = null;
   }
 }
