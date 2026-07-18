@@ -28,6 +28,8 @@ import { ModifyGeometryCommand } from '../../commands/ModifyGeometryCommand';
 import { AddStreetCommand } from '../../commands/AddStreetCommand';
 import { updateFeatureMetrics } from '../../geo/metrics';
 import { createLiveDrawingLabelStyle } from '../styleFactory';
+import { useTransformBridge } from '../../store/transformBridge';
+import { TransformDragInteraction, TransformClickInteraction } from './TransformInteractions';
 export interface InteractionContext {
   map: Map;
   drawSource: VectorSource;
@@ -616,6 +618,89 @@ export class InteractionModeController {
       map.addInteraction(select);
       this.selectInteraction = select;
       this.toClean.push(() => map.removeInteraction(select));
+    }
+
+    // === Modo ROTATE: drag desde un anchor, ángulo = atan2 del cursor ===
+    if (mode === 'rotate') {
+      const handler = useTransformBridge.getState().getHandler();
+      if (handler && handler.kind === 'rotate') {
+        const transformDrag = new TransformDragInteraction({
+          map,
+          mode: 'rotate',
+          onComplete: (angle, anchor) => {
+            const h = useTransformBridge.getState().getHandler();
+            if (h && h.kind === 'rotate') {
+              h.apply(angle, anchor);
+            }
+            useTransformBridge.getState().setHandler(null);
+          },
+          onCancel: () => {
+            const h = useTransformBridge.getState().getHandler();
+            if (h) h.cancel();
+            useTransformBridge.getState().setHandler(null);
+          },
+        });
+        map.addInteraction(transformDrag);
+        this.toClean.push(() => map.removeInteraction(transformDrag));
+        this.toClean.push(() => {
+          useTransformBridge.getState().setHandler(null);
+        });
+      }
+    }
+
+    // === Modo SCALE: drag desde un anchor, factor = 1 + dist/50 ===
+    if (mode === 'scale') {
+      const handler = useTransformBridge.getState().getHandler();
+      if (handler && handler.kind === 'scale') {
+        const transformDrag = new TransformDragInteraction({
+          map,
+          mode: 'scale',
+          onComplete: (factor, anchor) => {
+            const h = useTransformBridge.getState().getHandler();
+            if (h && h.kind === 'scale') {
+              h.apply(factor, anchor);
+            }
+            useTransformBridge.getState().setHandler(null);
+          },
+          onCancel: () => {
+            const h = useTransformBridge.getState().getHandler();
+            if (h) h.cancel();
+            useTransformBridge.getState().setHandler(null);
+          },
+        });
+        map.addInteraction(transformDrag);
+        this.toClean.push(() => map.removeInteraction(transformDrag));
+        this.toClean.push(() => {
+          useTransformBridge.getState().setHandler(null);
+        });
+      }
+    }
+
+    // === Modo MIRROR: 2 clicks definen el eje de reflexión ===
+    if (mode === 'mirror') {
+      const handler = useTransformBridge.getState().getHandler();
+      if (handler && handler.kind === 'mirror') {
+        const transformClick = new TransformClickInteraction({
+          map,
+          onComplete: (a, b) => {
+            const h = useTransformBridge.getState().getHandler();
+            if (h && h.kind === 'mirror') {
+              h.apply(a, b);
+            }
+            useTransformBridge.getState().setHandler(null);
+          },
+          onCancel: () => {
+            const h = useTransformBridge.getState().getHandler();
+            if (h) h.cancel();
+            useTransformBridge.getState().setHandler(null);
+          },
+        });
+        map.addInteraction(transformClick);
+        this.toClean.push(() => map.removeInteraction(transformClick));
+        this.toClean.push(() => {
+          useTransformBridge.getState().setHandler(null);
+        });
+      }
     }
 
     // Guarda cleanup + cursor para restore

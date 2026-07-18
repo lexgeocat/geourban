@@ -9,8 +9,11 @@ export type DrawMode =
   | 'rectangle'  // dibuja rectángulo por 2 esquinas (atajo R)
   | 'circle'     // dibuja círculo por centro+radio (atajo C)
   | 'arc'        // dibuja arco de 3 puntos (atajo A)
-  | 'text'       // inserta texto (atajo T — reasignado de street; ver Toolbar)
+  | 'text'       // inserta texto (atajo X)
   | 'street'     // traza calle de 2 puntos (atajo S)
+  | 'rotate'     // edita selección: rotar arrastrando (atajo H)
+  | 'scale'      // edita selección: escalar arrastrando (atajo K)
+  | 'mirror'     // edita selección: reflejar sobre 2 puntos (atajo M)
   | 'erase'
   | 'edit'
   | 'none';

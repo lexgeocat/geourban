@@ -6,6 +6,7 @@ import { useSelectionStore } from '../store/selectionStore';
 import { useSnapSettingsStore } from '../store/snapSettingsStore';
 import { DeleteFeaturesCommand } from '../commands/DeleteFeaturesCommand';
 import { runCommand } from '../commands/CommandStack';
+import { copySelected } from '../commands/editOperations';
 
 // No se disparan si el foco esta en un input/textarea/contentEditable
 
@@ -55,6 +56,13 @@ export function useKeyboardShortcuts() {
         return;
       }
 
+      // Ctrl/Cmd + D: copiar selección
+      if (ctrlOrCmd && (key === 'd' || key === 'D')) {
+        e.preventDefault();
+        void copySelected();
+        return;
+      }
+
       // Delete / Backspace: borrar seleccion (via comando)
       if (key === 'Delete' || key === 'Backspace') {
         e.preventDefault();
@@ -90,6 +98,9 @@ export function useKeyboardShortcuts() {
         a: 'arc',
         x: 'text',
         s: 'street',
+        h: 'rotate',
+        k: 'scale',
+        m: 'mirror',
         e: 'erase',
       };
       const next = map[lower];

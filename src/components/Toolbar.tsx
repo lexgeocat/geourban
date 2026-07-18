@@ -6,6 +6,8 @@ import { useSelectionStore } from '../store/selectionStore';
 import { useSubdivisionStore } from '../store/subdivisionStore';
 import { useStreetStore } from '../store/streetStore';
 import { GenerateLotsCommand } from '../commands/GenerateLotsCommand';
+import { useTransformBridge } from '../store/transformBridge';
+import { copySelected, rotateSelected, scaleSelected, mirrorSelected } from '../commands/editOperations';
 
 /* ─── SVG Icon Components (inline, no dependencies) ─── */
 
@@ -239,6 +241,65 @@ const IconText = () => (
   </svg>
 );
 
+const IconCopy = () => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <rect x="9" y="9" width="13" height="13" rx="2" />
+    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+  </svg>
+);
+
+const IconRotate = () => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <polyline points="23 4 23 10 17 10" />
+    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+  </svg>
+);
+
+const IconScale = () => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <polyline points="15 3 21 3 21 9" />
+    <polyline points="9 21 3 21 3 15" />
+    <line x1="21" y1="3" x2="14" y2="10" />
+    <line x1="3" y1="21" x2="10" y2="14" />
+  </svg>
+);
+
+const IconMirror = () => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <line x1="12" y1="3" x2="12" y2="21" />
+    <path d="M3 8h7a4 4 0 0 1 0 8H3" />
+    <path d="M14 8h7a4 4 0 0 1 0 8h-7" />
+  </svg>
+);
+
 /* ─── Tool definitions ─── */
 
 type ToolDef = {
@@ -467,6 +528,65 @@ export default function Toolbar() {
     setMode('edit');
   };
 
+  // ─── Edit Engine: Copy / Rotate / Scale / Mirror (Fase 3) ───
+
+  const handleCopy = async () => {
+    const ok = await copySelected();
+    if (!ok) {
+      alert('Seleccioná al menos un feature para copiar.');
+    }
+  };
+
+  const handleRotate = () => {
+    const features = useSelectionStore.getState().selectedIds.size;
+    if (features === 0) {
+      alert('Seleccioná al menos un feature para rotar.');
+      return;
+    }
+    // Registrar el bridge ANTES de cambiar el modo, así el
+    // InteractionModeController ya lo encuentra al activarse.
+    useTransformBridge.getState().setHandler({
+      kind: 'rotate',
+      apply: async (angle, anchor) => {
+        await rotateSelected(angle, anchor);
+      },
+      cancel: () => setMode('select'),
+    });
+    setMode('rotate');
+  };
+
+  const handleScale = () => {
+    const features = useSelectionStore.getState().selectedIds.size;
+    if (features === 0) {
+      alert('Seleccioná al menos un feature para escalar.');
+      return;
+    }
+    useTransformBridge.getState().setHandler({
+      kind: 'scale',
+      apply: async (factor, anchor) => {
+        await scaleSelected(factor, anchor);
+      },
+      cancel: () => setMode('select'),
+    });
+    setMode('scale');
+  };
+
+  const handleMirror = () => {
+    const features = useSelectionStore.getState().selectedIds.size;
+    if (features === 0) {
+      alert('Seleccioná al menos un feature para reflejar.');
+      return;
+    }
+    useTransformBridge.getState().setHandler({
+      kind: 'mirror',
+      apply: async (a, b) => {
+        await mirrorSelected(a, b);
+      },
+      cancel: () => setMode('select'),
+    });
+    setMode('mirror');
+  };
+
   const tooltip = (txt: string, suffix = ' (Del)') => `${txt}${suffix}`;
 
   return (
@@ -539,6 +659,62 @@ export default function Toolbar() {
         aria-label="Editar vértices"
       >
         <IconEdit />
+      </button>
+
+      <div className="cad-separator" />
+
+      {/* Edit Engine Fase 3: Copy / Rotate / Scale / Mirror */}
+      <button
+        onClick={handleCopy}
+        disabled={selectedCount === 0}
+        className={`cad-icon-btn cad-tooltip ${selectedCount === 0 ? 'disabled' : ''}`}
+        data-tooltip={
+          selectedCount > 0
+            ? `Copiar ${selectedCount} seleccionado${selectedCount > 1 ? 's' : ''} (Ctrl+D)`
+            : 'Copiar seleccionados (Ctrl+D)'
+        }
+        aria-label="Copiar selección"
+      >
+        <IconCopy />
+      </button>
+      <button
+        onClick={handleRotate}
+        disabled={selectedCount === 0 || mode === 'rotate'}
+        className={`cad-icon-btn cad-tooltip ${selectedCount === 0 || mode === 'rotate' ? 'disabled' : ''} ${mode === 'rotate' ? 'active' : ''}`}
+        data-tooltip={
+          mode === 'rotate'
+            ? 'Arrastrá en el mapa para definir el ángulo'
+            : 'Rotar selección (H)'
+        }
+        aria-label="Rotar selección"
+      >
+        <IconRotate />
+      </button>
+      <button
+        onClick={handleScale}
+        disabled={selectedCount === 0 || mode === 'scale'}
+        className={`cad-icon-btn cad-tooltip ${selectedCount === 0 || mode === 'scale' ? 'disabled' : ''} ${mode === 'scale' ? 'active' : ''}`}
+        data-tooltip={
+          mode === 'scale'
+            ? 'Arrastrá en el mapa para definir el factor'
+            : 'Escalar selección (K)'
+        }
+        aria-label="Escalar selección"
+      >
+        <IconScale />
+      </button>
+      <button
+        onClick={handleMirror}
+        disabled={selectedCount === 0 || mode === 'mirror'}
+        className={`cad-icon-btn cad-tooltip ${selectedCount === 0 || mode === 'mirror' ? 'disabled' : ''} ${mode === 'mirror' ? 'active' : ''}`}
+        data-tooltip={
+          mode === 'mirror'
+            ? 'Click 2 puntos en el mapa: eje de reflexión'
+            : 'Reflejar selección (M)'
+        }
+        aria-label="Reflejar selección"
+      >
+        <IconMirror />
       </button>
 
       <div className="cad-separator" />
