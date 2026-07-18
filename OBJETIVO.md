@@ -6,8 +6,6 @@ GeoUrban será una plataforma CAD/GIS especializada en diseño
 planimétrico urbanístico.
 
 - **Desktop:** producto principal.
-- **Web (GitHub Pages):** versión demostrativa utilizando el mismo
-  núcleo.
 
 ---
 
@@ -17,8 +15,6 @@ planimétrico urbanístico.
                     GEOURBAN PLATFORM
 
                     Desktop (Principal)
-                           │
-                    Web (Demo GitHub)
                            │
 ──────────────────────────────────────────────────────
                     CORE ENGINE
@@ -282,8 +278,6 @@ de superficies.
 
 Desktop: - SQLite - GeoPackage
 
-Web: - JSON - IndexedDB - LocalStorage
-
 # Stack Tecnológico
 
 Componente Tecnología
@@ -300,7 +294,6 @@ Geometría CGAL
 Índice espacial RBush
 Base de datos SQLite + GeoPackage
 Desktop Tauri
-Web GitHub Pages
 PDF pdf-lib
 DXF Motor propio
 
