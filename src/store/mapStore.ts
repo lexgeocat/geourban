@@ -5,7 +5,9 @@ import VectorSource from 'ol/source/Vector.js';
 import GeoJSON from 'ol/format/GeoJSON.js';
 import { extend as extendExtent, Extent } from 'ol/extent.js';
 import { refreshSourceMetrics } from '../geo/metrics';
-import { clipPolygonByAllStreets, type Pt } from '../geo/polygonEngine';
+import { clipPolygonByAllStreets, type Pt, clipHalfPlane } from '../geo/polygonEngine';
+import { getStreetSegments } from '../geo/curveClipping';
+import { computeStreetFillets, type StreetFillet, filletArcPoints } from '../geo/streetEngine';
 import { useSelectionStore } from './selectionStore';
 import { useStreetStore } from './streetStore';
 import { validateTopologyInWorker } from '../workers/geoWorkerClient';
@@ -195,16 +197,57 @@ export function recomputeManzanos() {
 
   if (polygonsToClip.length === 0) return;
 
-  const streetData = streets.map((s) => ({ start: s.start, end: s.end, widthM: s.widthM }));
+  // Expandir calles curvas (waypoints) en segmentos individuales para el clipping
+  const streetSegments = streets.flatMap((s) => getStreetSegments(s));
 
   for (const { feature, pts } of polygonsToClip) {
-    const manzanos = clipPolygonByAllStreets(pts, streetData);
+    const manzanos = clipPolygonByAllStreets(pts, streetSegments);
     if (manzanos.length === 1 && manzanos[0] === pts) continue;
+
+    // ─── Aplicar fillets (ochavas) como recortes reales ───
+    const fillets = computeStreetFillets(streets);
+    let manzanosConFillets = manzanos;
+
+    if (fillets.length > 0) {
+      const filletPolys: Pt[][] = [];
+      for (const fillet of fillets) {
+        const arcPts = filletArcPoints(fillet, 16);
+        if (arcPts.length >= 3) {
+          const closed = [...arcPts];
+          if (closed[0][0] !== closed[closed.length - 1][0] || closed[0][1] !== closed[closed.length - 1][1]) {
+            closed.push(closed[0]);
+          }
+          filletPolys.push(closed);
+        }
+      }
+
+      if (filletPolys.length > 0) {
+        for (const filletPoly of filletPolys) {
+          const newManzanos: Pt[][] = [];
+          for (const mzn of manzanosConFillets) {
+            let current = mzn;
+            const n = filletPoly.length;
+            for (let i = 0; i < n; i++) {
+              const a = filletPoly[i];
+              const b = filletPoly[(i + 1) % n];
+              const center = filletPoly[0];
+              const side = (b[0] - a[0]) * (center[1] - a[1]) - (b[1] - a[1]) * (center[0] - a[0]);
+              current = clipHalfPlane(current, a, b, side > 0 ? 1 : -1);
+              if (current.length < 3) break;
+            }
+            if (current.length >= 3) {
+              newManzanos.push(current);
+            }
+          }
+          manzanosConFillets = newManzanos;
+        }
+      }
+    }
 
     src.removeFeature(feature);
 
-    for (let i = 0; i < manzanos.length; i++) {
-      const ring = manzanos[i];
+    for (let i = 0; i < manzanosConFillets.length; i++) {
+      const ring = manzanosConFillets[i];
       if (ring.length < 3) continue;
       const closedRing = [...ring];
       if (closedRing[0][0] !== closedRing[closedRing.length - 1][0] ||
@@ -231,7 +274,4 @@ export function recomputeManzanos() {
 
   refreshSourceMetrics(src);
   src.changed();
-  // NOTA: el snapshot del historial lo registra CommandStack en
-  // AddStreetCommand.execute. Esta función ya no debe llamar a
-  // pushState directamente.
 }

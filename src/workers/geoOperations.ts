@@ -43,18 +43,30 @@ export type ValidateRequest = {
   type: 'validate';
   features: FeatureCollection;
 };
+export type FindOverlapsRequest = {
+  type: 'findOverlaps';
+  features: FeatureCollection;
+};
+export type FindGapsRequest = {
+  type: 'findGaps';
+  features: FeatureCollection;
+};
 
 export type GeoWorkerRequest =
   | UnionRequest
   | MergeRequest
   | SubtractRequest
   | IntersectRequest
-  | ValidateRequest;
+  | ValidateRequest
+  | FindOverlapsRequest
+  | FindGapsRequest;
 
 export type GeoWorkerResponse =
   | { type: 'union' | 'merge' | 'intersect'; result: FeatureCollection; error?: string }
   | { type: 'subtract'; result: FeatureCollection; error?: string }
-  | { type: 'validate'; valid: boolean; issues: string[]; error?: string };
+  | { type: 'validate'; valid: boolean; issues: string[]; error?: string }
+  | { type: 'findOverlaps'; overlaps: Array<{ indexA: number; indexB: number; area: number }>; error?: string }
+  | { type: 'findGaps'; gaps: FeatureCollection; error?: string };
 
 /* ---------- Helpers ---------- */
 
@@ -157,6 +169,63 @@ export function validateTopology(collection: FeatureCollection): {
   return { valid: issues.length === 0, issues };
 }
 
+/* ---------- NEW: Overlaps & Gaps ---------- */
+
+export function findOverlaps(collection: FeatureCollection): Array<{ indexA: number; indexB: number; area: number }> {
+  const overlaps: Array<{ indexA: number; indexB: number; area: number }> = [];
+  const items = readAllGeometries(collection);
+
+  for (let i = 0; i < items.length; i++) {
+    for (let j = i + 1; j < items.length; j++) {
+      try {
+        const intersection = OverlayOp.intersection(items[i].geom, items[j].geom);
+        if (!intersection.isEmpty()) {
+          const area = intersection.getArea();
+          if (area > 0.01) { // umbral para evitar falsos positivos numéricos
+            overlaps.push({ indexA: items[i].index, indexB: items[j].index, area });
+          }
+        }
+      } catch {
+        // ignorar errores de topología en pares específicos
+      }
+    }
+  }
+
+  return overlaps;
+}
+
+export function findGaps(collection: FeatureCollection): FeatureCollection {
+  // Unir todos los polígonos del mismo kind 'manzana'
+  const manzanaFeatures = collection.features.filter(f =>
+    (f.properties as Record<string, unknown>)?.type === 'manzana' ||
+    (f.properties as Record<string, unknown>)?.kind === 'manzana'
+  );
+  const filteredCollection: FeatureCollection = { type: 'FeatureCollection', features: manzanaFeatures };
+  const items = readAllGeometries(filteredCollection);
+
+  if (items.length === 0) {
+    return { type: 'FeatureCollection', features: [] };
+  }
+
+  // Unión de todos los manzanos
+  let union = items[0].geom;
+  for (let i = 1; i < items.length; i++) {
+    union = OverlayOp.union(union, items[i].geom);
+  }
+
+  // Envolvente convexa de la unión
+  const convexHull = union.convexHull();
+
+  // Huecos = envolvente - unión
+  const gaps = OverlayOp.difference(convexHull, union);
+
+  if (gaps.isEmpty()) {
+    return { type: 'FeatureCollection', features: [] };
+  }
+
+  return writeToCollection(gaps);
+}
+
 /* ---------- Dispatcher ---------- */
 
 export function handleGeoWorkerRequest(request: GeoWorkerRequest): GeoWorkerResponse {
@@ -176,6 +245,16 @@ export function handleGeoWorkerRequest(request: GeoWorkerRequest): GeoWorkerResp
         const v = validateTopology(request.features);
         return { type: 'validate', valid: v.valid, issues: v.issues };
       }
+      case 'findOverlaps': {
+        const overlaps = findOverlaps(request.features);
+        return { type: 'findOverlaps', overlaps };
+      }
+      case 'findGaps': {
+        const gaps = findGaps(request.features);
+        return { type: 'findGaps', gaps };
+      }
+      default:
+        throw new Error(`Unknown request type: ${(request as any).type}`);
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -194,6 +273,12 @@ export function handleGeoWorkerRequest(request: GeoWorkerRequest): GeoWorkerResp
         };
       case 'validate':
         return { type: 'validate', valid: false, issues: [], error: message };
+      case 'findOverlaps':
+        return { type: 'findOverlaps', overlaps: [], error: message };
+      case 'findGaps':
+        return { type: 'findGaps', gaps: { type: 'FeatureCollection', features: [] }, error: message };
+      default:
+        throw new Error(`Unknown request type in catch: ${(request as any).type}`);
     }
   }
 }

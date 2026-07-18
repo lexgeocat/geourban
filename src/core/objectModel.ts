@@ -11,6 +11,17 @@ export type GeoUrbanFeatureKind =
   | 'texto'
   | 'cota';
 
+export interface Layer {
+  id: string;
+  name: string;
+  kind: string;
+  zIndex: number;
+  color: string;
+  visible: boolean;
+  locked: boolean;
+  opacity: number;
+}
+
 export interface BaseFeatureProps {
   kind: GeoUrbanFeatureKind;
   createdAt: string;

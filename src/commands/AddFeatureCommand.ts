@@ -1,6 +1,7 @@
 import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
 import { Command, type CommandContext } from './Command';
+import { GeoUrbanFeatureKind } from '../core/objectModel';
 
 let _idCounter = 0;
 function nextId(prefix: string): string {
@@ -8,31 +9,21 @@ function nextId(prefix: string): string {
   return `${prefix}-${Date.now()}-${_idCounter.toString(36)}`;
 }
 
-/**
- * Agrega un feature al drawSource.
- *
- * Modos:
- *  - `register` (default): `execute` agrega el feature al source. Uso
- *    normal desde código que construye un feature y lo quiere agregar
- *    pasando por el CommandStack.
- *  - `claim`: el feature YA fue agregado al source por fuera (p.ej. la
- *    interacción `Draw` de OpenLayers); `execute` no lo vuelve a
- *    agregar, sólo deja que el CommandStack registre el snapshot para
- *    que undo funcione.
- */
 export class AddFeatureCommand extends Command {
   readonly label: string;
   private readonly feature: Feature<Geometry>;
   private readonly mode: 'register' | 'claim';
+  private readonly kind: GeoUrbanFeatureKind;
 
   constructor(
     feature: Feature<Geometry>,
-    options: { mode?: 'register' | 'claim'; label?: string; prefix?: string } = {},
+    options: { mode?: 'register' | 'claim'; label?: string; prefix?: string; kind?: GeoUrbanFeatureKind } = {},
   ) {
     super();
-    const { mode = 'register', label, prefix = 'feat' } = options;
+    const { mode = 'register', label, prefix = 'feat', kind = 'lote' } = options;
     this.mode = mode;
     this.feature = feature;
+    this.kind = kind;
     this.label = label ?? (mode === 'claim' ? 'Dibujar feature' : 'Agregar feature');
     if (mode === 'register' && feature.getId() == null) {
       feature.setId(nextId(prefix));
@@ -48,9 +39,10 @@ export class AddFeatureCommand extends Command {
       if (ctx.drawSource.getFeatureById(this.feature.getId() as string | number) == null) {
         ctx.drawSource.addFeature(this.feature);
       }
-      return;
+    } else {
+      ctx.drawSource.addFeature(this.feature);
     }
-    ctx.drawSource.addFeature(this.feature);
+    this.feature.set('kind', this.kind);
     ctx.drawSource.changed();
   }
 

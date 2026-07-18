@@ -122,6 +122,21 @@ const IconEraser = () => (
     <path d="m5 11 9 9" />
   </svg>
 );
+const IconGreen = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 22c5.5 0 10-4.5 10-10S17.5 2 12 2 2 6.5 2 12s4.5 10 10 10z" />
+    <path d="M12 8v8" />
+    <path d="M8 12h8" />
+  </svg>
+);
+const IconEquip = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3" y="3" width="18" height="18" rx="2" />
+    <path d="M9 9h6" />
+    <path d="M9 12h6" />
+    <path d="M9 15h4" />
+  </svg>
+);
 const IconEdit = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M12 20h9" />
@@ -198,6 +213,20 @@ const IconRoad = () => (
     <path d="M4 22L8 2" />
     <path d="M16 2l4 20" />
     <path d="M12 6v2M12 12v2M12 18v2" />
+  </svg>
+);
+const IconAlertTriangle = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+    <line x1="12" y1="9" x2="12" y2="13" />
+    <line x1="12" y1="17" x2="12.01" y2="17" />
+  </svg>
+);
+const IconAlertCircle = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="10" />
+    <line x1="12" y1="8" x2="12" y2="12" />
+    <line x1="12" y1="16" x2="12.01" y2="16" />
   </svg>
 );
 
@@ -320,6 +349,7 @@ export default function TopBar() {
 
   const mode = useDrawStore((s) => s.mode);
   const setMode = useDrawStore((s) => s.setMode);
+  const setAreaKind = useDrawStore((s) => s.setAreaKind);
 
   const baseMap = useLayerStore((s) => s.baseMap);
   const setBaseMap = useLayerStore((s) => s.setBaseMap);
@@ -452,6 +482,54 @@ export default function TopBar() {
       alert(err instanceof Error ? err.message : 'Error al fusionar');
     } finally {
       setMergeBusy(false);
+    }
+  };
+
+  const handleFindOverlaps = async () => {
+    const src = useMapStore.getState().drawSource;
+    if (!src) return;
+    try {
+      const GeoJSON = (await import('ol/format/GeoJSON')).default;
+      const format = new GeoJSON();
+      const features = src.getFeatures().map((f) => {
+        return format.writeFeatureObject(f, {
+          featureProjection: 'EPSG:3857',
+          dataProjection: 'EPSG:3857',
+        });
+      });
+      const { findOverlapsInWorker } = await import('../workers/geoWorkerClient');
+      const overlaps = await findOverlapsInWorker({ type: 'FeatureCollection', features });
+      if (overlaps.length > 0) {
+        alert(`Se detectaron ${overlaps.length} superposiciones:\n${overlaps.map((o: any) => `Lote ${o.indexA} ↔ Lote ${o.indexB}: ${o.area.toFixed(2)} m²`).join('\n')}`);
+      } else {
+        alert('No se detectaron superposiciones.');
+      }
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Error al validar superposiciones');
+    }
+  };
+
+  const handleFindGaps = async () => {
+    const src = useMapStore.getState().drawSource;
+    if (!src) return;
+    try {
+      const GeoJSON = (await import('ol/format/GeoJSON')).default;
+      const format = new GeoJSON();
+      const features = src.getFeatures().map((f) => {
+        return format.writeFeatureObject(f, {
+          featureProjection: 'EPSG:3857',
+          dataProjection: 'EPSG:3857',
+        });
+      });
+      const { findGapsInWorker } = await import('../workers/geoWorkerClient');
+      const gaps = await findGapsInWorker({ type: 'FeatureCollection', features });
+      if (gaps.features.length > 0) {
+        alert(`Se detectaron ${gaps.features.length} huecos.`);
+      } else {
+        alert('No se detectaron huecos.');
+      }
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Error al validar huecos');
     }
   };
 
@@ -889,6 +967,10 @@ export default function TopBar() {
                 <RibbonTool icon={<IconMerge />} label="Fusionar" disabled={selectedCount < 2 || mergeBusy} onClick={handleMergeSelected} />
                 <RibbonTool icon={<Trash2 />} label="Eliminar" disabled={selectedCount === 0} badge={selectedCount > 0 ? selectedCount : undefined} onClick={handleDeleteSelected} />
               </RibbonGroup>
+              <RibbonGroup label="Validación">
+                <RibbonTool icon={<IconAlertTriangle />} label="Overlaps" onClick={handleFindOverlaps} data-tooltip="Detectar superposiciones entre lotes/manzanos" />
+                <RibbonTool icon={<IconAlertCircle />} label="Huecos" onClick={handleFindGaps} data-tooltip="Detectar huecos entre manzanos" />
+              </RibbonGroup>
             </>
           )}
 
@@ -902,6 +984,20 @@ export default function TopBar() {
                 <RibbonTool mode="circle" icon={<IconCircle />} label="Círculo" shortcut="C" />
                 <RibbonTool mode="arc" icon={<IconArc />} label="Arco" shortcut="A" />
                 <RibbonTool mode="text" icon={<IconText />} label="Texto" shortcut="X" />
+                <RibbonTool
+                  icon={<IconGreen />}
+                  label="Área verde"
+                  shortcut="Shift+G"
+                  onClick={() => { setAreaKind('area_verde'); setMode('polygon'); }}
+                  data-tooltip="Crear área verde (Shift+G)"
+                />
+                <RibbonTool
+                  icon={<IconEquip />}
+                  label="Equipamiento"
+                  shortcut="Shift+E"
+                  onClick={() => { setAreaKind('equipamiento'); setMode('polygon'); }}
+                  data-tooltip="Crear equipamiento (Shift+E)"
+                />
               </RibbonGroup>
               <RibbonGroup label="Vialidad">
                 <RibbonTool mode="street" icon={<IconStreet />} label="Trazar calle" shortcut="S" active={mode === 'street'} />

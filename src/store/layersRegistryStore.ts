@@ -185,29 +185,10 @@ export const useLayersStore = create<LayerState>()(
 );
 
 // Inicializar el mapa de índices con las capas por defecto
-// Nota: Esto se ejecuta inmediatamente después de crear el store
-const initIndex = (store: ReturnType<typeof useLayersStore>) => {
+const initIndex = (store: typeof useLayersStore) => {
   const state = store.getState();
   state.index = new Map(
     state.layers.map((layer, idx) => [layer.id, idx])
   );
-  // No necesitamos llamar a set() aquí porque estamos modificando el estado directamente
-  // y el store ya está inmutable gracias a immer
 };
-// Ejecutar la inicialización
-// Inicializar el mapa de índices con las capas por defecto
-// Nota: Esto se ejecuta inmediatamente después de crear el store
-const initIndex = (store: ReturnType<typeof useLayersStore>) => {
-  const state = store.getState();
-  state.index = new Map(
-    state.layers.map((layer, idx) => [layer.id, idx])
-  );
-  // No necesitamos llamar a set() aquí porque estamos modificando el estado directamente
-  // y el store ya es inmutable gracias a immer
-};
-
-// Ejecutar la inicialización
-// Nota: No podemos acceder al store aquí directamente porque está siendo definido
-// La inicialización se hará en el componente que lo use primero, o podemos usar un middleware
-// Para simplificar, vamos a asumir que el primer acceso inicializará correctamente
-// Alternativamente, podemos inicializar las capas con sus índices correctos desde el principio
+// TODO: llamar initIndex(useLayersStore) tras creación del store

@@ -49,4 +49,20 @@ export async function validateTopologyInWorker(features: FeatureCollection) {
   return { valid: response.valid, issues: response.issues };
 }
 
+export async function findOverlapsInWorker(features: FeatureCollection) {
+  const response = await runWorker<{ type: 'findOverlaps'; overlaps: Array<{ indexA: number; indexB: number; area: number }> }>({
+    type: 'findOverlaps',
+    features,
+  });
+  return response.overlaps;
+}
+
+export async function findGapsInWorker(features: FeatureCollection) {
+  const response = await runWorker<{ type: 'findGaps'; gaps: FeatureCollection }>({
+    type: 'findGaps',
+    features,
+  });
+  return response.gaps;
+}
+
 

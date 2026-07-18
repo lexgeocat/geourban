@@ -67,9 +67,9 @@ export class InteractionModeController {
     const viewport = map.getViewport();
     const previousCursor = viewport.getAttribute('data-cursor');
 
-    // Cursor crosshair en modos de dibujo
+// Cursor crosshair en modos de dibujo
     if (
-      mode === 'polyline' || mode === 'polygon' || mode === 'line' ||
+      mode === 'polygon' || mode === 'line' ||
       mode === 'rectangle' || mode === 'circle' || mode === 'arc' || mode === 'text'
     ) {
       viewport.setAttribute('data-cursor', mode);
@@ -209,18 +209,18 @@ export class InteractionModeController {
                 if (!extentIntersects(ext, [minX, minY, maxX, maxY])) continue;
                 // Walk vértices, point-in-poly
                 let inside = false;
-                const coords = g.getCoordinates();
+                const coords = (g as any).getCoordinates();
                 const walk = (arr: unknown) => {
                   if (inside) return;
-                  if (typeof arr[0] === 'number') {
+                  if (Array.isArray(arr) && typeof arr[0] === 'number') {
                     const x = arr[0] as number;
                     const y = arr[1] as number;
                     if (pointInPoly(x, y, poly)) inside = true;
                     return;
                   }
-                  for (const c of arr as unknown[]) walk(c);
+                  if (Array.isArray(arr)) for (const c of arr) walk(c);
                 };
-                walk(coords as unknown);
+                walk(coords);
                 if (inside) candidates.push(f as Feature<Geometry>);
               }
             }
@@ -320,8 +320,8 @@ export class InteractionModeController {
       }
     }
 
-    // === Modo POLYGON / POLYLINE ===
-    if (mode === 'polygon' || mode === 'polyline') {
+    // === Modo POLYGON ===
+    if (mode === 'polygon') {
       const draw = new Draw({
         source: src,
         type: 'Polygon',
@@ -359,29 +359,6 @@ export class InteractionModeController {
               lineCap: 'round',
             }),
           });
-
-          const closeSnapStyle = (() => {
-            if (mode !== 'polyline') return null;
-            if (sketchCoords.length < 3) return null;
-            const first = sketchCoords[0];
-            const last = sketchCoords[sketchCoords.length - 1];
-            if (!first || !last) return null;
-            const resolution = map.getView().getResolution() ?? 1;
-            const closeRadiusMap = 12 * resolution;
-            const dx = first[0] - last[0];
-            const dy = first[1] - last[1];
-            if (Math.hypot(dx, dy) > closeRadiusMap) return null;
-            return new Style({
-              geometry: new Point(first as number[]),
-              image: new RegularShape({
-                points: 4,
-                radius: 10,
-                rotation: Math.PI / 4,
-                fill: new Fill({ color: 'rgba(6, 248, 19, 0.95)' }),
-                stroke: new Stroke({ color: '#0d1117', width: 2 }),
-              }),
-            });
-          })();
 
           const segmentLabels: Style[] = [];
           const skRes = map.getView().getResolution() ?? 1;
@@ -438,7 +415,7 @@ export class InteractionModeController {
             }
           }
 
-          return [lineStyle, vertexStyle, closeSnapStyle, ...segmentLabels].filter(
+          return [lineStyle, vertexStyle, ...segmentLabels].filter(
             (s): s is Style => s !== null
           );
         },
@@ -446,12 +423,10 @@ export class InteractionModeController {
 
       draw.on('drawend', (event) => {
         const feature = event.feature as Feature<Geometry>;
+        const areaKind = useDrawStore.getState().areaKind;
         void runCommand(
-          new AddFeatureCommand(feature, { mode: 'claim', label: 'Dibujar polígono' }),
+          new AddFeatureCommand(feature, { mode: 'claim', label: 'Dibujar polígono', kind: areaKind }),
         );
-        if (mode === 'polyline') {
-          useDrawStore.getState().setLastDrawnLineId(feature.getId() as string);
-        }
         updateFeatureMetrics(feature);
         refreshLayers();
       });
@@ -507,8 +482,9 @@ export class InteractionModeController {
       });
       draw.on('drawend', (event) => {
         const feature = event.feature as Feature<Geometry>;
+        const areaKind = useDrawStore.getState().areaKind;
         void runCommand(
-          new AddFeatureCommand(feature, { mode: 'claim', label: 'Dibujar rectángulo' }),
+          new AddFeatureCommand(feature, { mode: 'claim', label: 'Dibujar rectángulo', kind: areaKind }),
         );
         updateFeatureMetrics(feature);
         refreshLayers();
@@ -533,8 +509,9 @@ export class InteractionModeController {
       });
       draw.on('drawend', (event) => {
         const feature = event.feature as Feature<Geometry>;
+        const areaKind = useDrawStore.getState().areaKind;
         void runCommand(
-          new AddFeatureCommand(feature, { mode: 'claim', label: 'Dibujar círculo' }),
+          new AddFeatureCommand(feature, { mode: 'claim', label: 'Dibujar círculo', kind: areaKind }),
         );
         updateFeatureMetrics(feature);
         refreshLayers();
@@ -642,7 +619,7 @@ export class InteractionModeController {
     // === Modo STREET ===
     if (mode === 'street') {
       const draw = new Draw({
-        source: new VectorSource(),
+        source: this.ctx.streetSource,
         type: 'LineString',
         maxPoints: 2,
         style: new Style({

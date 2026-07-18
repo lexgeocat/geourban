@@ -321,28 +321,8 @@ export default function MapView() {
     // Snap de cierre de polígono: iman al primer vértice del sketch
     // activo cuando el cursor entra en el radio de cierre. Prioridad
     // absoluta sobre cualquier otro snap.
-    const getCloseTarget = (coordinate: number[]): number[] | null => {
-      if (useDrawStore.getState().mode !== 'polyline') return null;
-      const draw = interactionCtrl.activeDrawRef.current;
-      if (!draw) return null;
-      const overlaySrc = draw.getOverlay().getSource();
-      const sketch = overlaySrc?.getFeatures()[0];
-      const sketchGeom = sketch?.getGeometry();
-      if (!sketchGeom) return null;
-      const rings =
-        sketchGeom instanceof Polygon
-          ? sketchGeom.getCoordinates()
-          : sketchGeom instanceof LineString
-            ? [sketchGeom.getCoordinates()]
-            : [];
-      const ring = rings[0];
-      if (!ring || ring.length < 4) return null;
-      const first = ring[0] as number[];
-      const resolution = map.getView().getResolution() ?? 1;
-      const closeRadiusMap = 12 * resolution;
-      const dx = first[0] - coordinate[0];
-      const dy = first[1] - coordinate[1];
-      return Math.hypot(dx, dy) <= closeRadiusMap ? first : null;
+    const getCloseTarget = (_coordinate: number[]): number[] | null => {
+      return null;
     };
 
     const getEnabled = () => useDrawStore.getState().mode !== 'erase';
@@ -358,7 +338,7 @@ export default function MapView() {
       const mode = useDrawStore.getState().mode;
       // Modos de dibujo (Draw interaction): imantar SIEMPRE
       const drawModes = new Set([
-        'polyline', 'polygon', 'line', 'rectangle',
+        'polygon', 'line', 'rectangle',
         'circle', 'arc', 'street', 'text',
       ]);
       if (drawModes.has(mode)) return true;

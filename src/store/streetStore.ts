@@ -17,6 +17,8 @@ export interface Street {
   start: [number, number];
   end: [number, number];
   widthM: number;
+  curvature?: number; // override fillet radius
+  waypoints?: [[number, number]]; // multi-segment curve
   name: string;
 }
 

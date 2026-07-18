@@ -79,7 +79,7 @@ function side(pt: Pt, lp1: Pt, lp2: Pt): number {
 }
 
 /** Clip de polígono contra un semiplano definido por lp1→lp2 */
-function clipHalfPlane(pts: Pt[], lp1: Pt, lp2: Pt, keepSide: number): Pt[] {
+export function clipHalfPlane(pts: Pt[], lp1: Pt, lp2: Pt, keepSide: number): Pt[] {
   if (pts.length < 3) return [];
   const out: Pt[] = [];
   const n = pts.length;
