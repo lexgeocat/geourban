@@ -17,6 +17,7 @@ import type Geometry from 'ol/geom/Geometry.js';
 import { createBox, type GeometryFunction } from 'ol/interaction/Draw.js';
 import { arcFrom3Points, sampleArc } from '../../geo/arcMath';
 import { click as clickCondition, pointerMove } from 'ol/events/condition.js';
+import { intersects as extentIntersects } from 'ol/extent.js';
 import type { DrawMode } from '../../store/drawStore';
 import { useDrawStore } from '../../store/drawStore';
 import { useSelectionStore } from '../../store/selectionStore';
@@ -30,6 +31,10 @@ import { updateFeatureMetrics } from '../../geo/metrics';
 import { createLiveDrawingLabelStyle } from '../styleFactory';
 import { useTransformBridge } from '../../store/transformBridge';
 import { TransformDragInteraction, TransformClickInteraction } from './TransformInteractions';
+import { LassoSelection, type LassoMode } from './LassoSelection';
+import { getFeatureKind } from '../../core/objectModel';
+import { pointInPoly } from '../../geo/polygonEngine';
+import type { PostrenderPainter } from './PostrenderPainter';
 export interface InteractionContext {
   map: Map;
   drawSource: VectorSource;
@@ -37,6 +42,7 @@ export interface InteractionContext {
   drawLayer: WebGLVectorLayer;
   streetLayer: VectorLayer<VectorSource>;
   streetSource: VectorSource;
+  postrenderPainter?: PostrenderPainter;
 }
 
 export class InteractionModeController {
@@ -160,6 +166,90 @@ export class InteractionModeController {
       map.addInteraction(select);
       this.selectInteraction = select;
       this.toClean.push(() => map.removeInteraction(select));
+
+      // ─── Fase 4: Lasso / Rect selection ───
+      // Si el sub-modo es 'rect' o 'lasso' (no 'click'), agregamos
+      // una interacción de drag que arma un extent/polígono y filtra
+      // los features por el kindFilter.
+      const subMode = useSelectionStore.getState().selectMode;
+      if (subMode === 'rect' || subMode === 'lasso') {
+        const lassoMode: LassoMode = subMode;
+        const lasso = new LassoSelection({
+          map,
+          mode: lassoMode,
+          onComplete: (result) => {
+            // Limpia preview
+            this.ctx.postrenderPainter?.setLassoPreview(null);
+            // Calcula candidatos
+            const sel = useSelectionStore.getState();
+            const allFeatures = src.getFeatures();
+            const candidates: Array<Feature<Geometry>> = [];
+            for (const f of allFeatures) {
+              const id = f.getId();
+              if (id == null) continue;
+              const k = getFeatureKind(f as Feature<Geometry>);
+              // Si kind no se puede inferir, lo dejamos pasar (backwards compat)
+              if (k !== null && !sel.isKindEnabled(k)) continue;
+              const g = f.getGeometry();
+              if (!g) continue;
+              if (result.kind === 'rect') {
+                const ext = g.getExtent();
+                if (extentIntersects(ext, result.extent)) candidates.push(f as Feature<Geometry>);
+              } else {
+                const poly = result.polygon as [number, number][];
+                // Compute lasso extent for pre-filter
+                let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+                for (const p of poly) {
+                  if (p[0] < minX) minX = p[0];
+                  if (p[1] < minY) minY = p[1];
+                  if (p[0] > maxX) maxX = p[0];
+                  if (p[1] > maxY) maxY = p[1];
+                }
+                const ext = g.getExtent();
+                if (!extentIntersects(ext, [minX, minY, maxX, maxY])) continue;
+                // Walk vértices, point-in-poly
+                let inside = false;
+                const coords = g.getCoordinates();
+                const walk = (arr: unknown) => {
+                  if (inside) return;
+                  if (typeof arr[0] === 'number') {
+                    const x = arr[0] as number;
+                    const y = arr[1] as number;
+                    if (pointInPoly(x, y, poly)) inside = true;
+                    return;
+                  }
+                  for (const c of arr as unknown[]) walk(c);
+                };
+                walk(coords as unknown);
+                if (inside) candidates.push(f as Feature<Geometry>);
+              }
+            }
+
+            const ids = candidates
+              .map((f) => f.getId())
+              .filter((id): id is string | number => id != null);
+            useSelectionStore.getState().setSelection(ids, ids[0] ?? null);
+            refreshLayers();
+          },
+          onCancel: () => {
+            this.ctx.postrenderPainter?.setLassoPreview(null);
+            map.render();
+          },
+        });
+        map.addInteraction(lasso);
+        this.toClean.push(() => {
+          map.removeInteraction(lasso);
+          this.ctx.postrenderPainter?.setLassoPreview(null);
+        });
+        // Engancha el preview: el controller le pregunta a la
+        // interaction cuál es el estado actual del drag y lo empuja
+        // al postrender painter.
+        const onRender = () => {
+          this.ctx.postrenderPainter?.setLassoPreview(lasso.getPreview());
+        };
+        map.on('postrender', onRender);
+        this.toClean.push(() => map.un('postrender', onRender));
+      }
     }
 
     // === Modo EDIT: Modify + Translate ===

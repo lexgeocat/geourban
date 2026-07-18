@@ -94,6 +94,7 @@ export class PostrenderPainter {
     this.paintFeatureLabels(ctx, features, zoom, resolution, toPx);
     this.paintStreets(ctx, zoom, resolution, toPx);
     this.paintSnapGuides(ctx, resolution, toPx);
+    this.paintLassoPreview(ctx, toPx);
   }
 
   private updateCache(features: Array<Feature<Geometry>>, _zoom: number): void {
@@ -298,6 +299,62 @@ export class PostrenderPainter {
     // El guide lo inyecta el SnapEngine vía paintSnapGuide().
     if (!this.currentGuide) return;
     this.paintGuide(ctx, this.currentGuide, resolution);
+  }
+
+  /* ─── Lasso / Rect selection preview (Fase 4) ─── */
+  private currentLassoPreview: import('./LassoSelection').LassoPreview = null;
+
+  setLassoPreview(preview: import('./LassoSelection').LassoPreview): void {
+    this.currentLassoPreview = preview;
+    this.postrenderLayer.changed();
+  }
+
+  private paintLassoPreview(
+    ctx: CanvasRenderingContext2D,
+    toPx: (c: number[]) => [number, number],
+  ): void {
+    const preview = this.currentLassoPreview;
+    if (!preview) return;
+
+    ctx.save();
+    ctx.strokeStyle = 'rgba(0, 212, 255, 0.95)';
+    ctx.fillStyle = 'rgba(0, 212, 255, 0.10)';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([5, 3]);
+
+    if (preview.mode === 'rect') {
+      const a = toPx(preview.start);
+      const b = toPx(preview.current);
+      const x = Math.min(a[0], b[0]);
+      const y = Math.min(a[1], b[1]);
+      const w = Math.abs(b[0] - a[0]);
+      const h = Math.abs(b[1] - a[1]);
+      ctx.fillRect(x, y, w, h);
+      ctx.strokeRect(x, y, w, h);
+    } else if (preview.mode === 'lasso') {
+      const pts = preview.points;
+      if (pts.length > 0) {
+        ctx.beginPath();
+        const first = toPx(pts[0]);
+        ctx.moveTo(first[0], first[1]);
+        for (let i = 1; i < pts.length; i++) {
+          const p = toPx(pts[i]);
+          ctx.lineTo(p[0], p[1]);
+        }
+        // Cerramos visualmente con la posición actual del cursor
+        if (preview.current) {
+          const cur = toPx(preview.current);
+          ctx.lineTo(cur[0], cur[1]);
+        } else {
+          ctx.lineTo(first[0], first[1]);
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+      }
+    }
+    ctx.setLineDash([]);
+    ctx.restore();
   }
 
   private currentGuide: SnapGuideVisual | null = null;

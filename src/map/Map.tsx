@@ -281,6 +281,7 @@ export default function MapView() {
       drawLayer,
       streetLayer,
       streetSource: streetLayerSrc,
+      postrenderPainter,
     });
     interactionCtrlRef.current = interactionCtrl;
 
@@ -463,6 +464,17 @@ export default function MapView() {
       map.addInteraction(snapEngineRef.current);
     }
   }, [drawMode]);
+
+  // --- Re-activar interacciones cuando cambia selectMode (rect/lasso) ---
+  const selectMode = useSelectionStore((s) => s.selectMode);
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+    const mode = useDrawStore.getState().mode;
+    if (mode === 'select' || mode === 'edit') {
+      interactionCtrlRef.current?.activate(mode);
+    }
+  }, [selectMode]);
 
   return (
     <div

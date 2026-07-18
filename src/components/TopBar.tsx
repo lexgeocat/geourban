@@ -77,6 +77,17 @@ const IconRect = () => (
     <rect x="4" y="6" width="16" height="12" />
   </svg>
 );
+const IconRectDashed = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="4" y="6" width="16" height="12" strokeDasharray="3 2" />
+  </svg>
+);
+const IconLasso = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M4 18 Q12 4 20 18" strokeDasharray="3 2" />
+    <circle cx="4" cy="18" r="1.5" fill="currentColor" />
+  </svg>
+);
 const IconCircle = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <circle cx="12" cy="12" r="8" />
@@ -322,6 +333,8 @@ export default function TopBar() {
 
   const selectedCount = useSelectionStore((s) => s.selectedIds.size);
   const primarySelected = useSelectionStore((s) => s.primaryId !== null);
+  const selectMode = useSelectionStore((s) => s.selectMode);
+  const setSelectMode = useSelectionStore((s) => s.setSelectMode);
 
   const openSubdivision = useSubdivisionStore((s) => s.open);
   const defaultWidthM = useStreetStore((s) => s.defaultWidthM);
@@ -847,6 +860,20 @@ export default function TopBar() {
                   disabled={!primarySelected}
                   active={mode === 'edit'}
                   onClick={handleToggleEdit}
+                />
+                <RibbonTool
+                  icon={<IconRectDashed />}
+                  label="Rect"
+                  active={selectMode === 'rect'}
+                  onClick={() => { useDrawStore.getState().setMode('select'); setSelectMode('rect'); }}
+                  shortcut="Shft+R"
+                />
+                <RibbonTool
+                  icon={<IconLasso />}
+                  label="Lazo"
+                  active={selectMode === 'lasso'}
+                  onClick={() => { useDrawStore.getState().setMode('select'); setSelectMode('lasso'); }}
+                  shortcut="Shft+L"
                 />
               </RibbonGroup>
               <RibbonGroup label="Transformar">
