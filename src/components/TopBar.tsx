@@ -42,6 +42,11 @@ import {
   writeProjectFromOlFeatures,
   readOlFeaturesFromProject,
   type ExportFormat,
+  autosaveProject,
+  listProjectsDesktop,
+  loadProjectDesktop,
+  deleteProjectDesktop,
+  isTauri,
 } from '../io';
 import { refreshSourceMetrics } from '../geo/metrics';
 import {
@@ -49,12 +54,13 @@ import {
   getProjectCrsConfig,
 } from '../store/projectCrsStore';
 import { BASE_MAP_DEFS, type BaseMapId } from '../map/baseMaps';
+import { ProjectBrowserModal } from './ProjectBrowserModal';
+import type { GeoUrbanProject } from '../io/types';
 
 /* ================================================================
    Import accept list (formats supported by io/importers)
    ================================================================ */
 const IMPORT_ACCEPT = '.geourban,.geojson,.json,.kml,.kmz,.shp,.gpkg,.dxf';
-
 /* ================================================================
    SVG Icon Set (inline)
    ================================================================ */
@@ -391,6 +397,8 @@ export default function TopBar() {
   const [lotsBusy, setLotsBusy] = React.useState(false);
   const [mergeBusy, setMergeBusy] = React.useState(false);
 
+  const [projectBrowserOpen, setProjectBrowserOpen] = useState(false);
+
   /* ─── Project I/O ─── */
   const getCurrentProject = () => {
     const features = drawSource?.getFeatures() ?? [];
@@ -497,6 +505,27 @@ export default function TopBar() {
     refreshSourceMetrics(drawSource);
     drawSource.changed();
     useSelectionStore.getState().clear();
+  };
+
+  const handleOpenProjectBrowser = () => {
+    setAppMenuOpen(false);
+    setProjectBrowserOpen(true);
+  };
+
+  const handleProjectOpen = async (project: GeoUrbanProject) => {
+    setProjectBrowserOpen(false);
+    if (!drawSource) return;
+    try {
+      const features = readOlFeaturesFromProject(project);
+      const commandStack = useCommandStack.getState();
+      await commandStack.run(new ClearFeaturesCommand());
+      await commandStack.run(new AddFeaturesCommand(features));
+      refreshSourceMetrics(drawSource);
+      drawSource.changed();
+      fitToExtent();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Error al abrir proyecto');
+    }
   };
 
   const handleExit = () => {
@@ -692,17 +721,18 @@ export default function TopBar() {
 
   /* ─── Render: topbar ─── */
   return (
-    <div className="topbar-root">
-      {/* Hidden file input (used by Importar menu item) */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept={IMPORT_ACCEPT}
-        hidden
-        onChange={handleImport}
-      />
+    <>
+      <div className="topbar-root">
+        {/* Hidden file input (used by Importar menu item) */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept={IMPORT_ACCEPT}
+          hidden
+          onChange={handleImport}
+        />
 
-      {/* ═══════════════ TAB STRIP ═══════════════ */}
+        {/* ═══════════════ TAB STRIP ═══════════════ */}
       <div className="topbar-tabs">
         {/* GU app menu (left of tabs) */}
         <div ref={appMenuRef} style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
@@ -1172,5 +1202,13 @@ export default function TopBar() {
         </RibbonContext.Provider>
       )}
     </div>
+<ProjectBrowserModal
+      isOpen={projectBrowserOpen}
+      onClose={() => setProjectBrowserOpen(false)}
+      onOpenProject={handleProjectOpen}
+      onNewProject={handleNewProject}
+      currentProjectName={getCurrentProject().name}
+    />
+    </>
   );
 }

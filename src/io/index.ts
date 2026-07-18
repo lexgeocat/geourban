@@ -19,6 +19,9 @@ export * from './gpkg';
 export * from './dxf';
 export * from './persistence';
 
+// Desktop-only exports
+export { autosaveProjectDesktop, listProjectsDesktop, loadProjectDesktop, deleteProjectDesktop, duplicateProjectDesktop, updateProjectThumbnail, isTauri } from './persistenceDesktop';
+
 export async function importFile(file: File, format?: ImportFormat): Promise<ImportResult> {
   const ext = format ?? inferFormat(file.name);
   switch (ext) {

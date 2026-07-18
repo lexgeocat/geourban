@@ -19,6 +19,8 @@ export type GeoUrbanProject = {
   view: { center: [number, number]; zoom: number };
   crs: ProjectCrsConfig;
   data: FeatureCollection;
+  // Optional: used by desktop SQLite storage for project identity
+  id?: number;
 };
 
 export type ImportFormat = 'geourban' | 'geojson' | 'kml' | 'kmz' | 'shp' | 'gpkg' | 'dxf';
