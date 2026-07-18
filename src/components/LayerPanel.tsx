@@ -106,9 +106,9 @@ export default function LayerPanel() {
     <div
       style={{
         position: 'absolute',
-        top: 'calc(var(--cad-topbar-height) + 10px)',
-        right: 10,
-        zIndex: 100,
+        top: 'calc(var(--cad-topbar-height) + 12px)',
+        right: 12,
+        zIndex: 90,
         minWidth: open ? 220 : 'auto',
       }}
     >

@@ -1,6 +1,5 @@
 import React, { useEffect } from 'react';
 import MapView from './map/Map';
-import Toolbar from './components/Toolbar';
 import TopBar from './components/TopBar';
 import StatusBar from './components/StatusBar';
 import LayerPanel from './components/LayerPanel';
@@ -57,10 +56,7 @@ function App() {
           pointerEvents: 'none',
         }}
       >
-        {/* Toolbar and panels need pointer events */}
-        <div style={{ pointerEvents: 'auto' }}>
-          <Toolbar />
-        </div>
+        {/* Side panels need pointer events */}
         <div style={{ pointerEvents: 'auto' }}>
           <PropertyPanel />
         </div>
@@ -68,8 +64,8 @@ function App() {
           <StatsPanel />
         </div>
       </div>
-<ProjectSetupModal />
-<SubdivisionDialog />
+      <ProjectSetupModal />
+      <SubdivisionDialog />
 
       <LayerPanel />
 

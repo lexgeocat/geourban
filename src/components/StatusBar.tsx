@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { ZoomIn, ZoomOut, Maximize2, Undo2, Redo2 } from 'lucide-react';
 import { useMapStore } from '../store/mapStore';
 import { useLayerStore } from '../store/layerStore';
+import { undo, redo, useCommandStack } from '../commands/CommandStack';
 
 import { useProjectCrsStore, type ProjectCrsMode } from '../store/projectCrsStore';
 import { BASE_MAP_DEFS, type BaseMapId } from '../map/baseMaps';
@@ -112,6 +114,13 @@ export default function StatusBar() {
 
   const epsgLabel = crsMode === 'utm' ? (exportEpsg ?? 'EPSG:UTM') : 'Local';
 
+  // History controls (Undo / Redo)
+  const canUndo = useCommandStack((s) => s.canUndo);
+  const canRedo = useCommandStack((s) => s.canRedo);
+  const zoomIn = useMapStore((s) => s.zoomIn);
+  const zoomOut = useMapStore((s) => s.zoomOut);
+  const fitToExtent = useMapStore((s) => s.fitToExtent);
+
   const handleCrsModeSelect = (m: ProjectCrsMode) => {
     setCrsMode(m);
     // Al pasar a UTM activamos OSM para tener contexto real de ubicación
@@ -146,8 +155,46 @@ export default function StatusBar() {
       }}
       className="font-mono-cad"
     >
-      {/* Left: coordinates */}
-      <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
+      {/* Left: Undo/Redo + coordinates */}
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+        {/* Undo / Redo (moved from TopBar) */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <button
+            className="cad-icon-btn cad-tooltip"
+            onClick={undo}
+            disabled={!canUndo}
+            data-tooltip="Deshacer (Ctrl+Z)"
+            aria-label="Deshacer"
+            title="Deshacer (Ctrl+Z)"
+            style={{
+              width: 22,
+              height: 22,
+              opacity: canUndo ? 1 : 0.35,
+              cursor: canUndo ? 'pointer' : 'not-allowed',
+            }}
+          >
+            <Undo2 size={12} />
+          </button>
+          <button
+            className="cad-icon-btn cad-tooltip"
+            onClick={redo}
+            disabled={!canRedo}
+            data-tooltip="Rehacer (Ctrl+Y)"
+            aria-label="Rehacer"
+            title="Rehacer (Ctrl+Y)"
+            style={{
+              width: 22,
+              height: 22,
+              opacity: canRedo ? 1 : 0.35,
+              cursor: canRedo ? 'pointer' : 'not-allowed',
+            }}
+          >
+            <Redo2 size={12} />
+          </button>
+        </div>
+
+        <span style={{ opacity: 0.2 }}>│</span>
+
         <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 11, height: 11 }}>
             <circle cx="12" cy="12" r="3" />
@@ -380,13 +427,51 @@ export default function StatusBar() {
         </label>
       </div>
 
-      {/* Right: zoom */}
+      {/* Right: Zoom controls + zoom level indicator */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 11, height: 11 }}>
-          <circle cx="11" cy="11" r="8" />
-          <line x1="21" y1="21" x2="16.65" y2="16.65" />
-        </svg>
-        <span>Zoom <span style={{ color: 'var(--cad-accent)' }}>{zoom.toFixed(1)}</span></span>
+        {/* Zoom controls (moved from TopBar) */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <button
+            className="cad-icon-btn cad-tooltip"
+            onClick={zoomOut}
+            data-tooltip="Alejar (-)"
+            aria-label="Alejar"
+            title="Alejar"
+            style={{ width: 22, height: 22 }}
+          >
+            <ZoomOut size={12} />
+          </button>
+          <button
+            className="cad-icon-btn cad-tooltip"
+            onClick={fitToExtent}
+            data-tooltip="Centrar vista (Home)"
+            aria-label="Centrar vista"
+            title="Centrar vista"
+            style={{ width: 22, height: 22 }}
+          >
+            <Maximize2 size={12} />
+          </button>
+          <button
+            className="cad-icon-btn cad-tooltip"
+            onClick={zoomIn}
+            data-tooltip="Acercar (+)"
+            aria-label="Acercar"
+            title="Acercar"
+            style={{ width: 22, height: 22 }}
+          >
+            <ZoomIn size={12} />
+          </button>
+        </div>
+
+        <span style={{ opacity: 0.2, margin: '0 2px' }}>│</span>
+
+        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 11, height: 11 }}>
+            <circle cx="11" cy="11" r="8" />
+            <line x1="21" y1="21" x2="16.65" y2="16.65" />
+          </svg>
+          <span>Zoom <span style={{ color: 'var(--cad-accent)' }}>{zoom.toFixed(1)}</span></span>
+        </span>
       </div>
     </div>
   );
