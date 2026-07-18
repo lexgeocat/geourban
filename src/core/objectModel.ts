@@ -15,6 +15,7 @@ export interface BaseFeatureProps {
   kind: GeoUrbanFeatureKind;
   createdAt: string;
   label?: string;
+  layerId?: string; // Reference to the layer this feature belongs to
 }
 
 export interface LoteProps extends BaseFeatureProps {

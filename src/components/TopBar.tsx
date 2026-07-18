@@ -22,6 +22,8 @@ import {
   type RibbonTabId,
 } from '../store/layerStore';
 import { useCommandStack } from '../commands/CommandStack';
+import { ClearFeaturesCommand } from '../commands/ClearFeaturesCommand';
+import { AddFeaturesCommand } from '../commands/AddFeaturesCommand';
 import { useSelectionStore } from '../store/selectionStore';
 import { useSubdivisionStore } from '../store/subdivisionStore';
 import { useStreetStore } from '../store/streetStore';
@@ -365,8 +367,9 @@ export default function TopBar() {
         useProjectCrsStore.getState().loadConfig(project.crs);
       }
       const features = readOlFeaturesFromProject(project);
-      drawSource.clear();
-      drawSource.addFeatures(features as never);
+      const commandStack = useCommandStack.getState();
+      await commandStack.run(new ClearFeaturesCommand());
+      await commandStack.run(new AddFeaturesCommand(features));
       refreshSourceMetrics(drawSource);
       drawSource.changed();
       fitToExtent();
@@ -401,13 +404,13 @@ export default function TopBar() {
     fileInputRef.current?.click();
   };
 
-  const handleNewProject = () => {
+  const handleNewProject = async () => {
     setAppMenuOpen(false);
     const ok = window.confirm(
       '¿Crear un nuevo proyecto? Se borrarán todos los features del mapa actual.',
     );
     if (!ok || !drawSource) return;
-    drawSource.clear();
+    await useCommandStack.getState().run(new ClearFeaturesCommand());
     refreshSourceMetrics(drawSource);
     drawSource.changed();
     useSelectionStore.getState().clear();

@@ -9,6 +9,8 @@ import { useHistoryStore } from '../store/historyStore';
 import { useMapStore } from '../store/mapStore';
 import { useSelectionStore } from '../store/selectionStore';
 import { refreshSourceMetrics } from '../geo/metrics';
+import { ClearFeaturesCommand } from './ClearFeaturesCommand';
+import { AddFeaturesCommand } from './AddFeaturesCommand';
 
 const geoJsonFormat = new GeoJSON();
 
@@ -146,8 +148,9 @@ function applyRestoredSnapshot(
     { type: 'FeatureCollection', features: geojson as never },
     { featureProjection: 'EPSG:3857' },
   ) as Feature<Geometry>[];
-  drawSource.clear();
-  drawSource.addFeatures(features);
+  const commandStack = useCommandStack.getState();
+  commandStack.run(new ClearFeaturesCommand());
+  commandStack.run(new AddFeaturesCommand(features));
   drawSource.changed();
   refreshSourceMetrics(drawSource);
   useSelectionStore.getState().clear();
