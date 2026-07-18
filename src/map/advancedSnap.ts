@@ -4,6 +4,7 @@ import Point from 'ol/geom/Point.js';
 import Polygon from 'ol/geom/Polygon.js';
 import LineString from 'ol/geom/LineString.js';
 import MultiPolygon from 'ol/geom/MultiPolygon.js';
+import Circle from 'ol/geom/Circle.js';
 import { getUid } from 'ol/util.js';
 
 /* ================================================================
@@ -47,7 +48,10 @@ export type SnapType =
   | 'extension'
   | 'intersection'
   | 'apparentIntersection'
-  | 'parallel';
+  | 'parallel'
+  | 'center'
+  | 'tangent'
+  | 'grid';
 
 export interface SnapGuideVisual {
   dashedLine?: [number[], number[]];
@@ -77,12 +81,15 @@ export const DEFAULT_SNAP_SETTINGS: SnapSettings = {
   intersection: true,
   apparentIntersection: true,
   parallel: true,
+  center: true,
+  tangent: true,
+  grid: false,
 };
 
 /** Agrupación semántica — la usa la UI (SnapPanel) para organizar los toggles. */
 export const SNAP_GROUPS: { label: string; types: SnapType[] }[] = [
-  { label: 'Geométricos', types: ['endpoint', 'midpoint', 'intersection', 'apparentIntersection'] },
-  { label: 'Construcción', types: ['perpendicular', 'parallel', 'extension', 'nearest'] },
+  { label: 'Geométricos', types: ['endpoint', 'midpoint', 'intersection', 'apparentIntersection', 'center', 'tangent'] },
+  { label: 'Construcción', types: ['perpendicular', 'parallel', 'extension', 'nearest', 'grid'] },
 ];
 
 /** Prioridad de resolución cuando varios snaps caen en tolerancia (menor = gana). */
@@ -92,9 +99,12 @@ export const SNAP_TYPE_PRIORITY: Record<SnapType, number> = {
   apparentIntersection: 2,
   extension: 3,
   midpoint: 4,
+  center: 4,
   perpendicular: 5,
   parallel: 6,
+  tangent: 6,
   nearest: 7,
+  grid: 8,
 };
 
 /** Radio de captura por tipo, como multiplicador del pixelTolerance base. */
@@ -104,9 +114,12 @@ const TYPE_TOLERANCE_FACTOR: Record<SnapType, number> = {
   apparentIntersection: 1.0,
   extension: 1.6,
   midpoint: 1.0,
+  center: 1.2,
   perpendicular: 1.0,
   parallel: 1.0,
+  tangent: 1.0,
   nearest: 0.85,
+  grid: 1.0,
 };
 
 /** Radio (px) del broad-phase para descartar segmentos irrelevantes. */
@@ -323,6 +336,63 @@ export function findSnap(cursor: number[], src: VectorSource, options: FindSnapO
     if (!geom) return;
     const fid = feat.getId() != null ? String(feat.getId()) : getUid(feat);
 
+    // Snap a centro y tangente de círculos (incluye el tipo geométrico
+    // `Circle` de OL y LineStrings/Polygons derivados de la Fase 2.4/2.3
+    // cuando tienen prop `kind: 'circle'` — la distinción se hace por
+    // tipo de geometría real).
+    if (settings.center && geom instanceof Circle) {
+      const c = geom.getCenter();
+      const tol = baseTolerance * TYPE_TOLERANCE_FACTOR.center;
+      const d = dist(cursor, c);
+      if (d < tol) {
+        candidates.push({
+          point: c,
+          type: 'center',
+          feature: feat,
+          dist: d,
+          guide: {
+            // pequeño cuadrado para distinguir de endpoint
+            rightAngleSquare: { point: c, size: 8 * resolution },
+          },
+        });
+      }
+    }
+
+    // Tangente: requiere anchor. Hay 2 tangentes posibles a un círculo
+    // desde un punto externo; devolvemos la más cercana al cursor.
+    if (settings.tangent && anchor && geom instanceof Circle) {
+      const c = geom.getCenter();
+      const r = geom.getRadius();
+      const dx = c[0] - anchor[0];
+      const dy = c[1] - anchor[1];
+      const dCenter = Math.hypot(dx, dy);
+      if (dCenter > r + 1e-9) {
+        const baseAng = Math.atan2(dy, dx);
+        const offset = Math.asin(r / dCenter);
+        for (const sign of [-1, 1]) {
+          const theta = baseAng + sign * offset;
+          const tx = c[0] - r * Math.cos(theta);
+          const ty = c[1] - r * Math.sin(theta);
+          const tol = baseTolerance * TYPE_TOLERANCE_FACTOR.tangent;
+          const d = dist(cursor, [tx, ty]);
+          if (d < tol) {
+            candidates.push({
+              point: [tx, ty],
+              type: 'tangent',
+              feature: feat,
+              dist: d,
+              guide: {
+                // línea punteada desde anchor al tangente (ilustra
+                // visualmente la tangente).
+                dashedLine: [anchor, [tx, ty]],
+                rightAngleSquare: { point: [tx, ty], size: 7 * resolution },
+              },
+            });
+          }
+        }
+      }
+    }
+
     getSegmentCoords(geom).forEach((ring, ringIdx) => {
       const ringId = `${fid}:${ringIdx}`;
       for (let i = 0; i < ring.length - 1; i++) {
@@ -502,6 +572,9 @@ export const SNAP_COLORS: Record<SnapType, string> = {
   intersection: '#ef4444',
   apparentIntersection: '#c026d3',
   parallel: '#7c3aed',
+  center: '#06b6d4',
+  tangent: '#eab308',
+  grid: '#64748b',
 };
 
 export const SNAP_LABELS: Record<SnapType, string> = {
@@ -513,4 +586,7 @@ export const SNAP_LABELS: Record<SnapType, string> = {
   intersection: 'Intersección',
   apparentIntersection: 'Intersección aparente',
   parallel: 'Paralelo',
+  center: 'Centro',
+  tangent: 'Tangente',
+  grid: 'Grilla',
 };

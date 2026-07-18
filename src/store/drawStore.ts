@@ -3,15 +3,21 @@ import { immer } from 'zustand/middleware/immer';
 
 export type DrawMode =
   | 'select'
-  | 'polyline'
-  | 'street'
+  | 'polyline'   // legado: dibuja polígono cerrado (atajo P)
+  | 'polygon'    // dibuja polígono cerrado (atajo P, recomendado)
+  | 'line'       // dibuja polilínea abierta (atajo L)
+  | 'rectangle'  // dibuja rectángulo por 2 esquinas (atajo R)
+  | 'circle'     // dibuja círculo por centro+radio (atajo C)
+  | 'arc'        // dibuja arco de 3 puntos (atajo A)
+  | 'text'       // inserta texto (atajo T — reasignado de street; ver Toolbar)
+  | 'street'     // traza calle de 2 puntos (atajo S)
   | 'erase'
   | 'edit'
   | 'none';
 
 type DrawState = {
   mode: DrawMode;
-  /** Id de la ultima LineString dibujada — la usa la subdivision "manual" */
+  /** Id de la última línea dibujada — la usa subdivision "manual-slice". */
   lastDrawnLineId: string | number | null;
   setMode: (mode: DrawMode) => void;
   setLastDrawnLineId: (id: string | number | null) => void;

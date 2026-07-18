@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useDrawStore } from '../store/drawStore';
+import { useDrawStore, type DrawMode } from '../store/drawStore';
 import { undo, redo, useCommandStack } from '../commands/CommandStack';
 import { useMapStore } from '../store/mapStore';
 import { useSelectionStore } from '../store/selectionStore';
@@ -81,10 +81,15 @@ export function useKeyboardShortcuts() {
       // Single-key shortcuts (sin modifier)
       if (ctrlOrCmd) return;
       const lower = key.toLowerCase();
-      const map: Record<string, 'select' | 'polyline' | 'street' | 'erase' | 'none'> = {
+      const map: Record<string, DrawMode> = {
         v: 'select',
-        p: 'polyline',
-        t: 'street',
+        p: 'polygon',
+        l: 'line',
+        r: 'rectangle',
+        c: 'circle',
+        a: 'arc',
+        x: 'text',
+        s: 'street',
         e: 'erase',
       };
       const next = map[lower];

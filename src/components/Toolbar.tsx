@@ -172,6 +172,73 @@ const IconStreet = () => (
   </svg>
 );
 
+const IconLine = () => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <line x1="4" y1="20" x2="20" y2="4" />
+  </svg>
+);
+
+const IconRect = () => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <rect x="4" y="6" width="16" height="12" />
+  </svg>
+);
+
+const IconCircle = () => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <circle cx="12" cy="12" r="8" />
+  </svg>
+);
+
+const IconArc = () => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="M4 18 A10 10 0 0 1 20 10" />
+  </svg>
+);
+
+const IconText = () => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <polyline points="4 7 4 4 20 4 20 7" />
+    <line x1="9" y1="20" x2="15" y2="20" />
+    <line x1="12" y1="4" x2="12" y2="20" />
+  </svg>
+);
+
 /* ─── Tool definitions ─── */
 
 type ToolDef = {
@@ -186,8 +253,13 @@ const navTools: ToolDef[] = [
 ];
 
 const drawTools: ToolDef[] = [
-  { mode: 'polyline', icon: <IconPolygon />, tooltip: 'Dibujar polilínea', shortcut: 'P' },
-  { mode: 'street', icon: <IconStreet />, tooltip: 'Trazar calle (2 clicks)', shortcut: 'T' },
+  { mode: 'polygon', icon: <IconPolygon />, tooltip: 'Dibujar polígono', shortcut: 'P' },
+  { mode: 'line', icon: <IconLine />, tooltip: 'Dibujar línea', shortcut: 'L' },
+  { mode: 'rectangle', icon: <IconRect />, tooltip: 'Dibujar rectángulo', shortcut: 'R' },
+  { mode: 'circle', icon: <IconCircle />, tooltip: 'Dibujar círculo', shortcut: 'C' },
+  { mode: 'arc', icon: <IconArc />, tooltip: 'Dibujar arco (3 clicks)', shortcut: 'A' },
+  { mode: 'text', icon: <IconText />, tooltip: 'Insertar texto', shortcut: 'X' },
+  { mode: 'street', icon: <IconStreet />, tooltip: 'Trazar calle (2 clicks)', shortcut: 'S' },
   { mode: 'erase', icon: <IconEraser />, tooltip: 'Borrar features (click)', shortcut: 'E' },
 ];
 

@@ -21,6 +21,8 @@ import LineString from 'ol/geom/LineString.js';
 import Polygon from 'ol/geom/Polygon.js';
 import MultiPoint from 'ol/geom/MultiPoint.js';
 import type Geometry from 'ol/geom/Geometry.js';
+import { createBox, type GeometryFunction } from 'ol/interaction/Draw.js';
+import { arcFrom3Points, sampleArc } from '../geo/arcMath';
 
 // Función para calcular el zoom a partir de la resolución (usada en styleFactory.ts)
 function getZoomFromResolution(resolution: number) {
@@ -588,6 +590,9 @@ export default function MapView() {
       perpendicular:        { radius: 7,  points: 5,               angle: -Math.PI / 2 }, // Pentágono
       parallel:             { radius: 7,  points: 6,               angle: -Math.PI / 2 }, // Hexágono
       nearest:              { radius: 5 },                                                // Círculo
+      center:               { radius: 7,  points: 4,               angle: Math.PI / 4 },  // Cuadrado pequeño (centro de círculo)
+      tangent:              { radius: 7,  points: 3,               angle: -Math.PI / 2 }, // Triángulo (tangente)
+      grid:                 { radius: 4,  points: 4,               angle: Math.PI / 4 },  // Cuadrado chico
     };
     for (const [type, color] of Object.entries(SNAP_COLORS)) {
       const cfg = SNAP_SHAPES[type]!;
@@ -805,7 +810,15 @@ export default function MapView() {
     // Cursor: crosshair (+) tipo AutoCAD solo en modos de dibujo.
     const viewport = map.getViewport();
     const previousCursor = viewport.getAttribute('data-cursor');
-    if (drawMode === 'polyline') {
+    if (
+      drawMode === 'polyline' ||
+      drawMode === 'polygon' ||
+      drawMode === 'line' ||
+      drawMode === 'rectangle' ||
+      drawMode === 'circle' ||
+      drawMode === 'arc' ||
+      drawMode === 'text'
+    ) {
       viewport.setAttribute('data-cursor', drawMode);
     } else {
       viewport.removeAttribute('data-cursor');
@@ -1014,8 +1027,8 @@ export default function MapView() {
       }
     }
 
-    // === Modo POLYLINE: Draw + SnapEngine (imán unificado) ===
-    if (drawMode === 'polyline') {
+    // === Modo POLYGON (o 'polyline' legado): Draw + SnapEngine (imán unificado) ===
+    if (drawMode === 'polygon' || drawMode === 'polyline') {
       // El Snap nativo de OL (vertex/edge/midpoint) se quitó: quedaba
       // mal ordenado respecto a Draw y es redundante con SnapEngine,
       // que ya cubre 'endpoint'/'midpoint' (y corrige el click real,
@@ -1026,7 +1039,7 @@ export default function MapView() {
       // que la linea de preview sea segmentada (dashed) y los vertices
       // ya confirmados se vean como circulos semitransparentes (estilo
       // CAD pro).
-      // POLYLINE usa Polygon (snap de cierre nativo de OL, iman perfecto).
+      // POLYGON usa Polygon (snap de cierre nativo de OL, iman perfecto).
       const drawType = 'Polygon';
       const draw = new Draw({
         source: src,
@@ -1185,8 +1198,191 @@ export default function MapView() {
         void runCommand(
           new AddFeatureCommand(feature, { mode: 'claim', label: 'Dibujar polígono' }),
         );
+        // Compat: el modo 'polyline' legado usa lastDrawnLineId para la
+        // subdivisión manual-slice.
+        if (drawMode === 'polyline') {
+          useDrawStore.getState().setLastDrawnLineId(feature.getId() as string);
+        }
+        updateFeatureMetrics(feature);
+        refreshLayers();
+      });
+      activeDrawRef.current = draw;
+      map.addInteraction(draw);
+      toClean.push(() => {
+        map.removeInteraction(draw);
+        if (activeDrawRef.current === draw) activeDrawRef.current = null;
+      });
+    }
+
+    // === Modo LINE: polilínea abierta (LineString) ===
+    if (drawMode === 'line') {
+      const draw = new Draw({
+        source: src,
+        type: 'LineString',
+        style: new Style({
+          stroke: new Stroke({
+            color: 'rgba(0, 212, 255, 0.95)',
+            width: 2,
+            lineDash: [6, 4],
+            lineCap: 'round',
+          }),
+        }),
+      });
+      draw.on('drawend', (event) => {
+        const feature = event.feature as Feature<Geometry>;
+        void runCommand(
+          new AddFeatureCommand(feature, { mode: 'claim', label: 'Dibujar línea' }),
+        );
         useDrawStore.getState().setLastDrawnLineId(feature.getId() as string);
         updateFeatureMetrics(feature);
+        refreshLayers();
+      });
+      activeDrawRef.current = draw;
+      map.addInteraction(draw);
+      toClean.push(() => {
+        map.removeInteraction(draw);
+        if (activeDrawRef.current === draw) activeDrawRef.current = null;
+      });
+    }
+
+    // === Modo RECTANGLE: 2 clicks definen esquinas opuestas ===
+    if (drawMode === 'rectangle') {
+      const draw = new Draw({
+        source: src,
+        type: 'Circle',
+        geometryFunction: createBox(),
+        style: new Style({
+          stroke: new Stroke({ color: 'rgba(0, 212, 255, 0.95)', width: 2, lineDash: [6, 4] }),
+          fill: new Fill({ color: 'rgba(0, 212, 255, 0.10)' }),
+        }),
+      });
+      draw.on('drawend', (event) => {
+        const feature = event.feature as Feature<Geometry>;
+        void runCommand(
+          new AddFeatureCommand(feature, { mode: 'claim', label: 'Dibujar rectángulo' }),
+        );
+        updateFeatureMetrics(feature);
+        refreshLayers();
+      });
+      activeDrawRef.current = draw;
+      map.addInteraction(draw);
+      toClean.push(() => {
+        map.removeInteraction(draw);
+        if (activeDrawRef.current === draw) activeDrawRef.current = null;
+      });
+    }
+
+    // === Modo CIRCLE: click+drag (centro + radio) ===
+    if (drawMode === 'circle') {
+      const draw = new Draw({
+        source: src,
+        type: 'Circle',
+        style: new Style({
+          stroke: new Stroke({ color: 'rgba(0, 212, 255, 0.95)', width: 2, lineDash: [6, 4] }),
+          fill: new Fill({ color: 'rgba(0, 212, 255, 0.10)' }),
+        }),
+      });
+      draw.on('drawend', (event) => {
+        const feature = event.feature as Feature<Geometry>;
+        void runCommand(
+          new AddFeatureCommand(feature, { mode: 'claim', label: 'Dibujar círculo' }),
+        );
+        updateFeatureMetrics(feature);
+        refreshLayers();
+      });
+      activeDrawRef.current = draw;
+      map.addInteraction(draw);
+      toClean.push(() => {
+        map.removeInteraction(draw);
+        if (activeDrawRef.current === draw) activeDrawRef.current = null;
+      });
+    }
+
+    // === Modo ARC: 3 clicks (inicio, fin, punto-en-arco) ===
+    if (drawMode === 'arc') {
+      const arcGeometryFunction: GeometryFunction = (
+        coordinates,
+        optGeometry,
+      ) => {
+        const coords = coordinates as Array<[number, number]>;
+        if (coords.length < 3) {
+          // Mientras el usuario todavía no confirmó 3 puntos, devolvemos
+          // un LineString parcial para que el sketch se vea.
+          return new LineString(coords as number[][]);
+        }
+        const [start, , mid] = coords as unknown as [
+          [number, number],
+          [number, number],
+          [number, number],
+        ];
+        const arc = arcFrom3Points(start, coords[2] as [number, number], mid);
+        if (!arc) {
+          return new LineString(coords as number[][]);
+        }
+        const pts = sampleArc(arc, 32);
+        if (optGeometry) {
+          (optGeometry as LineString).setCoordinates(pts);
+          return optGeometry;
+        }
+        return new LineString(pts);
+      };
+
+      const draw = new Draw({
+        source: src,
+        type: 'LineString',
+        maxPoints: 3,
+        geometryFunction: arcGeometryFunction,
+        style: new Style({
+          stroke: new Stroke({ color: 'rgba(0, 212, 255, 0.95)', width: 2, lineDash: [6, 4] }),
+        }),
+      });
+      draw.on('drawend', (event) => {
+        const feature = event.feature as Feature<Geometry>;
+        void runCommand(
+          new AddFeatureCommand(feature, { mode: 'claim', label: 'Dibujar arco' }),
+        );
+        updateFeatureMetrics(feature);
+        refreshLayers();
+      });
+      activeDrawRef.current = draw;
+      map.addInteraction(draw);
+      toClean.push(() => {
+        map.removeInteraction(draw);
+        if (activeDrawRef.current === draw) activeDrawRef.current = null;
+      });
+    }
+
+    // === Modo TEXT: click posiciona, prompt pide el texto ===
+    if (drawMode === 'text') {
+      const draw = new Draw({
+        source: src,
+        type: 'Point',
+        style: new Style({
+          image: new CircleStyle({
+            radius: 4,
+            fill: new Fill({ color: 'rgba(0, 212, 255, 0.95)' }),
+          }),
+        }),
+      });
+      draw.on('drawend', (event) => {
+        const feature = event.feature as Feature<Geometry>;
+        const defaultText = `Texto ${Math.floor(Math.random() * 1000)}`;
+        const text = window.prompt('Texto:', defaultText);
+        if (text == null || text.trim() === '') {
+          // Cancelado: borramos el feature recién agregado.
+          const id = feature.getId();
+          const src = drawSrcRef.current;
+          if (id != null && src) {
+            src.removeFeature(feature);
+            src.changed();
+          }
+          return;
+        }
+        feature.set('text', text);
+        feature.set('kind', 'texto');
+        void runCommand(
+          new AddFeatureCommand(feature, { mode: 'claim', label: 'Insertar texto' }),
+        );
         refreshLayers();
       });
       activeDrawRef.current = draw;
