@@ -55,6 +55,7 @@ import {
 } from '../store/projectCrsStore';
 import { BASE_MAP_DEFS, type BaseMapId } from '../map/baseMaps';
 import { ProjectBrowserModal } from './ProjectBrowserModal';
+import { useManzanoStore } from '../store/manzanoStore';
 import type { GeoUrbanProject } from '../io/types';
 
 /* ================================================================
@@ -347,6 +348,8 @@ export default function TopBar() {
   const [appMenuOpen, setAppMenuOpen] = useState(false);
   const [exportSubmenuOpen, setExportSubmenuOpen] = useState(false);
   const appMenuRef = useRef<HTMLDivElement>(null);
+  const manzanoPanelVisible = useManzanoStore((s) => s.panelVisible);
+const setManzanoPanelVisible = useManzanoStore((s) => s.setPanelVisible);
 
   // Close app menu on outside click
   React.useEffect(() => {
@@ -1188,6 +1191,12 @@ export default function TopBar() {
                   label="Estadísticas"
                   active={statsPanelVisible}
                   onClick={() => setStatsPanelVisible(!statsPanelVisible)}
+                />
+                <RibbonTool
+                  icon={<IconLots />}
+                  label="Manzanos"
+                  active={manzanoPanelVisible}
+                  onClick={() => setManzanoPanelVisible(!manzanoPanelVisible)}
                 />
                 <RibbonTool
                   icon={<IconCursor />}

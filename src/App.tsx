@@ -13,6 +13,7 @@ import { useMapStore } from './store/mapStore';
 import { useLayerStore } from './store/layerStore';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import ProjectSetupModal from './components/ProjectSetupModal';
+import ManzanoPanel from './components/ManzanoPanel';
 
 function App() {
   useKeyboardShortcuts();
@@ -63,6 +64,7 @@ function App() {
         </div>
         <div style={{ pointerEvents: 'auto' }}>
           <StatsPanel />
+<ManzanoPanel />
         </div>
       </div>
       <ProjectSetupModal />

@@ -1,4 +1,4 @@
-
+import { subdivideManzanoCabeceraCuerpo } from './subdivisionCabeceraCuerpo';
 import type { Polygon as GeoJsonPolygon, MultiPolygon, Feature as GeoJsonFeature } from 'geojson';
 import {
   type Pt,
@@ -16,7 +16,7 @@ import {
 
 // ─── Tipos públicos ─────────────────────────────────────────────────
 
-export type SubdivisionMethod = 'auto' | 'exact' | 'manual-slice';
+export type SubdivisionMethod = 'auto' | 'modo2' | 'exact' | 'manual-slice';
 
 export interface SubdivisionOptions {
   method: SubdivisionMethod;
@@ -727,6 +727,28 @@ function sliceBisectLote(
 }
 
 // ─── Dispatcher ─────────────────────────────────────────────────────
+// ─── Dispatcher directo por anillo (Pt[]), sin pasar por GeoJSON ───────
+// Lo usan GenerateLotsCommand (subdivisión masiva por manzano) y
+// RecomputeManzanoLotsCommand (recálculo puntual desde el panel).
+
+export type ManzanoLoteMethod = 'auto' | 'exact' | 'modo2';
+
+export function subdivideManzano(
+  ringPts: Pt[],
+  method: ManzanoLoteMethod,
+  targetAreaM2: number,
+  frontMinM: number,
+  dirPref?: { ax: number; ay: number },
+): LotResult[] {
+  if (!ringPts || ringPts.length < 3) return [];
+  const pts: Pt[] = ringPts.map((c) => [c[0], c[1]]);
+  if (pts[0][0] !== pts[pts.length - 1][0] || pts[0][1] !== pts[pts.length - 1][1]) {
+    pts.push([pts[0][0], pts[0][1]]);
+  }
+  if (method === 'exact') return subdivideManzanoExact(pts, targetAreaM2, frontMinM, dirPref);
+  if (method === 'modo2') return subdivideManzanoAuto(pts, targetAreaM2, frontMinM, dirPref);
+  return subdivideManzanoCabeceraCuerpo(pts, targetAreaM2, frontMinM, dirPref);
+}
 
 export function subdivide(
   polygon: GeoJsonPolygon,
@@ -751,6 +773,8 @@ export function subdivide(
     const warnings: string[] = [];
 
     if (opts.method === 'auto') {
+      lots = subdivideManzanoCabeceraCuerpo(pts, targetAreaM2, frontMinM, dirPref);
+    } else if (opts.method === 'modo2') {
       lots = subdivideManzanoAuto(pts, targetAreaM2, frontMinM, dirPref);
     } else if (opts.method === 'exact') {
       lots = subdivideManzanoExact(pts, targetAreaM2, frontMinM, dirPref);

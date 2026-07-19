@@ -14,14 +14,16 @@ import type Geometry from 'ol/geom/Geometry';
 const geoJsonFormat = new GeoJSON();
 
 const METHOD_LABELS: Record<string, string> = {
-  auto: 'Automática',
-  exact: 'Área exacta',
+  auto: 'Auto (Cabecera+Cuerpo)',
+  modo2: 'Modo 2 (grilla PCA)',
+  exact: 'Modo 1 (área exacta)',
   'manual-slice': 'Manual (bisección)',
 };
 
 const METHOD_DESCRIPTIONS: Record<string, string> = {
-  auto: 'Subdivide usando el eje principal (PCA). Detecta polígonos angostos y adapta la dirección de corte automáticamente. Genera lotes con el área objetivo indicada.',
-  exact: 'Similar a automática, pero busca que cada lote tenga exactamente el área objetivo. Último lote puede ser remanente.',
+  auto: 'Genera 1 fila de lotes angostos en cada extremo (junto a las esquinas) y un cuerpo central a doble frente. Es el método recomendado para manzanos rectangulares o trapezoidales típicos.',
+  modo2: 'Subdivide usando el eje principal (PCA). Detecta polígonos angostos y adapta la dirección de corte automáticamente. Genera lotes con el área objetivo indicada.',
+  exact: 'Busca que cada lote tenga exactamente el área objetivo, con cortes alineados a un cuadrilátero ideal. Último lote puede ser remanente.',
   'manual-slice': 'Seleccioná un frente del polígono y un segmento auxiliar (dirección de corte). El sistema bisecta para generar un sub-manzano con el área indicada.',
 };
 
@@ -199,7 +201,7 @@ export default function SubdivisionDialog() {
         {/* Method selector */}
         <div style={{ marginBottom: 14 }}>
           <label style={labelStyle}>Método</label>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
             {Object.entries(METHOD_LABELS).map(([key, label]) => (
               <button
                 key={key}

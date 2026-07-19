@@ -2,7 +2,8 @@ import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
 import GeoJSON from 'ol/format/GeoJSON.js';
 import { Command, type CommandContext } from './Command';
-import { subdivideManzanoAuto } from '../geo/subdivisionAlgorithms';
+import { subdivideManzano } from '../geo/subdivisionAlgorithms';
+import { useManzanoStore } from '../store/manzanoStore';
 import { refreshSourceMetrics, updateFeatureMetrics } from '../geo/metrics';
 import { ensureKind, getFeatureKind } from '../core/objectModel';
 import { resolveLayerId } from './AddFeatureCommand';
@@ -52,7 +53,9 @@ export class GenerateLotsCommand extends Command {
     if (manzanos.length === 0) return;
 
     for (const { id, ring } of manzanos) {
-      const lots = subdivideManzanoAuto(ring, this.opts.targetAreaM2, this.opts.frontMinM);
+      const method = useManzanoStore.getState().getMethod(id);
+      const dirPref = useManzanoStore.getState().getRotateDir(id);
+      const lots = subdivideManzano(ring, method, this.opts.targetAreaM2, this.opts.frontMinM, dirPref);
       if (lots.length === 0) continue;
 
       const feat = ctx.drawSource.getFeatureById(id);
@@ -78,7 +81,7 @@ export class GenerateLotsCommand extends Command {
         newFeat.setProperties(
           ensureKind(
             {
-              subdivision: 'auto',
+              subdivision: method,
               lotGroupId: String(id),
               label: lot.isRemnant
                 ? `Remanente ${this.newLotIds.length + 1}`
