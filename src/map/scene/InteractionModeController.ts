@@ -35,6 +35,10 @@ import { LassoSelection, type LassoMode } from './LassoSelection';
 import { getFeatureKind } from '../../core/objectModel';
 import { DimensionInteraction } from './DimensionInteraction';
 import { useLayersStore } from '../../store/layersRegistryStore';
+import { useRoundaboutStore } from '../../store/roundaboutStore';
+import { AddRoundaboutCommand } from '../../commands/AddRoundaboutCommand';
+import { RoundaboutDrawInteraction } from './RoundaboutDrawInteraction';
+import type { RoundaboutDrawPreview } from './RoundaboutDrawInteraction';
 import { pointInPoly } from '../../geo/polygonEngine';
 import type { PostrenderPainter } from './PostrenderPainter';
 export interface InteractionContext {
@@ -71,10 +75,11 @@ export class InteractionModeController {
     const previousCursor = viewport.getAttribute('data-cursor');
 
 // Cursor crosshair en modos de dibujo
-    if (
-      mode === 'polygon' || mode === 'line' ||
-      mode === 'rectangle' || mode === 'circle' || mode === 'arc' || mode === 'text' || mode === 'cota'
-    ) {
+  if (
+    mode === 'polygon' || mode === 'line' ||
+    mode === 'rectangle' || mode === 'circle' || mode === 'arc' ||
+    mode === 'text' || mode === 'cota' || mode === 'roundabout'
+  ) {
       viewport.setAttribute('data-cursor', mode);
     } else {
       viewport.removeAttribute('data-cursor');
@@ -684,8 +689,37 @@ export class InteractionModeController {
       });
     }
 
-    // === Modo ERASE ===
-    if (mode === 'erase') {
+// === Modo ROUNDABOUT: 2 clics (centro → radio) ===
+if (mode === 'roundabout') {
+  const draw = new RoundaboutDrawInteraction({
+    map,
+    onComplete: (center, radiusM) => {
+      const rb = useRoundaboutStore.getState();
+      void runCommand(
+        new AddRoundaboutCommand({
+          center: center as [number, number],
+          radiusM,
+          sides: rb.defaultSides,
+          rotation: 0,
+          roadWidthM: rb.defaultRoadWidthM,
+          sidewalkWidthM: rb.defaultSidewalkWidthM,
+        }),
+      );
+      map.render();
+    },
+    onCancel: () => map.render(),
+  });
+  map.addInteraction(draw);
+  this.toClean.push(() => map.removeInteraction(draw));
+  const onRoundaboutPreview = () => {
+    this.ctx.postrenderPainter?.setRoundaboutPreview(draw.getPreview());
+  };
+  map.on('postrender', onRoundaboutPreview);
+  this.toClean.push(() => map.un('postrender', onRoundaboutPreview));
+}
+
+// === Modo ERASE ===
+if (mode === 'erase') {
       const select = new Select({
         layers: hitDetectionLayers,
         style: new Style({

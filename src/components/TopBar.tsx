@@ -56,6 +56,7 @@ import {
 import { BASE_MAP_DEFS, type BaseMapId } from '../map/baseMaps';
 import { ProjectBrowserModal } from './ProjectBrowserModal';
 import { useManzanoStore } from '../store/manzanoStore';
+import { useRoundaboutStore } from '../store/roundaboutStore';
 import type { GeoUrbanProject } from '../io/types';
 
 /* ================================================================
@@ -226,6 +227,12 @@ const IconSat = () => (
     <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
   </svg>
 );
+const IconRoundabout = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="9" />
+    <circle cx="12" cy="12" r="3" />
+  </svg>
+);
 const IconRoad = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M4 22L8 2" />
@@ -287,6 +294,7 @@ type RibbonToolProps = {
   disabled?: boolean;
   active?: boolean;
   badge?: number;
+  tooltip?: string;
   onClick?: () => void;
 };
 
@@ -299,10 +307,11 @@ function RibbonTool({
   active,
   badge,
   onClick,
+  tooltip,
 }: RibbonToolProps) {
   const { currentMode, setMode } = useRibbonCtx();
   const isActive = active ?? (tMode ? currentMode === tMode : false);
-  const tip = shortcut ? `${label} (${shortcut})` : label;
+  const tip = tooltip ?? (shortcut ? `${label} (${shortcut})` : label);
   const handle = () => {
     if (onClick) onClick();
     else if (tMode) setMode(tMode);
@@ -376,9 +385,13 @@ const setManzanoPanelVisible = useManzanoStore((s) => s.setPanelVisible);
   const setBaseMap = useLayerStore((s) => s.setBaseMap);
   const workVisibility = useLayerStore((s) => s.workVisibility);
   const setWorkVisibility = useLayerStore((s) => s.setWorkVisibility);
-  const statsPanelVisible = useLayerStore((s) => s.statsPanelVisible);
-  const setStatsPanelVisible = useLayerStore((s) => s.setStatsPanelVisible);
-  const activeTab = useLayerStore((s) => s.activeTab);
+const statsPanelVisible = useLayerStore((s) => s.statsPanelVisible);
+const setStatsPanelVisible = useLayerStore((s) => s.setStatsPanelVisible);
+const activeTab = useLayerStore((s) => s.activeTab);
+const rbDefaultRadiusM = useRoundaboutStore((s) => s.defaultRadiusM);
+const setRbDefaultRadius = useRoundaboutStore((s) => s.setDefaultRadius);
+const roundaboutPanelVisible = useRoundaboutStore((s) => s.panelVisible);
+const setRoundaboutPanelVisible = useRoundaboutStore((s) => s.setPanelVisible);
   const setActiveTab = useLayerStore((s) => s.setActiveTab);
   const ribbonCollapsed = useLayerStore((s) => s.ribbonCollapsed);
   const setRibbonCollapsed = useLayerStore((s) => s.setRibbonCollapsed);
@@ -984,19 +997,20 @@ const setManzanoPanelVisible = useManzanoStore((s) => s.setPanelVisible);
                   shortcut="S"
                   active={mode === 'street'}
                 />
+                <RibbonTool mode="roundabout" icon={<IconRoundabout />} label="Rotonda" shortcut="O" active={mode === 'roundabout'} />
                 <div className="ribbon-inline-control">
                   <input
                     type="number"
                     className="ribbon-inline-input"
-                    value={defaultWidthM}
-                    min={1}
-                    max={50}
+                    value={rbDefaultRadiusM}
+                    min={3}
+                    max={200}
                     step={1}
-                    onChange={(e) => setDefaultWidth(parseFloat(e.target.value) || 8)}
-                    title="Ancho de vía (m)"
-                    aria-label="Ancho de vía en metros"
+                    onChange={(e) => setRbDefaultRadius(parseFloat(e.target.value) || 12)}
+                    title="Radio de rotonda (m)"
+                    aria-label="Radio de rotonda en metros"
                   />
-                  <span className="ribbon-inline-text">Ancho (m)</span>
+                  <span className="ribbon-inline-text">Radio rot. (m)</span>
                 </div>
                 <div className="ribbon-inline-control">
                   <input
@@ -1072,8 +1086,8 @@ const setManzanoPanelVisible = useManzanoStore((s) => s.setPanelVisible);
                 <RibbonTool icon={<Trash2 />} label="Eliminar" disabled={selectedCount === 0} badge={selectedCount > 0 ? selectedCount : undefined} onClick={handleDeleteSelected} />
               </RibbonGroup>
               <RibbonGroup label="Validación">
-                <RibbonTool icon={<IconAlertTriangle />} label="Overlaps" onClick={handleFindOverlaps} data-tooltip="Detectar superposiciones entre lotes/manzanos" />
-                <RibbonTool icon={<IconAlertCircle />} label="Huecos" onClick={handleFindGaps} data-tooltip="Detectar huecos entre manzanos" />
+                <RibbonTool icon={<IconAlertTriangle />} label="Overlaps" onClick={handleFindOverlaps} tooltip="Detectar superposiciones entre lotes/manzanos" />
+                <RibbonTool icon={<IconAlertCircle />} label="Huecos" onClick={handleFindGaps} tooltip="Detectar huecos entre manzanos" />
               </RibbonGroup>
             </>
           )}
@@ -1104,9 +1118,24 @@ const setManzanoPanelVisible = useManzanoStore((s) => s.setPanelVisible);
                   data-tooltip="Crear equipamiento (Shift+E)"
                 />
               </RibbonGroup>
-                <RibbonGroup label="Vialidad">
-                <RibbonTool mode="street" icon={<IconStreet />} label="Trazar calle" shortcut="S" active={mode === 'street'} />
-                <div className="ribbon-inline-control">
+<RibbonGroup label="Vialidad">
+        <RibbonTool mode="street" icon={<IconStreet />} label="Trazar calle" shortcut="S" active={mode === 'street'} />
+        <RibbonTool mode="roundabout" icon={<IconRoundabout />} label="Rotonda" shortcut="O" active={mode === 'roundabout'} />
+        <div className="ribbon-inline-control">
+          <input
+            type="number"
+            className="ribbon-inline-input"
+            value={rbDefaultRadiusM}
+            min={3}
+            max={200}
+            step={1}
+            onChange={(e) => setRbDefaultRadius(parseFloat(e.target.value) || 12)}
+            title="Radio de rotonda (m)"
+            aria-label="Radio de rotonda en metros"
+          />
+          <span className="ribbon-inline-text">Radio rot. (m)</span>
+        </div>
+        <div className="ribbon-inline-control">
                   <input
                     type="number"
                     className="ribbon-inline-input"
@@ -1197,6 +1226,12 @@ const setManzanoPanelVisible = useManzanoStore((s) => s.setPanelVisible);
                   label="Manzanos"
                   active={manzanoPanelVisible}
                   onClick={() => setManzanoPanelVisible(!manzanoPanelVisible)}
+                />
+                <RibbonTool
+                  icon={<IconRoundabout />}
+                  label="Rotondas"
+                  active={roundaboutPanelVisible}
+                  onClick={() => setRoundaboutPanelVisible(!roundaboutPanelVisible)}
                 />
                 <RibbonTool
                   icon={<IconCursor />}

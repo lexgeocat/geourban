@@ -8,6 +8,9 @@ import LineString from 'ol/geom/LineString.js';
 import { useStreetStore } from '../../store/streetStore';
 import { useSelectionStore } from '../../store/selectionStore';
 import { computeStreetFillets, filletArcPoints, type StreetFillet } from '../../geo/streetEngine';
+import { useRoundaboutStore } from '../../store/roundaboutStore';
+import { roundaboutGeometry } from '../../geo/roundaboutEngine';
+import type { RoundaboutDrawPreview } from './RoundaboutDrawInteraction';
 import {
   drawSegmentLabels,
   drawMainMetricLabel,
@@ -104,10 +107,11 @@ export class PostrenderPainter {
       return px ? [px[0], px[1]] : [0, 0];
     };
 
-    this.paintFeatureLabels(ctx, features, zoom, resolution, toPx);
-    this.paintManualCotaz(ctx, features, zoom, resolution, toPx);
-    this.paintStreets(ctx, zoom, resolution, toPx);
-    this.paintSnapGuides(ctx, resolution, toPx);
+this.paintFeatureLabels(ctx, features, zoom, resolution, toPx);
+this.paintManualCotaz(ctx, features, zoom, resolution, toPx);
+this.paintStreets(ctx, zoom, resolution, toPx);
+this.paintRoundabouts(ctx, toPx);
+this.paintSnapGuides(ctx, resolution, toPx);
     this.paintLassoPreview(ctx, toPx);
   }
 
@@ -461,15 +465,124 @@ export class PostrenderPainter {
     this.paintGuide(ctx, this.currentGuide, resolution);
   }
 
-  /* ─── Lasso / Rect selection preview (Fase 4) ─── */
-  private currentLassoPreview: import('./LassoSelection').LassoPreview = null;
+  /* ─── Roundabout preview + committed roundabouts ─── */
+private currentRoundaboutPreview: RoundaboutDrawPreview | null = null;
 
-  setLassoPreview(preview: import('./LassoSelection').LassoPreview): void {
-    this.currentLassoPreview = preview;
-    this.postrenderLayer.changed();
+setRoundaboutPreview(preview: RoundaboutDrawPreview | null): void {
+  this.currentRoundaboutPreview = preview;
+  this.postrenderLayer.changed();
+}
+
+private paintRoundabouts(
+  ctx: CanvasRenderingContext2D,
+  toPx: (c: number[]) => [number, number],
+): void {
+  const { roundabouts, visible } = useRoundaboutStore.getState();
+  if (visible) {
+    for (const rb of roundabouts) {
+      const geom = roundaboutGeometry(rb);
+      this.fillRing(ctx, geom.roadOuter, toPx, 'rgba(247, 129, 102, 0.10)');
+      this.strokeRing(ctx, geom.sideOuter, toPx, 'rgba(247, 129, 102, 0.55)', 1.5);
+      this.strokeRing(ctx, geom.roadOuter, toPx, 'rgba(247, 129, 102, 0.75)', 2);
+      if (geom.island) {
+        this.fillRing(ctx, geom.island, toPx, 'rgba(63, 185, 80, 0.18)');
+        this.strokeRing(ctx, geom.island, toPx, 'rgba(63, 185, 80, 0.6)', 1.25);
+      }
+      ctx.save();
+      ctx.setLineDash([6, 5]);
+      this.strokeRing(ctx, geom.centerAxis, toPx, 'rgba(247, 129, 102, 0.45)', 1);
+      ctx.restore();
+      const [lx, ly] = toPx(rb.center);
+      ctx.save();
+      ctx.font = 'bold 11px Courier New';
+      ctx.fillStyle = 'rgba(247, 129, 102, 0.9)';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`${rb.name} · R${rb.radiusM.toFixed(1)}m`, lx, ly);
+      ctx.restore();
+    }
   }
+  if (this.currentRoundaboutPreview) {
+    const { center, current } = this.currentRoundaboutPreview;
+    const radius = Math.hypot(current[0] - center[0], current[1] - center[1]);
+    if (radius > 0.1) {
+      const defaults = useRoundaboutStore.getState();
+      const previewGeom = roundaboutGeometry({
+        center: center as [number, number],
+        radiusM: radius,
+        sides: defaults.defaultSides,
+        rotation: 0,
+        roadWidthM: defaults.defaultRoadWidthM,
+        sidewalkWidthM: defaults.defaultSidewalkWidthM,
+      });
+      ctx.save();
+      ctx.setLineDash([6, 4]);
+      this.strokeRing(ctx, previewGeom.sideOuter, toPx, 'rgba(0, 212, 255, 0.85)', 1.5);
+      ctx.restore();
+    }
+    const centerPx = toPx(center);
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(centerPx[0], centerPx[1], 4, 0, Math.PI * 2);
+    ctx.fillStyle = '#0e9f6e';
+    ctx.fill();
+    ctx.restore();
+  }
+}
 
-  private paintLassoPreview(
+private strokeRing(
+  ctx: CanvasRenderingContext2D,
+  ring: Array<[number, number]>,
+  toPx: (c: number[]) => [number, number],
+  color: string,
+  width: number,
+): void {
+  if (ring.length < 2) return;
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = width;
+  ctx.beginPath();
+  const first = toPx(ring[0]);
+  ctx.moveTo(first[0], first[1]);
+  for (let i = 1; i < ring.length; i++) {
+    const p = toPx(ring[i]);
+    ctx.lineTo(p[0], p[1]);
+  }
+  ctx.closePath();
+  ctx.stroke();
+  ctx.restore();
+}
+
+private fillRing(
+  ctx: CanvasRenderingContext2D,
+  ring: Array<[number, number]>,
+  toPx: (c: number[]) => [number, number],
+  color: string,
+): void {
+  if (ring.length < 3) return;
+  ctx.save();
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  const first = toPx(ring[0]);
+  ctx.moveTo(first[0], first[1]);
+  for (let i = 1; i < ring.length; i++) {
+    const p = toPx(ring[i]);
+    ctx.lineTo(p[0], p[1]);
+  }
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
+/* ─── Lasso / Rect selection preview (Fase 4) ─── */
+private currentLassoPreview: import('./LassoSelection').LassoPreview = null;
+
+setLassoPreview(preview: import('./LassoSelection').LassoPreview): void {
+  this.currentLassoPreview = preview;
+  this.postrenderLayer.changed();
+}
+
+private paintLassoPreview(
     ctx: CanvasRenderingContext2D,
     toPx: (c: number[]) => [number, number],
   ): void {

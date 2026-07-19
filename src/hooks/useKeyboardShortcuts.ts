@@ -89,20 +89,21 @@ export function useKeyboardShortcuts() {
       // Single-key shortcuts (sin modifier)
       if (ctrlOrCmd) return;
       const lower = key.toLowerCase();
-      const map: Record<string, DrawMode> = {
-        v: 'select',
-        p: 'polygon',
-        l: 'line',
-        r: 'rectangle',
-        c: 'circle',
-        a: 'arc',
-        x: 'text',
-        s: 'street',
-        h: 'rotate',
-        k: 'scale',
-        m: 'mirror',
-        e: 'erase',
-      };
+const map: Record<string, DrawMode> = {
+  v: 'select',
+  p: 'polygon',
+  l: 'line',
+  r: 'rectangle',
+  c: 'circle',
+  a: 'arc',
+  x: 'text',
+  s: 'street',
+  o: 'roundabout',
+  h: 'rotate',
+  k: 'scale',
+  m: 'mirror',
+  e: 'erase',
+};
       const next = map[lower];
       if (next) {
         e.preventDefault();

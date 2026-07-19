@@ -14,6 +14,7 @@ import { useLayerStore } from './store/layerStore';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import ProjectSetupModal from './components/ProjectSetupModal';
 import ManzanoPanel from './components/ManzanoPanel';
+import RoundaboutPanel from './components/RoundaboutPanel';
 
 function App() {
   useKeyboardShortcuts();
@@ -62,10 +63,11 @@ function App() {
         <div style={{ pointerEvents: 'auto' }}>
           <PropertyPanel />
         </div>
-        <div style={{ pointerEvents: 'auto' }}>
-          <StatsPanel />
-<ManzanoPanel />
-        </div>
+<div style={{ pointerEvents: 'auto' }}>
+      <StatsPanel />
+      <ManzanoPanel />
+      <RoundaboutPanel />
+    </div>
       </div>
       <ProjectSetupModal />
       <SubdivisionDialog />

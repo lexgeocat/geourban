@@ -29,6 +29,7 @@ import { InteractionModeController } from './scene/InteractionModeController';
 import { SNAP_COLORS, type SnapGuideVisual } from './advancedSnap';
 import SnapEngine from './snapInteraction';
 import { RotateLotsInteraction } from './scene/RotateLotsInteraction';
+import { useRoundaboutStore } from '../store/roundaboutStore';
 import { getOrCreateSpatialIndex } from './demoDataset';
 import { ensureUtmZoneRegistered } from '../geo/utmZones';
 import { useManzanoStore } from '../store/manzanoStore';
@@ -426,17 +427,24 @@ postrenderPainter.dispose();
     }
   }, [workVisibility.lots]);
 
-  useEffect(() => {
-    const unsub = useLayersStore.subscribe((state) => {
-      const anyLoteVisible = state.layers.some((l) => (l.kind === 'lote' || l.kind === 'manzana') && l.visible);
-      const anyCalleVisible = state.layers.some((l) => l.kind === 'calle' && l.visible);
-      const anyCotaVisible = state.layers.some((l) => l.kind === 'cota' && l.visible);
-      if (drawLayerRef.current) drawLayerRef.current.setVisible(anyLoteVisible);
-      if (streetLayerRef.current) streetLayerRef.current.setVisible(anyCalleVisible);
-      if (measurementLayerRef.current) measurementLayerRef.current.setVisible(anyCotaVisible);
-    });
-    return unsub;
-  }, []);
+useEffect(() => {
+  const unsub = useLayersStore.subscribe((state) => {
+    const anyLoteVisible = state.layers.some((l) => (l.kind === 'lote' || l.kind === 'manzana') && l.visible);
+    const anyCalleVisible = state.layers.some((l) => l.kind === 'calle' && l.visible);
+    const anyCotaVisible = state.layers.some((l) => l.kind === 'cota' && l.visible);
+    if (drawLayerRef.current) drawLayerRef.current.setVisible(anyLoteVisible);
+    if (streetLayerRef.current) streetLayerRef.current.setVisible(anyCalleVisible);
+    if (measurementLayerRef.current) measurementLayerRef.current.setVisible(anyCotaVisible);
+  });
+  return unsub;
+}, []);
+
+useEffect(() => {
+  const unsub = useRoundaboutStore.subscribe(() => {
+    mapInstanceRef.current?.render();
+  });
+  return unsub;
+}, []);
 
   // --- Interacciones según modo activo ---
   useEffect(() => {
