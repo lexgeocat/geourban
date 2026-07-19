@@ -26,7 +26,7 @@ export class AddStreetCommand extends Command {
     this.sideWidthM = sideWidthM ?? useStreetStore.getState().defaultSideWidthM;
   }
 
-  execute(_ctx: CommandContext): void {
+  override async execute(_ctx: CommandContext): Promise<void> {
     this.streetId = useStreetStore.getState().addStreet({
       start: this.start,
       end: this.end,
@@ -34,7 +34,7 @@ export class AddStreetCommand extends Command {
       sideWidthM: this.sideWidthM,
       waypoints: this.waypoints,
     });
-    recomputeManzanos();
+    await recomputeManzanos();
   }
 
   override undo(_ctx: CommandContext): void {

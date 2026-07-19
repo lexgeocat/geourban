@@ -5,13 +5,12 @@ import VectorSource from 'ol/source/Vector.js';
 import GeoJSON from 'ol/format/GeoJSON.js';
 import { extend as extendExtent, Extent } from 'ol/extent.js';
 import { refreshSourceMetrics } from '../geo/metrics';
-import { clipPolygonByAllStreets, type Pt, clipHalfPlane, pointInPoly } from '../geo/polygonEngine';
-import { getStreetOuterSegments } from '../geo/curveClipping';
-import { computeStreetFillets, type StreetFillet, filletArcPoints } from '../geo/streetEngine';
+import { clipHalfPlane, pointInPoly, polyArea, type Pt } from '../geo/polygonEngine';
 import { useSelectionStore } from './selectionStore';
 import { useStreetStore } from './streetStore';
-import { validateTopologyInWorker } from '../workers/geoWorkerClient';
-import type { FeatureCollection } from 'geojson';
+import { useRoundaboutStore } from './roundaboutStore';
+import { validateTopologyInWorker, computeManzanosInWorker } from '../workers/geoWorkerClient';
+import type { FeatureCollection, Feature as GeoJSONFeature } from 'geojson';
 import Feature from 'ol/Feature.js';
 import PolygonGeom from 'ol/geom/Polygon.js';
 import type Geometry from 'ol/geom/Geometry.js';
@@ -19,6 +18,8 @@ import { runCommand } from '../commands/CommandStack';
 import { DeleteFeaturesCommand } from '../commands/DeleteFeaturesCommand';
 import { MergeFeaturesCommand } from '../commands/MergeFeaturesCommand';
 import { ensureKind, getFeatureKind } from '../core/objectModel';
+import { buildRoadNetworkRings } from '../geo/roadNetworkEngine';
+import { roundRingReflex } from '../geo/ringFillet';
 
 const geoJsonFormat = new GeoJSON();
 
@@ -163,37 +164,19 @@ export const useMapStore = create<MapState>()(
   }))
 );
 
-interface FilletCut {
-  corner: Pt;
-  chain: Pt[]; // tangA -> ...arco... -> tangB, abierto
+function closeGeoRing(ring: Pt[]): Pt[] {
+  const f = ring[0], l = ring[ring.length - 1];
+  if (Math.abs(f[0] - l[0]) > 1e-9 || Math.abs(f[1] - l[1]) > 1e-9) return [...ring, [f[0], f[1]]];
+  return ring;
 }
 
-/** Resta la cuña del ochave (entre `corner` y el arco) de un manzano, SOLO
- *  si ese manzano realmente toca esta esquina — nunca lo descarta entero. */
-function subtractFilletWedge(poly: Pt[], cut: FilletCut): Pt[] {
-  const chain = cut.chain;
-  if (chain.length < 2) return poly;
-  const mid = chain[Math.floor(chain.length / 2)];
-  if (!pointInPoly(mid[0], mid[1], poly)) return poly;
-
-  let current = poly;
-  for (let i = 0; i < chain.length - 1; i++) {
-    const a = chain[i];
-    const b = chain[i + 1];
-    const s = (b[0] - a[0]) * (cut.corner[1] - a[1]) - (b[1] - a[1]) * (cut.corner[0] - a[0]);
-    // Conserva el lado que NO contiene la esquina: eso es el manzano sin la cuña.
-    current = clipHalfPlane(current, a, b, s > 0 ? -1 : 1);
-    if (current.length < 3) return poly; // recorte degenerado: no tocar el manzano
-  }
-  return current;
-}
-
-export function recomputeManzanos() {
+export async function recomputeManzanos(): Promise<void> {
   const src = useMapStore.getState().drawSource;
   if (!src) return;
 
   const streets = useStreetStore.getState().streets;
-  if (streets.length === 0) return;
+  const roundabouts = useRoundaboutStore.getState().roundabouts;
+  if (streets.length === 0 && roundabouts.length === 0) return;
 
   type OriginGroup = { origId: string; origPts: Pt[]; members: Array<Feature<Geometry>> };
   const groups = new globalThis.Map<string, OriginGroup>();
@@ -230,56 +213,71 @@ export function recomputeManzanos() {
 
   if (groups.size === 0) return;
 
-  const streetSegments = streets.flatMap((s) => getStreetOuterSegments(s));
+  // Red vial completa unida en UNA sola operación booleana — el resultado
+  // no depende del orden en que las calles se agregaron, y un cruce de 3+
+  // vías (o una vía atravesando una rotonda) sale correcto sin casos
+  // especiales, a diferencia del recorte secuencial anterior.
+  const roadRings = buildRoadNetworkRings(streets, roundabouts);
+  if (roadRings.length === 0) return; // nada que recortar todavía
 
-  const fillets = computeStreetFillets(streets, { outer: true });
-  const filletCuts: FilletCut[] = [];
-  for (const fillet of fillets) {
-    const arcPts = filletArcPoints(fillet, 16);
-    if (arcPts.length < 2) continue;
-    filletCuts.push({ corner: fillet.corner, chain: arcPts });
+  const roadNetworkFC: FeatureCollection = {
+    type: 'FeatureCollection',
+    features: roadRings.map((ring) => ({
+      type: 'Feature',
+      properties: {},
+      geometry: { type: 'Polygon', coordinates: [closeGeoRing(ring)] },
+    })) as never[],
+  };
+
+  const parcelIndexToGroup: OriginGroup[] = Array.from(groups.values());
+  const parcelsFC: FeatureCollection = {
+    type: 'FeatureCollection',
+    features: parcelIndexToGroup.map((group) => ({
+      type: 'Feature',
+      properties: {},
+      geometry: { type: 'Polygon', coordinates: [closeGeoRing(group.origPts)] },
+    })) as never[],
+  };
+
+  let result: FeatureCollection;
+  try {
+    result = await computeManzanosInWorker(parcelsFC, roadNetworkFC);
+  } catch (err) {
+    console.error('recomputeManzanos: fallo la unión/diferencia de la red vial', err);
+    return;
   }
 
-  for (const group of groups.values()) {
-    const manzanos = clipPolygonByAllStreets(group.origPts, streetSegments);
-    const unchanged = manzanos.length === 1 && manzanos[0] === group.origPts;
+  const fragmentsByGroup = new globalThis.Map<number, Pt[][]>();
+  result.features.forEach((f: GeoJSONFeature) => {
+    const idx = f.properties?.origParcelIndex as number | undefined;
+    if (idx == null || f.geometry?.type !== 'Polygon') return;
+    const ring = (f.geometry.coordinates[0] as number[][]).map((c) => [c[0], c[1]] as Pt);
+    if (ring.length < 4) return;
+    if (!fragmentsByGroup.has(idx)) fragmentsByGroup.set(idx, []);
+    fragmentsByGroup.get(idx)!.push(ring);
+  });
 
+  parcelIndexToGroup.forEach((group, idx) => {
+    const fragments = fragmentsByGroup.get(idx) ?? [];
     for (const m of group.members) src.removeFeature(m);
 
-    if (unchanged) {
-      const closedRing = [...group.origPts];
-      if (
-        closedRing[0][0] !== closedRing[closedRing.length - 1][0] ||
-        closedRing[0][1] !== closedRing[closedRing.length - 1][1]
-      ) {
-        closedRing.push([closedRing[0][0], closedRing[0][1]]);
-      }
+    const untouched =
+      fragments.length === 1 && polyArea(fragments[0]) >= polyArea(group.origPts) * 0.999;
+
+    if (untouched) {
       const orig = group.members[0];
-      orig.setGeometry(new PolygonGeom([closedRing]));
+      orig.setGeometry(new PolygonGeom([closeGeoRing(fragments[0])]));
       orig.set('kind', 'lote', true);
       orig.set('origParcelId', group.origId, true);
       orig.set('origPts', group.origPts, true);
       src.addFeature(orig);
-      continue;
+      return;
     }
 
-    let manzanosConFillets = manzanos;
-    for (const cut of filletCuts) {
-      manzanosConFillets = manzanosConFillets.map((mzn) => subtractFilletWedge(mzn, cut));
-    }
-
-    for (let i = 0; i < manzanosConFillets.length; i++) {
-      const ring = manzanosConFillets[i];
-      if (ring.length < 3) continue;
-      const closedRing = [...ring];
-      if (
-        closedRing[0][0] !== closedRing[closedRing.length - 1][0] ||
-        closedRing[0][1] !== closedRing[closedRing.length - 1][1]
-      ) {
-        closedRing.push([closedRing[0][0], closedRing[0][1]]);
-      }
-      const newGeom = new PolygonGeom([closedRing]);
-      const newFeat = new Feature({ geometry: newGeom });
+    fragments.forEach((ring, i) => {
+      const rounded = roundRingReflex(ring);
+      if (rounded.length < 4) return;
+      const newFeat = new Feature({ geometry: new PolygonGeom([rounded]) });
       newFeat.setId(`${group.origId}-mzn-${i}`);
       newFeat.setProperties(
         ensureKind(
@@ -294,8 +292,8 @@ export function recomputeManzanos() {
         ),
       );
       src.addFeature(newFeat);
-    }
-  }
+    });
+  });
 
   refreshSourceMetrics(src);
   src.changed();

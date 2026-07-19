@@ -65,4 +65,16 @@ export async function findGapsInWorker(features: FeatureCollection) {
   return response.gaps;
 }
 
+export async function computeManzanosInWorker(
+  parcels: FeatureCollection,
+  roadNetwork: FeatureCollection,
+) {
+  const response = await runWorker<{ type: 'computeManzanos'; manzanos: FeatureCollection }>({
+    type: 'computeManzanos',
+    parcels,
+    roadNetwork,
+  });
+  return response.manzanos;
+}
+
 

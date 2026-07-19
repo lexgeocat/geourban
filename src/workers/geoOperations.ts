@@ -2,7 +2,7 @@ import GeoJSONReader from 'jsts/org/locationtech/jts/io/GeoJSONReader.js';
 import GeoJSONWriter from 'jsts/org/locationtech/jts/io/GeoJSONWriter.js';
 import GeometryFactory from 'jsts/org/locationtech/jts/geom/GeometryFactory.js';
 import OverlayOp from 'jsts/org/locationtech/jts/operation/overlay/OverlayOp.js';
-import type { FeatureCollection, Polygon as GeoJsonPolygon } from 'geojson';
+import type { FeatureCollection, Polygon as GeoJsonPolygon, Feature as GeoJsonFeature } from 'geojson';
 
 const geometryFactory = new GeometryFactory();
 const reader = new GeoJSONReader(geometryFactory);
@@ -39,6 +39,13 @@ export type FindGapsRequest = {
   type: 'findGaps';
   features: FeatureCollection;
 };
+export type ComputeManzanosRequest = {
+  type: 'computeManzanos';
+  /** Cada feature = una parcela de origen (Polygon). */
+  parcels: FeatureCollection;
+  /** Anillos "outer" de calles/rotondas, SIN unir todavía. */
+  roadNetwork: FeatureCollection;
+};
 
 export type GeoWorkerRequest =
   | UnionRequest
@@ -47,14 +54,16 @@ export type GeoWorkerRequest =
   | IntersectRequest
   | ValidateRequest
   | FindOverlapsRequest
-  | FindGapsRequest;
+  | FindGapsRequest
+  | ComputeManzanosRequest;
 
 export type GeoWorkerResponse =
   | { type: 'union' | 'merge' | 'intersect'; result: FeatureCollection; error?: string }
   | { type: 'subtract'; result: FeatureCollection; error?: string }
   | { type: 'validate'; valid: boolean; issues: string[]; error?: string }
   | { type: 'findOverlaps'; overlaps: Array<{ indexA: number; indexB: number; area: number }>; error?: string }
-  | { type: 'findGaps'; gaps: FeatureCollection; error?: string };
+  | { type: 'findGaps'; gaps: FeatureCollection; error?: string }
+  | { type: 'computeManzanos'; manzanos: FeatureCollection; error?: string };
 
 /* ---------- Helpers ---------- */
 
@@ -214,6 +223,53 @@ export function findGaps(collection: FeatureCollection): FeatureCollection {
   return writeToCollection(gaps);
 }
 
+/**
+ * Une TODA la red vial en una sola operación y luego resta esa unión de
+ * cada parcela — a diferencia del recorte secuencial calle-por-calle, esto
+ * es orden-independiente y resuelve correctamente cruces de 3+ vías, sin
+ * necesitar ningún paso posterior de "restar la cuña del ochave".
+ * Cada feature de salida lleva `origParcelIndex` para que el llamador sepa
+ * de qué parcela salió cada fragmento (una parcela puede partirse en N).
+ */
+export function computeManzanos(
+  parcels: FeatureCollection,
+  roadNetwork: FeatureCollection,
+): FeatureCollection {
+  const roadItems = readAllGeometries(roadNetwork);
+  let roadUnion: any = null;
+  if (roadItems.length > 0) {
+    roadUnion = roadItems[0].geom;
+    for (let i = 1; i < roadItems.length; i++) {
+      roadUnion = OverlayOp.union(roadUnion, roadItems[i].geom);
+    }
+  }
+
+  const parcelItems = readAllGeometries(parcels);
+  const outFeatures: GeoJsonFeature[] = [];
+
+  for (const { geom, index } of parcelItems) {
+    const diffGeom = roadUnion ? OverlayOp.difference(geom, roadUnion) : geom;
+    if (!diffGeom || diffGeom.isEmpty?.()) continue;
+
+    const geomType = diffGeom.getGeometryType?.();
+    const subGeoms =
+      geomType === 'MultiPolygon'
+        ? Array.from({ length: diffGeom.getNumGeometries() }, (_, i) => diffGeom.getGeometryN(i))
+        : [diffGeom];
+
+    for (const sub of subGeoms) {
+      if (!sub || sub.isEmpty?.() || sub.getArea() < 0.5) continue;
+      outFeatures.push({
+        type: 'Feature',
+        properties: { origParcelIndex: index },
+        geometry: writer.write(sub) as GeoJsonPolygon,
+      });
+    }
+  }
+
+  return { type: 'FeatureCollection', features: outFeatures as never[] };
+}
+
 /* ---------- Dispatcher ---------- */
 
 export function handleGeoWorkerRequest(request: GeoWorkerRequest): GeoWorkerResponse {
@@ -241,6 +297,8 @@ export function handleGeoWorkerRequest(request: GeoWorkerRequest): GeoWorkerResp
         const gaps = findGaps(request.features);
         return { type: 'findGaps', gaps };
       }
+      case 'computeManzanos':
+        return { type: 'computeManzanos', manzanos: computeManzanos(request.parcels, request.roadNetwork) };
       default:
         throw new Error(`Unknown request type: ${(request as any).type}`);
     }
@@ -265,6 +323,8 @@ export function handleGeoWorkerRequest(request: GeoWorkerRequest): GeoWorkerResp
         return { type: 'findOverlaps', overlaps: [], error: message };
       case 'findGaps':
         return { type: 'findGaps', gaps: { type: 'FeatureCollection', features: [] }, error: message };
+      case 'computeManzanos':
+        return { type: 'computeManzanos', manzanos: { type: 'FeatureCollection', features: [] }, error: message };
       default:
         throw new Error(`Unknown request type in catch: ${(request as any).type}`);
     }
