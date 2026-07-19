@@ -7,7 +7,7 @@ export class AddStreetCommand extends Command {
   private readonly start: [number, number];
   private readonly end: [number, number];
   private readonly widthM: number;
-  private readonly curvatureM: number;
+  private readonly sideWidthM: number;
   private readonly waypoints?: Array<[number, number]>;
   private streetId: string | null = null;
 
@@ -16,14 +16,14 @@ export class AddStreetCommand extends Command {
     end: [number, number],
     widthM: number,
     waypoints?: Array<[number, number]>,
-    curvatureM = 0,
+    sideWidthM?: number,
   ) {
     super();
     this.start = start;
     this.end = end;
     this.widthM = widthM;
     this.waypoints = waypoints;
-    this.curvatureM = curvatureM;
+    this.sideWidthM = sideWidthM ?? useStreetStore.getState().defaultSideWidthM;
   }
 
   execute(_ctx: CommandContext): void {
@@ -31,7 +31,7 @@ export class AddStreetCommand extends Command {
       start: this.start,
       end: this.end,
       widthM: this.widthM,
-      curvature: this.curvatureM > 0 ? this.curvatureM : undefined,
+      sideWidthM: this.sideWidthM,
       waypoints: this.waypoints,
     });
     recomputeManzanos();
@@ -41,6 +41,5 @@ export class AddStreetCommand extends Command {
     if (this.streetId) {
       useStreetStore.getState().removeStreet(this.streetId);
     }
-    // Los manzanos nuevos los restaura el snapshot del CommandStack.
   }
 }

@@ -1,31 +1,17 @@
 import type { Street } from '../store/streetStore';
 
-// ─── Tipos ──────────────────────────────────────────────────────────
-
 export interface StreetFillet {
-  /** Punto de esquina (intersección de ejes) */
   corner: [number, number];
-  /** Punto tangente en calle A */
   tangA: [number, number];
-  /** Punto tangente en calle B */
   tangB: [number, number];
-  /** Centro del arco */
   arcCenter: [number, number];
-  /** Ángulo inicio del arco (rad) */
   angA: number;
-  /** Ángulo fin del arco (rad) */
   angB: number;
-  /** ¿Arco antihorario? */
   acw: boolean;
-  /** Radio del arco en map units */
   radius: number;
-  /** Calle A */
   streetA: Street;
-  /** Calle B */
   streetB: Street;
 }
-
-// ─── Helpers ────────────────────────────────────────────────────────
 
 function norm(a: [number, number], b: [number, number]): [number, number] {
   const dx = b[0] - a[0], dy = b[1] - a[1];
@@ -33,28 +19,22 @@ function norm(a: [number, number], b: [number, number]): [number, number] {
   if (l < 1e-9) return [0, 0];
   return [-dy / l, dx / l];
 }
-
 function normalize(a: [number, number]): [number, number] {
   const l = Math.hypot(a[0], a[1]);
   return l < 1e-9 ? [0, 0] : [a[0] / l, a[1] / l];
 }
-
 function add(a: [number, number], b: [number, number]): [number, number] {
   return [a[0] + b[0], a[1] + b[1]];
 }
-
 function sub(a: [number, number], b: [number, number]): [number, number] {
   return [a[0] - b[0], a[1] - b[1]];
 }
-
 function scale(a: [number, number], s: number): [number, number] {
   return [a[0] * s, a[1] * s];
 }
-
 function dot(a: [number, number], b: [number, number]): number {
   return a[0] * b[0] + a[1] * b[1];
 }
-
 function lineLineIntersect(
   p1: [number, number], p2: [number, number],
   p3: [number, number], p4: [number, number],
@@ -66,7 +46,6 @@ function lineLineIntersect(
   const t = ((p3[0] - p1[0]) * dy2 - (p3[1] - p1[1]) * dx2) / d;
   return [p1[0] + t * dx1, p1[1] + t * dy1];
 }
-
 function onSegment(p: [number, number], s: [number, number], e: [number, number], tol: number): boolean {
   const dir = sub(e, s);
   const len = Math.hypot(dir[0], dir[1]);
@@ -75,32 +54,45 @@ function onSegment(p: [number, number], s: [number, number], e: [number, number]
   const proj = dot(sub(p, s), dirN);
   return proj >= -tol && proj <= len + tol;
 }
-
 function inSweep(ang: number, a: number, b: number): boolean {
   const sweep = (((b - a) % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
   const rel = (((ang - a) % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
   return rel <= sweep;
 }
 
-function getFilletRadiusForAngle(angleDeg: number, streetA?: Street, streetB?: Street): number {
-  // Per-street curvature override: if either street has a custom
-  // curvature value, use the smaller of the two (tighter fillet wins).
-  const overrides: number[] = [];
-  if (streetA?.curvature != null && streetA.curvature > 0) overrides.push(streetA.curvature);
-  if (streetB?.curvature != null && streetB.curvature > 0) overrides.push(streetB.curvature);
-  if (overrides.length > 0) return Math.min(...overrides);
-
-  // Default table
-  if (angleDeg <= 60) return 2;
-  if (angleDeg <= 95) return 3;
-  if (angleDeg <= 180) return 4;
-  return 6;
+/**
+ * Tabla de radios de ochave por ángulo interno del vértice — igual que
+ * index_modelo.html (manzanos.xlsx). El ochave de una calle SIEMPRE es
+ * automático: no hay override manual en ningún lado de la UI.
+ */
+const MAX_FILLET_R = 8;
+export function getFilletRadiusForAngle(angleDeg: number): number {
+  if (angleDeg <= 35) return 2.5;
+  if (angleDeg <= 45) return 3;
+  if (angleDeg <= 95) return 4;
+  if (angleDeg <= 120) return 4.5;
+  if (angleDeg <= 150) return 5;
+  return MAX_FILLET_R;
 }
 
-// ─── computeStreetFillets
+export interface ComputeFilletsOptions {
+  /**
+   * true  = fillet del borde EXTERIOR (vereda / límite de manzano): offset
+   *         = calzada/2 + vereda, radio = tabla PURA (sin sumar vereda).
+   * false = fillet del borde de CALZADA (cordón, para dibujar el pavimento):
+   *         offset = calzada/2, radio = tabla + ancho de vereda efectivo
+   *         (el giro vehicular necesita más radio que el ochave de la
+   *         vereda). Este es el default, igual que antes de este cambio.
+   */
+  outer?: boolean;
+}
 
-export function computeStreetFillets(streets: Street[]): StreetFillet[] {
+export function computeStreetFillets(
+  streets: Street[],
+  opts: ComputeFilletsOptions = {},
+): StreetFillet[] {
   const results: StreetFillet[] = [];
+  const outer = !!opts.outer;
 
   for (let i = 0; i < streets.length; i++) {
     for (let j = i + 1; j < streets.length; j++) {
@@ -111,8 +103,10 @@ export function computeStreetFillets(streets: Street[]): StreetFillet[] {
       const ip = lineLineIntersect(a0, a1, b0, b1);
       if (!ip) continue;
 
-      const halfA = sA.widthM / 2;
-      const halfB = sB.widthM / 2;
+      const swA = Math.max(0, sA.sideWidthM ?? 0);
+      const swB = Math.max(0, sB.sideWidthM ?? 0);
+      const halfA = sA.widthM / 2 + (outer ? swA : 0);
+      const halfB = sB.widthM / 2 + (outer ? swB : 0);
       const nA = norm(a0, a1), dA = normalize(sub(a1, a0));
       const nB = norm(b0, b1), dB = normalize(sub(b1, b0));
 
@@ -142,7 +136,9 @@ export function computeStreetFillets(streets: Street[]): StreetFillet[] {
           if (theta < 0.05 || theta > Math.PI - 0.05) continue;
 
           const cornerAngleDeg = (theta * 180) / Math.PI;
-          const filletM = getFilletRadiusForAngle(cornerAngleDeg, sA, sB);
+          const baseFillet = getFilletRadiusForAngle(cornerAngleDeg);
+          const filletM = outer ? baseFillet : baseFillet + Math.max(swA, swB);
+
           const tol = halfA + halfB + filletM;
           if (!onSegment(ip, a0, a1, tol)) continue;
           if (!onSegment(ip, b0, b1, tol)) continue;
@@ -186,8 +182,6 @@ export function computeStreetFillets(streets: Street[]): StreetFillet[] {
   return results;
 }
 
-// ─── Generar puntos del arco para renderizado ───────────────────────
-
 export function filletArcPoints(fillet: StreetFillet, segments = 16): [number, number][] {
   const { arcCenter, angA, angB, acw, radius } = fillet;
   const points: [number, number][] = [];
@@ -211,5 +205,3 @@ export function filletArcPoints(fillet: StreetFillet, segments = 16): [number, n
   }
   return points;
 }
-
-

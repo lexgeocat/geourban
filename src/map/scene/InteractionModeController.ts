@@ -675,7 +675,7 @@ export class InteractionModeController {
           ? (coords.slice(1, -1) as Array<[number, number]>)
           : undefined;
         void runCommand(
-          new AddStreetCommand(start, end, streetStore.defaultWidthM, waypoints, streetStore.defaultCurvatureM),
+          new AddStreetCommand(start, end, streetStore.defaultWidthM, waypoints, streetStore.defaultSideWidthM),
         );
 
         this.ctx.streetSource?.changed();

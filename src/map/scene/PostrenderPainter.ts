@@ -28,8 +28,10 @@ function getZoomFromResolution(resolution: number): number {
   return Math.log2(156543.03392804097 / resolution);
 }
 
-function streetsHash(streets: Array<{ id: string; start: [number, number]; end: [number, number]; widthM: number }>): string {
-  return streets.map((s) => `${s.id}:${s.start[0]},${s.start[1]}-${s.end[0]},${s.end[1]}:${s.widthM}`).join('|');
+function streetsHash(streets: Street[]): string {
+  return streets
+    .map((s) => `${s.id}:${s.start[0]},${s.start[1]}-${s.end[0]},${s.end[1]}:${s.widthM}:${s.sideWidthM}`)
+    .join('|');
 }
 
 type StreetChain = Array<{ from: Pt; to: Pt; len: number }>;
@@ -172,6 +174,7 @@ export class PostrenderPainter {
     lastFeatureCount: -1,
     lastStreetHash: '',
     cachedFillets: [] as StreetFillet[],
+    cachedOuterFillets: [] as StreetFillet[],
     cachedCrossings: new globalThis.Map<string, Pt[]>(),
     lotGroupCounts: new globalThis.Map<string, number>(),
     dirty: true,
@@ -238,6 +241,7 @@ this.paintSnapGuides(ctx, resolution, toPx);
 
     if (streetsChanged || this.cache.dirty) {
       this.cache.cachedFillets = computeStreetFillets(streets);
+      this.cache.cachedOuterFillets = computeStreetFillets(streets, { outer: true });
       this.cache.cachedCrossings = computeStreetCrossings(streets);
       this.cache.lastStreetHash = currentStreetHash;
     }
@@ -449,10 +453,10 @@ this.paintSnapGuides(ctx, resolution, toPx);
     const streetVisible = useStreetStore.getState().visible;
     if (!streetVisible || streets.length === 0) return;
     const fillets = this.cache.cachedFillets;
+    const outerFillets = this.cache.cachedOuterFillets;
 
     for (let si = 0; si < streets.length; si++) {
       const s = streets[si];
-      // Build full coordinate chain: start + waypoints + end
       const allCoords: Array<[number, number]> = [s.start];
       if (s.waypoints) {
         for (const wp of s.waypoints) allCoords.push(wp);
@@ -461,8 +465,9 @@ this.paintSnapGuides(ctx, resolution, toPx);
 
       const allPx = allCoords.map((c) => toPx(c));
       const halfPx = (s.widthM / 2) / resolution;
+      const sideWidthM = Math.max(0, s.sideWidthM ?? 0);
+      const outerHalfPx = (s.widthM / 2 + sideWidthM) / resolution;
 
-      // Compute perpendicular offsets at each vertex
       const normals: Array<[number, number]> = [];
       for (let i = 0; i < allPx.length; i++) {
         const prev = allPx[Math.max(0, i - 1)];
@@ -476,7 +481,24 @@ this.paintSnapGuides(ctx, resolution, toPx);
         }
       }
 
-      // ── Cuerpo de calle (polygon strip) ──
+      // ── Vereda (borde exterior: calzada + ancho de acera) ──
+      if (sideWidthM > 0) {
+        ctx.save();
+        ctx.strokeStyle = 'rgba(200, 200, 200, 0.55)';
+        ctx.lineWidth = 1;
+        for (const side of [1, -1]) {
+          ctx.beginPath();
+          for (let i = 0; i < allPx.length; i++) {
+            const nx = normals[i][0] * outerHalfPx * side, ny = normals[i][1] * outerHalfPx * side;
+            if (i === 0) ctx.moveTo(allPx[i][0] + nx, allPx[i][1] + ny);
+            else ctx.lineTo(allPx[i][0] + nx, allPx[i][1] + ny);
+          }
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+
+      // ── Cuerpo de calzada ──
       ctx.save();
       ctx.fillStyle = 'rgba(247, 129, 102, 0.08)';
       ctx.beginPath();
@@ -493,7 +515,7 @@ this.paintSnapGuides(ctx, resolution, toPx);
       ctx.fill();
       ctx.restore();
 
-      // ── Bordes sólidos ──
+      // ── Bordes sólidos (cordón de calzada) ──
       ctx.save();
       ctx.strokeStyle = 'rgba(247, 129, 102, 0.55)';
       ctx.lineWidth = 1.5;
@@ -523,7 +545,7 @@ this.paintSnapGuides(ctx, resolution, toPx);
       ctx.setLineDash([]);
       ctx.restore();
 
-      // Etiqueta de calle — crossing-aware slot-based placement
+      // Etiqueta de calle
       if (zoom > 12) {
         const crossings = this.cache.cachedCrossings.get(s.id) ?? [];
         const slots = pickStreetLabelSlots(allCoords, crossings, 140);
@@ -547,12 +569,30 @@ this.paintSnapGuides(ctx, resolution, toPx);
       }
     }
 
-    // Fillets
+    // Fillets de calzada (cordón, radio = tabla + vereda)
     ctx.save();
     ctx.strokeStyle = 'rgba(247, 129, 102, 0.65)';
     ctx.lineWidth = 2;
     ctx.lineCap = 'round';
     for (const fillet of fillets) {
+      const arcPts = filletArcPoints(fillet, 16);
+      if (arcPts.length < 2) continue;
+      const firstPx = toPx(arcPts[0]);
+      ctx.beginPath();
+      ctx.moveTo(firstPx[0], firstPx[1]);
+      for (let i = 1; i < arcPts.length; i++) {
+        const px = toPx(arcPts[i]);
+        ctx.lineTo(px[0], px[1]);
+      }
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // Fillets de vereda (borde exterior, radio = tabla pura)
+    ctx.save();
+    ctx.strokeStyle = 'rgba(200, 200, 200, 0.55)';
+    ctx.lineWidth = 1;
+    for (const fillet of outerFillets) {
       const arcPts = filletArcPoints(fillet, 16);
       if (arcPts.length < 2) continue;
       const firstPx = toPx(arcPts[0]);

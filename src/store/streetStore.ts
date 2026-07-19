@@ -6,30 +6,33 @@ export interface Street {
   start: [number, number];
   end: [number, number];
   widthM: number;
-  curvature?: number; // override fillet radius in meters (0 = use default table)
-  waypoints?: Array<[number, number]>; // intermediate points for curved streets
+  /** Ancho de vereda (acera) en metros, fijado al trazar la calle. */
+  sideWidthM: number;
+  waypoints?: Array<[number, number]>;
   name: string;
 }
 
 interface StreetState {
   streets: Street[];
   defaultWidthM: number;
-  defaultCurvatureM: number; // 0 = use angle-based default table
+  /** Ancho de vereda por defecto para las próximas calles trazadas. */
+  defaultSideWidthM: number;
   visible: boolean;
 
-  addStreet: (street: Omit<Street, 'id' | 'name'>) => string;
+  addStreet: (
+    street: Omit<Street, 'id' | 'name' | 'sideWidthM'> & { sideWidthM?: number }
+  ) => string;
   updateStreet: (id: string, patch: Partial<Omit<Street, 'id'>>) => void;
   removeStreet: (id: string) => void;
   clearStreets: () => void;
   setDefaultWidth: (w: number) => void;
-  setDefaultCurvature: (r: number) => void;
+  setDefaultSideWidth: (w: number) => void;
   setVisible: (v: boolean) => void;
 }
 
 let nextId = 1;
 
 function autoName(index: number): string {
-  // Calle A, Calle B, ... Calle Z, Calle AA, Calle AB, ...
   let name = '';
   let n = index;
   do {
@@ -43,7 +46,7 @@ export const useStreetStore = create<StreetState>()(
   immer((set) => ({
     streets: [],
     defaultWidthM: 8,
-    defaultCurvatureM: 0,
+    defaultSideWidthM: 2,
     visible: true,
 
     addStreet: (street) => {
@@ -52,7 +55,12 @@ export const useStreetStore = create<StreetState>()(
         const id = `street-${nextId++}`;
         newId = id;
         const name = autoName(state.streets.length);
-        state.streets.push({ ...street, id, name });
+        state.streets.push({
+          ...street,
+          sideWidthM: street.sideWidthM ?? state.defaultSideWidthM,
+          id,
+          name,
+        });
       });
       return newId;
     },
@@ -66,7 +74,6 @@ export const useStreetStore = create<StreetState>()(
     removeStreet: (id) =>
       set((state) => {
         state.streets = state.streets.filter((s) => s.id !== id);
-        // Re-number names
         state.streets.forEach((s, i) => { s.name = autoName(i); });
       }),
 
@@ -80,9 +87,9 @@ export const useStreetStore = create<StreetState>()(
         state.defaultWidthM = w;
       }),
 
-    setDefaultCurvature: (r) =>
+    setDefaultSideWidth: (w) =>
       set((state) => {
-        state.defaultCurvatureM = r;
+        state.defaultSideWidthM = Math.max(0, w);
       }),
 
     setVisible: (v) =>

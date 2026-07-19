@@ -134,8 +134,8 @@ export default function ManzanoPanel() {
   const drawMode = useDrawStore((s) => s.mode);
   const defaultWidthM = useStreetStore((s) => s.defaultWidthM);
   const setDefaultWidth = useStreetStore((s) => s.setDefaultWidth);
-  const defaultCurvatureM = useStreetStore((s) => s.defaultCurvatureM);
-  const setDefaultCurvature = useStreetStore((s) => s.setDefaultCurvature);
+  const defaultSideWidthM = useStreetStore((s) => s.defaultSideWidthM);
+  const setDefaultSideWidth = useStreetStore((s) => s.setDefaultSideWidth);
   const rbRadiusM = useRoundaboutStore((s) => s.defaultRadiusM);
   const setRbRadius = useRoundaboutStore((s) => s.setDefaultRadius);
   const rbSides = useRoundaboutStore((s) => s.defaultSides);
@@ -282,14 +282,14 @@ export default function ManzanoPanel() {
             style={inputStyle}
           />
           <label style={{ display: 'block', fontSize: '0.65rem', color: 'var(--cad-text-dim)', marginTop: 6 }}>
-            Radio de ochava (m) — 0 = automático
+            Ancho de vereda (m)
           </label>
           <input
             type="number"
             min={0}
             step={0.5}
-            value={defaultCurvatureM}
-            onChange={(e) => setDefaultCurvature(Math.max(0, parseFloat(e.target.value) || 0))}
+            value={defaultSideWidthM}
+            onChange={(e) => setDefaultSideWidth(Math.max(0, parseFloat(e.target.value) || 0))}
             style={inputStyle}
           />
         </div>

@@ -6,7 +6,7 @@ import GeoJSON from 'ol/format/GeoJSON.js';
 import { extend as extendExtent, Extent } from 'ol/extent.js';
 import { refreshSourceMetrics } from '../geo/metrics';
 import { clipPolygonByAllStreets, type Pt, clipHalfPlane } from '../geo/polygonEngine';
-import { getStreetSegments } from '../geo/curveClipping';
+import { getStreetOuterSegments } from '../geo/curveClipping';
 import { computeStreetFillets, type StreetFillet, filletArcPoints } from '../geo/streetEngine';
 import { useSelectionStore } from './selectionStore';
 import { useStreetStore } from './streetStore';
@@ -205,9 +205,9 @@ export function recomputeManzanos() {
 
   if (groups.size === 0) return;
 
-  const streetSegments = streets.flatMap((s) => getStreetSegments(s));
+  const streetSegments = streets.flatMap((s) => getStreetOuterSegments(s));
 
-  const fillets = computeStreetFillets(streets);
+  const fillets = computeStreetFillets(streets, { outer: true });
   const filletPolys: Pt[][] = [];
   for (const fillet of fillets) {
     const arcPts = filletArcPoints(fillet, 16);

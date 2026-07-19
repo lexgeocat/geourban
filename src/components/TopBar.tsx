@@ -405,8 +405,8 @@ const setRoundaboutPanelVisible = useRoundaboutStore((s) => s.setPanelVisible);
   const openSubdivision = useSubdivisionStore((s) => s.open);
   const defaultWidthM = useStreetStore((s) => s.defaultWidthM);
   const setDefaultWidth = useStreetStore((s) => s.setDefaultWidth);
-  const defaultCurvatureM = useStreetStore((s) => s.defaultCurvatureM);
-  const setDefaultCurvature = useStreetStore((s) => s.setDefaultCurvature);
+  const defaultSideWidthM = useStreetStore((s) => s.defaultSideWidthM);
+  const setDefaultSideWidth = useStreetStore((s) => s.setDefaultSideWidth);
   const clearStreets = useStreetStore((s) => s.clearStreets);
   const streets = useStreetStore((s) => s.streets);
 
@@ -1016,15 +1016,15 @@ const setRoundaboutPanelVisible = useRoundaboutStore((s) => s.setPanelVisible);
                   <input
                     type="number"
                     className="ribbon-inline-input"
-                    value={defaultCurvatureM}
+                    value={defaultSideWidthM}
                     min={0}
-                    max={50}
+                    max={30}
                     step={0.5}
-                    onChange={(e) => setDefaultCurvature(Math.max(0, parseFloat(e.target.value) || 0))}
-                    title="Radio de ochava (m) — 0 = automático"
-                    aria-label="Radio de ochava en metros"
+                    onChange={(e) => setDefaultSideWidth(Math.max(0, parseFloat(e.target.value) || 0))}
+                    title="Ancho de vereda (m)"
+                    aria-label="Ancho de vereda en metros"
                   />
-                  <span className="ribbon-inline-text">Ochava (m) · {streets.length} trazadas</span>
+                  <span className="ribbon-inline-text">Vereda (m) · {streets.length} trazadas</span>
                 </div>
                 {streets.length > 0 && (
                   <button
@@ -1153,15 +1153,15 @@ const setRoundaboutPanelVisible = useRoundaboutStore((s) => s.setPanelVisible);
                   <input
                     type="number"
                     className="ribbon-inline-input"
-                    value={defaultCurvatureM}
+                    value={defaultSideWidthM}
                     min={0}
-                    max={50}
+                    max={30}
                     step={0.5}
-                    onChange={(e) => setDefaultCurvature(Math.max(0, parseFloat(e.target.value) || 0))}
-                    title="Radio de ochava (m) — 0 = automático"
-                    aria-label="Radio de ochava en metros"
+                    onChange={(e) => setDefaultSideWidth(Math.max(0, parseFloat(e.target.value) || 0))}
+                    title="Ancho de vereda (m)"
+                    aria-label="Ancho de vereda en metros"
                   />
-                  <span className="ribbon-inline-text">Ochava (m)</span>
+                  <span className="ribbon-inline-text">Vereda (m)</span>
                 </div>
               </RibbonGroup>
               <RibbonGroup label="Subdivisión">
