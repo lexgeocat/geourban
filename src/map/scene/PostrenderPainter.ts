@@ -91,48 +91,98 @@ function computeStreetCrossings(streets: Street[]): CrossingsMap {
 
 type StreetLabelSlot = { pos: Pt; angle: number; len: number };
 
-function pickStreetLabelSlots(
-  coords: Array<[number, number]>,
-  crossings: Pt[],
-  spacing: number = 140,
-): StreetLabelSlot[] {
-  const chain = buildStreetChain(coords);
-  const totalLen = chain.reduce((s, c) => s + c.len, 0);
-  if (totalLen < 1) return [];
+interface StreetLabelZone { lo: number; hi: number }
 
-  const crossOffsets: number[] = [];
+function computeCrossingOffsets(chain: StreetChain, crossings: Pt[]): number[] {
+  const offsets: number[] = [];
   let walk = 0;
   for (const seg of chain) {
     for (const c of crossings) {
       const d = distToSegment(c, seg.from, seg.to);
       if (d < 0.5) {
         const t = ((c[0] - seg.from[0]) * (seg.to[0] - seg.from[0]) + (c[1] - seg.from[1]) * (seg.to[1] - seg.from[1])) / (seg.len * seg.len);
-        crossOffsets.push(walk + Math.max(0, Math.min(seg.len, t * seg.len)));
+        offsets.push(walk + Math.max(0, Math.min(seg.len, t * seg.len)));
       }
     }
     walk += seg.len;
   }
-  const endpointMargin = 12;
-  const usableStart = endpointMargin;
-  const usableEnd = totalLen - endpointMargin;
+  return offsets;
+}
+
+function sampleChainAt(chain: StreetChain, dist: number): { pos: Pt; angle: number } | null {
+  let walk = 0;
+  for (const seg of chain) {
+    const isLast = seg === chain[chain.length - 1];
+    if (dist <= walk + seg.len || isLast) {
+      const t = seg.len > 1e-6 ? Math.max(0, Math.min(1, (dist - walk) / seg.len)) : 0;
+      const pos: Pt = [seg.from[0] + t * (seg.to[0] - seg.from[0]), seg.from[1] + t * (seg.to[1] - seg.from[1])];
+      let ang = Math.atan2(seg.to[1] - seg.from[1], seg.to[0] - seg.from[0]);
+      if (ang > Math.PI / 2 || ang < -Math.PI / 2) ang += Math.PI;
+      return { pos, angle: ang };
+    }
+    walk += seg.len;
+  }
+  return null;
+}
+
+/** Reparte etiquetas en los tramos libres del eje, evitando cruces y puntas
+ *  según el ancho real del texto (medido con ctx) — mismo criterio que
+ *  drawStreetNameAlongPath de index_modelo.html. */
+function pickStreetLabelSlots(
+  ctx: CanvasRenderingContext2D,
+  coords: Array<[number, number]>,
+  crossings: Pt[],
+  labelText: string,
+  fontPx: number,
+  roadHalfWidthM: number,
+  repeatM = 140,
+): StreetLabelSlot[] {
+  const chain = buildStreetChain(coords);
+  const totalLen = chain.reduce((s, c) => s + c.len, 0);
+  if (totalLen < 1) return [];
+
+  ctx.save();
+  ctx.font = `bold ${fontPx}px Courier New`;
+  const textHalfW = ctx.measureText(labelText).width / 2 + 4;
+  ctx.restore();
+
+  const marginM = textHalfW + roadHalfWidthM + 4;
+  const zones: StreetLabelZone[] = [
+    { lo: 0, hi: marginM },
+    { lo: totalLen - marginM, hi: totalLen },
+  ];
+  for (const off of computeCrossingOffsets(chain, crossings)) {
+    zones.push({ lo: off - marginM, hi: off + marginM });
+  }
+  zones.sort((a, b) => a.lo - b.lo);
+
+  const merged: StreetLabelZone[] = [];
+  for (const z of zones) {
+    const lo = Math.max(0, z.lo), hi = Math.min(totalLen, z.hi);
+    if (hi <= lo) continue;
+    const last = merged[merged.length - 1];
+    if (last && lo <= last.hi) last.hi = Math.max(last.hi, hi);
+    else merged.push({ lo, hi });
+  }
+
+  const free: StreetLabelZone[] = [];
+  let cursor = 0;
+  for (const z of merged) {
+    if (z.lo > cursor) free.push({ lo: cursor, hi: z.lo });
+    cursor = Math.max(cursor, z.hi);
+  }
+  if (cursor < totalLen) free.push({ lo: cursor, hi: totalLen });
 
   const slots: StreetLabelSlot[] = [];
-  const step = spacing;
-  for (let off = usableStart; off <= usableEnd; off += step) {
-    const tooClose = crossOffsets.some((co) => Math.abs(co - off) < 16);
-    if (!tooClose) {
-      let accum = 0;
-      for (const seg of chain) {
-        if (off >= accum && off <= accum + seg.len) {
-          const t = (off - accum) / seg.len;
-          const pos: Pt = [seg.from[0] + t * (seg.to[0] - seg.from[0]), seg.from[1] + t * (seg.to[1] - seg.from[1])];
-          let ang = Math.atan2(seg.to[1] - seg.from[1], seg.to[0] - seg.from[0]);
-          if (ang > Math.PI / 2 || ang < -Math.PI / 2) ang += Math.PI;
-          slots.push({ pos, angle: ang, len: seg.len });
-          break;
-        }
-        accum += seg.len;
-      }
+  for (const { lo, hi } of free) {
+    const usable = hi - lo;
+    if (usable <= 0) continue;
+    const count = Math.max(1, Math.floor(usable / repeatM));
+    const step = count === 1 ? 0 : usable / count;
+    const first = count === 1 ? (lo + hi) / 2 : lo + step / 2;
+    for (let k = 0; k < count; k++) {
+      const sample = sampleChainAt(chain, first + k * step);
+      if (sample) slots.push({ pos: sample.pos, angle: sample.angle, len: usable });
     }
   }
   return slots;
@@ -548,11 +598,13 @@ this.paintSnapGuides(ctx, resolution, toPx);
       // Etiqueta de calle
       if (zoom > 12) {
         const crossings = this.cache.cachedCrossings.get(s.id) ?? [];
-        const slots = pickStreetLabelSlots(allCoords, crossings, 140);
+        const fs1 = Math.max(9, Math.min(13, 10 * zoom / 18));
+        const fs2 = Math.max(8, Math.min(11, 9 * zoom / 18));
+        const labelText = `--- ${s.name} (Ancho de Vía ${s.widthM.toFixed(2)}m) ---`;
+        const roadHalfWidthM = s.widthM / 2 + sideWidthM;
+        const slots = pickStreetLabelSlots(ctx, allCoords, crossings, labelText, fs1, roadHalfWidthM, 140);
         for (const slot of slots) {
           const px = toPx(slot.pos);
-          const fs1 = Math.max(9, Math.min(13, 10 * zoom / 18));
-          const fs2 = Math.max(8, Math.min(11, 9 * zoom / 18));
           ctx.save();
           ctx.translate(px[0], px[1]);
           ctx.rotate(slot.angle);
@@ -560,7 +612,7 @@ this.paintSnapGuides(ctx, resolution, toPx);
           ctx.textBaseline = 'middle';
           ctx.font = `bold ${fs1}px Courier New`;
           ctx.fillStyle = 'rgba(247, 129, 102, 0.85)';
-          ctx.fillText(`--- ${s.name} (Ancho de Vía ${s.widthM.toFixed(2)}m) ---`, 0, -fs1 * 0.8);
+          ctx.fillText(labelText, 0, -fs1 * 0.8);
           ctx.font = `${fs2}px Courier New`;
           ctx.fillStyle = 'rgba(247, 129, 102, 0.55)';
           ctx.fillText('E   J   E    D   E     V   Í   A', 0, fs2 * 0.8);

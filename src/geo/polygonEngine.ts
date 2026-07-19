@@ -372,9 +372,10 @@ export function clipPolygonByAllStreets(
 ): Pt[][] {
   let current: Pt[][] = [poly];
   for (const sd of streetData) {
-    // Si ya es un solo poly y es el original, pasar ref directa
     const next = applyStreetToPolys(current, sd);
-    if (next.length === 0) return [];
+    // Vía degenerada respecto a lo que queda: se ignora en vez de tirar
+    // todo el recorte ya hecho por las demás vías.
+    if (next.length === 0) continue;
     current = next;
   }
   return current;
