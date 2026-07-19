@@ -28,8 +28,13 @@ import { PostrenderPainter } from './scene/PostrenderPainter';
 import { InteractionModeController } from './scene/InteractionModeController';
 import { SNAP_COLORS, type SnapGuideVisual } from './advancedSnap';
 import SnapEngine from './snapInteraction';
+import { RotateLotsInteraction } from './scene/RotateLotsInteraction';
 import { getOrCreateSpatialIndex } from './demoDataset';
 import { ensureUtmZoneRegistered } from '../geo/utmZones';
+import { useManzanoStore } from '../store/manzanoStore';
+import { runCommand } from '../commands/CommandStack';
+import { RecomputeManzanoLotsCommand } from '../commands/RecomputeManzanoLotsCommand';
+import { polyArea } from '../geo/polygonEngine';
 
 if (!(HTMLCanvasElement.prototype as any).__willReadFreqPatched) {
   const origGetContext = HTMLCanvasElement.prototype.getContext;
@@ -59,8 +64,10 @@ export default function MapView() {
   const streetLayerSrcRef = useRef<VectorSource | null>(null);
   const snapGuideRef = useRef<SnapGuideVisual | null>(null);
   const snapEngineRef = useRef<SnapEngine | null>(null);
-  const interactionCtrlRef = useRef<InteractionModeController | null>(null);
-  const baseMapId = useLayerStore((s) => s.baseMap);
+const interactionCtrlRef = useRef<InteractionModeController | null>(null);
+const rotateLotsInteractionRef = useRef<RotateLotsInteraction | null>(null);
+const rotateLotsCleanupRef = useRef<(() => void) | null>(null);
+const baseMapId = useLayerStore((s) => s.baseMap);
   const workVisibility = useLayerStore((s) => s.workVisibility);
   const viewConfig = useMapStore((s) => s.viewConfig);
   const drawMode = useDrawStore().mode;
@@ -327,10 +334,33 @@ export default function MapView() {
         postrenderPainter.setSnapGuide(guide);
       },
     });
-    snapEngineRef.current = snapEngine;
-    map.addInteraction(snapEngine);
+snapEngineRef.current = snapEngine;
+map.addInteraction(snapEngine);
 
-    useMapStore.getState().setMap(map);
+const rotateLotsInteraction = new RotateLotsInteraction(map, (id, dir) => {
+  const { targetAreaM2, frontMinM, getMethod, setGeomSnapshot } = useManzanoStore.getState();
+  const src = useMapStore.getState().drawSource;
+  const feat = src?.getFeatureById(id) as Feature<Geometry> | null;
+  const geom = feat?.getGeometry();
+  if (geom instanceof Polygon) {
+    const ring = ((geom.getCoordinates()[0] ?? []) as number[][]).map((c) => [c[0], c[1]] as [number, number]);
+    let perimeter = 0;
+    for (let i = 0; i < ring.length; i++) {
+      const a = ring[i];
+      const b = ring[(i + 1) % ring.length];
+      perimeter += Math.hypot(b[0] - a[0], b[1] - a[1]);
+    }
+    setGeomSnapshot(id, { area: polyArea(ring), perimeter });
+  }
+  void runCommand(
+    new RecomputeManzanoLotsCommand({ manzanoId: id, targetAreaM2, frontMinM, method: getMethod(id), dirPref: dir }),
+  );
+});
+rotateLotsInteractionRef.current = rotateLotsInteraction;
+rotateLotsCleanupRef.current = rotateLotsInteraction.install();
+map.addInteraction(rotateLotsInteraction);
+
+useMapStore.getState().setMap(map);
     mapInstanceRef.current = map;
 
     // Cleanup unificado — BaseLayerManager.dispose() reemplaza la
@@ -342,10 +372,16 @@ export default function MapView() {
       baseLayerMgrRef.current = null;
       interactionCtrlRef.current?.dispose();
       interactionCtrlRef.current = null;
-      map.removeInteraction(snapEngine);
-      snapEngineRef.current = null;
-      unByKey(moveEndKey);
-      postrenderPainter.dispose();
+map.removeInteraction(snapEngine);
+snapEngineRef.current = null;
+rotateLotsCleanupRef.current?.();
+rotateLotsCleanupRef.current = null;
+if (rotateLotsInteractionRef.current) {
+  map.removeInteraction(rotateLotsInteractionRef.current);
+  rotateLotsInteractionRef.current = null;
+}
+unByKey(moveEndKey);
+postrenderPainter.dispose();
       drawSrc.un('addfeature', onSpatialInsert);
       drawSrc.un('removefeature', onSpatialRemove);
       useMapStore.getState().setMap(null);
@@ -407,12 +443,18 @@ export default function MapView() {
     const map = mapInstanceRef.current;
     if (!map) return;
     interactionCtrlRef.current?.activate(drawMode);
-    // SnapEngine siempre al final (última interacción = procesa primero)
-    if (snapEngineRef.current) {
-      map.removeInteraction(snapEngineRef.current);
-      map.addInteraction(snapEngineRef.current);
-    }
-  }, [drawMode]);
+// SnapEngine siempre al final (última interacción = procesa primero)
+  if (snapEngineRef.current) {
+    map.removeInteraction(snapEngineRef.current);
+    map.addInteraction(snapEngineRef.current);
+  }
+  // El gizmo de "Rotar lotes" va todavía más al final: debe interceptar
+  // el arrastre de su manipulador antes que cualquier otra interacción (Select incluido).
+  if (rotateLotsInteractionRef.current) {
+    map.removeInteraction(rotateLotsInteractionRef.current);
+    map.addInteraction(rotateLotsInteractionRef.current);
+  }
+}, [drawMode]);
 
   // --- Re-activar interacciones cuando cambia selectMode (rect/lasso) ---
   const selectMode = useSelectionStore((s) => s.selectMode);

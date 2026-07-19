@@ -1,5 +1,4 @@
-// src/components/ManzanoPanel.tsx
-import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
 import Polygon from 'ol/geom/Polygon.js';
@@ -8,25 +7,50 @@ import { useManzanoStore, type ManzanoLoteMethod } from '../store/manzanoStore';
 import { useCommandStack } from '../commands/CommandStack';
 import { RecomputeManzanoLotsCommand } from '../commands/RecomputeManzanoLotsCommand';
 import { GenerateLotsCommand } from '../commands/GenerateLotsCommand';
-import { polyArea, type Pt } from '../geo/polygonEngine';
+import { polyArea, centroid, type Pt } from '../geo/polygonEngine';
 
 const MZN_COLORS = [
-  '#58a6ff', '#3fb950', '#f59e0b', '#ef4444', '#8b5cf6',
-  '#ec4899', '#14b8a6', '#f97316', '#06b6d4', '#84cc16',
+  '#58a6ff',
+  '#3fb950',
+  '#f59e0b',
+  '#ef4444',
+  '#8b5cf6',
+  '#ec4899',
+  '#14b8a6',
+  '#f97316',
+  '#06b6d4',
+  '#84cc16',
 ];
 
-const METHOD_BTNS: { key: ManzanoLoteMethod; label: string }[] = [
-  { key: 'auto', label: 'Auto' },
-  { key: 'exact', label: 'Modo 1' },
-  { key: 'modo2', label: 'Modo 2' },
+const METHOD_BTNS: { key: ManzanoLoteMethod; label: string; color: string }[] = [
+  { key: 'auto', label: '▣ Auto', color: 'var(--cad-accent)' },
+  { key: 'exact', label: '◈ Modo 1', color: 'var(--cad-accent-green)' },
+  { key: 'modo2', label: '◆ Modo 2', color: '#4dd0c4' },
 ];
+
+interface LotInfo {
+  label: string;
+  areaM2: number;
+  isRemnant: boolean;
+}
 
 interface ManzanoRow {
   id: string | number;
   colorIdx: number;
   areaM2: number;
+  perimeterM: number;
   isEquip: boolean;
-  lotCount: number;
+  lots: LotInfo[];
+}
+
+function ringPerimeter(pts: Pt[]): number {
+  let per = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const a = pts[i];
+    const b = pts[(i + 1) % pts.length];
+    per += Math.hypot(b[0] - a[0], b[1] - a[1]);
+  }
+  return per;
 }
 
 function readManzanoRows(drawSource: any): ManzanoRow[] {
@@ -39,17 +63,22 @@ function readManzanoRows(drawSource: any): ManzanoRow[] {
     const id = f.getId();
     if (id == null) return;
     const geom = f.getGeometry();
-    const areaM2 =
-      (f.get('areaM2') as number | undefined) ??
-      (geom instanceof Polygon
-        ? polyArea(((geom.getCoordinates()[0] ?? []) as number[][]).map((c) => [c[0], c[1]] as Pt))
-        : 0);
-    let lotCount = 0;
+    const ring: Pt[] = geom instanceof Polygon
+      ? ((geom.getCoordinates()[0] ?? []) as number[][]).map((c) => [c[0], c[1]] as Pt)
+      : [];
+    const areaM2 = (f.get('areaM2') as number | undefined) ?? (ring.length ? polyArea(ring) : 0);
+    const perimeterM = ring.length ? ringPerimeter(ring) : 0;
+    const lots: LotInfo[] = [];
     drawSource.forEachFeature((g: Feature<Geometry>) => {
-      if (g.get('lotGroupId') === String(id)) lotCount++;
+      if (g.get('lotGroupId') !== String(id)) return;
+      lots.push({
+        label: (g.get('label') as string) ?? 'Lote',
+        areaM2: (g.get('areaM2') as number) ?? 0,
+        isRemnant: !!g.get('isRemnant'),
+      });
     });
     const colorIdx = (f.get('colorIdx') as number | undefined) ?? fallbackIdx;
-    rows.push({ id, colorIdx: colorIdx % MZN_COLORS.length, areaM2, isEquip: type === 'equipamiento', lotCount });
+    rows.push({ id, colorIdx: colorIdx % MZN_COLORS.length, areaM2, perimeterM, isEquip: type === 'equipamiento', lots });
     fallbackIdx++;
   });
   return rows;
@@ -57,7 +86,6 @@ function readManzanoRows(drawSource: any): ManzanoRow[] {
 
 export default function ManzanoPanel() {
   const drawSource = useMapStore((s) => s.drawSource);
-  const map = useMapStore((s) => s.mapInstance);
   const [tick, setTick] = useState(0);
 
   useEffect(() => {
@@ -85,69 +113,91 @@ export default function ManzanoPanel() {
   const setMethod = useManzanoStore((s) => s.setMethod);
   const getRotateDir = useManzanoStore((s) => s.getRotateDir);
   const setRotateDir = useManzanoStore((s) => s.setRotateDir);
+  const setGeomSnapshot = useManzanoStore((s) => s.setGeomSnapshot);
+  const hasGeomChanged = useManzanoStore((s) => s.hasGeomChanged);
   const openCards = useManzanoStore((s) => s.openCards);
   const toggleCardOpen = useManzanoStore((s) => s.toggleCardOpen);
-  const pickingId = useManzanoStore((s) => s.pickingId);
-  const setPickingId = useManzanoStore((s) => s.setPickingId);
+  const rotatingId = useManzanoStore((s) => s.rotatingId);
+  const startRotateLots = useManzanoStore((s) => s.startRotateLots);
+  const cancelRotateLots = useManzanoStore((s) => s.cancelRotateLots);
 
-  // ── "Rotar lotes": 2 clics en el mapa definen la dirección manual ──────
-  const pickBufRef = useRef<[number, number][]>([]);
-  useEffect(() => {
-    if (!map || pickingId == null) return;
-    pickBufRef.current = [];
-    const handler = (evt: any) => {
-      pickBufRef.current.push([evt.coordinate[0], evt.coordinate[1]]);
-      if (pickBufRef.current.length >= 2) {
-        const [a, b] = pickBufRef.current;
-        const dx = b[0] - a[0], dy = b[1] - a[1];
-        const len = Math.hypot(dx, dy) || 1;
-        setRotateDir(pickingId, { ax: dx / len, ay: dy / len });
-        setPickingId(null);
-        void runRecompute(pickingId);
-      }
-    };
-    map.on('singleclick', handler);
-    return () => { map.un('singleclick', handler); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [map, pickingId]);
+  const [lotsBusy, setLotsBusy] = useState(false);
+  const [expandedLots, setExpandedLots] = useState<Record<string, boolean>>({});
 
   const runRecompute = useCallback(
-    async (id: string | number) => {
-      const method = useManzanoStore.getState().getMethod(id);
-      const dirPref = useManzanoStore.getState().getRotateDir(id);
+    async (row: ManzanoRow) => {
+      const method = getMethod(row.id);
+      const dirPref = getRotateDir(row.id);
       await useCommandStack
         .getState()
-        .run(new RecomputeManzanoLotsCommand({ manzanoId: id, targetAreaM2, frontMinM, method, dirPref }));
+        .run(
+          new RecomputeManzanoLotsCommand({
+            manzanoId: row.id,
+            targetAreaM2,
+            frontMinM,
+            method,
+            dirPref,
+          }),
+        );
+      if (dirPref) setGeomSnapshot(row.id, { area: row.areaM2, perimeter: row.perimeterM });
     },
-    [targetAreaM2, frontMinM],
+    [targetAreaM2, frontMinM, getMethod, getRotateDir, setGeomSnapshot],
   );
 
-  const handleMethodClick = (id: string | number, method: ManzanoLoteMethod) => {
-    setMethod(id, method);
-    void runRecompute(id);
+  const handleMethodClick = (row: ManzanoRow, method: ManzanoLoteMethod) => {
+    setMethod(row.id, method);
+    void runRecompute(row);
   };
 
-  const handleToggleEquip = (id: string | number) => {
+  const handleToggleEquip = (row: ManzanoRow) => {
     if (!drawSource) return;
-    const feat = drawSource.getFeatureById(id) as Feature<Geometry> | null;
+    const feat = drawSource.getFeatureById(row.id) as Feature<Geometry> | null;
     if (!feat) return;
     const wasEquip = feat.get('type') === 'equipamiento';
     feat.set('type', wasEquip ? 'manzana' : 'equipamiento', true);
     if (!wasEquip) {
       const toRemove: Feature<Geometry>[] = [];
       drawSource.forEachFeature((f) => {
-        if (f.get('lotGroupId') === String(id)) toRemove.push(f as Feature<Geometry>);
+        if (f.get('lotGroupId') === String(row.id)) toRemove.push(f as Feature<Geometry>);
       });
       toRemove.forEach((f) => drawSource.removeFeature(f));
     }
     drawSource.changed();
   };
 
+  const handleStartRotate = (row: ManzanoRow) => {
+    if (!drawSource) return;
+    const feat = drawSource.getFeatureById(row.id) as Feature<Geometry> | null;
+    const geom = feat?.getGeometry();
+    if (!(geom instanceof Polygon)) return;
+    const ring = ((geom.getCoordinates()[0] ?? []) as number[][]).map((c) => [c[0], c[1]] as Pt);
+    const cen = centroid(ring);
+    const existing = getRotateDir(row.id);
+    const R = Math.max(6, Math.min(60, Math.sqrt(Math.max(1, row.areaM2)) * 0.45));
+    const dir = existing ?? { ax: 1, ay: 0 };
+    const anchor: [number, number] = [cen[0], cen[1]];
+    const handle: [number, number] = [anchor[0] + dir.ax * R, anchor[1] + dir.ay * R];
+    startRotateLots(row.id, anchor, handle);
+  };
+
+  const handleResetRotate = (row: ManzanoRow) => {
+    setRotateDir(row.id, undefined);
+    void runRecompute(row);
+  };
+
   const handleGenerarTodos = async () => {
-    await useCommandStack.getState().run(new GenerateLotsCommand({ targetAreaM2, frontMinM }));
+    setLotsBusy(true);
+    try {
+      await useCommandStack.getState().run(new GenerateLotsCommand({ targetAreaM2, frontMinM }));
+    } finally {
+      setLotsBusy(false);
+    }
   };
 
   if (!panelVisible || rows.length === 0) return null;
+
+  const totalLotes = rows.reduce((a, r) => a + r.lots.length, 0);
+  const totalMznArea = rows.filter((r) => !r.isEquip).reduce((a, r) => a + r.areaM2, 0);
 
   return (
     <div
@@ -156,7 +206,7 @@ export default function ManzanoPanel() {
         position: 'fixed',
         top: 90,
         right: 10,
-        width: 272,
+        width: 280,
         maxHeight: 'calc(100vh - 140px)',
         overflowY: 'auto',
         zIndex: 900,
@@ -174,7 +224,9 @@ export default function ManzanoPanel() {
           paddingBottom: 6,
         }}
       >
-        <span style={{ fontWeight: 700, color: 'var(--cad-text)', letterSpacing: '0.03em' }}>Manzanos</span>
+        <span style={{ fontWeight: 700, color: 'var(--cad-text)', letterSpacing: '0.03em' }}>
+          Manzanos <span style={{ color: 'var(--cad-text-muted)', fontWeight: 400 }}>({rows.length})</span>
+        </span>
         <button
           onClick={() => setPanelVisible(false)}
           style={{ background: 'none', border: 'none', color: 'var(--cad-text-dim)', cursor: 'pointer', fontSize: '0.85rem' }}
@@ -186,7 +238,7 @@ export default function ManzanoPanel() {
 
       <div style={{ background: 'var(--cad-bg-surface)', borderRadius: 6, padding: 8, marginBottom: 8 }}>
         <div style={{ fontSize: '0.62rem', color: 'var(--cad-accent)', fontWeight: 700, marginBottom: 6, letterSpacing: '0.05em' }}>
-          PARÁMETROS DE LOTES
+          ◼ PARÁMETROS DE LOTES
         </div>
         <label style={{ display: 'block', fontSize: '0.65rem', color: 'var(--cad-text-dim)' }}>Área objetivo (m²)</label>
         <input
@@ -204,8 +256,8 @@ export default function ManzanoPanel() {
           onChange={(e) => setFrontMinM(parseFloat(e.target.value) || 0)}
           style={inputStyle}
         />
-        <button onClick={handleGenerarTodos} className="cad-icon-btn" style={{ width: '100%', marginTop: 8, height: 28 }}>
-          ▶ Generar todos
+        <button onClick={handleGenerarTodos} disabled={lotsBusy} className="cad-icon-btn" style={{ width: '100%', marginTop: 8, height: 28 }}>
+          {lotsBusy ? 'Generando…' : '▶ Generar todos'}
         </button>
       </div>
 
@@ -213,8 +265,12 @@ export default function ManzanoPanel() {
         const isOpen = !!openCards[String(row.id)];
         const color = MZN_COLORS[row.colorIdx];
         const method = getMethod(row.id);
-        const hasDir = !!getRotateDir(row.id);
-        const isPicking = pickingId === row.id;
+        const rotateDir = getRotateDir(row.id);
+        const isRotatingThis = rotatingId === row.id;
+        const geomChanged = rotateDir != null && hasGeomChanged(row.id, { area: row.areaM2, perimeter: row.perimeterM });
+        const lotsOpen = !!expandedLots[String(row.id)];
+        const normalLots = row.lots.filter((l) => !l.isRemnant).length;
+        const remLots = row.lots.filter((l) => l.isRemnant).length;
 
         return (
           <div
@@ -229,20 +285,15 @@ export default function ManzanoPanel() {
           >
             <div
               onClick={() => toggleCardOpen(row.id)}
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                padding: '6px 8px',
-                cursor: 'pointer',
-              }}
+              style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 8px', cursor: 'pointer' }}
             >
-              <div>
+              <div style={{ minWidth: 0 }}>
                 <div style={{ fontWeight: 700, color }}>
-                  {row.isEquip ? 'Equipamiento' : `Mzo. ${row.colorIdx + 1}`}
+                  {row.isEquip ? '★ Equipamiento' : `Mzo. ${row.colorIdx + 1}`}
                 </div>
                 <div style={{ color: 'var(--cad-text-muted)', fontSize: '0.65rem' }}>
-                  {row.areaM2.toFixed(1)} m²{row.lotCount ? ` · ${row.lotCount} lotes` : ''}
+                  {row.areaM2.toFixed(1)} m²{row.lots.length ? ` · ${row.lots.length} lotes` : ''}
+                  {geomChanged && <span style={{ color: 'var(--cad-accent-amber)' }}> · ⚠ desactualizado</span>}
                 </div>
               </div>
               <span
@@ -260,7 +311,7 @@ export default function ManzanoPanel() {
             {isOpen && (
               <div style={{ padding: '0 8px 8px 8px' }}>
                 <button
-                  onClick={() => handleToggleEquip(row.id)}
+                  onClick={() => handleToggleEquip(row)}
                   className="cad-icon-btn"
                   style={{
                     width: '100%',
@@ -279,47 +330,129 @@ export default function ManzanoPanel() {
                       {METHOD_BTNS.map((m) => (
                         <button
                           key={m.key}
-                          onClick={() => handleMethodClick(row.id, m.key)}
+                          onClick={() => handleMethodClick(row, m.key)}
                           className="cad-icon-btn"
                           style={{
                             flex: 1,
                             height: 24,
                             fontSize: '0.62rem',
-                            borderColor: method === m.key ? 'var(--cad-accent)' : undefined,
-                            color: method === m.key ? 'var(--cad-accent)' : undefined,
+                            borderColor: method === m.key ? m.color : undefined,
+                            color: method === m.key ? m.color : undefined,
                           }}
                         >
                           {m.label}
                         </button>
                       ))}
                     </div>
-                    <div style={{ display: 'flex', gap: 4 }}>
-                      <button
-                        onClick={() => setPickingId(isPicking ? null : row.id)}
-                        className="cad-icon-btn"
+
+                    {isRotatingThis ? (
+                      <div
                         style={{
-                          flex: 1,
-                          height: 24,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: 4,
+                          padding: '5px 8px',
+                          marginBottom: 6,
+                          background: 'rgba(39,174,96,0.12)',
+                          border: '1px solid #27ae60',
+                          borderRadius: 4,
+                          color: '#27ae60',
                           fontSize: '0.62rem',
-                          borderColor: isPicking ? 'var(--cad-accent-amber)' : undefined,
-                          color: isPicking ? 'var(--cad-accent-amber)' : undefined,
                         }}
                       >
-                        {isPicking ? 'Clic en 2 puntos…' : '↻ Rotar lotes'}
-                      </button>
-                      {hasDir && (
+                        <span>▶ Arrastrá el punto amarillo en el mapa…</span>
                         <button
-                          onClick={() => {
-                            setRotateDir(row.id, undefined);
-                            void runRecompute(row.id);
-                          }}
-                          className="cad-icon-btn"
-                          style={{ height: 24, fontSize: '0.62rem', color: 'var(--cad-accent-red)' }}
+                          onClick={() => cancelRotateLots()}
+                          style={{ background: 'none', border: 'none', color: 'var(--cad-accent-red)', cursor: 'pointer' }}
                         >
-                          Reset
+                          ✕
                         </button>
-                      )}
-                    </div>
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', gap: 4 }}>
+                        <button onClick={() => handleStartRotate(row)} className="cad-icon-btn" style={{ flex: 1, height: 24, fontSize: '0.62rem' }}>
+                          ↻ Rotar lotes
+                        </button>
+                        {rotateDir && (
+                          <button
+                            onClick={() => handleResetRotate(row)}
+                            className="cad-icon-btn"
+                            style={{ height: 24, fontSize: '0.62rem', color: 'var(--cad-accent-red)' }}
+                          >
+                            Reset
+                          </button>
+                        )}
+                      </div>
+                    )}
+
+                    {geomChanged && (
+                      <button
+                        onClick={() => runRecompute(row)}
+                        className="cad-icon-btn"
+                        style={{
+                          width: '100%',
+                          height: 24,
+                          marginTop: 6,
+                          fontSize: '0.62rem',
+                          borderColor: 'var(--cad-accent-amber)',
+                          color: 'var(--cad-accent-amber)',
+                        }}
+                      >
+                        ↺ Regenerar (el manzano cambió)
+                      </button>
+                    )}
+
+                    {row.lots.length > 0 && (
+                      <div style={{ marginTop: 6 }}>
+                        <div
+                          onClick={() =>
+                            setExpandedLots((s) => ({
+                              ...s,
+                              [String(row.id)]: !s[String(row.id)],
+                            }))
+                          }
+                          style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            cursor: 'pointer',
+                            fontSize: '0.63rem',
+                            color: 'var(--cad-text-dim)',
+                          }}
+                        >
+                          <span>
+                            {normalLots} lotes · {remLots} remanentes
+                          </span>
+                          <span
+                            style={{
+                              transform: lotsOpen ? 'rotate(90deg)' : 'none',
+                              transition: 'transform 0.15s',
+                            }}
+                          >
+                            ▶
+                          </span>
+                        </div>
+                        {lotsOpen && (
+                          <div style={{ maxHeight: 120, overflowY: 'auto', marginTop: 4 }}>
+                            {row.lots.map((l, i) => (
+                              <div
+                                key={i}
+                                style={{
+                                  display: 'flex',
+                                  justifyContent: 'space-between',
+                                  fontSize: '0.6rem',
+                                  padding: '2px 4px',
+                                  color: l.isRemnant ? 'var(--cad-accent-amber)' : 'var(--cad-text-dim)',
+                                }}
+                              >
+                                <span>{l.label}</span>
+                                <span>{l.areaM2.toFixed(1)} m²</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </>
                 )}
               </div>
@@ -327,6 +460,18 @@ export default function ManzanoPanel() {
           </div>
         );
       })}
+
+      <div
+        style={{
+          marginTop: 6,
+          paddingTop: 6,
+          borderTop: '1px solid var(--cad-border)',
+          fontSize: '0.63rem',
+          color: 'var(--cad-text-muted)',
+        }}
+      >
+        Manzanos: {totalMznArea.toFixed(1)} m² · {totalLotes} lotes en total
+      </div>
     </div>
   );
 }
