@@ -5,9 +5,10 @@ import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
 import Polygon from 'ol/geom/Polygon.js';
 import LineString from 'ol/geom/LineString.js';
-import { useStreetStore } from '../../store/streetStore';
+import { useStreetStore, type Street } from '../../store/streetStore';
 import { useSelectionStore } from '../../store/selectionStore';
 import { computeStreetFillets, filletArcPoints, type StreetFillet } from '../../geo/streetEngine';
+import { type Pt } from '../../geo/polygonEngine';
 import { useRoundaboutStore } from '../../store/roundaboutStore';
 import { roundaboutGeometry } from '../../geo/roundaboutEngine';
 import type { RoundaboutDrawPreview } from './RoundaboutDrawInteraction';
@@ -29,6 +30,118 @@ function getZoomFromResolution(resolution: number): number {
 
 function streetsHash(streets: Array<{ id: string; start: [number, number]; end: [number, number]; widthM: number }>): string {
   return streets.map((s) => `${s.id}:${s.start[0]},${s.start[1]}-${s.end[0]},${s.end[1]}:${s.widthM}`).join('|');
+}
+
+type StreetChain = Array<{ from: Pt; to: Pt; len: number }>;
+
+function buildStreetChain(coords: Array<[number, number]>): StreetChain {
+  const chain: StreetChain = [];
+  for (let i = 1; i < coords.length; i++) {
+    const from = coords[i - 1];
+    const to = coords[i];
+    const len = Math.hypot(to[0] - from[0], to[1] - from[1]);
+    chain.push({ from, to, len });
+  }
+  return chain;
+}
+
+function segSegIntersection(
+  a1: Pt, a2: Pt, b1: Pt, b2: Pt,
+): Pt | null {
+  const dax = a2[0] - a1[0], day = a2[1] - a1[1];
+  const dbx = b2[0] - b1[0], dby = b2[1] - b1[1];
+  const den = dax * dby - day * dbx;
+  if (Math.abs(den) < 1e-12) return null;
+  const t = ((b1[0] - a1[0]) * dby - (b1[1] - a1[1]) * dbx) / den;
+  const u = ((b1[0] - a1[0]) * day - (b1[1] - a1[1]) * dax) / den;
+  if (t >= 0 && t <= 1 && u >= 0 && u <= 1) {
+    return [a1[0] + t * dax, a1[1] + t * day];
+  }
+  return null;
+}
+
+type CrossingsMap = globalThis.Map<string, Pt[]>;
+
+function computeStreetCrossings(streets: Street[]): CrossingsMap {
+  const map: CrossingsMap = new globalThis.Map();
+  for (const s of streets) {
+    map.set(s.id, []);
+  }
+  for (let i = 0; i < streets.length; i++) {
+    const si = streets[i];
+    const chainI = buildStreetChain([si.start, ...(si.waypoints ?? []), si.end]);
+    for (let j = i + 1; j < streets.length; j++) {
+      const sj = streets[j];
+      const chainJ = buildStreetChain([sj.start, ...(sj.waypoints ?? []), sj.end]);
+      for (const segI of chainI) {
+        for (const segJ of chainJ) {
+          const pt = segSegIntersection(segI.from, segI.to, segJ.from, segJ.to);
+          if (pt) {
+            map.get(si.id)!.push(pt);
+            map.get(sj.id)!.push(pt);
+          }
+        }
+      }
+    }
+  }
+  return map;
+}
+
+type StreetLabelSlot = { pos: Pt; angle: number; len: number };
+
+function pickStreetLabelSlots(
+  coords: Array<[number, number]>,
+  crossings: Pt[],
+  spacing: number = 140,
+): StreetLabelSlot[] {
+  const chain = buildStreetChain(coords);
+  const totalLen = chain.reduce((s, c) => s + c.len, 0);
+  if (totalLen < 1) return [];
+
+  const crossOffsets: number[] = [];
+  let walk = 0;
+  for (const seg of chain) {
+    for (const c of crossings) {
+      const d = distToSegment(c, seg.from, seg.to);
+      if (d < 0.5) {
+        const t = ((c[0] - seg.from[0]) * (seg.to[0] - seg.from[0]) + (c[1] - seg.from[1]) * (seg.to[1] - seg.from[1])) / (seg.len * seg.len);
+        crossOffsets.push(walk + Math.max(0, Math.min(seg.len, t * seg.len)));
+      }
+    }
+    walk += seg.len;
+  }
+  const endpointMargin = 12;
+  const usableStart = endpointMargin;
+  const usableEnd = totalLen - endpointMargin;
+
+  const slots: StreetLabelSlot[] = [];
+  const step = spacing;
+  for (let off = usableStart; off <= usableEnd; off += step) {
+    const tooClose = crossOffsets.some((co) => Math.abs(co - off) < 16);
+    if (!tooClose) {
+      let accum = 0;
+      for (const seg of chain) {
+        if (off >= accum && off <= accum + seg.len) {
+          const t = (off - accum) / seg.len;
+          const pos: Pt = [seg.from[0] + t * (seg.to[0] - seg.from[0]), seg.from[1] + t * (seg.to[1] - seg.from[1])];
+          let ang = Math.atan2(seg.to[1] - seg.from[1], seg.to[0] - seg.from[0]);
+          if (ang > Math.PI / 2 || ang < -Math.PI / 2) ang += Math.PI;
+          slots.push({ pos, angle: ang, len: seg.len });
+          break;
+        }
+        accum += seg.len;
+      }
+    }
+  }
+  return slots;
+}
+
+function distToSegment(p: Pt, a: Pt, b: Pt): number {
+  const dx = b[0] - a[0], dy = b[1] - a[1];
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq < 1e-12) return Math.hypot(p[0] - a[0], p[1] - a[1]);
+  const t = Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / lenSq));
+  return Math.hypot(p[0] - (a[0] + t * dx), p[1] - (a[1] + t * dy));
 }
 
 interface PlacedBox { x: number; y: number; w: number; h: number; }
@@ -59,6 +172,7 @@ export class PostrenderPainter {
     lastFeatureCount: -1,
     lastStreetHash: '',
     cachedFillets: [] as StreetFillet[],
+    cachedCrossings: new globalThis.Map<string, Pt[]>(),
     lotGroupCounts: new globalThis.Map<string, number>(),
     dirty: true,
   };
@@ -124,6 +238,7 @@ this.paintSnapGuides(ctx, resolution, toPx);
 
     if (streetsChanged || this.cache.dirty) {
       this.cache.cachedFillets = computeStreetFillets(streets);
+      this.cache.cachedCrossings = computeStreetCrossings(streets);
       this.cache.lastStreetHash = currentStreetHash;
     }
     if (featuresChanged || this.cache.dirty) {
@@ -408,30 +523,27 @@ this.paintSnapGuides(ctx, resolution, toPx);
       ctx.setLineDash([]);
       ctx.restore();
 
-      // Etiqueta de calle
+      // Etiqueta de calle — crossing-aware slot-based placement
       if (zoom > 12) {
-        // Use the middle segment's midpoint and angle
-        const midIdx = Math.floor(allPx.length / 2);
-        const midA = allPx[Math.max(0, midIdx - 1)];
-        const midB = allPx[Math.min(allPx.length - 1, midIdx)];
-        const midPx: [number, number] = [(midA[0] + midB[0]) / 2, (midA[1] + midB[1]) / 2];
-        const ldx = midB[0] - midA[0], ldy = midB[1] - midA[1];
-        let ang = Math.atan2(ldy, ldx);
-        if (ang > Math.PI / 2 || ang < -Math.PI / 2) ang += Math.PI;
-        const fs1 = Math.max(9, Math.min(13, 10 * zoom / 18));
-        const fs2 = Math.max(8, Math.min(11, 9 * zoom / 18));
-        ctx.save();
-        ctx.translate(midPx[0], midPx[1]);
-        ctx.rotate(ang);
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.font = `bold ${fs1}px Courier New`;
-        ctx.fillStyle = 'rgba(247, 129, 102, 0.85)';
-        ctx.fillText(`--- ${s.name} (Ancho de Vía ${s.widthM.toFixed(2)}m) ---`, 0, -fs1 * 0.8);
-        ctx.font = `${fs2}px Courier New`;
-        ctx.fillStyle = 'rgba(247, 129, 102, 0.55)';
-        ctx.fillText('E   J   E    D   E     V   Í   A', 0, fs2 * 0.8);
-        ctx.restore();
+        const crossings = this.cache.cachedCrossings.get(s.id) ?? [];
+        const slots = pickStreetLabelSlots(allCoords, crossings, 140);
+        for (const slot of slots) {
+          const px = toPx(slot.pos);
+          const fs1 = Math.max(9, Math.min(13, 10 * zoom / 18));
+          const fs2 = Math.max(8, Math.min(11, 9 * zoom / 18));
+          ctx.save();
+          ctx.translate(px[0], px[1]);
+          ctx.rotate(slot.angle);
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.font = `bold ${fs1}px Courier New`;
+          ctx.fillStyle = 'rgba(247, 129, 102, 0.85)';
+          ctx.fillText(`--- ${s.name} (Ancho de Vía ${s.widthM.toFixed(2)}m) ---`, 0, -fs1 * 0.8);
+          ctx.font = `${fs2}px Courier New`;
+          ctx.fillStyle = 'rgba(247, 129, 102, 0.55)';
+          ctx.fillText('E   J   E    D   E     V   Í   A', 0, fs2 * 0.8);
+          ctx.restore();
+        }
       }
     }
 

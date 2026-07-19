@@ -18,7 +18,7 @@ import type Geometry from 'ol/geom/Geometry.js';
 import { runCommand } from '../commands/CommandStack';
 import { DeleteFeaturesCommand } from '../commands/DeleteFeaturesCommand';
 import { MergeFeaturesCommand } from '../commands/MergeFeaturesCommand';
-import { ensureKind } from '../core/objectModel';
+import { ensureKind, getFeatureKind } from '../core/objectModel';
 
 const geoJsonFormat = new GeoJSON();
 
@@ -170,87 +170,118 @@ export function recomputeManzanos() {
   const streets = useStreetStore.getState().streets;
   if (streets.length === 0) return;
 
-  // Obtener todos los polígonos del drawSource
-  const polygonsToClip: Array<{ feature: Feature<Geometry>; pts: Pt[] }> = [];
+  type OriginGroup = { origId: string; origPts: Pt[]; members: Array<Feature<Geometry>> };
+  const groups = new globalThis.Map<string, OriginGroup>();
+
   src.forEachFeature((f) => {
-    const geom = f.getGeometry();
-    if (!geom) return;
-    if (geom.getType() !== 'Polygon') return;
-    const coords = (geom as import('ol/geom/Polygon.js').default).getCoordinates();
-    if (!coords[0] || coords[0].length < 4) return;
-    const pts: Pt[] = coords[0].map((c: number[]) => [c[0], c[1]]);
-    polygonsToClip.push({ feature: f as Feature<Geometry>, pts });
-  });
+    const feature = f as Feature<Geometry>;
+    const geom = feature.getGeometry();
+    if (!geom || geom.getType() !== 'Polygon') return;
 
-  if (polygonsToClip.length === 0) return;
+    const kind = getFeatureKind(feature);
+    if (kind !== 'lote' && kind !== 'manzana') return;
+    if (kind === 'lote' && feature.get('lotGroupId')) return;
 
-  // Expandir calles curvas (waypoints) en segmentos individuales para el clipping
-  const streetSegments = streets.flatMap((s) => getStreetSegments(s));
+    let origId = feature.get('origParcelId') as string | undefined;
+    let origPts = feature.get('origPts') as Pt[] | undefined;
 
-  for (const { feature, pts } of polygonsToClip) {
-    const manzanos = clipPolygonByAllStreets(pts, streetSegments);
-    if (manzanos.length === 1 && manzanos[0] === pts) continue;
-
-    // ─── Aplicar fillets (ochavas) como recortes reales ───
-    const fillets = computeStreetFillets(streets);
-    let manzanosConFillets = manzanos;
-
-    if (fillets.length > 0) {
-      const filletPolys: Pt[][] = [];
-      for (const fillet of fillets) {
-        const arcPts = filletArcPoints(fillet, 16);
-        if (arcPts.length >= 3) {
-          const closed = [...arcPts];
-          if (closed[0][0] !== closed[closed.length - 1][0] || closed[0][1] !== closed[closed.length - 1][1]) {
-            closed.push(closed[0]);
-          }
-          filletPolys.push(closed);
-        }
-      }
-
-      if (filletPolys.length > 0) {
-        for (const filletPoly of filletPolys) {
-          const newManzanos: Pt[][] = [];
-          for (const mzn of manzanosConFillets) {
-            let current = mzn;
-            const n = filletPoly.length;
-            for (let i = 0; i < n; i++) {
-              const a = filletPoly[i];
-              const b = filletPoly[(i + 1) % n];
-              const center = filletPoly[0];
-              const side = (b[0] - a[0]) * (center[1] - a[1]) - (b[1] - a[1]) * (center[0] - a[0]);
-              current = clipHalfPlane(current, a, b, side > 0 ? 1 : -1);
-              if (current.length < 3) break;
-            }
-            if (current.length >= 3) {
-              newManzanos.push(current);
-            }
-          }
-          manzanosConFillets = newManzanos;
-        }
-      }
+    if (!origPts) {
+      const coords = (geom as PolygonGeom).getCoordinates();
+      if (!coords[0] || coords[0].length < 4) return;
+      origPts = coords[0].map((c: number[]) => [c[0], c[1]] as Pt);
+    }
+    if (!origId) {
+      const fid = feature.getId();
+      origId = fid != null ? String(fid) : `parcel-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     }
 
-    src.removeFeature(feature);
+    let group = groups.get(origId);
+    if (!group) {
+      group = { origId, origPts, members: [] };
+      groups.set(origId, group);
+    }
+    group.members.push(feature);
+  });
+
+  if (groups.size === 0) return;
+
+  const streetSegments = streets.flatMap((s) => getStreetSegments(s));
+
+  const fillets = computeStreetFillets(streets);
+  const filletPolys: Pt[][] = [];
+  for (const fillet of fillets) {
+    const arcPts = filletArcPoints(fillet, 16);
+    if (arcPts.length < 3) continue;
+    const closed = [...arcPts];
+    if (closed[0][0] !== closed[closed.length - 1][0] || closed[0][1] !== closed[closed.length - 1][1]) {
+      closed.push(closed[0]);
+    }
+    filletPolys.push(closed);
+  }
+
+  for (const group of groups.values()) {
+    const manzanos = clipPolygonByAllStreets(group.origPts, streetSegments);
+    const unchanged = manzanos.length === 1 && manzanos[0] === group.origPts;
+
+    for (const m of group.members) src.removeFeature(m);
+
+    if (unchanged) {
+      const closedRing = [...group.origPts];
+      if (
+        closedRing[0][0] !== closedRing[closedRing.length - 1][0] ||
+        closedRing[0][1] !== closedRing[closedRing.length - 1][1]
+      ) {
+        closedRing.push([closedRing[0][0], closedRing[0][1]]);
+      }
+      const orig = group.members[0];
+      orig.setGeometry(new PolygonGeom([closedRing]));
+      orig.set('kind', 'lote', true);
+      orig.set('origParcelId', group.origId, true);
+      orig.set('origPts', group.origPts, true);
+      src.addFeature(orig);
+      continue;
+    }
+
+    let manzanosConFillets = manzanos;
+    for (const filletPoly of filletPolys) {
+      const newManzanos: Pt[][] = [];
+      for (const mzn of manzanosConFillets) {
+        let current = mzn;
+        const n = filletPoly.length;
+        for (let i = 0; i < n; i++) {
+          const a = filletPoly[i];
+          const b = filletPoly[(i + 1) % n];
+          const center = filletPoly[0];
+          const side = (b[0] - a[0]) * (center[1] - a[1]) - (b[1] - a[1]) * (center[0] - a[0]);
+          current = clipHalfPlane(current, a, b, side > 0 ? 1 : -1);
+          if (current.length < 3) break;
+        }
+        if (current.length >= 3) newManzanos.push(current);
+      }
+      manzanosConFillets = newManzanos;
+    }
 
     for (let i = 0; i < manzanosConFillets.length; i++) {
       const ring = manzanosConFillets[i];
       if (ring.length < 3) continue;
       const closedRing = [...ring];
-      if (closedRing[0][0] !== closedRing[closedRing.length - 1][0] ||
-          closedRing[0][1] !== closedRing[closedRing.length - 1][1]) {
+      if (
+        closedRing[0][0] !== closedRing[closedRing.length - 1][0] ||
+        closedRing[0][1] !== closedRing[closedRing.length - 1][1]
+      ) {
         closedRing.push([closedRing[0][0], closedRing[0][1]]);
       }
       const newGeom = new PolygonGeom([closedRing]);
       const newFeat = new Feature({ geometry: newGeom });
-      const origId = feature.getId();
-      newFeat.setId(origId ? `${origId}-mzn-${i}` : `mzn-${Date.now()}-${i}`);
+      newFeat.setId(`${group.origId}-mzn-${i}`);
       newFeat.setProperties(
         ensureKind(
           {
             type: 'manzana',
             colorIdx: i % 10,
             createdAt: new Date().toISOString(),
+            origParcelId: group.origId,
+            origPts: group.origPts,
           },
           'manzana',
         ),

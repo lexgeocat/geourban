@@ -8,6 +8,9 @@ import { useCommandStack } from '../commands/CommandStack';
 import { RecomputeManzanoLotsCommand } from '../commands/RecomputeManzanoLotsCommand';
 import { GenerateLotsCommand } from '../commands/GenerateLotsCommand';
 import { polyArea, centroid, type Pt } from '../geo/polygonEngine';
+import { useDrawStore } from '../store/drawStore';
+import { useStreetStore } from '../store/streetStore';
+import { useRoundaboutStore } from '../store/roundaboutStore';
 
 const MZN_COLORS = [
   '#58a6ff',
@@ -124,6 +127,27 @@ export default function ManzanoPanel() {
   const [lotsBusy, setLotsBusy] = useState(false);
   const [expandedLots, setExpandedLots] = useState<Record<string, boolean>>({});
 
+  // ── Parámetros contextuales de vía / rotonda: se muestran acá (panel
+  // fijo a la izquierda) mientras esas herramientas están activas — igual
+  // que las tarjetas "vias-params-card" / "rotonda-params-card" de
+  // index_modelo.html — en vez de vivir solo en un input suelto del ribbon.
+  const drawMode = useDrawStore((s) => s.mode);
+  const defaultWidthM = useStreetStore((s) => s.defaultWidthM);
+  const setDefaultWidth = useStreetStore((s) => s.setDefaultWidth);
+  const defaultCurvatureM = useStreetStore((s) => s.defaultCurvatureM);
+  const setDefaultCurvature = useStreetStore((s) => s.setDefaultCurvature);
+  const rbRadiusM = useRoundaboutStore((s) => s.defaultRadiusM);
+  const setRbRadius = useRoundaboutStore((s) => s.setDefaultRadius);
+  const rbSides = useRoundaboutStore((s) => s.defaultSides);
+  const setRbSides = useRoundaboutStore((s) => s.setDefaultSides);
+  const rbRoadWidthM = useRoundaboutStore((s) => s.defaultRoadWidthM);
+  const setRbRoadWidth = useRoundaboutStore((s) => s.setDefaultRoadWidth);
+  const rbSidewalkM = useRoundaboutStore((s) => s.defaultSidewalkWidthM);
+  const setRbSidewalk = useRoundaboutStore((s) => s.setDefaultSidewalkWidth);
+
+  const showStreetParams = drawMode === 'street';
+  const showRoundaboutParams = drawMode === 'roundabout';
+
   const runRecompute = useCallback(
     async (row: ManzanoRow) => {
       const method = getMethod(row.id);
@@ -194,7 +218,12 @@ export default function ManzanoPanel() {
     }
   };
 
-  if (!panelVisible || rows.length === 0) return null;
+  // Antes el panel entero desaparecía hasta que hubiera manzanos
+  // (rows.length === 0), lo que en la práctica lo ocultaba siempre hasta
+  // trazar una vía. Ahora queda visible mientras el usuario no lo cierre
+  // explícitamente con ✕ — igual que la tarjeta "Manzanos" del sidebar de
+  // referencia, siempre presente aunque esté vacía.
+  if (!panelVisible) return null;
 
   const totalLotes = rows.reduce((a, r) => a + r.lots.length, 0);
   const totalMznArea = rows.filter((r) => !r.isEquip).reduce((a, r) => a + r.areaM2, 0);
@@ -205,7 +234,7 @@ export default function ManzanoPanel() {
       style={{
         position: 'fixed',
         top: 90,
-        right: 10,
+        left: 10,
         width: 280,
         maxHeight: 'calc(100vh - 140px)',
         overflowY: 'auto',
@@ -225,7 +254,10 @@ export default function ManzanoPanel() {
         }}
       >
         <span style={{ fontWeight: 700, color: 'var(--cad-text)', letterSpacing: '0.03em' }}>
-          Manzanos <span style={{ color: 'var(--cad-text-muted)', fontWeight: 400 }}>({rows.length})</span>
+          Manzanos{' '}
+          {rows.length > 0 && (
+            <span style={{ color: 'var(--cad-text-muted)', fontWeight: 400 }}>({rows.length})</span>
+          )}
         </span>
         <button
           onClick={() => setPanelVisible(false)}
@@ -235,6 +267,87 @@ export default function ManzanoPanel() {
           ✕
         </button>
       </div>
+
+      {showStreetParams && (
+        <div style={{ background: 'var(--cad-bg-surface)', borderRadius: 6, padding: 8, marginBottom: 8 }}>
+          <div style={{ fontSize: '0.62rem', color: 'var(--cad-accent)', fontWeight: 700, marginBottom: 6, letterSpacing: '0.05em' }}>
+            ◼ PARÁMETROS DE VÍA
+          </div>
+          <label style={{ display: 'block', fontSize: '0.65rem', color: 'var(--cad-text-dim)' }}>Ancho de vía (m)</label>
+          <input
+            type="number"
+            min={1}
+            value={defaultWidthM}
+            onChange={(e) => setDefaultWidth(parseFloat(e.target.value) || defaultWidthM)}
+            style={inputStyle}
+          />
+          <label style={{ display: 'block', fontSize: '0.65rem', color: 'var(--cad-text-dim)', marginTop: 6 }}>
+            Radio de ochava (m) — 0 = automático
+          </label>
+          <input
+            type="number"
+            min={0}
+            step={0.5}
+            value={defaultCurvatureM}
+            onChange={(e) => setDefaultCurvature(Math.max(0, parseFloat(e.target.value) || 0))}
+            style={inputStyle}
+          />
+        </div>
+      )}
+
+      {showRoundaboutParams && (
+        <div style={{ background: 'var(--cad-bg-surface)', borderRadius: 6, padding: 8, marginBottom: 8 }}>
+          <div style={{ fontSize: '0.62rem', color: 'var(--cad-accent)', fontWeight: 700, marginBottom: 6, letterSpacing: '0.05em' }}>
+            ◼ PARÁMETROS DE ROTONDA
+          </div>
+          <label style={{ display: 'block', fontSize: '0.65rem', color: 'var(--cad-text-dim)' }}>Radio al eje (m)</label>
+          <input
+            type="number"
+            min={3}
+            value={rbRadiusM}
+            onChange={(e) => setRbRadius(parseFloat(e.target.value) || rbRadiusM)}
+            style={inputStyle}
+          />
+          <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+            <div style={{ flex: 1 }}>
+              <label style={{ display: 'block', fontSize: '0.65rem', color: 'var(--cad-text-dim)' }}>Calzada (m)</label>
+              <input
+                type="number"
+                min={1}
+                step={0.5}
+                value={rbRoadWidthM}
+                onChange={(e) => setRbRoadWidth(parseFloat(e.target.value) || rbRoadWidthM)}
+                style={inputStyle}
+              />
+            </div>
+            <div style={{ flex: 1 }}>
+              <label style={{ display: 'block', fontSize: '0.65rem', color: 'var(--cad-text-dim)' }}>Vereda (m)</label>
+              <input
+                type="number"
+                min={0}
+                step={0.5}
+                value={rbSidewalkM}
+                onChange={(e) => setRbSidewalk(parseFloat(e.target.value) || 0)}
+                style={inputStyle}
+              />
+            </div>
+          </div>
+          <label style={{ display: 'block', fontSize: '0.65rem', color: 'var(--cad-text-dim)', marginTop: 6 }}>Forma</label>
+          <select
+            value={rbSides}
+            onChange={(e) => setRbSides(parseInt(e.target.value, 10))}
+            style={{ ...inputStyle, cursor: 'pointer' }}
+          >
+            <option value={0}>Círculo</option>
+            <option value={3}>Triángulo</option>
+            <option value={4}>Cuadrado</option>
+            <option value={5}>Pentágono</option>
+            <option value={6}>Hexágono</option>
+            <option value={7}>Heptágono</option>
+            <option value={8}>Octógono</option>
+          </select>
+        </div>
+      )}
 
       <div style={{ background: 'var(--cad-bg-surface)', borderRadius: 6, padding: 8, marginBottom: 8 }}>
         <div style={{ fontSize: '0.62rem', color: 'var(--cad-accent)', fontWeight: 700, marginBottom: 6, letterSpacing: '0.05em' }}>
@@ -256,222 +369,235 @@ export default function ManzanoPanel() {
           onChange={(e) => setFrontMinM(parseFloat(e.target.value) || 0)}
           style={inputStyle}
         />
-        <button onClick={handleGenerarTodos} disabled={lotsBusy} className="cad-icon-btn" style={{ width: '100%', marginTop: 8, height: 28 }}>
+        <button
+          onClick={handleGenerarTodos}
+          disabled={lotsBusy || rows.length === 0}
+          className="cad-icon-btn"
+          style={{ width: '100%', marginTop: 8, height: 28 }}
+        >
           {lotsBusy ? 'Generando…' : '▶ Generar todos'}
         </button>
       </div>
 
-      {rows.map((row) => {
-        const isOpen = !!openCards[String(row.id)];
-        const color = MZN_COLORS[row.colorIdx];
-        const method = getMethod(row.id);
-        const rotateDir = getRotateDir(row.id);
-        const isRotatingThis = rotatingId === row.id;
-        const geomChanged = rotateDir != null && hasGeomChanged(row.id, { area: row.areaM2, perimeter: row.perimeterM });
-        const lotsOpen = !!expandedLots[String(row.id)];
-        const normalLots = row.lots.filter((l) => !l.isRemnant).length;
-        const remLots = row.lots.filter((l) => l.isRemnant).length;
+      {rows.length === 0 ? (
+        <p style={{ fontSize: '0.68rem', color: 'var(--cad-text-muted)' }}>
+          Todavía no hay manzanos. Trazá vías que crucen la parcela para generarlos.
+        </p>
+      ) : (
+        <>
+          {rows.map((row) => {
+            const isOpen = !!openCards[String(row.id)];
+            const color = MZN_COLORS[row.colorIdx];
+            const method = getMethod(row.id);
+            const rotateDir = getRotateDir(row.id);
+            const isRotatingThis = rotatingId === row.id;
+            const geomChanged = rotateDir != null && hasGeomChanged(row.id, { area: row.areaM2, perimeter: row.perimeterM });
+            const lotsOpen = !!expandedLots[String(row.id)];
+            const normalLots = row.lots.filter((l) => !l.isRemnant).length;
+            const remLots = row.lots.filter((l) => l.isRemnant).length;
 
-        return (
-          <div
-            key={String(row.id)}
-            style={{
-              border: `1px solid ${color}55`,
-              borderLeft: `3px solid ${color}`,
-              borderRadius: 4,
-              marginBottom: 6,
-              background: row.isEquip ? 'rgba(77,208,196,0.08)' : `${color}14`,
-            }}
-          >
-            <div
-              onClick={() => toggleCardOpen(row.id)}
-              style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 8px', cursor: 'pointer' }}
-            >
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontWeight: 700, color }}>
-                  {row.isEquip ? '★ Equipamiento' : `Mzo. ${row.colorIdx + 1}`}
-                </div>
-                <div style={{ color: 'var(--cad-text-muted)', fontSize: '0.65rem' }}>
-                  {row.areaM2.toFixed(1)} m²{row.lots.length ? ` · ${row.lots.length} lotes` : ''}
-                  {geomChanged && <span style={{ color: 'var(--cad-accent-amber)' }}> · ⚠ desactualizado</span>}
-                </div>
-              </div>
-              <span
+            return (
+              <div
+                key={String(row.id)}
                 style={{
-                  fontSize: '0.65rem',
-                  color: 'var(--cad-text-dim)',
-                  transform: isOpen ? 'rotate(90deg)' : 'none',
-                  transition: 'transform 0.15s',
+                  border: `1px solid ${color}55`,
+                  borderLeft: `3px solid ${color}`,
+                  borderRadius: 4,
+                  marginBottom: 6,
+                  background: row.isEquip ? 'rgba(77,208,196,0.08)' : `${color}14`,
                 }}
               >
-                ▶
-              </span>
-            </div>
-
-            {isOpen && (
-              <div style={{ padding: '0 8px 8px 8px' }}>
-                <button
-                  onClick={() => handleToggleEquip(row)}
-                  className="cad-icon-btn"
-                  style={{
-                    width: '100%',
-                    height: 26,
-                    marginBottom: 6,
-                    borderColor: row.isEquip ? 'var(--cad-accent)' : undefined,
-                    color: row.isEquip ? 'var(--cad-accent)' : undefined,
-                  }}
+                <div
+                  onClick={() => toggleCardOpen(row.id)}
+                  style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 8px', cursor: 'pointer' }}
                 >
-                  {row.isEquip ? '▼ Quitar equipamiento' : '▲ Marcar como equipamiento'}
-                </button>
-
-                {!row.isEquip && (
-                  <>
-                    <div style={{ display: 'flex', gap: 4, marginBottom: 6 }}>
-                      {METHOD_BTNS.map((m) => (
-                        <button
-                          key={m.key}
-                          onClick={() => handleMethodClick(row, m.key)}
-                          className="cad-icon-btn"
-                          style={{
-                            flex: 1,
-                            height: 24,
-                            fontSize: '0.62rem',
-                            borderColor: method === m.key ? m.color : undefined,
-                            color: method === m.key ? m.color : undefined,
-                          }}
-                        >
-                          {m.label}
-                        </button>
-                      ))}
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, color }}>
+                      {row.isEquip ? '★ Equipamiento' : `Mzo. ${row.colorIdx + 1}`}
                     </div>
+                    <div style={{ color: 'var(--cad-text-muted)', fontSize: '0.65rem' }}>
+                      {row.areaM2.toFixed(1)} m²{row.lots.length ? ` · ${row.lots.length} lotes` : ''}
+                      {geomChanged && <span style={{ color: 'var(--cad-accent-amber)' }}> · ⚠ desactualizado</span>}
+                    </div>
+                  </div>
+                  <span
+                    style={{
+                      fontSize: '0.65rem',
+                      color: 'var(--cad-text-dim)',
+                      transform: isOpen ? 'rotate(90deg)' : 'none',
+                      transition: 'transform 0.15s',
+                    }}
+                  >
+                    ▶
+                  </span>
+                </div>
 
-                    {isRotatingThis ? (
-                      <div
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          gap: 4,
-                          padding: '5px 8px',
-                          marginBottom: 6,
-                          background: 'rgba(39,174,96,0.12)',
-                          border: '1px solid #27ae60',
-                          borderRadius: 4,
-                          color: '#27ae60',
-                          fontSize: '0.62rem',
-                        }}
-                      >
-                        <span>▶ Arrastrá el punto amarillo en el mapa…</span>
-                        <button
-                          onClick={() => cancelRotateLots()}
-                          style={{ background: 'none', border: 'none', color: 'var(--cad-accent-red)', cursor: 'pointer' }}
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    ) : (
-                      <div style={{ display: 'flex', gap: 4 }}>
-                        <button onClick={() => handleStartRotate(row)} className="cad-icon-btn" style={{ flex: 1, height: 24, fontSize: '0.62rem' }}>
-                          ↻ Rotar lotes
-                        </button>
-                        {rotateDir && (
-                          <button
-                            onClick={() => handleResetRotate(row)}
-                            className="cad-icon-btn"
-                            style={{ height: 24, fontSize: '0.62rem', color: 'var(--cad-accent-red)' }}
-                          >
-                            Reset
-                          </button>
-                        )}
-                      </div>
-                    )}
+                {isOpen && (
+                  <div style={{ padding: '0 8px 8px 8px' }}>
+                    <button
+                      onClick={() => handleToggleEquip(row)}
+                      className="cad-icon-btn"
+                      style={{
+                        width: '100%',
+                        height: 26,
+                        marginBottom: 6,
+                        borderColor: row.isEquip ? 'var(--cad-accent)' : undefined,
+                        color: row.isEquip ? 'var(--cad-accent)' : undefined,
+                      }}
+                    >
+                      {row.isEquip ? '▼ Quitar equipamiento' : '▲ Marcar como equipamiento'}
+                    </button>
 
-                    {geomChanged && (
-                      <button
-                        onClick={() => runRecompute(row)}
-                        className="cad-icon-btn"
-                        style={{
-                          width: '100%',
-                          height: 24,
-                          marginTop: 6,
-                          fontSize: '0.62rem',
-                          borderColor: 'var(--cad-accent-amber)',
-                          color: 'var(--cad-accent-amber)',
-                        }}
-                      >
-                        ↺ Regenerar (el manzano cambió)
-                      </button>
-                    )}
+                    {!row.isEquip && (
+                      <>
+                        <div style={{ display: 'flex', gap: 4, marginBottom: 6 }}>
+                          {METHOD_BTNS.map((m) => (
+                            <button
+                              key={m.key}
+                              onClick={() => handleMethodClick(row, m.key)}
+                              className="cad-icon-btn"
+                              style={{
+                                flex: 1,
+                                height: 24,
+                                fontSize: '0.62rem',
+                                borderColor: method === m.key ? m.color : undefined,
+                                color: method === m.key ? m.color : undefined,
+                              }}
+                            >
+                              {m.label}
+                            </button>
+                          ))}
+                        </div>
 
-                    {row.lots.length > 0 && (
-                      <div style={{ marginTop: 6 }}>
-                        <div
-                          onClick={() =>
-                            setExpandedLots((s) => ({
-                              ...s,
-                              [String(row.id)]: !s[String(row.id)],
-                            }))
-                          }
-                          style={{
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            cursor: 'pointer',
-                            fontSize: '0.63rem',
-                            color: 'var(--cad-text-dim)',
-                          }}
-                        >
-                          <span>
-                            {normalLots} lotes · {remLots} remanentes
-                          </span>
-                          <span
+                        {isRotatingThis ? (
+                          <div
                             style={{
-                              transform: lotsOpen ? 'rotate(90deg)' : 'none',
-                              transition: 'transform 0.15s',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              gap: 4,
+                              padding: '5px 8px',
+                              marginBottom: 6,
+                              background: 'rgba(39,174,96,0.12)',
+                              border: '1px solid #27ae60',
+                              borderRadius: 4,
+                              color: '#27ae60',
+                              fontSize: '0.62rem',
                             }}
                           >
-                            ▶
-                          </span>
-                        </div>
-                        {lotsOpen && (
-                          <div style={{ maxHeight: 120, overflowY: 'auto', marginTop: 4 }}>
-                            {row.lots.map((l, i) => (
-                              <div
-                                key={i}
-                                style={{
-                                  display: 'flex',
-                                  justifyContent: 'space-between',
-                                  fontSize: '0.6rem',
-                                  padding: '2px 4px',
-                                  color: l.isRemnant ? 'var(--cad-accent-amber)' : 'var(--cad-text-dim)',
-                                }}
+                            <span>▶ Arrastrá el punto amarillo en el mapa…</span>
+                            <button
+                              onClick={() => cancelRotateLots()}
+                              style={{ background: 'none', border: 'none', color: 'var(--cad-accent-red)', cursor: 'pointer' }}
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        ) : (
+                          <div style={{ display: 'flex', gap: 4 }}>
+                            <button onClick={() => handleStartRotate(row)} className="cad-icon-btn" style={{ flex: 1, height: 24, fontSize: '0.62rem' }}>
+                              ↻ Rotar lotes
+                            </button>
+                            {rotateDir && (
+                              <button
+                                onClick={() => handleResetRotate(row)}
+                                className="cad-icon-btn"
+                                style={{ height: 24, fontSize: '0.62rem', color: 'var(--cad-accent-red)' }}
                               >
-                                <span>{l.label}</span>
-                                <span>{l.areaM2.toFixed(1)} m²</span>
-                              </div>
-                            ))}
+                                Reset
+                              </button>
+                            )}
                           </div>
                         )}
-                      </div>
+
+                        {geomChanged && (
+                          <button
+                            onClick={() => runRecompute(row)}
+                            className="cad-icon-btn"
+                            style={{
+                              width: '100%',
+                              height: 24,
+                              marginTop: 6,
+                              fontSize: '0.62rem',
+                              borderColor: 'var(--cad-accent-amber)',
+                              color: 'var(--cad-accent-amber)',
+                            }}
+                          >
+                            ↺ Regenerar (el manzano cambió)
+                          </button>
+                        )}
+
+                        {row.lots.length > 0 && (
+                          <div style={{ marginTop: 6 }}>
+                            <div
+                              onClick={() =>
+                                setExpandedLots((s) => ({
+                                  ...s,
+                                  [String(row.id)]: !s[String(row.id)],
+                                }))
+                              }
+                              style={{
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                cursor: 'pointer',
+                                fontSize: '0.63rem',
+                                color: 'var(--cad-text-dim)',
+                              }}
+                            >
+                              <span>
+                                {normalLots} lotes · {remLots} remanentes
+                              </span>
+                              <span
+                                style={{
+                                  transform: lotsOpen ? 'rotate(90deg)' : 'none',
+                                  transition: 'transform 0.15s',
+                                }}
+                              >
+                                ▶
+                              </span>
+                            </div>
+                            {lotsOpen && (
+                              <div style={{ maxHeight: 120, overflowY: 'auto', marginTop: 4 }}>
+                                {row.lots.map((l, i) => (
+                                  <div
+                                    key={i}
+                                    style={{
+                                      display: 'flex',
+                                      justifyContent: 'space-between',
+                                      fontSize: '0.6rem',
+                                      padding: '2px 4px',
+                                      color: l.isRemnant ? 'var(--cad-accent-amber)' : 'var(--cad-text-dim)',
+                                    }}
+                                  >
+                                    <span>{l.label}</span>
+                                    <span>{l.areaM2.toFixed(1)} m²</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </>
                     )}
-                  </>
+                  </div>
                 )}
               </div>
-            )}
-          </div>
-        );
-      })}
+            );
+          })}
 
-      <div
-        style={{
-          marginTop: 6,
-          paddingTop: 6,
-          borderTop: '1px solid var(--cad-border)',
-          fontSize: '0.63rem',
-          color: 'var(--cad-text-muted)',
-        }}
-      >
-        Manzanos: {totalMznArea.toFixed(1)} m² · {totalLotes} lotes en total
-      </div>
+          <div
+            style={{
+              marginTop: 6,
+              paddingTop: 6,
+              borderTop: '1px solid var(--cad-border)',
+              fontSize: '0.63rem',
+              color: 'var(--cad-text-muted)',
+            }}
+          >
+            Manzanos: {totalMznArea.toFixed(1)} m² · {totalLotes} lotes en total
+          </div>
+        </>
+      )}
     </div>
   );
 }
