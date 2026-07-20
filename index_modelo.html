@@ -2027,7 +2027,6 @@
 
       /* Tarjetas y paneles flotantes nunca más anchos que la pantalla */
       #pi-card,
-      #calcPanel,
       #slicePanel {
         max-width: calc(100vw - 16px);
       }
@@ -2273,15 +2272,6 @@
                     </svg>
                     <span data-i18n="btnDatosProyecto">Datos del proyecto</span>
                   </button>
-                  <button class="importar-item" id="t-activar-programa"
-                    title="Activar el programa con una clave de activación"
-                    data-i18n-title="ttActivarPrograma">
-                    <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"
-                      stroke-linejoin="round">
-                      <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"></path>
-                    </svg>
-                    <span data-i18n="btnActivarPrograma">Activar programa</span>
-                  </button>
                 </div>
               </div>
             </div>
@@ -2361,21 +2351,6 @@
               <line x1="3" y1="12" x2="21" y2="12" stroke-dasharray="2.5 2.5"></line>
             </svg>
             <span data-i18n="btnSubdivisionManual">Sub-División Manual</span>
-          </button>
-          <button class="tbtn cat-util" id="t-calc" title="Calculadora" data-i18n-title="ttCalculadora">
-            <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="4" y="2" width="16" height="20" rx="2"></rect>
-              <line x1="8" y1="6" x2="16" y2="6"></line>
-              <line x1="7.5" y1="11" x2="7.5" y2="11"></line>
-              <line x1="12" y1="11" x2="12" y2="11"></line>
-              <line x1="16.5" y1="11" x2="16.5" y2="11"></line>
-              <line x1="7.5" y1="15" x2="7.5" y2="15"></line>
-              <line x1="12" y1="15" x2="12" y2="15"></line>
-              <line x1="16.5" y1="15" x2="16.5" y2="18.5"></line>
-              <line x1="7.5" y1="18.5" x2="7.5" y2="18.5"></line>
-              <line x1="12" y1="18.5" x2="12" y2="18.5"></line>
-            </svg>
-            <span data-i18n="btnCalculadora">Calculadora</span>
           </button>
           <input type="file" id="kmz-file" accept=".kmz,.kml" style="display:none">
           <input type="file" id="dxf-import-file" accept=".dxf" style="display:none">
@@ -2551,59 +2526,6 @@
           <button id="dxfExportOk" class="tbtn"
             style="padding:6px 12px;font-size:12px;background:#1a3a1f;border-color:#3fb95044;color:#3fb950;"
             data-i18n="dxfExportarBtn">✓ Exportar</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Activación del programa: exportar a DXF y guardar .lsai piden clave
-         de activación tras 2 exports de prueba gratis (ver saiNative.*
-         license*/checkExportAllowedJs en native/sai-core-native). Se puede
-         abrir también desde el menú Archivo en cualquier momento, no solo
-         cuando bloquea. -->
-    <div id="activationModal"
-      style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:1100;align-items:center;justify-content:center;">
-      <div
-        style="background:#0d1117;border:1px solid #30363d;border-radius:8px;padding:18px 20px;width:420px;max-height:85vh;overflow-y:auto;font-family:'Segoe UI',sans-serif;color:#e6edf3;box-shadow:0 4px 24px #000a;">
-        <div style="font-size:14px;font-weight:600;color:#58a6ff;letter-spacing:.5px;margin-bottom:12px;"
-          data-i18n="activModalTitle">🔑 ACTIVACIÓN DEL PROGRAMA</div>
-
-        <div id="activModalStatus" style="font-size:12px;color:#8b949e;margin-bottom:14px;line-height:1.5;"></div>
-
-        <div style="margin-bottom:12px;">
-          <div style="font-size:11px;color:#8b949e;margin-bottom:4px;" data-i18n="activModalCodeLabel">Envíanos este
-            código para enviarte la clave de activación</div>
-          <div style="display:flex;gap:6px;">
-            <input id="activModalMachineCode" type="text" readonly
-              style="flex:1;background:#161b22;border:1px solid #30363d;border-radius:3px;color:#e6edf3;padding:6px 7px;font-size:12px;font-family:Consolas,monospace;">
-            <button id="activModalCopyCode" class="tbtn" style="padding:6px 10px;font-size:12px;"
-              data-i18n="activModalCopyBtn">Copiar</button>
-            <button id="activModalWhatsapp" class="tbtn" title="Enviar el código de equipo por WhatsApp a SAI Soluciones"
-              style="padding:6px 10px;font-size:12px;background:#0d3b25;border-color:#25d36644;color:#25d366;">
-              <span data-i18n="activModalWhatsappBtn">💬 WhatsApp</span>
-            </button>
-          </div>
-        </div>
-
-        <button id="activModalComprar" class="tbtn"
-          style="display:block;width:100%;box-sizing:border-box;padding:9px 12px;font-size:13px;font-weight:600;margin-bottom:14px;background:#1a3a1f;border-color:#3fb95044;color:#3fb950;text-align:center;"
-          data-i18n="activModalComprarBtn">🛒 Comprar clave de activación (20 USD)</button>
-
-        <div style="margin-bottom:14px;">
-          <div style="font-size:11px;color:#8b949e;margin-bottom:4px;" data-i18n="activModalKeyLabel">Clave de
-            activación</div>
-          <input id="activModalKeyInput" type="text" placeholder="…"
-            style="width:100%;background:#161b22;border:1px solid #30363d;border-radius:3px;color:#e6edf3;padding:6px 7px;font-size:12px;font-family:Consolas,monospace;">
-        </div>
-        <div id="activModalError" style="display:none;font-size:12px;color:#f85149;margin-bottom:12px;"
-          data-i18n="activModalErrorMsg">⚠ Esa clave no es válida para este equipo. Revisa que la hayas copiado
-          completa.</div>
-
-        <div style="display:flex;gap:8px;justify-content:flex-end;">
-          <button id="activModalCancel" class="tbtn" style="padding:6px 12px;font-size:12px;" data-i18n="dxfCancelar">✕
-            Cancelar</button>
-          <button id="activModalOk" class="tbtn"
-            style="padding:6px 12px;font-size:12px;background:#1a3a1f;border-color:#3fb95044;color:#3fb950;"
-            data-i18n="activModalActivarBtn">✓ Activar</button>
         </div>
       </div>
     </div>
@@ -3107,106 +3029,6 @@
     </div>
   </div>
 
-  <div id="calcPanel" style="
-        display: none;
-        position: fixed;
-        bottom: 44px;
-        right: 240px;
-        width: 220px;
-        background: #161b22;
-        border: 1px solid #a5d6ff44;
-        border-radius: 8px;
-        box-shadow: 0 4px 24px #00000066;
-        z-index: 900;
-        font-family: 'Segoe UI', sans-serif;
-        user-select: none;
-      ">
-    <div id="calcHeader" style="
-          padding: 6px 10px;
-          background: #1c2128;
-          border-bottom: 1px solid #30363d;
-          border-radius: 8px 8px 0 0;
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          cursor: move;
-        ">
-      <span data-i18n="calcTitulo" style="
-            font-size: 10px;
-            color: #a5d6ff;
-            letter-spacing: 1px;
-            font-weight: 600;
-          ">▣ CALCULADORA</span>
-      <button onclick="toggleCalc()" style="
-            background: none;
-            border: none;
-            color: #8b949e;
-            cursor: pointer;
-            font-size: 13px;
-            line-height: 1;
-            padding: 0 2px;
-          ">
-        ✕
-      </button>
-    </div>
-
-    <div style="padding: 8px 10px 4px">
-      <div id="calcExpr" style="
-            font-size: 9px;
-            color: #8b949e;
-            min-height: 14px;
-            text-align: right;
-            overflow: hidden;
-            white-space: nowrap;
-            text-overflow: ellipsis;
-            margin-bottom: 2px;
-          "></div>
-      <div id="calcDisplay" style="
-            background: #0d1117;
-            border: 1px solid #30363d;
-            border-radius: 4px;
-            padding: 6px 8px;
-            font-size: 20px;
-            color: #e6edf3;
-            text-align: right;
-            min-height: 38px;
-            overflow: hidden;
-            white-space: nowrap;
-            text-overflow: ellipsis;
-          ">
-        0
-      </div>
-    </div>
-    <div style="
-          padding: 6px 8px 10px;
-          display: grid;
-          grid-template-columns: repeat(4, 1fr);
-          gap: 5px;
-        ">
-      <button class="cbtn cbtn-fn" onclick="calcFn('clear')">C</button>
-      <button class="cbtn cbtn-fn" onclick="calcFn('sign')">+/-</button>
-      <button class="cbtn cbtn-fn" onclick="calcFn('pct')">%</button>
-      <button class="cbtn cbtn-op" onclick="calcOp('/')">÷</button>
-      <button class="cbtn" onclick="calcNum('7')">7</button>
-      <button class="cbtn" onclick="calcNum('8')">8</button>
-      <button class="cbtn" onclick="calcNum('9')">9</button>
-      <button class="cbtn cbtn-op" onclick="calcOp('*')">×</button>
-      <button class="cbtn" onclick="calcNum('4')">4</button>
-      <button class="cbtn" onclick="calcNum('5')">5</button>
-      <button class="cbtn" onclick="calcNum('6')">6</button>
-      <button class="cbtn cbtn-op" onclick="calcOp('-')">−</button>
-      <button class="cbtn" onclick="calcNum('1')">1</button>
-      <button class="cbtn" onclick="calcNum('2')">2</button>
-      <button class="cbtn" onclick="calcNum('3')">3</button>
-      <button class="cbtn cbtn-op" onclick="calcOp('+')">+</button>
-      <button class="cbtn" onclick="calcNum('0')" style="grid-column: span 2">
-        0
-      </button>
-      <button class="cbtn" onclick="calcDot()">.</button>
-      <button class="cbtn cbtn-eq" onclick="calcEq()">=</button>
-    </div>
-  </div>
-
   <style>
     .cbtn {
       padding: 0;
@@ -3230,39 +3052,6 @@
 
     .cbtn:active {
       background: #3d444d;
-    }
-
-    .cbtn-fn {
-      background: #1c2128;
-      color: #8b949e;
-    }
-
-    .cbtn-fn:hover {
-      background: #2d333b;
-      color: #e6edf3;
-    }
-
-    .cbtn-op {
-      background: #1c2a3a;
-      color: #a5d6ff;
-      border-color: #a5d6ff33;
-      font-size: 16px;
-    }
-
-    .cbtn-op:hover {
-      background: #1f3a5f;
-      border-color: #a5d6ff88;
-    }
-
-    .cbtn-eq {
-      background: #1f6feb;
-      color: #fff;
-      border-color: #58a6ff;
-      font-size: 16px;
-    }
-
-    .cbtn-eq:hover {
-      background: #388bfd;
     }
   </style>
 
@@ -10132,7 +9921,6 @@
       el.style.display = showing ? 'none' : '';
       document.getElementById('t-slicepanel').classList.toggle('active', !showing);
     };
-    document.getElementById('t-calc').onclick = () => toggleCalc();
     document.getElementById('sel-rotgeom').addEventListener('change', () => {
       if (sel && sel.kind === 'rotonda') { const rb = roundabouts.find(x => x.id === sel.id); if (rb) { rb.sides = getRotSides(); markDirty(); } }
       draw();
@@ -10229,7 +10017,6 @@
     document.addEventListener('click', closeAllMenus);
     document.getElementById('t-exportar-dxf').addEventListener('click', async () => {
       closeAllMenus();
-      if (!window.saiNative || !(await saiNative.checkExportAllowedJs())) { openActivationModal(); return; }
       openDxfExportModal();
     });
 
@@ -10271,67 +10058,6 @@
       const replanteo = document.getElementById('dxfExportReplanteoChk').checked;
       closeDxfExportModal();
       exportDXF({ grid, gridInterval, panel, vertexPrefix, tableModel, cebras, linderos, secciones, lotLabel, replanteo });
-    };
-
-    // ---- Activación del programa (licencia permanente + 2 exports DXF de
-    // prueba gratis; agotados esos 2, se bloquea exportar Y guardar .lsai
-    // hasta activar -- ver saiNative.license*/checkExportAllowedJs en
-    // native/sai-core-native). El chequeo real vive en Rust (ver su doc
-    // comment): este modal es solo la parte visible/UX, no la protección.
-    async function _activModalRefreshStatus() {
-      const st = await saiNative.licenseStatusJs();
-      const el = document.getElementById('activModalStatus');
-      el.textContent = st.licensed ? t('activModalStatusLicensed') : t('activModalStatusTrial', st.exportsUsed, st.exportsAllowed);
-      document.getElementById('activModalMachineCode').value = await saiNative.getMachineCodeJs();
-      _updateActivarProgramaVisibility(st.licensed);
-      return st;
-    }
-    // Una vez activado ya no tiene sentido ofrecer "Activar programa" en el
-    // menú -- se oculta para siempre (la licencia es permanente, no hay
-    // forma de desactivarla desde la UI).
-    function _updateActivarProgramaVisibility(licensed) {
-      const btn = document.getElementById('t-activar-programa');
-      if (btn) btn.style.display = licensed ? 'none' : '';
-    }
-    async function openActivationModal() {
-      if (!window.saiNative) { alert(t('alertRequiereElectron')); return; }
-      document.getElementById('activModalKeyInput').value = '';
-      document.getElementById('activModalError').style.display = 'none';
-      await _activModalRefreshStatus();
-      document.getElementById('activationModal').style.display = 'flex';
-    }
-    function closeActivationModal() {
-      document.getElementById('activationModal').style.display = 'none';
-    }
-    document.getElementById('t-activar-programa').addEventListener('click', () => { closeAllMenus(); openActivationModal(); });
-    document.getElementById('activModalCancel').onclick = () => closeActivationModal();
-    document.getElementById('activModalCopyCode').onclick = () => {
-      const input = document.getElementById('activModalMachineCode');
-      input.select();
-      navigator.clipboard && navigator.clipboard.writeText(input.value).catch(() => { });
-    };
-    // Link de compra fijo (Hotmart, 20 USD) -- se abre en el navegador
-    // predeterminado del sistema (ver setWindowOpenHandler en main.js), no
-    // en una ventana nueva de Electron.
-    const ACTIV_COMPRAR_URL = 'https://pay.hotmart.com/O104695190C';
-    document.getElementById('activModalComprar').onclick = () => window.open(ACTIV_COMPRAR_URL, '_blank');
-    // WhatsApp directo a SAI Soluciones con el código de equipo ya cargado
-    // en el mensaje -- el número lleva el prefijo de país (591, Bolivia) que
-    // pide el formato internacional de wa.me.
-    const ACTIV_WHATSAPP_NUMBER = '59173324084';
-    document.getElementById('activModalWhatsapp').onclick = () => {
-      const code = document.getElementById('activModalMachineCode').value || '';
-      const msg = encodeURIComponent(`Hola SAI Soluciones, quiero activar mi programa. Mi código de equipo es: ${code}`);
-      window.open(`https://wa.me/${ACTIV_WHATSAPP_NUMBER}?text=${msg}`, '_blank');
-    };
-    document.getElementById('activModalOk').onclick = async () => {
-      const key = document.getElementById('activModalKeyInput').value.trim();
-      const ok = key && await saiNative.activateLicenseJs(key);
-      if (!ok) { document.getElementById('activModalError').style.display = ''; return; }
-      document.getElementById('activModalError').style.display = 'none';
-      await _activModalRefreshStatus();
-      setKmzHint(t('activModalActivadoOk'), '#56d364', 5000);
-      closeActivationModal();
     };
 
     // ---- Modal "Datos del proyecto" (título/legales para el panel del DXF) --
@@ -10792,20 +10518,7 @@
     // handle aún y el navegador soporta File System Access API, pide ubicación
     // una sola vez y guarda el handle para los siguientes "Guardar". En
     // navegadores sin soporte (Firefox, Safari) cae al método de descarga.
-    // Guardar/Guardar como consumen del mismo límite de prueba que exportar
-    // DXF (ver checkExportAllowedJs) pero NUNCA lo incrementan -- solo
-    // exportar consume un intento, tal como se pidió. Fuera de Electron
-    // (window.saiNative ausente, p.ej. probando en un navegador durante el
-    // desarrollo) no se bloquea: el sistema de licencia solo aplica a la
-    // app empaquetada real.
-    async function _guardarBloqueadoPorLicencia() {
-      if (!window.saiNative) return false;
-      if (await saiNative.checkExportAllowedJs()) return false;
-      openActivationModal();
-      return true;
-    }
     async function saveProject() {
-      if (await _guardarBloqueadoPorLicencia()) return;
       const json = JSON.stringify(buildProjectData());
       try {
         if (_docFileHandle) {
@@ -10841,7 +10554,6 @@
     // "Guardar como": fuerza elegir una nueva ubicación/nombre, sin importar
     // si ya había un archivo asociado al proyecto actual.
     async function saveProjectAs() {
-      if (await _guardarBloqueadoPorLicencia()) return;
       if (!window.showSaveFilePicker) { saveProject(); return; }
       const json = JSON.stringify(buildProjectData());
       try {
@@ -15838,10 +15550,6 @@
         await dxfExportReplanteoFile(_linderoMzns);
       }
 
-      // Consume un export de prueba (no-op si ya está licenciado) -- ver
-      // saiNative.recordExportJs. Solo acá, nunca en "Guardar".
-      if (window.saiNative) await saiNative.recordExportJs();
-
       // Aviso si se trazaron ejes de perfil pero no se pudo generar ninguno
       // (falta la nube de puntos, o ningún eje llegó a apoyar 2 puntos sobre
       // el TIN) — mejor avisar que fallar en silencio.
@@ -16078,8 +15786,8 @@
 
     // =====================================================================
     //  SISTEMA DE INTERNACIONALIZACIÓN — i18n (es / en / pt)
-    //  Cubre la interfaz estática (toolbar, sidebar, modales, statusbar,
-    //  calculadora) y los mensajes de estado/alerta dinámicos. Los textos
+    //  Cubre la interfaz estática (toolbar, sidebar, modales, statusbar)
+    //  y los mensajes de estado/alerta dinámicos. Los textos
     //  dibujados en el canvas (cotas, nombres de calle, radios) y el DXF
     //  exportado quedan fuera de este sistema, en español.
     // =====================================================================
@@ -16115,25 +15823,12 @@
         ttExportar: "Exportar", btnExportarMenu: "Exportar",
         ttExportarDxf: "Exportar el diseño actual a DXF", btnExportarDxf: "Exportar DXF",
         ttDatosProyecto: "Datos del proyecto (título, propietario, zona, etc. para el DXF)", btnDatosProyecto: "Datos del proyecto",
-        ttActivarPrograma: "Activar el programa con una clave de activación", btnActivarPrograma: "Activar programa",
-        activModalTitle: "🔑 ACTIVACIÓN DEL PROGRAMA",
-        activModalCodeLabel: "Envíanos este código para enviarte la clave de activación",
-        activModalCopyBtn: "Copiar",
-        activModalWhatsappBtn: "💬 WhatsApp",
-        activModalComprarBtn: "🛒 Comprar clave de activación (20 USD)",
-        activModalKeyLabel: "Clave de activación",
-        activModalErrorMsg: "⚠ Esa clave no es válida para este equipo. Revisa que la hayas copiado completa.",
-        activModalActivarBtn: "✓ Activar",
-        activModalActivadoOk: "✓ Programa activado. ¡Gracias!",
-        activModalStatusLicensed: "Programa activado — exportar y guardar sin límite.",
-        activModalStatusTrial: (used, allowed) => `Modo de prueba: te quedan ${Math.max(0, allowed - used)} de ${allowed} exportaciones a DXF gratis. Guardar el proyecto también se bloqueará al agotarlas.`,
         ttParcela: "Trazar parcela (P)", btnParcela: "Parcela",
         ttVias: "Trazar vías (M)", btnVias: "Vías",
         ttCarretera: "Trazar carretera (H)", btnCarretera: "Carretera",
         ttPolilinea: "Trazar polilínea con radios en los vértices (C)", btnPolilinea: "Polilínea",
         ttRotonda: "Rotonda (R)", btnRotonda: "Rotonda",
         ttSubdivisionManual: "Mostrar/ocultar el panel de subdivisión manual de manzanos", btnSubdivisionManual: "Sub-División Manual",
-        ttCalculadora: "Calculadora", btnCalculadora: "Calculadora",
         ttExtents: "Zoom extensión (E)",
         ttDelete: "Borrar selección (Supr)",
         ttSat: "Imagen satelital de fondo (Google Maps)",
@@ -16318,7 +16013,6 @@
         ttCebras: "Pasos de cebra en intersecciones (X)", lblCebras: "CEBRAS",
         ttProg: "Etiquetas de progresivas en ejes de vías y polilíneas", lblProg: "PROG.",
         sbZoomLabel: "Zoom:", sbUnidadLabel: "Unidad:", sbUnidadMetro: "metro",
-        calcTitulo: "▣ CALCULADORA",
         alertCurvaFueraManzano: "La polilínea seleccionada no quedó dentro de ningún manzano. Genera los manzanos (Generar Lotes) y verifica que la curva quede dentro de uno.",
         hintEjeNoDetectado: "⚠ No se pudo detectar el eje automáticamente. Dibuja la polilínea eje a mano (Polilínea / Offset) y vuelve a intentar.",
         confirmNuevo: "¿Iniciar un nuevo dibujo? Se perderán todos los cambios.",
@@ -16411,25 +16105,12 @@
         ttExportar: "Export", btnExportarMenu: "Export",
         ttExportarDxf: "Export the current design to DXF", btnExportarDxf: "Export DXF",
         ttDatosProyecto: "Project data (title, owner, zone, etc. for the DXF)", btnDatosProyecto: "Project data",
-        ttActivarPrograma: "Activate the program with an activation key", btnActivarPrograma: "Activate program",
-        activModalTitle: "🔑 PROGRAM ACTIVATION",
-        activModalCodeLabel: "Machine code (send it to whoever sold you the program)",
-        activModalCopyBtn: "Copy",
-        activModalWhatsappBtn: "💬 WhatsApp",
-        activModalComprarBtn: "🛒 Buy activation key (20 USD)",
-        activModalKeyLabel: "Activation key",
-        activModalErrorMsg: "⚠ That key isn't valid for this machine. Check that you copied it in full.",
-        activModalActivarBtn: "✓ Activate",
-        activModalActivadoOk: "✓ Program activated. Thank you!",
-        activModalStatusLicensed: "Program activated — export and save with no limit.",
-        activModalStatusTrial: (used, allowed) => `Trial mode: ${Math.max(0, allowed - used)} of ${allowed} free DXF exports left. Saving the project will also be blocked once they run out.`,
         ttParcela: "Draw parcel (P)", btnParcela: "Parcel",
         ttVias: "Draw roads (M)", btnVias: "Roads",
         ttCarretera: "Draw highway (H)", btnCarretera: "Highway",
         ttPolilinea: "Draw a polyline with fillets at the vertices (C)", btnPolilinea: "Polyline",
         ttRotonda: "Roundabout (R)", btnRotonda: "Roundabout",
         ttSubdivisionManual: "Show/hide the manual block subdivision panel", btnSubdivisionManual: "Manual Subdivision",
-        ttCalculadora: "Calculator", btnCalculadora: "Calculator",
         ttExtents: "Zoom to extents (E)",
         ttDelete: "Delete selection (Del)",
         ttSat: "Satellite background image (Google Maps)",
@@ -16614,7 +16295,6 @@
         ttCebras: "Crosswalks at intersections (X)", lblCebras: "CROSSWALKS",
         ttProg: "Station labels on road and polyline axes", lblProg: "STA.",
         sbZoomLabel: "Zoom:", sbUnidadLabel: "Unit:", sbUnidadMetro: "meter",
-        calcTitulo: "▣ CALCULATOR",
         alertCurvaFueraManzano: "The selected polyline is not inside any block. Generate the blocks (Generate Lots) and check that the curve is inside one.",
         hintEjeNoDetectado: "⚠ Could not detect the axis automatically. Draw the axis polyline by hand (Polyline / Offset) and try again.",
         confirmNuevo: "Start a new drawing? All changes will be lost.",
@@ -16705,25 +16385,12 @@
         ttExportar: "Exportar", btnExportarMenu: "Exportar",
         ttExportarDxf: "Exportar o desenho atual para DXF", btnExportarDxf: "Exportar DXF",
         ttDatosProyecto: "Dados do projeto (título, proprietário, zona, etc. para o DXF)", btnDatosProyecto: "Dados do projeto",
-        ttActivarPrograma: "Ativar o programa com uma chave de ativação", btnActivarPrograma: "Ativar programa",
-        activModalTitle: "🔑 ATIVAÇÃO DO PROGRAMA",
-        activModalCodeLabel: "Código do equipamento (envie para quem lhe vendeu o programa)",
-        activModalCopyBtn: "Copiar",
-        activModalWhatsappBtn: "💬 WhatsApp",
-        activModalComprarBtn: "🛒 Comprar chave de ativação (20 USD)",
-        activModalKeyLabel: "Chave de ativação",
-        activModalErrorMsg: "⚠ Essa chave não é válida para este equipamento. Verifique se copiou completa.",
-        activModalActivarBtn: "✓ Ativar",
-        activModalActivadoOk: "✓ Programa ativado. Obrigado!",
-        activModalStatusLicensed: "Programa ativado — exportar e salvar sem limite.",
-        activModalStatusTrial: (used, allowed) => `Modo de teste: restam ${Math.max(0, allowed - used)} de ${allowed} exportações DXF grátis. Salvar o projeto também será bloqueado ao esgotá-las.`,
         ttParcela: "Desenhar lote (P)", btnParcela: "Lote",
         ttVias: "Desenhar vias (M)", btnVias: "Vias",
         ttCarretera: "Desenhar rodovia (H)", btnCarretera: "Rodovia",
         ttPolilinea: "Desenhar polilinha com raios nos vértices (C)", btnPolilinea: "Polilinha",
         ttRotonda: "Rotatória (R)", btnRotonda: "Rotatória",
         ttSubdivisionManual: "Mostrar/ocultar o painel de subdivisão manual de quadras", btnSubdivisionManual: "Subdivisão Manual",
-        ttCalculadora: "Calculadora", btnCalculadora: "Calculadora",
         ttExtents: "Zoom para extensão (E)",
         ttDelete: "Excluir seleção (Del)",
         ttSat: "Imagem de satélite de fundo (Google Maps)",
@@ -16906,7 +16573,6 @@
         ttCebras: "Faixas de pedestre nas interseções (X)", lblCebras: "FAIXAS",
         ttProg: "Etiquetas de estaqueamento nos eixos de vias e polilinhas", lblProg: "EST.",
         sbZoomLabel: "Zoom:", sbUnidadLabel: "Unidade:", sbUnidadMetro: "metro",
-        calcTitulo: "▣ CALCULADORA",
         alertCurvaFueraManzano: "A polilinha selecionada não ficou dentro de nenhuma quadra. Gere as quadras (Gerar Lotes) e verifique se a curva fica dentro de uma.",
         hintEjeNoDetectado: "⚠ Não foi possível detectar o eixo automaticamente. Desenhe a polilinha eixo manualmente (Polilinha / Offset) e tente novamente.",
         confirmNuevo: "Iniciar um novo desenho? Todas as alterações serão perdidas.",
@@ -22248,9 +21914,6 @@
     setTool('select');
     _updateGeoDependentUI();
     toggleDarkCanvas(); // modo oscuro por defecto al abrir el programa
-    if (window.saiNative) {
-      saiNative.licenseStatusJs().then((st) => _updateActivarProgramaVisibility(st.licensed));
-    }
     draw();
     pushHistory();   // semilla del historial: estado inicial (vacío, o el cargado por defecto)
     requestAnimationFrame(resize);
@@ -22265,189 +21928,7 @@
       } catch (e) { }
     }
 
-    //=============================================================================================
-    //===================INICIO CALCULADORA========================================================
-    //=============================================================================================
 
-    function toggleCalc() {
-      const p = document.getElementById("calcPanel");
-      p.style.display = p.style.display === "none" ? "block" : "none";
-    }
-
-    let _calcVal = "0"; // valor en pantalla
-    let _calcPrev = null; // operando previo
-    let _calcOp = null; // operador pendiente
-    let _calcNewNum = true; // ¿el próximo dígito inicia número nuevo?
-    let _calcExpr = ""; // texto de expresión (fila superior)
-
-    function _calcRefresh() {
-      const disp = document.getElementById("calcDisplay");
-      const raw = parseFloat(_calcVal);
-      let txt = isFinite(raw)
-        ? String(parseFloat(raw.toPrecision(10)))
-        : _calcVal;
-      disp.textContent = txt;
-      document.getElementById("calcExpr").textContent = _calcExpr;
-    }
-
-    function calcNum(n) {
-      if (_calcNewNum) {
-        _calcVal = n === "0" ? "0" : n;
-        _calcNewNum = false;
-      } else {
-        if (_calcVal === "0" && n === "0") return;
-        if (_calcVal === "0" && n !== ".") {
-          _calcVal = n;
-        } else {
-          if (_calcVal.length < 15) _calcVal += n;
-        }
-      }
-      _calcRefresh();
-    }
-
-    function calcDot() {
-      if (_calcNewNum) {
-        _calcVal = "0.";
-        _calcNewNum = false;
-      } else if (!_calcVal.includes(".")) {
-        _calcVal += ".";
-      }
-      _calcRefresh();
-    }
-
-    function calcOp(op) {
-      const cur = parseFloat(_calcVal);
-      if (_calcOp && !_calcNewNum) {
-        const res = _calcApply(_calcPrev, cur, _calcOp);
-        _calcVal = String(parseFloat(res.toPrecision(12)));
-        _calcPrev = parseFloat(_calcVal);
-      } else {
-        _calcPrev = cur;
-      }
-      _calcOp = op;
-      _calcNewNum = true;
-      const opSymbol = { "+": "+", "-": "−", "*": "×", "/": "÷" }[op] || op;
-      _calcExpr = `${parseFloat(_calcVal.replace(/\.0+$/, ""))} ${opSymbol}`;
-      _calcRefresh();
-    }
-
-    function calcEq() {
-      if (_calcOp === null) return;
-      const cur = parseFloat(_calcVal);
-      const opSymbol =
-        { "+": "+", "-": "−", "*": "×", "/": "÷" }[_calcOp] || _calcOp;
-      _calcExpr = `${_calcPrev} ${opSymbol} ${cur} =`;
-      const res = _calcApply(_calcPrev, cur, _calcOp);
-      _calcVal = isFinite(res)
-        ? String(parseFloat(res.toPrecision(12)))
-        : "Error";
-      _calcOp = null;
-      _calcPrev = null;
-      _calcNewNum = true;
-      _calcRefresh();
-    }
-
-    function _calcApply(a, b, op) {
-      switch (op) {
-        case "+":
-          return a + b;
-        case "-":
-          return a - b;
-        case "*":
-          return a * b;
-        case "/":
-          return b !== 0 ? a / b : NaN;
-      }
-      return b;
-    }
-
-    function calcFn(fn) {
-      const cur = parseFloat(_calcVal);
-      if (fn === "clear") {
-        _calcVal = "0";
-        _calcPrev = null;
-        _calcOp = null;
-        _calcNewNum = true;
-        _calcExpr = "";
-      } else if (fn === "sign") {
-        _calcVal = String(-cur);
-        _calcNewNum = false;
-      } else if (fn === "pct") {
-        _calcVal = String(cur / 100);
-        _calcNewNum = false;
-      }
-      _calcRefresh();
-    }
-
-    (function () {
-      const panel = document.getElementById("calcPanel");
-      const header = document.getElementById("calcHeader");
-      let dragging = false, offX = 0, offY = 0;
-      header.addEventListener("mousedown", function (e) {
-        if (e.target.closest("button")) return;
-        const r = panel.getBoundingClientRect();
-        dragging = true;
-        offX = e.clientX - r.left;
-        offY = e.clientY - r.top;
-        panel.style.left = r.left + "px";
-        panel.style.top = r.top + "px";
-        panel.style.right = "auto";
-        panel.style.bottom = "auto";
-        e.preventDefault();
-      });
-      document.addEventListener("mousemove", function (e) {
-        if (!dragging) return;
-        const nx = Math.max(0, Math.min(window.innerWidth - panel.offsetWidth, e.clientX - offX));
-        const ny = Math.max(0, Math.min(window.innerHeight - panel.offsetHeight, e.clientY - offY));
-        panel.style.left = nx + "px";
-        panel.style.top = ny + "px";
-      });
-      document.addEventListener("mouseup", function () { dragging = false; });
-    })();
-
-    document.addEventListener("keydown", function (e) {
-      const p = document.getElementById("calcPanel");
-      if (!p || p.style.display === "none") return;
-      const actTag = document.activeElement ? document.activeElement.tagName : "";
-      if (actTag === "INPUT" || actTag === "SELECT" || actTag === "TEXTAREA") return;
-
-      if (e.key === "Escape") {
-        e.preventDefault();
-        e.stopPropagation();
-        toggleCalc();
-        return;
-      }
-
-      const code = e.code;
-      const key = e.key;
-      let handled = true;
-      if (code === "Numpad0" || key === "0") calcNum("0");
-      else if (code === "Numpad1" || key === "1") calcNum("1");
-      else if (code === "Numpad2" || key === "2") calcNum("2");
-      else if (code === "Numpad3" || key === "3") calcNum("3");
-      else if (code === "Numpad4" || key === "4") calcNum("4");
-      else if (code === "Numpad5" || key === "5") calcNum("5");
-      else if (code === "Numpad6" || key === "6") calcNum("6");
-      else if (code === "Numpad7" || key === "7") calcNum("7");
-      else if (code === "Numpad8" || key === "8") calcNum("8");
-      else if (code === "Numpad9" || key === "9") calcNum("9");
-      else if (code === "NumpadDecimal" || key === "." || key === ",") calcDot();
-      else if (code === "NumpadAdd" || key === "+") calcOp("+");
-      else if (code === "NumpadSubtract" || key === "-") calcOp("-");
-      else if (code === "NumpadMultiply" || key === "*") calcOp("*");
-      else if (code === "NumpadDivide" || key === "/") calcOp("/");
-      else if (code === "NumpadEnter" || key === "Enter" || key === "=") calcEq();
-      else if (key === "%") calcFn("pct");
-      else handled = false;
-
-      if (handled) {
-        e.preventDefault();
-        e.stopPropagation();
-      }
-    }, true);
-    //=============================================================================================
-    //===================FIN CALCULADORA===========================================================
-    //=============================================================================================
 
     // ── Spinner horizontal ⟨ ‹ val › ⟩ para todos los input[type=number] ──────
     // Excluye inputs que tienen estilos inline propios (slicePanel, etc.)
@@ -22729,13 +22210,8 @@
       if (statsTitle) statsTitle.addEventListener('click', () => stats.classList.toggle('collapsed'));
       if (stats && mqSmall.matches) stats.classList.add('collapsed');
 
-      /* ── En pantallas chicas la calculadora nace pegada al borde derecho ── */
-      if (mqSmall.matches) {
-        const calc = document.getElementById('calcPanel');
-        if (calc) { calc.style.right = '10px'; calc.style.bottom = '76px'; }
-      }
 
-      /* ── Arrastre táctil de paneles flotantes (tarjeta de PI y calculadora):
+      /* ── Arrastre táctil de paneles flotantes (tarjeta de PI):
             traduce touch → mouse para reutilizar sus manejadores de arrastre ── */
       function touchDragBridge(el) {
         if (!el) return;
@@ -22766,7 +22242,6 @@
         }, { passive: false });
       }
       touchDragBridge(document.getElementById('pi-card-head'));
-      touchDragBridge(document.getElementById('calcHeader'));
 
       /* ── Footer de conmutadores: cada botón es un espejo del toggle real
             de la barra de estado. El estado "on" se sincroniza observando
