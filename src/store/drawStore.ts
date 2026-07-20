@@ -6,15 +6,8 @@ export type DrawMode =
   | 'polygon'    // Previously 'polyline' - keep for backwards compatibility
   | 'line'       // Open polyline (drag mouse to draw)
   | 'rectangle'  // Rectangle via OL's built-in draw type
-  | 'circle'     // Circle via OL's built-in draw type
-  | 'arc'        // Custom arc (3 points)
-  | 'text'       // Text label feature
-| 'cota' // Manual linear dimension (3 clicks: start → end → offset)
-| 'street' // Street axis (segmented line)
-| 'roundabout' // Rotonda: 2 clics (centro → radio)
-  | 'rotate'     // Transform selection: rotate angle
-  | 'scale'      // Transform selection: scale
-  | 'mirror'     // Transform selection: mirror over axis
+  | 'street' // Street axis (segmented line)
+  | 'roundabout' // Rotonda: 2 clics (centro → radio)
   | 'erase'      // Delete selected features
   | 'edit'       // Enter vertex editing mode (modify selected geometry)
   | 'none';       // No tool selected (for UI state)

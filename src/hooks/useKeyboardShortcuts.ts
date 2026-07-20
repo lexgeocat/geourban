@@ -6,7 +6,6 @@ import { useSelectionStore } from '../store/selectionStore';
 import { useSnapSettingsStore } from '../store/snapSettingsStore';
 import { DeleteFeaturesCommand } from '../commands/DeleteFeaturesCommand';
 import { runCommand } from '../commands/CommandStack';
-import { copySelected } from '../commands/editOperations';
 
 // No se disparan si el foco esta en un input/textarea/contentEditable
 
@@ -56,13 +55,6 @@ export function useKeyboardShortcuts() {
         return;
       }
 
-      // Ctrl/Cmd + D: copiar selección
-      if (ctrlOrCmd && (key === 'd' || key === 'D')) {
-        e.preventDefault();
-        void copySelected();
-        return;
-      }
-
       // Delete / Backspace: borrar seleccion (via comando)
       if (key === 'Delete' || key === 'Backspace') {
         e.preventDefault();
@@ -89,21 +81,15 @@ export function useKeyboardShortcuts() {
       // Single-key shortcuts (sin modifier)
       if (ctrlOrCmd) return;
       const lower = key.toLowerCase();
-const map: Record<string, DrawMode> = {
-  v: 'select',
-  p: 'polygon',
-  l: 'line',
-  r: 'rectangle',
-  c: 'circle',
-  a: 'arc',
-  x: 'text',
-  s: 'street',
-  o: 'roundabout',
-  h: 'rotate',
-  k: 'scale',
-  m: 'mirror',
-  e: 'erase',
-};
+      const map: Record<string, DrawMode> = {
+        v: 'select',
+        p: 'polygon',
+        l: 'line',
+        r: 'rectangle',
+        s: 'street',
+        o: 'roundabout',
+        e: 'erase',
+      };
       const next = map[lower];
       if (next) {
         e.preventDefault();

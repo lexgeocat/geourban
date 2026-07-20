@@ -7,15 +7,13 @@ import Modify from 'ol/interaction/Modify.js';
 import Select from 'ol/interaction/Select.js';
 import SafeTranslate from '../safeTranslate';
 import { toLonLat } from 'ol/proj.js';
-import { Fill, Stroke, Style, Circle as CircleStyle, RegularShape } from 'ol/style.js';
+import { Fill, Stroke, Style, Circle as CircleStyle } from 'ol/style.js';
 import Feature from 'ol/Feature.js';
-import Point from 'ol/geom/Point.js';
 import LineString from 'ol/geom/LineString.js';
 import Polygon from 'ol/geom/Polygon.js';
 import MultiPoint from 'ol/geom/MultiPoint.js';
 import type Geometry from 'ol/geom/Geometry.js';
-import { createBox, type GeometryFunction } from 'ol/interaction/Draw.js';
-import { arcFrom3Points, sampleArc } from '../../geo/arcMath';
+import { createBox } from 'ol/interaction/Draw.js';
 import { click as clickCondition, pointerMove } from 'ol/events/condition.js';
 import { intersects as extentIntersects } from 'ol/extent.js';
 import type { DrawMode } from '../../store/drawStore';
@@ -29,16 +27,11 @@ import { ModifyGeometryCommand } from '../../commands/ModifyGeometryCommand';
 import { AddStreetCommand } from '../../commands/AddStreetCommand';
 import { updateFeatureMetrics } from '../../geo/metrics';
 import { createLiveDrawingLabelStyle } from '../styleFactory';
-import { useTransformBridge } from '../../store/transformBridge';
-import { TransformDragInteraction, TransformClickInteraction } from './TransformInteractions';
 import { LassoSelection, type LassoMode } from './LassoSelection';
-import { getFeatureKind } from '../../core/objectModel';
-import { DimensionInteraction } from './DimensionInteraction';
 import { useLayersStore } from '../../store/layersRegistryStore';
 import { useRoundaboutStore } from '../../store/roundaboutStore';
 import { AddRoundaboutCommand } from '../../commands/AddRoundaboutCommand';
 import { RoundaboutDrawInteraction } from './RoundaboutDrawInteraction';
-import type { RoundaboutDrawPreview } from './RoundaboutDrawInteraction';
 import { pointInPoly } from '../../geo/polygonEngine';
 import type { PostrenderPainter } from './PostrenderPainter';
 export interface InteractionContext {
@@ -55,7 +48,6 @@ export class InteractionModeController {
   private ctx: InteractionContext;
   private selectInteraction: Select | null = null;
   private toClean: (() => void)[] = [];
-  activeDimInteraction: DimensionInteraction | null = null;
 
   /** Ref mutable para que SnapEngine (creado fuera) lea el Draw activo. */
   readonly activeDrawRef: { current: Draw | null } = { current: null };
@@ -77,8 +69,7 @@ export class InteractionModeController {
 // Cursor crosshair en modos de dibujo
   if (
     mode === 'polygon' || mode === 'line' ||
-    mode === 'rectangle' || mode === 'circle' || mode === 'arc' ||
-    mode === 'text' || mode === 'cota' || mode === 'roundabout'
+    mode === 'rectangle' || mode === 'roundabout'
   ) {
       viewport.setAttribute('data-cursor', mode);
     } else {
@@ -193,15 +184,11 @@ export class InteractionModeController {
             // Limpia preview
             this.ctx.postrenderPainter?.setLassoPreview(null);
             // Calcula candidatos
-            const sel = useSelectionStore.getState();
             const allFeatures = src.getFeatures();
             const candidates: Array<Feature<Geometry>> = [];
             for (const f of allFeatures) {
               const id = f.getId();
               if (id == null) continue;
-              const k = getFeatureKind(f as Feature<Geometry>);
-              // Si kind no se puede inferir, lo dejamos pasar (backwards compat)
-              if (k !== null && !sel.isKindEnabled(k)) continue;
               const layerId = f.get('layerId') as string | undefined;
               if (layerId) {
                 const layer = useLayersStore.getState().getById(layerId);
@@ -511,141 +498,6 @@ export class InteractionModeController {
       });
     }
 
-    // === Modo CIRCLE ===
-    if (mode === 'circle') {
-      const draw = new Draw({
-        source: src,
-        type: 'Circle',
-        style: new Style({
-          stroke: new Stroke({ color: 'rgba(0, 212, 255, 0.95)', width: 2, lineDash: [6, 4] }),
-          fill: new Fill({ color: 'rgba(0, 212, 255, 0.10)' }),
-        }),
-      });
-      draw.on('drawend', (event) => {
-        const feature = event.feature as Feature<Geometry>;
-        const areaKind = useDrawStore.getState().areaKind;
-        void runCommand(
-          new AddFeatureCommand(feature, { mode: 'claim', label: 'Dibujar círculo', kind: areaKind }),
-        );
-        updateFeatureMetrics(feature);
-        refreshLayers();
-      });
-      this.activeDrawRef.current = draw;
-      map.addInteraction(draw);
-      this.toClean.push(() => {
-        map.removeInteraction(draw);
-        if (this.activeDrawRef.current === draw) this.activeDrawRef.current = null;
-      });
-    }
-
-    // === Modo ARC ===
-    if (mode === 'arc') {
-      const arcGeometryFunction: GeometryFunction = (
-        coordinates,
-        optGeometry,
-      ) => {
-        const coords = coordinates as Array<[number, number]>;
-        if (coords.length < 3) {
-          return new LineString(coords as number[][]);
-        }
-        const [start, , mid] = coords as unknown as [
-          [number, number],
-          [number, number],
-          [number, number],
-        ];
-        const arc = arcFrom3Points(start, coords[2] as [number, number], mid);
-        if (!arc) {
-          return new LineString(coords as number[][]);
-        }
-        const pts = sampleArc(arc, 32);
-        if (optGeometry) {
-          (optGeometry as LineString).setCoordinates(pts);
-          return optGeometry;
-        }
-        return new LineString(pts);
-      };
-
-      const draw = new Draw({
-        source: src,
-        type: 'LineString',
-        maxPoints: 3,
-        geometryFunction: arcGeometryFunction,
-        style: new Style({
-          stroke: new Stroke({ color: 'rgba(0, 212, 255, 0.95)', width: 2, lineDash: [6, 4] }),
-        }),
-      });
-      draw.on('drawend', (event) => {
-        const feature = event.feature as Feature<Geometry>;
-        void runCommand(
-          new AddFeatureCommand(feature, { mode: 'claim', label: 'Dibujar arco' }),
-        );
-        updateFeatureMetrics(feature);
-        refreshLayers();
-      });
-      this.activeDrawRef.current = draw;
-      map.addInteraction(draw);
-      this.toClean.push(() => {
-        map.removeInteraction(draw);
-        if (this.activeDrawRef.current === draw) this.activeDrawRef.current = null;
-      });
-    }
-
-    // === Modo TEXT ===
-    if (mode === 'text') {
-      const draw = new Draw({
-        source: src,
-        type: 'Point',
-        style: new Style({
-          image: new CircleStyle({
-            radius: 4,
-            fill: new Fill({ color: 'rgba(0, 212, 255, 0.95)' }),
-          }),
-        }),
-      });
-      draw.on('drawend', (event) => {
-        const feature = event.feature as Feature<Geometry>;
-        const defaultText = `Texto ${Math.floor(Math.random() * 1000)}`;
-        const text = window.prompt('Texto:', defaultText);
-        if (text == null || text.trim() === '') {
-          const id = feature.getId();
-          const ds = this.ctx.drawSource;
-          if (id != null && ds) {
-            ds.removeFeature(feature);
-            ds.changed();
-          }
-          return;
-        }
-        feature.set('text', text);
-        feature.set('kind', 'texto');
-        void runCommand(
-          new AddFeatureCommand(feature, { mode: 'claim', label: 'Insertar texto' }),
-        );
-        refreshLayers();
-      });
-      this.activeDrawRef.current = draw;
-      map.addInteraction(draw);
-      this.toClean.push(() => {
-        map.removeInteraction(draw);
-        if (this.activeDrawRef.current === draw) this.activeDrawRef.current = null;
-      });
-    }
-
-    // === Modo COTA (dimensión manual) ===
-    if (mode === 'cota') {
-      const dim = new DimensionInteraction(map, src, (feature) => {
-        void runCommand(
-          new AddFeatureCommand(feature, { mode: 'claim', label: 'Cota manual' }),
-        );
-        refreshLayers();
-      });
-      this.activeDimInteraction = dim;
-      const dimCleanup = dim.install();
-      this.toClean.push(() => {
-        dimCleanup();
-        if (this.activeDimInteraction === dim) this.activeDimInteraction = null;
-      });
-    }
-
     // === Modo STREET ===
     if (mode === 'street') {
       const draw = new Draw({
@@ -746,89 +598,6 @@ if (mode === 'erase') {
       this.toClean.push(() => map.removeInteraction(select));
     }
 
-    // === Modo ROTATE: drag desde un anchor, ángulo = atan2 del cursor ===
-    if (mode === 'rotate') {
-      const handler = useTransformBridge.getState().getHandler();
-      if (handler && handler.kind === 'rotate') {
-        const transformDrag = new TransformDragInteraction({
-          map,
-          mode: 'rotate',
-          onComplete: (angle, anchor) => {
-            const h = useTransformBridge.getState().getHandler();
-            if (h && h.kind === 'rotate') {
-              h.apply(angle, anchor);
-            }
-            useTransformBridge.getState().setHandler(null);
-          },
-          onCancel: () => {
-            const h = useTransformBridge.getState().getHandler();
-            if (h) h.cancel();
-            useTransformBridge.getState().setHandler(null);
-          },
-        });
-        map.addInteraction(transformDrag);
-        this.toClean.push(() => map.removeInteraction(transformDrag));
-        this.toClean.push(() => {
-          useTransformBridge.getState().setHandler(null);
-        });
-      }
-    }
-
-    // === Modo SCALE: drag desde un anchor, factor = 1 + dist/50 ===
-    if (mode === 'scale') {
-      const handler = useTransformBridge.getState().getHandler();
-      if (handler && handler.kind === 'scale') {
-        const transformDrag = new TransformDragInteraction({
-          map,
-          mode: 'scale',
-          onComplete: (factor, anchor) => {
-            const h = useTransformBridge.getState().getHandler();
-            if (h && h.kind === 'scale') {
-              h.apply(factor, anchor);
-            }
-            useTransformBridge.getState().setHandler(null);
-          },
-          onCancel: () => {
-            const h = useTransformBridge.getState().getHandler();
-            if (h) h.cancel();
-            useTransformBridge.getState().setHandler(null);
-          },
-        });
-        map.addInteraction(transformDrag);
-        this.toClean.push(() => map.removeInteraction(transformDrag));
-        this.toClean.push(() => {
-          useTransformBridge.getState().setHandler(null);
-        });
-      }
-    }
-
-    // === Modo MIRROR: 2 clicks definen el eje de reflexión ===
-    if (mode === 'mirror') {
-      const handler = useTransformBridge.getState().getHandler();
-      if (handler && handler.kind === 'mirror') {
-        const transformClick = new TransformClickInteraction({
-          map,
-          onComplete: (a, b) => {
-            const h = useTransformBridge.getState().getHandler();
-            if (h && h.kind === 'mirror') {
-              h.apply(a, b);
-            }
-            useTransformBridge.getState().setHandler(null);
-          },
-          onCancel: () => {
-            const h = useTransformBridge.getState().getHandler();
-            if (h) h.cancel();
-            useTransformBridge.getState().setHandler(null);
-          },
-        });
-        map.addInteraction(transformClick);
-        this.toClean.push(() => map.removeInteraction(transformClick));
-        this.toClean.push(() => {
-          useTransformBridge.getState().setHandler(null);
-        });
-      }
-    }
-
     // Guarda cleanup + cursor para restore
     const cursorCleanup = () => {
       if (previousCursor === null) {
@@ -856,6 +625,5 @@ if (mode === 'erase') {
       this.selectInteraction = null;
     }
     this.activeDrawRef.current = null;
-    this.activeDimInteraction = null;
   }
 }

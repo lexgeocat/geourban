@@ -303,8 +303,7 @@ const baseMapId = useLayerStore((s) => s.baseMap);
       const mode = useDrawStore.getState().mode;
       // Modos de dibujo (Draw interaction): imantar SIEMPRE
       const drawModes = new Set([
-        'polygon', 'line', 'rectangle',
-        'circle', 'arc', 'street', 'text',
+        'polygon', 'line', 'rectangle', 'street',
       ]);
       if (drawModes.has(mode)) return true;
       // Modo edición: imantar solo durante arrastre

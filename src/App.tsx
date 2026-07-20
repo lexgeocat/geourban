@@ -6,7 +6,6 @@ import LayerPanel from './components/LayerPanel';
 import SubdivisionDialog from './components/SubdivisionDialog';
 import PropertyPanel from './components/PropertyPanel';
 import StatsPanel from './components/StatsPanel';
-import SelectionFilterPanel from './components/SelectionFilterPanel';
 import { startAutosave } from './io/persistence';
 import { writeProjectFromOlFeatures } from './io/geojson';
 import { useMapStore } from './store/mapStore';
@@ -71,8 +70,6 @@ function App() {
       </div>
       <ProjectSetupModal />
       <SubdivisionDialog />
-
-      <SelectionFilterPanel />
 
       <LayerPanel />
 

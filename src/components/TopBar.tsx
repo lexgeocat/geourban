@@ -28,14 +28,7 @@ import { AddFeaturesCommand } from '../commands/AddFeaturesCommand';
 import { useSelectionStore } from '../store/selectionStore';
 import { useSubdivisionStore } from '../store/subdivisionStore';
 import { useStreetStore } from '../store/streetStore';
-import { useTransformBridge } from '../store/transformBridge';
 import { GenerateLotsCommand } from '../commands/GenerateLotsCommand';
-import {
-  copySelected,
-  rotateSelected,
-  scaleSelected,
-  mirrorSelected,
-} from '../commands/editOperations';
 import {
   importFile,
   exportProject,
@@ -99,39 +92,12 @@ const IconLasso = () => (
     <circle cx="4" cy="18" r="1.5" fill="currentColor" />
   </svg>
 );
-const IconCircle = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="12" cy="12" r="8" />
-  </svg>
-);
-const IconArc = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M4 18 A10 10 0 0 1 20 10" />
-  </svg>
-);
-const IconText = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <polyline points="4 7 4 4 20 4 20 7" />
-    <line x1="9" y1="20" x2="15" y2="20" />
-    <line x1="12" y1="4" x2="12" y2="20" />
-  </svg>
-);
 const IconStreet = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M4 19L8 5" />
     <path d="M16 5l4 14" />
     <path d="M6 10h12" />
     <path d="M5 14h14" />
-  </svg>
-);
-const IconCota = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <line x1="4" y1="8" x2="20" y2="8" />
-    <line x1="4" y1="8" x2="4" y2="18" strokeDasharray="2 2" />
-    <line x1="20" y1="8" x2="20" y2="18" strokeDasharray="2 2" />
-    <line x1="6" y1="4" x2="6" y2="12" />
-    <line x1="18" y1="4" x2="18" y2="12" />
-    <text x="12" y="6" textAnchor="middle" fill="currentColor" stroke="none" fontSize="6">m</text>
   </svg>
 );
 const IconEraser = () => (
@@ -162,15 +128,6 @@ const IconEdit = () => (
     <path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
   </svg>
 );
-const IconMerge = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M8 3v3a4 4 0 0 0 4 4 4 4 0 0 1 4 4v3" />
-    <path d="M4 7h4" />
-    <path d="M16 17h4" />
-    <path d="m19 14 2 3-2 3" />
-    <path d="m5 4-2 3 2 3" />
-  </svg>
-);
 const IconSubdivide = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <rect x="3" y="3" width="18" height="18" rx="1" />
@@ -184,33 +141,6 @@ const IconLots = () => (
     <rect x="13" y="2" width="9" height="9" rx="1" />
     <rect x="2" y="13" width="9" height="9" rx="1" />
     <rect x="13" y="13" width="9" height="9" rx="1" />
-  </svg>
-);
-const IconCopy = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="9" y="9" width="13" height="13" rx="2" />
-    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-  </svg>
-);
-const IconRotate = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <polyline points="23 4 23 10 17 10" />
-    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
-  </svg>
-);
-const IconScale = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <polyline points="15 3 21 3 21 9" />
-    <polyline points="9 21 3 21 3 15" />
-    <line x1="21" y1="3" x2="14" y2="10" />
-    <line x1="3" y1="21" x2="10" y2="14" />
-  </svg>
-);
-const IconMirror = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <line x1="12" y1="3" x2="12" y2="21" />
-    <path d="M3 8h7a4 4 0 0 1 0 8H3" />
-    <path d="M14 8h7a4 4 0 0 1 0 8h-7" />
   </svg>
 );
 const IconGrid = () => (
@@ -411,7 +341,6 @@ const setRoundaboutPanelVisible = useRoundaboutStore((s) => s.setPanelVisible);
   const streets = useStreetStore((s) => s.streets);
 
   const [lotsBusy, setLotsBusy] = React.useState(false);
-  const [mergeBusy, setMergeBusy] = React.useState(false);
 
   const [projectBrowserOpen, setProjectBrowserOpen] = useState(false);
 
@@ -566,23 +495,6 @@ const setRoundaboutPanelVisible = useRoundaboutStore((s) => s.setPanelVisible);
     }
   };
 
-  const handleMergeSelected = async () => {
-    if (mergeBusy) return;
-    setMergeBusy(true);
-    try {
-      const newId = await useMapStore.getState().mergeSelected();
-      if (newId) {
-        useSelectionStore.getState().setSelection([newId], newId);
-      } else {
-        alert('Necesitás seleccionar al menos 2 polígonos contiguos para fusionar.');
-      }
-    } catch (err) {
-      alert(err instanceof Error ? err.message : 'Error al fusionar');
-    } finally {
-      setMergeBusy(false);
-    }
-  };
-
   const handleFindOverlaps = async () => {
     const src = useMapStore.getState().drawSource;
     if (!src) return;
@@ -688,51 +600,6 @@ const setRoundaboutPanelVisible = useRoundaboutStore((s) => s.setPanelVisible);
       return;
     }
     setMode('edit');
-  };
-
-  /* ─── Edit Engine: Copy / Rotate / Scale / Mirror ─── */
-  const handleCopy = async () => {
-    const ok = await copySelected();
-    if (!ok) alert('Seleccioná al menos un feature para copiar.');
-  };
-
-  const handleRotate = () => {
-    if (useSelectionStore.getState().selectedIds.size === 0) {
-      alert('Seleccioná al menos un feature para rotar.');
-      return;
-    }
-    useTransformBridge.getState().setHandler({
-      kind: 'rotate',
-      apply: async (angle, anchor) => { await rotateSelected(angle, anchor); },
-      cancel: () => setMode('select'),
-    });
-    setMode('rotate');
-  };
-
-  const handleScale = () => {
-    if (useSelectionStore.getState().selectedIds.size === 0) {
-      alert('Seleccioná al menos un feature para escalar.');
-      return;
-    }
-    useTransformBridge.getState().setHandler({
-      kind: 'scale',
-      apply: async (factor, anchor) => { await scaleSelected(factor, anchor); },
-      cancel: () => setMode('select'),
-    });
-    setMode('scale');
-  };
-
-  const handleMirror = () => {
-    if (useSelectionStore.getState().selectedIds.size === 0) {
-      alert('Seleccioná al menos un feature para reflejar.');
-      return;
-    }
-    useTransformBridge.getState().setHandler({
-      kind: 'mirror',
-      apply: async (a, b) => { await mirrorSelected(a, b); },
-      cancel: () => setMode('select'),
-    });
-    setMode('mirror');
   };
 
   /* ─── Render: topbar ─── */
@@ -911,53 +778,9 @@ const setRoundaboutPanelVisible = useRoundaboutStore((s) => s.setPanelVisible);
                 <RibbonTool mode="polygon" icon={<IconPolygon />} label="Polígono" shortcut="P" />
                 <RibbonTool mode="line" icon={<IconLine />} label="Línea" shortcut="L" />
                 <RibbonTool mode="rectangle" icon={<IconRect />} label="Rectángulo" shortcut="R" />
-                <RibbonTool mode="circle" icon={<IconCircle />} label="Círculo" shortcut="C" />
-                <RibbonTool mode="arc" icon={<IconArc />} label="Arco" shortcut="A" />
-                <RibbonTool mode="text" icon={<IconText />} label="Texto" shortcut="X" />
-                <RibbonTool mode="cota" icon={<IconCota />} label="Cota" shortcut="D" />
-              </RibbonGroup>
-
-              <RibbonGroup label="Modificar">
-                <RibbonTool
-                  icon={<IconCopy />}
-                  label="Copiar"
-                  shortcut="Ctrl+D"
-                  disabled={selectedCount === 0}
-                  onClick={handleCopy}
-                />
-                <RibbonTool
-                  icon={<IconRotate />}
-                  label="Rotar"
-                  shortcut="H"
-                  disabled={selectedCount === 0}
-                  active={mode === 'rotate'}
-                  onClick={handleRotate}
-                />
-                <RibbonTool
-                  icon={<IconScale />}
-                  label="Escalar"
-                  shortcut="K"
-                  disabled={selectedCount === 0}
-                  active={mode === 'scale'}
-                  onClick={handleScale}
-                />
-                <RibbonTool
-                  icon={<IconMirror />}
-                  label="Reflejar"
-                  shortcut="M"
-                  disabled={selectedCount === 0}
-                  active={mode === 'mirror'}
-                  onClick={handleMirror}
-                />
               </RibbonGroup>
 
               <RibbonGroup label="Edición">
-                <RibbonTool
-                  icon={<IconMerge />}
-                  label="Fusionar"
-                  disabled={selectedCount < 2 || mergeBusy}
-                  onClick={handleMergeSelected}
-                />
                 <RibbonTool
                   icon={<IconEdit />}
                   label="Vértices"
@@ -1075,14 +898,7 @@ const setRoundaboutPanelVisible = useRoundaboutStore((s) => s.setPanelVisible);
                   shortcut="Shft+L"
                 />
               </RibbonGroup>
-              <RibbonGroup label="Transformar">
-                <RibbonTool icon={<IconCopy />} label="Copiar" shortcut="Ctrl+D" disabled={selectedCount === 0} onClick={handleCopy} />
-                <RibbonTool icon={<IconRotate />} label="Rotar" shortcut="H" disabled={selectedCount === 0} active={mode === 'rotate'} onClick={handleRotate} />
-                <RibbonTool icon={<IconScale />} label="Escalar" shortcut="K" disabled={selectedCount === 0} active={mode === 'scale'} onClick={handleScale} />
-                <RibbonTool icon={<IconMirror />} label="Reflejar" shortcut="M" disabled={selectedCount === 0} active={mode === 'mirror'} onClick={handleMirror} />
-              </RibbonGroup>
               <RibbonGroup label="Topología">
-                <RibbonTool icon={<IconMerge />} label="Fusionar" disabled={selectedCount < 2 || mergeBusy} onClick={handleMergeSelected} />
                 <RibbonTool icon={<Trash2 />} label="Eliminar" disabled={selectedCount === 0} badge={selectedCount > 0 ? selectedCount : undefined} onClick={handleDeleteSelected} />
               </RibbonGroup>
               <RibbonGroup label="Validación">
@@ -1099,10 +915,6 @@ const setRoundaboutPanelVisible = useRoundaboutStore((s) => s.setPanelVisible);
                 <RibbonTool mode="polygon" icon={<IconPolygon />} label="Polígono" shortcut="P" />
                 <RibbonTool mode="line" icon={<IconLine />} label="Línea" shortcut="L" />
                 <RibbonTool mode="rectangle" icon={<IconRect />} label="Rectángulo" shortcut="R" />
-                <RibbonTool mode="circle" icon={<IconCircle />} label="Círculo" shortcut="C" />
-                <RibbonTool mode="arc" icon={<IconArc />} label="Arco" shortcut="A" />
-                <RibbonTool mode="text" icon={<IconText />} label="Texto" shortcut="X" />
-                <RibbonTool mode="cota" icon={<IconCota />} label="Cota" shortcut="D" />
                 <RibbonTool
                   icon={<IconGreen />}
                   label="Área verde"

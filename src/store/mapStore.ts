@@ -16,7 +16,6 @@ import PolygonGeom from 'ol/geom/Polygon.js';
 import type Geometry from 'ol/geom/Geometry.js';
 import { runCommand } from '../commands/CommandStack';
 import { DeleteFeaturesCommand } from '../commands/DeleteFeaturesCommand';
-import { MergeFeaturesCommand } from '../commands/MergeFeaturesCommand';
 import { ensureKind, getFeatureKind } from '../core/objectModel';
 import { buildRoadNetworkRings } from '../geo/roadNetworkEngine';
 import { roundRingReflex } from '../geo/ringFillet';
@@ -51,7 +50,6 @@ type MapState = {
   deleteSelected: () => number;
   /** Borra UNA feature concreta (por id OL) */
   deleteFeatureById: (id: string | number) => boolean;
-  mergeSelected: () => Promise<string | number | null>;
   validateProjectTopology: () => Promise<{ valid: boolean; issues: string[] }>;
 };
 
@@ -138,14 +136,6 @@ export const useMapStore = create<MapState>()(
     deleteFeatureById: (id) => {
       void runCommand(new DeleteFeaturesCommand([id]));
       return true;
-    },
-    mergeSelected: async () => {
-      const selectedIds = Array.from(useSelectionStore.getState().selectedIds);
-      if (selectedIds.length < 2) return null;
-      const result = await runCommand(new MergeFeaturesCommand(selectedIds));
-      if (!result.ok) return null;
-      // Tras la ejecución, el nuevo id es el del feature seleccionado.
-      return useSelectionStore.getState().primaryId;
     },
    validateProjectTopology: async () => {
       const src = get().drawSource;
