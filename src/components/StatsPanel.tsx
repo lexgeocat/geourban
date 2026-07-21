@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useRef, useCallback } from 'react';
+import React, { useMemo, useState, useRef, useCallback, useEffect } from 'react';
 import { useMapStore } from '../store/mapStore';
 import { useStreetStore } from '../store/streetStore';
 import { useLayerStore } from '../store/layerStore';
@@ -112,7 +112,25 @@ export default function StatsPanel() {
   const [pos, setPos] = useState({ x: window.innerWidth - 250, y: window.innerHeight - 350 });
   const dragRef = useRef<{ startX: number; startY: number; posX: number; posY: number } | null>(null);
 
-  const stats = useMemo(() => computeStats(drawSource, streets), [drawSource, streets]);
+  // drawSource es un VectorSource mutable: agregar/borrar/editar features
+  // no cambia la referencia que devuelve useMapStore, así que
+  // useMemo([drawSource, streets]) nunca se invalidaba solo. Mismo patrón
+ // "tick" que ya usa ManzanoPanel: suscribirse a los eventos reales.
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    if (!drawSource) return;
+    const bump = () => setTick((n) => n + 1);
+    drawSource.on('addfeature', bump);
+    drawSource.on('removefeature', bump);
+   drawSource.on('change', bump);
+    return () => {
+      drawSource.un('addfeature', bump);
+      drawSource.un('removefeature', bump);
+      drawSource.un('change', bump);
+    };
+  }, [drawSource]);
+
+  const stats = useMemo(() => computeStats(drawSource, streets), [drawSource, streets, tick]);
 
   const onMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useProjectCrsStore } from '../store/projectCrsStore';
 import { useMapStore } from '../store/mapStore';
 import { useLayerStore } from '../store/layerStore';
+import { refreshSourceMetrics } from '../geo/metrics';
 import { utmZoneFromLonLat, type UtmHemisphere, type ProjectCrsMode } from '../geo/utmZones';
 export default function ProjectSetupModal() {
   const confirmed = useProjectCrsStore((s) => s.confirmed);
@@ -12,6 +13,7 @@ export default function ProjectSetupModal() {
   const setUtmZone = useProjectCrsStore((s) => s.setUtmZone);
   const confirm = useProjectCrsStore((s) => s.confirm);
   const viewConfig = useMapStore((s) => s.viewConfig);
+  const drawSource = useMapStore((s) => s.drawSource);
   const setBaseMap = useLayerStore((s) => s.setBaseMap);
 
   const [localMode, setLocalMode] = useState<ProjectCrsMode>(mode);
@@ -31,6 +33,9 @@ export default function ProjectSetupModal() {
     setMode(localMode);
     if (localMode === 'utm') setUtmZone(localZone, localHem);
     confirm();
+    // Cubre el caso "Reconfigurar" (reabrir el asistente sobre un
+    // proyecto que ya tiene features dibujadas).
+    if (drawSource) refreshSourceMetrics(drawSource);
   };
 
   return (

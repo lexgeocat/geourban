@@ -119,7 +119,6 @@ export function buildDrawLayers(
   const measurementLayer = new VectorLayer({
     source,
     visible: visibility.measurements,
-    declutter: true,
     style: createMeasurementStyle(),
   });
 

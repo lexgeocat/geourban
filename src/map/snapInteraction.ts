@@ -11,6 +11,7 @@ import {
 } from './advancedSnap';
 import { getEffectiveSnapSettings } from '../store/snapSettingsStore';
 import { useSnapLiveStore } from '../store/snapStateStore';
+import { rafThrottle } from '../utils/rafThrottle';
 
 const SNAP_COORD_EVENT_TYPES = new Set([
   'pointermove',
@@ -37,10 +38,19 @@ export interface SnapEngineOptions {
 export default class SnapEngine extends Interaction {
   private opts: SnapEngineOptions;
   private lastResult: SnapResult | null = null;
+  /** H5: el cómputo de snap corre síncrono por evento (necesario para el
+   *  imantado real de evt.coordinate), pero el feedback visual (store +
+   *  guías) se coalesce a 1 update por frame de render. */
+  private readonly emitVisualUpdate_: (result: SnapResult | null) => void;
 
   constructor(opts: SnapEngineOptions) {
     super({ handleEvent: (evt) => this.handleEvent_(evt as MapBrowserEvent) });
     this.opts = opts;
+    this.emitVisualUpdate_ = rafThrottle((result: SnapResult | null) => {
+      useSnapLiveStore.getState().setActive(result);
+      this.opts.onResultChange?.(result);
+      this.opts.onGuideChange?.(result?.guide ?? null);
+    });
   }
 
   getLastResult(): SnapResult | null {
@@ -50,9 +60,7 @@ export default class SnapEngine extends Interaction {
   private clear_() {
     if (this.lastResult !== null) {
       this.lastResult = null;
-      useSnapLiveStore.getState().setActive(null);
-      this.opts.onResultChange?.(null);
-      this.opts.onGuideChange?.(null);
+      this.emitVisualUpdate_(null);
     }
   }
 
@@ -94,12 +102,11 @@ export default class SnapEngine extends Interaction {
     });
 
     this.lastResult = result;
-    useSnapLiveStore.getState().setActive(result);
-    this.opts.onResultChange?.(result);
-    this.opts.onGuideChange?.(result?.guide ?? null);
+    this.emitVisualUpdate_(result);
 
     // 3) Imán: corrige coordinate/pixel del evento REAL (incluye pointerup,
-    //    que es el que Draw usa para fijar el vértice definitivo)
+    //    que es el que Draw usa para fijar el vértice definitivo). Esto
+    //    sigue siendo 100% síncrono — usa `result` local, no el store.
     if (result && this.opts.shouldSnapCoordinate(type)) {
       evt.coordinate = [result.point[0], result.point[1]];
       const px = map.getPixelFromCoordinate(result.point);

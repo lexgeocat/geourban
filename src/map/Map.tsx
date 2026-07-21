@@ -36,20 +36,7 @@ import { useManzanoStore } from '../store/manzanoStore';
 import { runCommand } from '../commands/CommandStack';
 import { RecomputeManzanoLotsCommand } from '../commands/RecomputeManzanoLotsCommand';
 import { polyArea } from '../geo/polygonEngine';
-
-if (!(HTMLCanvasElement.prototype as any).__willReadFreqPatched) {
-  const origGetContext = HTMLCanvasElement.prototype.getContext;
-  (HTMLCanvasElement.prototype as any).__willReadFreqPatched = true;
-  HTMLCanvasElement.prototype.getContext = function (this: HTMLCanvasElement, type: string, ...args: any[]) {
-    if (type === '2d' || type === 'bitmaprenderer') {
-      const attrs = (args[0] || {}) as CanvasRenderingContext2DSettings;
-      if (!attrs.willReadFrequently) {
-        args[0] = { ...attrs, willReadFrequently: true };
-      }
-    }
-    return origGetContext.call(this, type, ...args);
-  } as typeof HTMLCanvasElement.prototype.getContext;
-}
+import { rafThrottle } from '../utils/rafThrottle';
 
 export default function MapView() {
   const mapDivRef = useRef<HTMLDivElement>(null);
@@ -168,6 +155,10 @@ const baseMapId = useLayerStore((s) => s.baseMap);
 
     // --- Live cursor coordinates & zoom ---
     const setCursorCoords = useMapStore.getState().setCursorCoords;
+    // pointermove dispara cientos de veces por segundo; cada llamada a
+    // setCursorCoords es un set() de Zustand que re-renderiza StatusBar.
+    // Coalescemos a 1 update por frame de render (rAF).
+    const throttledSetCursorCoords = rafThrottle(setCursorCoords);
     const setZoom = useMapStore.getState().setZoom;
     const view = map.getView();
 
@@ -178,10 +169,10 @@ const baseMapId = useLayerStore((s) => s.baseMap);
         // (metros), no lon/lat — es lo que un CAD/GIS mostraría.
         const epsg = ensureUtmZoneRegistered(crs.utmZone, crs.utmHemisphere);
         const projected = transform(evt.coordinate, 'EPSG:3857', epsg) as [number, number];
-        setCursorCoords({ x: projected[0], y: projected[1], isProjected: true });
+        throttledSetCursorCoords({ x: projected[0], y: projected[1], isProjected: true });
       } else {
         const lonLat = toLonLat(evt.coordinate);
-        setCursorCoords({ x: lonLat[0], y: lonLat[1], isProjected: false });
+        throttledSetCursorCoords({ x: lonLat[0], y: lonLat[1], isProjected: false });
       }
     });
 
@@ -260,8 +251,25 @@ const baseMapId = useLayerStore((s) => s.baseMap);
     const onSpatialRemove = (evt: any) => {
       if (evt.feature instanceof Feature) spatialIndex.remove(evt.feature as Feature<Polygon>);
     };
-    drawSrc.on('addfeature', onSpatialInsert);
-    drawSrc.on('removefeature', onSpatialRemove);
+    // 'changefeature' dispara en cada frame de un drag/edit en vivo
+    // (Modify, SafeTranslate) — sin esto el índice quedaba con el bbox
+    // viejo hasta el próximo add/remove real. Se coalesce a 1 reindexado
+    // por frame (por feature), igual criterio que el cursor.
+    const pendingSpatialUpdates = new globalThis.Map<string | number, Feature<Polygon>>();
+    const flushSpatialUpdates = rafThrottle(() => {
+      pendingSpatialUpdates.forEach((f) => spatialIndex.update(f));
+      pendingSpatialUpdates.clear();
+    });
+    const onSpatialChange = (evt: any) => {
+      if (!(evt.feature instanceof Feature)) return;
+      const id = evt.feature.getId();
+      if (id == null) return;
+      pendingSpatialUpdates.set(id, evt.feature as Feature<Polygon>);
+      flushSpatialUpdates();
+    };
+     drawSrc.on('addfeature', onSpatialInsert);
+     drawSrc.on('removefeature', onSpatialRemove);
+    drawSrc.on('changefeature', onSpatialChange);
 
     const interactionCtrl = new InteractionModeController({
       map,
@@ -390,6 +398,7 @@ unByKey(moveEndKey);
 postrenderPainter.dispose();
       drawSrc.un('addfeature', onSpatialInsert);
       drawSrc.un('removefeature', onSpatialRemove);
+      drawSrc.un('changefeature', onSpatialChange);
       useMapStore.getState().setMap(null);
       useMapStore.getState().setDrawSource(null);
       const m = mapInstanceRef.current;

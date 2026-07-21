@@ -6,6 +6,7 @@ import { undo, redo, useCommandStack } from '../commands/CommandStack';
 
 import { useProjectCrsStore, type ProjectCrsMode } from '../store/projectCrsStore';
 import { BASE_MAP_DEFS, type BaseMapId } from '../map/baseMaps';
+import { refreshSourceMetrics } from '../geo/metrics';
 import SnapPanel from './SnapPanel';
 
 /* ─── Icons ─── */
@@ -84,6 +85,7 @@ export default function StatusBar() {
   const coords = useMapStore((s) => s.cursorCoords);
   const zoom = useMapStore((s) => s.zoom);
   const viewConfig = useMapStore((s) => s.viewConfig);
+  const drawSource = useMapStore((s) => s.drawSource);
   const baseMap = useLayerStore((s) => s.baseMap);
   const setBaseMap = useLayerStore((s) => s.setBaseMap);
   const panelVisibility = useLayerStore((s) => s.panelVisibility);
@@ -121,15 +123,30 @@ export default function StatusBar() {
   const zoomOut = useMapStore((s) => s.zoomOut);
   const fitToExtent = useMapStore((s) => s.fitToExtent);
 
+  // Cambiar de modo/zona CRS invalida las métricas cacheadas en cada
+  // feature (área/perímetro/longitud se recalculan proyectando al plano
+  // métrico correspondiente) — sin este refresh quedaban desactualizadas
+  // hasta que, por casualidad, otro comando disparara un refresh global.
   const handleCrsModeSelect = (m: ProjectCrsMode) => {
     setCrsMode(m);
     if (m === 'utm') setBaseMap('osm');
+    if (drawSource) refreshSourceMetrics(drawSource);
+  };
+  const handleUtmZoneChange = (zone: number) => {
+    setUtmZone(zone, utmHemisphere);
+    if (drawSource) refreshSourceMetrics(drawSource);
+  };
+
+  const handleUtmHemisphereChange = (hemisphere: 'N' | 'S') => {
+    setUtmZone(utmZone, hemisphere);
+    if (drawSource) refreshSourceMetrics(drawSource);
   };
 
   const handleCrsAutoDetect = () => {
     const [lon, lat] = viewConfig.center;
     autoDetectFromLonLat(lon, lat);
     setBaseMap('osm');
+    if (drawSource) refreshSourceMetrics(drawSource);
   };
 
   return (
@@ -285,12 +302,12 @@ export default function StatusBar() {
                     min={1}
                     max={60}
                     value={utmZone}
-                    onChange={(e) => setUtmZone(Math.min(60, Math.max(1, parseInt(e.target.value, 10) || 1)), utmHemisphere)}
+                    onChange={(e) => handleUtmZoneChange(Math.min(60, Math.max(1, parseInt(e.target.value, 10) || 1)))}
                     style={{ width: 56, padding: '4px 6px', background: 'var(--cad-bg-deepest)', border: '1px solid var(--cad-border)', borderRadius: 4, color: 'var(--cad-text)', fontSize: '0.75rem', fontFamily: 'JetBrains Mono, monospace' }}
                   />
                   <select
                     value={utmHemisphere}
-                    onChange={(e) => setUtmZone(utmZone, e.target.value as 'N' | 'S')}
+                    onChange={(e) => handleUtmHemisphereChange(e.target.value as 'N' | 'S')}
                     style={{ padding: '4px 6px', background: 'var(--cad-bg-deepest)', border: '1px solid var(--cad-border)', borderRadius: 4, color: 'var(--cad-text)', fontSize: '0.75rem' }}
                   >
                     <option value="N">Norte</option>
