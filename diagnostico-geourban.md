@@ -1,243 +1,378 @@
-# Diagnóstico técnico — GeoUrban (CAD/GIS editor)
+# Diagnóstico técnico profundo — GeoUrban
 
-**Alcance:** análisis estático de los ~95 archivos fuente compartidos (React + TS + OpenLayers + Zustand + Tauri + JSTS worker). No tengo `package.json`, `tsconfig`, lockfiles ni el repo completo, así que algunos hallazgos de "código muerto" están marcados como **candidatos a verificar con un grep global** antes de borrar nada. Todo lo demás (bugs de lógica) lo rastreé línea por línea siguiendo el flujo real de datos entre stores/commands/componentes, no son suposiciones sueltas.
+## Motor gráfico y motor geométrico (SIG/CAD, Desktop + Web)
 
-Leyenda: 🔴 Crítico (rompe funcionalidad o pierde datos) · 🟠 Alto (bug real, impacto acotado) · 🟡 Medio (deuda técnica/arquitectura) · 🔵 Bajo (calidad/estilo/pulido)
+**Alcance:** revisión estática de los ~96 archivos fuente provistos (React + Zustand/Immer + OpenLayers 10 + WebGL + JSTS en Web Worker + Tauri 2). No incluye profiling en runtime (ver Fase 0).
+**Objetivo:** identificar qué conservar, mejorar, quitar o añadir en el pipeline de renderizado y en el motor geométrico, y proponer un plan de optimización robusto para que el editor no se degrade con proyectos grandes, tanto en Desktop (Tauri) como en Web.
 
 ---
 
 ## 0. Resumen ejecutivo
 
-El proyecto tiene una arquitectura de carpetas razonable (`geo/`, `store/`, `map/`, `commands/`, `io/`) y algunas partes muy sólidas (manejo de zonas UTM dinámico, worker JSTS para booleanas, cache de fillets en `PostrenderPainter`). Pero hay **tres sistemas centrales que están rotos o a medio migrar**, no detalles menores:
+La arquitectura de base es correcta en su intención: WebGL para relleno/trazo masivo, un worker con JSTS para operaciones booleanas pesadas, un índice espacial (RBush) para snapping, y un pintor de overlays en Canvas2D para etiquetas/cotas. El problema no es la elección de tecnologías, sino **cómo se fueron acoplando** a medida que el proyecto creció:
 
-1. **El undo/redo (Ctrl+Z) no deshace todo lo que aparenta deshacer**, y además corrompe su propio stack de "redo" en cada operación.
-2. **El panel de Capas (colores, opacidad, visibilidad fina) es en gran parte decorativo**: no está conectado al renderer WebGL real.
-3. **El "bloqueo de capa" (candado) no protege realmente los datos**: se puede seleccionar y borrar una capa "bloqueada" por al menos dos caminos distintos, y el comando de borrado no valida el candado en absoluto.
+1. **Hallazgo más crítico (H1):** el sistema de Undo/Redo real (`useCommandStack.undo/redo`) **no usa** la lógica `Command.undo()`/`Command.redo()` que cada comando implementa cuidadosamente. Usa snapshots completos de `drawSource` (`historyStore`). Como calles, rotondas y métodos de subdivisión **no viven en `drawSource`** sino en stores separados (`streetStore`, `roundaboutStore`, `manzanoStore`), deshacer un trazado de calle o una rotonda **no las elimina realmente**. Esto es un bug de robustez, no solo de performance.
+2. **Renderizado duplicado (H2):** cada feature se dibuja dos veces por frame — una en WebGL (visible) y otra en un `VectorLayer` Canvas2D invisible que existe solo para hit-testing, con `declutter: true` activo sin necesidad.
+3. **Trabajo pesado en el hilo principal:** la subdivisión de manzanos (hasta 200 iteraciones de bisección por lote) y el recálculo de métricas de **todas** las features en **cada** comando corren de forma síncrona en el hilo de UI, mientras que operaciones booleanas equivalentes (JSTS) sí están correctamente en un Web Worker.
+4. **Persistencia desktop rota/duplicada (H15):** el autosave usa IndexedDB (Dexie) siempre, pero el "Gestor de Proyectos" de escritorio lee de una base `sql.js` en memoria que no persiste a disco y que nunca ve lo que el autosave guardó. Además, `@tauri-apps/plugin-sql` está en `package.json` pero no se usa en ningún archivo revisado.
+5. **Sin gating de trabajo por frame:** el pintor de overlays (`PostrenderPainter`) recalcula texto, colisiones de etiquetas y fillets en cada frame de render, sin caché ni "modo barato mientras se interactúa".
 
-A esto se suma una exportación PNG rota, una exportación Shapefile incompleta, un archivo de tipos TypeScript mal formado, y bastante código muerto/duplicado. Detalle completo abajo.
-
----
-
-## 1. 🔴 Bugs críticos (rotos de verdad)
-
-### 1.1 Undo/Redo: el sistema real no es el que parece
-
-Esto es lo más grave del proyecto y vale la pena explicarlo con precisión porque no es intuitivo.
-
-- Cada `Command` (`ClearFeaturesCommand`, `AddFeatureCommand`, `ModifyGeometryCommand`, `SubdivideCommand`, `GenerateLotsCommand`, `AddStreetCommand`, `AddRoundaboutCommand`, etc.) implementa su propio `undo()`/`redo()`. Da la impresión de ser un patrón Command clásico con undo por comando.
-- **Pero `useCommandStack.getState().undo()` / `.redo()` (los que disparan `Ctrl+Z`, `Ctrl+Y` y los botones de `StatusBar.tsx`) nunca llaman a `command.undo()`.** No existe ni un array/stack de comandos ejecutados en `CommandStack.ts` — solo `lastCommandLabel`, `lastCommandAt`, `canUndo`, `canRedo`.
-- Lo que realmente pasa: `undo()`/`redo()` usan snapshots GeoJSON guardados en `historyStore.ts` (`pushState` serializa **solo** `drawSource.getFeatures()`) y los reaplica con `applyRestoredSnapshot()`.
-
-**Consecuencia 1 — cosas que "no se deshacen":** todo lo que vive fuera de `drawSource` no está cubierto por el snapshot: `streetStore.streets`, `roundaboutStore.roundabouts`, `layersRegistryStore.layers`, `manzanoStore`. Ejemplo concreto: `AddStreetCommand.undo()` llama a `useStreetStore.getState().removeStreet(...)`, pero como el `undo()` global nunca invoca ese método, **trazar una calle y luego presionar Ctrl+Z deja la calle fantasma en `streetStore` para siempre** (se sigue dibujando, se sigue usando para recortar manzanos en el próximo `recomputeManzanos`), aunque el snapshot de features sí pueda revertir los lotes/manzanas generados. No vi ninguna UI para borrar una sola calle suelta (solo "Limpiar" todas), así que este es un callejón sin salida real para el usuario.
-- Lo mismo aplica a rotondas (`AddRoundaboutCommand.undo()` nunca se ejecuta globalmente).
-
-**Consecuencia 2 — el redo se autodestruye:** `applyRestoredSnapshot()` (llamado desde dentro de `undo()`/`redo()`) hace:
-```js
-commandStack.run(new ClearFeaturesCommand());
-commandStack.run(new AddFeaturesCommand(features));
-```
-`run()` **siempre** termina llamando `historyStore.pushState(...)`, y `pushState` **siempre** hace `state.future = []`. O sea: en el mismo instante en que `hist.undo()` acaba de poblar correctamente `future` (para permitir un redo), el propio flujo de restauración dispara dos `run()` adicionales que vuelven a vaciar `future`. **Resultado: después de cualquier Undo, el Redo deja de estar disponible en la práctica**, y el `past` además crece con entradas espurias (clear vacío + add) en vez de una sola.
-
-**Impacto:** en una herramienta tipo CAD, Ctrl+Z es el atajo más usado. Aquí es no confiable para calles/rotondas/capas, y rompe el redo multi-paso incluso para lo que sí cubre (polígonos/lotes).
-
-**Sugerido:** decidir una sola estrategia. O (a) el snapshot cubre *todo* el estado relevante (features + streets + roundabouts + layers) serializado junto, o (b) se vuelve a un stack real de `Command` con `undo()/redo()` invocados de verdad y se elimina `historyStore`. Mezclar ambos, como está hoy, es lo que genera el bug. Además, `applyRestoredSnapshot` no debería pasar por `run()` (que reescribe historial) para aplicar un snapshot — debería mutar `drawSource` directamente.
-
-### 1.2 Exportación a PNG: 100% rota
-
-En `TopBar.tsx`:
-```ts
-const mapRef = useRef<Map | null>(null);
-...
-const handleExportPng = async () => {
-  const map = mapRef.current;
-  if (!map) throw new Error('Mapa no inicializado');
-  ...
-```
-`mapRef.current` **nunca se asigna en ningún lugar del archivo.** La instancia real del mapa vive en `useMapStore.getState().mapInstance` (seteada por `Map.tsx` vía `useMapStore.getState().setMap(map)`), pero `TopBar.tsx` lee su propio ref local, desconectado, que siempre es `null`. Resultado: **toda exportación a PNG lanza "Mapa no inicializado" siempre**, sin excepción. Fix: reemplazar `mapRef.current` por `useMapStore.getState().mapInstance`.
-
-### 1.3 Panel de "Capas" — color/opacidad no hacen nada; visibilidad es aproximada
-
-`layersRegistryStore.ts` guarda `color`, `opacity`, `visible`, `locked` por capa, y `LayerPanel.tsx` ofrece selector de color y slider de opacidad por capa. Pero el renderer real (`DrawLayerRenderer.ts`, `webglLayer` de `ol/layer/WebGLVector`) usa un *style expression* fijo basado en `feature.get('colorIdx')` y `feature.get('type') === 'manzana'`, con una paleta hardcodeada (`MZN_COLORS_22`/`MZN_COLORS_STR`). **En ningún punto se lee `layer.color` ni `layer.opacity` del registro de capas.** Cambiar el color o la opacidad de una capa en el panel actualiza el store y no cambia un solo píxel en el mapa.
-
-La visibilidad tampoco es granular: `Map.tsx` suscribe `layersRegistryStore` y calcula `anyLoteVisible = state.layers.some(l => (l.kind==='lote'||l.kind==='manzana') && l.visible)` — es decir, ocultar **una** capa de tipo "lote" entre varias no oculta esa capa específica, solo se oculta el conjunto completo de lotes/manzanas cuando **todas** están ocultas. El candado (`locked`) es el único atributo del registro que sí tiene efecto real (ver 1.4).
-
-**Impacto:** el panel de capas transmite una promesa de control fino (nombre, color, opacidad, orden, visibilidad por capa) que en la práctica solo sirve para renombrar y (parcialmente) bloquear/ocultar por tipo. Esto hay que decidirlo explícitamente: o se conecta de verdad el color/opacidad al estilo WebGL leyendo `layerId` por feature, o se simplifica el panel para no prometer algo que no hace.
-
-### 1.4 El candado de capa ("locked") no protege datos de forma consistente
-
-Rastreado en 4 puntos de entrada a "seleccionar features":
-
-| Camino | ¿Filtra `locked`? |
-|---|---|
-| Click simple en modo Select/Edit (`InteractionModeController`, `Select` con `filter: !isLayerLocked`) | ✅ Sí |
-| Lasso / selección rectangular | ✅ Sí |
-| **Ctrl+A "seleccionar todo"** (`useKeyboardShortcuts.ts`) | ❌ No — itera `drawSource` entero sin chequear `layerId`/`locked` |
-| **Herramienta "Borrar" (Erase, tecla E)** (`InteractionModeController`, modo `erase`) | ❌ No — el `Select` de ese modo no tiene `filter` |
-
-Y el paso final, `DeleteFeaturesCommand.execute()`, **borra por id sin comprobar el candado en absoluto**, sea cual sea el origen de la selección. Es decir, la protección vive solo en la UI de dos de cuatro caminos, no en la capa de datos. En la práctica: `Ctrl+A` + `Delete`, o simplemente usar la herramienta de borrar con clic directo, elimina features de una capa "bloqueada" sin ningún aviso.
-
-**Sugerido:** mover la validación de `locked` a `DeleteFeaturesCommand` (y a cualquier comando destructivo/de modificación), no solo a los interactors de selección — es la única forma de que sea una garantía real y no una convención de UI.
-
-### 1.5 `src/types/vendor.d.ts` — declaración de módulos mal anidada
-
-```ts
-declare module 'dxf-parser' {
-  export interface IEntity { ... }
-declare module 'dxf-writer' {          // ← anidado DENTRO de 'dxf-parser', sin cerrar antes
-  export default class Drawing { ... }
-}
-  export interface IDxf { entities?: IEntity[]; }
-  export default class DxfParser { parseSync(source: string): IDxf | null; }
-}
-```
-El bloque `declare module 'dxf-writer' { ... }` queda anidado dentro de `declare module 'dxf-parser' { ... }` porque falta el cierre de llave del primer módulo antes de abrir el segundo. TypeScript no permite anidar declaraciones de módulos ambientales dentro de otras ("Ambient modules cannot be nested in other modules or namespaces"), así que este archivo **muy probablemente falla al compilar** en modo estricto, o en el mejor de los casos funciona por casualidad según config. Hay que separarlo en dos bloques `declare module` de nivel superior, correctamente cerrados.
-
-### 1.6 `ProjectBrowserModal`: el badge "Actual" nunca aparece
-
-```tsx
-currentProjectName={getCurrentProject().name}
-...
-{p.id === Number(currentProjectName) && <span className="current-badge">Actual</span>}
-```
-`getCurrentProject().name` está **hardcodeado** a `'Proyecto GeoUrban'` (ver `TopBar.tsx`), así que `Number('Proyecto GeoUrban')` es `NaN`, y `p.id === NaN` es siempre `false`. El badge que debería marcar el proyecto actualmente abierto en la lista de proyectos **nunca se puede mostrar**, para ningún proyecto. Hay que pasar el `id` numérico real del proyecto cargado, no su nombre.
-
-### 1.7 Exportación Shapefile incompleta (`src/io/shp.ts`)
-
-```ts
-export function exportShp(project) {
-  const result = shpwrite.zip(collection, options);
-  return {
-    shp: base64ToBlob(result[`${layerName}.shp`], ...),
-    dbf: base64ToBlob(result[`${layerName}.dbf`], ...),
-    prj: base64ToBlob(result[`${layerName}.prj`] ?? '', ...),
-  };
-}
-```
-Un Shapefile válido requiere como mínimo `.shp` + `.shx` (índice) + `.dbf`. El resultado de `shp-write` normalmente incluye una entrada `.shx`, que acá **se descarta silenciosamente**. Además, se descargan 3 archivos sueltos en vez de un `.zip` (a diferencia de KMZ, que sí se empaqueta), obligando al usuario a juntarlos manualmente en la misma carpeta con el mismo nombre para que algún software los reconozca. Recomendado: verificar si `.shx` viene en el resultado y empaquetar todo en un único `.zip` para exportar, igual que se hace con KMZ.
-
-### 1.8 DXF: entidades ARC/CIRCLE se importan pero son "fantasmas"
-
-En `io/dxf.ts`, `entityToFeature` convierte `CIRCLE`/`ARC` en features de tipo `Point` con propiedades extra (`radius`, `startAngle`, `endAngle`) en vez de geometría real. El problema es que **nada en el pipeline de render sabe dibujar eso**: el estilo del `webglLayer` en `DrawLayerRenderer.ts` solo define `fill-color`/`stroke-color`/`stroke-width` (pensado para polígonos), no hay ningún estilo para `Point`. Resultado: un DXF con círculos/arcos se importa sin error, pero esas entidades **no se ven en el mapa**, no son seleccionables, no tienen métricas (área/longitud) y no participan del snapping. Solo "sobreviven" por si se vuelven a exportar a DXF tal cual. Existe además `src/geo/arcMath.ts` (con `circleFrom3Points`, `sampleArc`, `arcFrom3Points`) que parece pensado exactamente para resolver esto, pero no está conectado a ningún lado (ver sección 3). Esto huele a feature a medio terminar, no a decisión de diseño.
-
-### 1.9 `RibbonTool` recibe una prop que no existe en su interfaz
-
-```ts
-type RibbonToolProps = { mode?; icon; label; shortcut?; disabled?; active?; badge?; tooltip?; onClick? };
-```
-Pero en `TopBar.tsx`, dos usos (botones "Área verde" y "Equipamiento" en la pestaña Insertar) pasan `data-tooltip="..."` en vez de `tooltip="..."`:
-```tsx
-<RibbonTool icon={<IconGreen/>} label="Área verde" ... data-tooltip="Crear área verde (Shift+G)" />
-```
-`data-tooltip` no está en la interfaz (no hay index signature), así que esto es al menos un error de TypeScript por excess-property-check, y en runtime el tooltip real (`title`/`data-tooltip` del `<button>`) nunca se setea con ese texto — cae al valor por defecto (`label (shortcut)`). Es un typo, cambiar `data-tooltip` por `tooltip` en esos dos usos.
+Ninguno de estos problemas requiere reescribir el motor — son **quirúrgicos**: eliminar duplicación, mover cómputo al worker que ya existe, cerrar el círculo del Command Stack, y desacoplar bien las capas de estado. El plan de fases más abajo está ordenado por relación impacto/riesgo.
 
 ---
 
-## 2. 🟠 Bugs de impacto acotado pero reales
+## 1. Tabla maestra de hallazgos
 
-### 2.1 Rotondas no disparan el recorte de manzanos
-`AddStreetCommand.execute()` llama `await recomputeManzanos()` después de agregar la calle. `AddRoundaboutCommand.execute()` **no llama a nada** después de agregar la rotonda — pese a que `roadNetworkEngine.buildRoadNetworkRings()` sí incluye rotondas como parte de la red vial que recorta parcelas. Consecuencia: colocar una rotonda no re-recorta los manzanos existentes; el usuario necesita disparar indirectamente un recompute (p. ej. trazando o tocando una calle) para que la geometría se ponga al día. Añadir el mismo `await recomputeManzanos()` en `AddRoundaboutCommand` (y al actualizar/borrar rotondas) resuelve esto.
+| ID  | Hallazgo                                                                                      | Dominio      | Veredicto                        | Severidad | Fase          |
+| --- | --------------------------------------------------------------------------------------------- | ------------ | -------------------------------- | --------- | ------------- |
+| H1  | Undo/Redo no invoca `Command.undo/redo`; calles/rotondas no se deshacen                       | Transversal  | 🔴 Rediseñar                     | Crítica   | F2            |
+| H2  | Doble render (WebGL + Canvas hit-layer) sobre el mismo `VectorSource`, con `declutter` inútil | Gráfico      | 🟡 Mejorar                       | Alta      | F1/F3         |
+| H3  | Grilla CAD reconstruida como `Feature`/`LineString` de OL en cada pan/zoom                    | Gráfico      | 🟡 Mejorar                       | Media     | F3            |
+| H4  | `PostrenderPainter` sin caché de `measureText` ni dirty-check por frame                       | Gráfico      | 🟡 Mejorar                       | Alta      | F3            |
+| H5  | `pointermove` sin throttling dispara 2 updates de Zustand por pixel de mouse                  | Gráfico      | 🟡 Mejorar                       | Alta      | F1            |
+| H6  | Monkeypatch global `willReadFrequently=true` en todo `getContext('2d')`                       | Gráfico      | 🔴 Acotar/Quitar                 | Media     | F1            |
+| H7  | 3 algoritmos distintos de redondeo de esquina (street/roadNetwork/ringFillet)                 | Gráfico/Geo  | 🟡 Mejorar (consolidar)          | Baja      | Deuda técnica |
+| H8  | Subdivisión de manzanos (bisección, hasta 200 iters) 100% en hilo principal                   | Geométrico   | 🔴 Mover a Worker                | Crítica   | F4            |
+| H9  | `refreshSourceMetrics` recalcula TODO el source en cada comando                               | Geométrico   | 🟡 Mejorar (incremental)         | Alta      | F4            |
+| H10 | Cambio de CRS/zona UTM no dispara recálculo de métricas                                       | Geométrico   | 🔴 Bug a corregir                | Alta      | F1            |
+| H11 | `findOverlaps`/`findGaps`/`validateTopology` sin broad-phase espacial (O(n²))                 | Geométrico   | 🟡 Mejorar                       | Media     | F4            |
+| H12 | `recomputeManzanos()` completo por cada calle/rotonda agregada, sin debounce                  | Geométrico   | 🟡 Mejorar                       | Media     | F4            |
+| H13 | Índice espacial (RBush) no se reindexa en `changefeature` (drag en vivo)                      | Geométrico   | 🔴 Bug a corregir                | Alta      | F1            |
+| H14 | `historyStore` serializa propiedades derivadas que se recalculan igual al restaurar           | Geométrico   | 🟡 Mejorar / 🔴 obsoleto tras F2 | Media     | F2            |
+| H15 | Dos backends de persistencia desktop desincronizados; `plugin-sql` sin usar                   | Persistencia | 🔴 Rehacer                       | Crítica   | F5            |
+| H16 | `streetSource` acumula features huérfanas indefinidamente (memory leak lento)                 | Gráfico      | 🔴 Quitar/limpiar                | Baja      | F3            |
+| H17 | Utilidades vectoriales reimplementadas en ~7 archivos con epsilons distintos                  | Geométrico   | 🟡 Consolidar                    | Baja      | Deuda técnica |
+| H18 | Sin LOD/simplificación geométrica en zoom alejado                                             | Gráfico      | 🔵 Añadir                        | Media     | F6            |
+| H19 | `StatsPanel` no se re-renderiza al mutar features del mismo `drawSource`                      | Gráfico/UI   | 🔴 Bug a corregir                | Media     | F1            |
+| H20 | Estrategias de generación de ID inconsistentes entre comandos                                 | Transversal  | 🟡 Menor                         | Muy baja  | Deuda técnica |
 
-### 2.2 Borrado múltiple con la herramienta "Erase" genera N comandos en vez de 1
-```ts
-// InteractionModeController.ts, modo 'erase'
-ids.forEach((id) => useMapStore.getState().deleteFeatureById(id));
+Leyenda de veredicto: 🟢 Conservar · 🟡 Mejorar · 🔴 Quitar/Corregir/Rehacer · 🔵 Añadir.
+
+---
+
+## 2. Hallazgo crítico transversal: el Undo/Redo no usa el Command Stack (H1)
+
+Esto merece una sección propia porque conecta robustez **y** performance, y condiciona el orden del plan.
+
+**Evidencia:**
+
+- `src/commands/CommandStack.ts` → `useCommandStack.undo()` y `.redo()` llaman a `useHistoryStore.getState().undo()/redo()`, que devuelven un snapshot GeoJSON y lo aplican con `applyRestoredSnapshot(drawSource, snapshot)`.
+- Ese snapshot proviene de `historyStore.pushState(ctx.drawSource.getFeatures())` — **solo** serializa `drawSource`.
+- Sin embargo, cada `Command` (`AddStreetCommand`, `AddRoundaboutCommand`, `SubdivideCommand`, `GenerateLotsCommand`, `RecomputeManzanoLotsCommand`, `ModifyGeometryCommand`, `DeleteFeaturesCommand`, `AddFeatureCommand`, `ClearFeaturesCommand`) implementa un método `undo(ctx)` propio, específico y ya optimizado (por ejemplo, `AddStreetCommand.undo()` llama `useStreetStore.getState().removeStreet(id)`). **Ninguno de estos métodos se invoca nunca** en el flujo real de Ctrl+Z.
+- Calles (`useStreetStore`) y rotondas (`useRoundaboutStore`) **no son features de `drawSource`** — viven en stores Zustand aparte. El snapshot de `historyStore` no las conoce.
+
+**Consecuencia real:** al trazar una calle, `recomputeManzanos()` corta las parcelas y dejan fragmentos de manzano en `drawSource` (sí capturados por el snapshot). Si el usuario presiona Ctrl+Z, el snapshot revierte los fragmentos de manzano, **pero la calle sigue en `useStreetStore.streets`** — resultado: una calle "fantasma" sin manzanos coherentes alrededor, un estado inconsistente entre el panel de calles y el mapa. Lo mismo aplica a rotondas.
+
+Además, esto explica por qué existe `streetSource` (H16): OL's `Draw` interaction necesita un `VectorSource` propio para dibujar el sketch, pero como el sistema real de estado vive en `streetStore`, ese source queda huérfano — se llena de LineStrings que nunca se limpian ni se usan para render (el estilo del `streetLayer` es `undefined`; el pintado real ocurre en `PostrenderPainter` leyendo `useStreetStore`).
+
+**Por qué esto también es un tema de performance:** el modelo de snapshot completo obliga a serializar (`GeoJSON.writeFeatures`) **todo** el proyecto en cada comando no coalescido, y a mantener hasta 50 copias completas en memoria (`MAX_HISTORY = 50`). Un modelo de comandos reversibles (lo que ya está 90% escrito) es órdenes de magnitud más barato: cada `undo()` solo toca las features que ese comando cambió.
+
+**Recomendación:** pasar a un Command Stack real (pila de comandos ejecutados + puntero de posición), invocando `command.undo(ctx)` / `command.redo(ctx)`. Ver Fase 2.
+
+---
+
+## 3. Motor gráfico (rendering)
+
+### 3.1 Inventario
+
+| Componente                              | Archivo                                         | Rol actual                                                                       | Veredicto                                                 |
+| --------------------------------------- | ----------------------------------------------- | -------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| `WebGLVectorLayer` (drawLayer)          | `map/scene/DrawLayerRenderer.ts`, `map/Map.tsx` | Relleno/trazo GPU de lotes, manzanas, vías (color por capa vía `match` expr.)    | 🟢 Conservar, 🟡 mejorar estilo                           |
+| `VectorLayer` measurementLayer          | `DrawLayerRenderer.ts`                          | Hit-testing invisible, mismo `VectorSource` que el WebGL                         | 🟡 Mejorar fuerte (quitar `declutter`, evaluar reemplazo) |
+| `streetLayer` (vacío de estilo)         | `DrawLayerRenderer.ts`                          | Ancla; el pintado real es canvas custom                                          | 🟢 Conservar mecanismo                                    |
+| `postrenderLayer` + `PostrenderPainter` | `map/scene/PostrenderPainter.ts`                | Motor canvas: labels, cotas, calles, rotondas, snap guides, lasso                | 🟡 Mejorar fuerte (memoización)                           |
+| `cadGridLayer` (grilla CAD)             | `map/cadGridLayer.ts`                           | `VectorLayer` con `Feature` por línea, reconstruida en cada `moveend`/resolución | 🟡 Migrar a canvas puro                                   |
+| `snapIndicatorLayer`                    | `map/Map.tsx`                                   | Indicador de snap (1 feature)                                                    | 🟢 Conservar                                              |
+| Gizmo de `RotateLotsInteraction`        | `map/scene/RotateLotsInteraction.ts`            | 3 features, capa dedicada                                                        | 🟢 Conservar                                              |
+| `BaseLayerManager`                      | `map/scene/BaseLayerManager.ts`                 | Selector OSM/Google/CAD                                                          | 🟢 Conservar                                              |
+| Monkeypatch `willReadFrequently`        | `map/Map.tsx` (top-level)                       | Fuerza contexto software en **todos** los canvas 2D de la app                    | 🔴 Acotar/Quitar                                          |
+| Handlers `pointermove` (cursor, snap)   | `map/Map.tsx`, `map/snapInteraction.ts`         | Actualizan Zustand sin throttle                                                  | 🟡 Mejorar (throttle)                                     |
+
+### 3.2 Detalle de hallazgos
+
+#### 3.2.1 Renderizado duplicado (H2)
+
+`buildDrawLayers()` crea **un único** `VectorSource` (`source`) y lo comparte entre `webglLayer` (visible) y `measurementLayer` (invisible, `createMeasurementStyle()` retorna fill/stroke casi transparentes). Cada `addFeature`/`removeFeature`/`change` dispara el pipeline de render de **ambas** capas. `Select`, `Modify` y `SafeTranslate` usan `measurementLayer` como `hitDetectionLayer` porque `disableHitDetection: true` está seteado en la capa WebGL.
+
+Esto es una decisión de diseño razonable (WebGL no hace hit-testing barato out-of-the-box en esta versión de OL), pero tiene dos problemas concretos:
+
+- `measurementLayer` tiene `declutter: true`, lo cual activa cómputo de colisión de labels sobre geometría **invisible** — coste sin ningún beneficio visual. Es un quick-fix de una línea.
+- El costo de re-tesselar y re-rasterizar en Canvas2D **toda** la geometría del proyecto en cada frame de interacción escala linealmente con el número de features, en paralelo al costo de WebGL. Para proyectos grandes (miles de lotes) esto es, literalmente, pagar el render dos veces.
+
+#### 3.2.2 Grilla CAD como Features de OL (H3)
+
+`cadGridLayer.ts::rebuildGridFeatures()` calcula el extent visible, aplica `snapSpacing()` y construye un `Feature` + `LineString` por cada línea horizontal/vertical dentro del extent (con padding), en cada `moveend` y `change:resolution`. Está bien acotado al extent visible (no es O(mundo)), pero usa el motor de Features/estilos de OL (`style: (feature) => GRID_STYLES[...]`) para algo que es, en esencia, dibujar líneas rectas repetidas. `PostrenderPainter` ya demuestra que este proyecto sabe pintar directamente en Canvas2D para casos similares (calles, cotas) — la grilla es la única pieza que sigue el camino más caro para un resultado visual más simple.
+
+#### 3.2.3 `PostrenderPainter` sin memoización por frame (H4)
+
+`PostrenderPainter.handle()` se ejecuta en **cada** evento `postrender` (es decir, en cada frame de render del mapa, no solo al soltar el mouse). Dentro:
+
+- `paintFeatureLabels()` itera **todas** las features del proyecto en cada frame, llama `ctx.measureText()` para cada etiqueta candidata (colisión de cajas) sin cachear por `(texto, fuente)`.
+- `pickStreetLabelSlots()` (dentro de `paintStreets`) también llama `ctx.measureText()` por calle, por frame.
+- `computeStreetFillets()` se llama **dos veces** por cada cambio de calles (`outer:false` y `outer:true`), cada una O(n²) sobre el número de calles — el 90% del cálculo geométrico (intersección de rectas, ángulo, offset) es el mismo entre ambas llamadas, solo cambia el offset final.
+- No hay gating de "vista sin cambios → no repintar labels": incluso durante una animación de zoom donde solo cambia la escala, se recalculan colisiones de texto para todas las features visibles en cada frame intermedio.
+
+Para un proyecto con cientos/miles de lotes con cotas activas, este es probablemente el cuello de botella más perceptible durante pan/zoom.
+
+#### 3.2.4 `pointermove` sin throttling (H5)
+
+`map.on('pointermove', ...)` en `Map.tsx` llama `setCursorCoords(...)` en cada evento nativo del navegador (potencialmente cientos por segundo al mover el mouse). `SnapEngine` hace lo mismo con `useSnapLiveStore.getState().setActive(result)` en `snapInteraction.ts`. Ambos son _state updates_ de Zustand que disparan re-render de React (`StatusBar`, `SnapPanel`) en cascada, **además** del propio ciclo de render de OpenLayers y del trabajo de `PostrenderPainter`. Es de las optimizaciones más baratas y con mejor retorno del diagnóstico completo.
+
+#### 3.2.5 Monkeypatch global `willReadFrequently` (H6)
+
+En `map/Map.tsx`, a nivel de módulo, se parchea `HTMLCanvasElement.prototype.getContext` para forzar `willReadFrequently: true` en **todo** contexto `2d`/`bitmaprenderer` creado en la app. Este flag le indica al navegador que priorice lecturas de píxeles (`getImageData`) sobre velocidad de dibujo, típicamente cambiando a un backend de software. No se identificó ningún uso de `getImageData`/`getImageData`-like en el código provisto (la exportación PNG usa `canvas.toBlob`, que no lo requiere). Aplicado globalmente, este patch puede estar **penalizando** silenciosamente el rendimiento de dibujo puro (fillRect/stroke/fillText) de absolutamente todos los canvas de la app, incluido el propio canvas de OpenLayers y el de `PostrenderPainter`.
+
+#### 3.2.6 Triplicación de algoritmos de redondeo de esquina (H7)
+
+Tres implementaciones independientes de "redondear una esquina según su ángulo":
+
+1. `geo/streetEngine.ts::computeStreetFillets` — intersección de rectas offset, O(n²) sobre calles, para pintar el borde de calzada/vereda.
+2. `geo/roadNetworkEngine.ts::offsetPolylineMiter` — offset a inglete (sin redondeo) para construir los anillos que se restan booleanamente de las parcelas.
+3. `geo/ringFillet.ts::roundRingReflex` — detecta vértices reflex del anillo resultante de la resta booleana y los redondea con arcos, usando la misma tabla de radios (`streetEngine.ts::getFilletRadiusForAngle`, reutilizada correctamente aquí).
+
+No es un bug — resuelven necesidades distintas (visual de calzada vs. geometría de manzano post-resta) — pero triplica la superficie de mantenimiento de una misma idea ("radio de fillet según ángulo interno"). Riesgo: cualquier ajuste a la tabla de radios debe replicarse mentalmente en 3 lugares para mantener coherencia visual.
+
+---
+
+## 4. Motor geométrico
+
+### 4.1 Inventario
+
+| Componente                                                 | Archivo                                                              | Rol                                                              | Veredicto                            |
+| ---------------------------------------------------------- | -------------------------------------------------------------------- | ---------------------------------------------------------------- | ------------------------------------ |
+| Motor 2D propio (área, centroide, clipping, point-in-poly) | `geo/polygonEngine.ts`                                               | Núcleo de geometría plana usado por subdivisión                  | 🟢 Conservar núcleo                  |
+| Subdivisión "Auto/Exacto/Modo2"                            | `geo/subdivisionAlgorithms.ts`                                       | Bisección iterativa (hasta 200 iters) por lote/columna/fila      | 🔴 Mover a Worker                    |
+| Subdivisión "Cabecera+Cuerpo"                              | `geo/subdivisionCabeceraCuerpo.ts`                                   | Igual de intensivo, es el método por defecto (`auto`)            | 🔴 Mover a Worker                    |
+| Métricas por feature                                       | `geo/metrics.ts`                                                     | Longitudes/área/perímetro, transform de coordenadas por vértice  | 🟡 Mejorar (incremental)             |
+| Operaciones booleanas (JSTS)                               | `workers/geoOperations.ts` + `geoWorker.ts`                          | Union/diff/intersección/validación/overlaps/gaps/computeManzanos | 🟢 Conservar, 🟡 mejorar broad-phase |
+| Offset de red vial                                         | `geo/roadNetworkEngine.ts`                                           | Anillos para restar booleanamente                                | 🟢 Conservar                         |
+| Fillets visuales de calle                                  | `geo/streetEngine.ts`                                                | Redondeo visual de esquinas                                      | 🟢 Conservar (consolidar con H7)     |
+| Fillet post-boolean                                        | `geo/ringFillet.ts`                                                  | Redondeo de manzano tras resta de vías                           | 🟢 Conservar (consolidar con H7)     |
+| Arcos DXF                                                  | `geo/arcMath.ts`                                                     | Muestreo de arcos/círculos (import DXF)                          | 🟢 Conservar                         |
+| CRS / UTM                                                  | `geo/crsTransform.ts`, `geo/utmZones.ts`, `geo/customProjections.ts` | Transformaciones de proyección                                   | 🟢 Conservar, corregir H10           |
+| Undo/Redo por snapshot                                     | `store/historyStore.ts`                                              | Serializa `drawSource` completo                                  | 🔴 Reemplazar (ver F2)               |
+| Índice espacial                                            | `map/spatialIndex.ts`                                                | RBush para snap                                                  | 🟢 Conservar, corregir H13           |
+| Detección de overlaps/gaps                                 | `workers/geoOperations.ts`                                           | O(n²) sin broad-phase                                            | 🟡 Mejorar                           |
+
+### 4.2 Detalle de hallazgos
+
+#### 4.2.1 Subdivisión síncrona en el hilo principal (H8)
+
+`subdivideManzanoCabeceraCuerpo`, `subdivideManzanoAuto` y `subdivideManzanoExact` recorren el manzano con búsquedas binarias por columna/fila/cabecera, cada una ejecutando hasta 120–200 iteraciones (`computeCuts`: 120, `subdivideHalf`: 160, `sliceBisectManzano`/`sliceBisectLote`: 200), y **cada iteración** reconstruye un polígono recortado (`clipToStrip`/`hbClipPolyHalf`) sobre el anillo completo del manzano. Esto corre:
+
+- Síncronamente en el click del botón "Generar lotes" (`TopBar.tsx::handleGenerateLots` → `GenerateLotsCommand`, que además lo hace **para todos los manzanos del proyecto en un solo `execute()`**).
+- Síncronamente en la vista previa del diálogo de subdivisión (`SubdivisionDialog.tsx::runPreview`), en el propio handler de click de React.
+- Síncronamente en `RecomputeManzanoLotsCommand` (usado al rotar la dirección de corte de un manzano, un gesto interactivo).
+
+A diferencia de las operaciones booleanas JSTS (correctamente offloadeadas al worker en `workers/geoOperations.ts`), esta es matemática pura sin dependencias de DOM/OL — es la candidata más directa y de mayor impacto para mover a un Web Worker.
+
+#### 4.2.2 Recalculo de métricas de TODO el source en cada comando (H9)
+
+`refreshSourceMetrics(source)` itera `source.getFeatures()` completo y llama `updateFeatureMetrics()` por cada una (que a su vez llama `transform()` de proj4/OL por cada vértice del anillo). Se invoca, sin excepción, tras: `GenerateLotsCommand`, `RecomputeManzanoLotsCommand`, `SubdivideCommand`, `ModifyGeometryCommand` (incluso cuando solo 1 feature cambió su geometría), y en `applyRestoredSnapshot` (undo/redo). No hay razón geométrica para recalcular las features **no tocadas** por el comando — cada comando ya conoce exactamente qué features creó/modificó/eliminó (`newLotIds`, `targets`, etc.).
+
+#### 4.2.3 CRS no dispara refresh de métricas (H10)
+
+`projectCrsStore.setMode / setUtmZone / autoDetectFromLonLat` cambian el modo/zona de proyección pero **no** llaman `refreshSourceMetrics`. Como `metrics.ts::projectRingToMetricPlane` depende directamente de `useProjectCrsStore.getState()`, cambiar de zona UTM (o de "dibujo libre" a UTM) deja las etiquetas de área/perímetro/longitud **desactualizadas** hasta que ocurra, por casualidad, algún otro comando que dispare un refresh global.
+
+#### 4.2.4 `findOverlaps`/`findGaps`/`validateTopology` sin broad-phase (H11)
+
+En `workers/geoOperations.ts`, `findOverlaps()` hace un doble loop `for i / for j=i+1` sobre **todas** las features del proyecto, ejecutando una intersección JSTS exacta por cada par, sin descartar primero por bounding box. Con cientos de lotes esto es perfectamente aceptable; con miles, es un O(n²) de operaciones booleanas (las más caras del sistema). El proyecto ya tiene la pieza para resolver esto — RBush (`map/spatialIndex.ts` en el hilo principal) o el propio STRtree que trae JSTS — solo falta usarla como filtro previo dentro del worker.
+
+#### 4.2.5 `recomputeManzanos()` sin debounce (H12)
+
+`AddStreetCommand.execute()` y `AddRoundaboutCommand.execute()` llaman `await recomputeManzanos()` **en cada llamada**, que a su vez serializa **todas** las parcelas del proyecto a GeoJSON y las envía al worker para resta booleana contra la red vial completa. Si un usuario traza 10 calles seguidas (o se importa un archivo con muchas calles), esto dispara 10 recomputes completos y consecutivos, cada uno reprocesando parcelas que no cambiaron.
+
+#### 4.2.6 Índice espacial: reindexado incompleto (H13)
+
+`map/Map.tsx` registra `drawSrc.on('addfeature', onSpatialInsert)` y `drawSrc.on('removefeature', onSpatialRemove)`, pero **no** escucha `changefeature`. Cuando `Modify` o `SafeTranslate` mutan la geometría de una feature en vivo (arrastre de vértice, traslado), el bounding box indexado en RBush queda desactualizado hasta el próximo ciclo add/remove real. Durante ese lapso, el snap engine (que usa este índice como broad-phase) puede evaluar mal la cercanía de otras features co-seleccionadas que se movieron junto con la editada. Adicionalmente, `SpatialIndex.remove()` reconstruye un objeto plano nuevo a partir de la geometría **actual** de la feature para removerla del árbol — si esa geometría cambió desde el insert original, el nodo indexado con el bbox viejo puede no encontrarse (riesgo a validar contra el comportamiento exacto de `rbush`, pero es un patrón conocido de fuga: nodos huérfanos que abultan el árbol con el tiempo). El guard de `featureMap.get(id)` en `search()`/`searchPoint()` evita que esto produzca resultados incorrectos, pero no evita la degradación de memoria/performance del árbol a largo plazo.
+
+#### 4.2.7 Utilidades vectoriales duplicadas (H17)
+
+`normalize`, `dist`/`hypot`, `midpoint`, intersección de rectas, y checks de "casi cero" están reimplementados de forma independiente en `geo/arcMath.ts`, `geo/roundaboutEngine.ts`, `geo/streetEngine.ts`, `geo/roadNetworkEngine.ts`, `geo/ringFillet.ts`, `geo/subdivisionCabeceraCuerpo.ts` y `geo/polygonEngine.ts`, cada uno con su propio épsilon de tolerancia (`1e-3`, `1e-4`, `1e-6`, `1e-7`, `1e-9`, `1e-10`, `1e-12` conviven en el proyecto). No es un bug hoy, pero es la clase de inconsistencia que produce bugs sutiles de geometría difíciles de reproducir ("¿por qué este caso límite se comporta distinto en subdivisión vs. en fillets de calle?").
+
+---
+
+## 5. Persistencia y almacenamiento (Desktop vs Web)
+
+| Elemento                         | Archivo                                                                       | Problema                                                                                                                                                                                                          |
+| -------------------------------- | ----------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Autosave universal               | `io/persistence.ts` (`startAutosave`, Dexie/IndexedDB)                        | Se usa **siempre** desde `App.tsx`, incluso en Tauri, sin chequear `isTauri()`.                                                                                                                                   |
+| "Gestor de Proyectos" desktop    | `io/persistenceDesktop.ts` (`listProjectsDesktop`, `loadProjectDesktop`, ...) | Usa una base `sql.js` (SQLite compilado a WASM) que se crea **en memoria** en `initDb()`, sin ninguna escritura a disco/`Tauri.fs` visible. Cada reinicio de la app de escritorio implica una base nueva y vacía. |
+| Resultado combinado              | —                                                                             | En Desktop, el autosave (Dexie) y el navegador de proyectos (sql.js) son **dos almacenes completamente distintos y desincronizados**: lo que autosave guarda nunca aparece en "Gestor de Proyectos", y viceversa. |
+| Dependencia declarada sin usar   | `package.json` → `@tauri-apps/plugin-sql`                                     | Está instalada pero no se referencia en ningún archivo revisado — sugiere una migración a persistencia nativa que quedó a medias.                                                                                 |
+| `sql.js` también usado para GPKG | `io/gpkg.ts`                                                                  | Este uso **sí es legítimo** (GeoPackage es literalmente un archivo SQLite) — no debe confundirse con el uso (incorrecto) para persistencia de proyectos.                                                          |
+
+**Impacto:** en la versión de escritorio, el usuario puede perder trabajo (cree que "Guardar" lo persiste en el gestor de proyectos, pero autosave usa otro backend) o ver una lista de proyectos vacía/desactualizada. Esto es más grave que cualquier tema de rendimiento — es pérdida de datos percibida.
+
+---
+
+## 6. Matriz de impacto vs. esfuerzo
+
 ```
-`deleteFeatureById(id)` internamente hace `runCommand(new DeleteFeaturesCommand([id]))` **por cada id**, en vez de un solo `DeleteFeaturesCommand(ids)`. `mapStore.deleteSelected()` sí batchea correctamente (`new DeleteFeaturesCommand(selectedIds)`), así que ya existe el camino correcto — el modo Erase simplemente no lo usa. Efecto práctico: borrar 5 features con la herramienta Erase genera 5 entradas de historial (5 serializaciones completas del proyecto) en vez de 1, y deshacer ese borrado requiere 5 `Ctrl+Z` en vez de 1.
+Impacto alto  │ H1 (undo)      H8 (subdiv worker)   H15 (persistencia)
+              │ H2 (doble render, quick-win parcial) H9 (métricas incr.)
+              │ H5 (throttle)  H13 (spatial index)   H10 (CRS→metrics)
+              │ H19 (StatsPanel)
+              │
+Impacto medio │ H4 (postrender memo)   H11 (broad-phase)   H12 (debounce)
+              │ H3 (grilla canvas)     H18 (LOD)
+              │
+Impacto bajo  │ H6 (willReadFrequently)   H7 (fillets)   H16 (streetSource)
+              │ H17 (vec utils)   H20 (ids)
+              └───────────────────────────────────────────────────────────
+                Esfuerzo bajo         Esfuerzo medio         Esfuerzo alto
+```
 
-### 2.3 `kind` vs `type`: dos sistemas de clasificación de features que se desincronizan
-`core/objectModel.ts` define el sistema "canónico" (`kind: GeoUrbanFeatureKind`, con `getFeatureKind()` que prioriza `kind` y cae a `type` como legado). Pero conviven en paralelo:
-- `ManzanoPanel.tsx` → `handleToggleEquip()` solo hace `feat.set('type', 'equipamiento'/'manzana')`, **nunca toca `kind`**. Como la feature ya tenía `kind: 'manzana'` desde su creación, `getFeatureKind()` la sigue devolviendo como `'manzana'` para siempre, aunque el panel la muestre como "equipamiento". Consecuencia real: `recomputeManzanos()` (que filtra por `getFeatureKind`) sigue recortando esa parcela contra la red vial como si fuera un manzano común, ignorando la intención del usuario de "fijarla" como equipamiento.
-- `StatsPanel.tsx` detecta lotes con `f.get('subdivision') || f.get('label')?.startsWith('Lote')` (un tercer criterio, ni `kind` ni `type`).
-- `PostrenderPainter.tsx` usa `feature.get('type') === 'manzana'` directamente en vez de `getFeatureKind()`.
-
-Recomendado: elegir `kind` como única fuente de verdad, migrar todos estos puntos a `getFeatureKind()`/`ensureKind()`, y eliminar los chequeos ad hoc de `type`/`label`/`subdivision` dispersos.
-
-### 2.4 Doble carga de `sql.js` con URL de CDN externa
-`io/gpkg.ts` y `io/persistenceDesktop.ts` implementan **cada uno por su lado** un singleton `getSql()` que descarga el WASM de `https://sql.js.org/dist/`. Problemas:
-- Si en la misma sesión se usa import GPKG y persistencia desktop, se descarga el wasm dos veces (dos instancias, dos promesas, sin compartir).
-- Depender de un CDN externo para una app de escritorio (Tauri) rompe el uso **offline**, que es justamente uno de los argumentos de tener una app de escritorio. Debería empaquetarse el `.wasm` localmente (`locateFile` apuntando a un asset local del build).
-
-### 2.5 `tauri-plugin-sql` configurado pero nunca registrado
-`Cargo.toml` declara `tauri-plugin-sql` como dependencia, y `tauri.conf.json` tiene `"plugins": {"sql": {"preload": ["sqlite:geourban.db"]}}`. Pero `src-tauri/src/lib.rs` **nunca llama `.plugin(tauri_plugin_sql::Builder::default()...)`** en el `Builder`. El preload configurado no tiene efecto porque el plugin no está registrado, y `capabilities/default.json` tampoco otorga permisos del plugin sql. En la práctica el proyecto usa `sql.js` (WASM, vía CDN) para todo, así que esta dependencia de Rust es peso muerto de compilación/confusión — o se termina de integrar, o se retira del `Cargo.toml`/`tauri.conf.json`.
+Las celdas de **impacto alto / esfuerzo bajo** (H5, H19, H10, H13, H6, parte de H2) son las primeras candidatas — se resuelven en horas, no días, y no tocan arquitectura.
 
 ---
 
-## 3. 🟡 Código muerto / archivos "en vano" (candidatos — verificar con grep global antes de borrar)
+## 7. Plan de acción por fases
 
-| Archivo / símbolo | Motivo |
-|---|---|
-| `src/components/ui/button.tsx` | Componente shadcn/Radix con paleta Tailwind (`cyan-500`, `slate-950`) que no coincide con el sistema de diseño real de la app (variables CSS `--cad-*` en `index.css`). No aparece importado en ningún otro archivo compartido. |
-| `src/components/ProjectCrsPanel.tsx` | No se renderiza desde `App.tsx`. `StatusBar.tsx` implementa su propia UI de CRS (badge + dropdown) casi idéntica y sí está montada. Parece un componente reemplazado y no eliminado. |
-| `src/geo/arcMath.ts` | `circleFrom3Points`/`sampleArc`/`arcFrom3Points` no tienen consumidores visibles. Relacionado con el punto 1.8 (¿feature de arcos nunca terminada?). |
-| `src/geo/curveClipping.ts` | `getStreetSegments`/`getStreetOuterSegments`/`streetToCoordinates` sin consumidores visibles; el recorte de manzanos hoy pasa por `roadNetworkEngine.ts` + el worker JSTS (`computeManzanos`), no por este archivo. |
-| `polygonEngine.ts`: `clipPolygonByAllStreets`, `applyStreetToPolys`, `streetRect`, `polysOverlap`, `approxOverlapArea` | Mismo caso: parecen el algoritmo de recorte **anterior** al enfoque JSTS actual, sin consumidores visibles hoy. |
-| `polygonEngine.ts`: función privada `polyAreaM2()` | Envoltorio de `polyArea()` sin diferencia ni uso dentro del propio archivo. |
-| `Command.undo()` / `Command.redo()` en **todos** los comandos de mapa | Código funcionalmente muerto para el flujo real de Ctrl+Z (ver 1.1) — están implementados pero nunca invocados por `CommandStack`. |
-| `src/map/demoDataset.ts` | El nombre sugiere datos de demo, pero el archivo contiene `SpatialIndex` (wrapper de RBush) y el singleton `getOrCreateSpatialIndex()` usado en producción por el motor de snapping (`Map.tsx`). No es código muerto, pero el nombre confunde y debería renombrarse a algo como `spatialIndex.ts`. |
+### Fase 0 — Instrumentación y línea base (previo a optimizar)
 
----
+**Objetivo:** dejar de optimizar "a ojo" y tener números reales antes/después.
 
-## 4. 🟡 Rendimiento y robustez
+- Agregar marcas de performance (`performance.mark`/`performance.measure`) alrededor de: `PostrenderPainter.handle()`, `CommandStack.run()`, llamadas al worker (`geoWorkerClient.ts`), `refreshSourceMetrics`.
+- HUD opcional de desarrollo (FPS + frame time + nº de features) activable por flag, para medir con proyectos sintéticos de 100 / 1.000 / 5.000 lotes.
+- Definir el proyecto de prueba "stress" (script que genere N manzanos + subdivisión automática) para reproducir cargas grandes de forma determinística.
 
-- **Subdivisión de manzanos en el hilo principal.** `GenerateLotsCommand`, `RecomputeManzanoLotsCommand` y toda la maquinaria de `subdivisionAlgorithms.ts`/`subdivisionCabeceraCuerpo.ts` corren de forma síncrona en el hilo de UI, a diferencia de las operaciones booleanas (union/difference) que sí van al worker (`workers/geoOperations.ts`). En proyectos con muchos manzanos/lotes esto puede congelar la interfaz justo en la operación geométricamente más pesada de la app.
-- **RPC al worker sin timeout.** `geoWorkerClient.ts`'s `runWorker()` no tiene ningún mecanismo de timeout; si el worker no responde por cualquier motivo, la promesa queda colgada para siempre (por ejemplo, `TopologyValidator` quedaría en "Validando..." indefinidamente).
-- **`historyStore.pushState` serializa el proyecto completo en cada acción** (hasta 50 snapshots completos en memoria, `MAX_HISTORY = 50`). Para proyectos grandes esto es costoso en CPU y memoria por cada comando ejecutado.
-- **`PostrenderPainter.paintFeatureLabels` recalcula colisión de etiquetas en cada frame `postrender`** con un algoritmo O(n²) (`isColliding` compara contra todas las cajas ya colocadas), sin cache — contrasta con el buen patrón de cache que sí existe para fillets/crossings de calles en el mismo archivo (`cache.dirty`). Con muchos lotes esto puede notarse en pan/zoom.
-- **`TopBar.tsx` recalcula el proyecto completo (serialización GeoJSON de todas las features) en cada render** solo para leer `.name` y pasarlo como prop a `ProjectBrowserModal` (`currentProjectName={getCurrentProject().name}`), pese a que ese nombre es una constante hardcodeada. Trabajo desperdiciado en cada re-render de la topbar.
-- **Tiles de Google Maps sin API oficial** (`https://mt1.google.com/vt/lyrs=s...` en `baseMaps.ts`): consumir estos endpoints XYZ directamente, sin key ni atribución vía la API oficial, es frágil (Google puede bloquear/limitar en cualquier momento) y cuestionable respecto a los Términos de Servicio de Google para uso en producción.
-- **`security.csp: null` en `tauri.conf.json`.** Deshabilitar la CSP por completo en una app de escritorio renuncia a una capa de defensa importante contra XSS/inyección, sobre todo teniendo en cuenta que la app carga WASM (`sql.js`) desde un CDN externo.
-- **Autosave en `beforeunload` no garantiza persistencia.** Tanto `io/persistence.ts` (web/Dexie) como `persistenceDesktop.ts` disparan un guardado async dentro de `beforeunload`; los navegadores no garantizan que una IndexedDB write async complete antes de cerrar la pestaña, así que hay una ventana real de pérdida de datos al cerrar justo después de editar.
-- **Paridad web/desktop de proyectos:** en web (`persistence.ts`) solo existe autosave de un único slot (siempre sobrescribe el último registro de Dexie); multi-proyecto, duplicar, borrar y listar solo existen en desktop (`persistenceDesktop.ts`), y `ProjectBrowserModal` así lo indica explícitamente al usuario. No es un bug (está declarado en la UI), pero es una asimetría de producto a tener en cuenta.
+**Esfuerzo:** S. **Riesgo:** ninguno (solo instrumentación, no toca comportamiento).
 
 ---
 
-## 5. 🔵 Calidad de código y mantenibilidad
+### Fase 1 — Correcciones críticas de bajo riesgo (quick wins)
 
-- **Duplicación de paletas de color.** El mismo array de 10 colores para manzanos existe copiado en `StatsPanel.tsx`, `ManzanoPanel.tsx` y `DrawLayerRenderer.ts` (`MZN_COLORS` / `MZN_COLORS_STR`), y `LayerPanel.tsx` tiene su propia variante de 12 colores para capas nuevas (`LAYER_COLORS`). Debería extraerse a un único módulo compartido (`geo/palette.ts` o similar).
-- **UI de selección de CRS/zona UTM triplicada** casi al carácter entre `ProjectSetupModal.tsx`, `ProjectCrsPanel.tsx` (posiblemente muerto, ver sección 3) y `StatusBar.tsx`. Buen candidato para extraer un componente `<UtmZoneSelector />` compartido.
-- **Bisección binaria reimplementada varias veces.** `subdivisionAlgorithms.ts` (con al menos 3 loops de bisección inline distintos: `computeCuts`, `subdivideHalf`, `sliceBisectManzano`/`sliceBisectLote`) y `subdivisionCabeceraCuerpo.ts` (con su propio helper `bisect()`) resuelven el mismo problema genérico ("buscar el corte que da un área objetivo") de forma independiente y con nombres muy poco descriptivos (`hbGetCfg`, `hbAutoHeadPlan`, `hbFitBodyRows`, `hbLotizeWithBaseline`). Es lógica geométrica de alto valor y alto riesgo (viene de un port de un prototipo HTML, según el propio comentario del archivo) sin tests visibles y con nomenclatura difícil de auditar a futuro. Prioridad alta para: (a) extraer un helper de bisección compartido, (b) agregar tests unitarios sobre casos conocidos de manzanos, (c) documentar los "números mágicos" (ej. `MAX_FILLET_R = 8`, umbral de ángulo `4° `).
-- **Uso extendido de `any`** en puntos sensibles: `StatsPanel.computeStats(drawSource: any, streets: any[])`, `PropertyPanel.tsx` (`as any` sobre la feature seleccionada), `PostrenderPainter` (`(event: any)`), `persistenceDesktop.ts` (`db: any`), casteos como `(dxf as any).drawLinearDimension(...)` en `io/dxf.ts` pese a que el método **ya está tipado** en `vendor.d.ts` (el `as any` ahí es puro ruido, se puede quitar).
-- **UX de errores inconsistente.** Mezcla de `alert()`/`window.confirm()`/`window.prompt()` nativos (en `TopBar.tsx`, `ProjectBrowserModal.tsx`) con paneles de error propios con estilo CAD (en `SubdivisionDialog.tsx`, `TopologyValidator.tsx`) y con simples `console.error` silenciosos (autosave). Vale la pena unificar en un solo sistema de notificaciones/toast coherente con el resto del diseño oscuro tipo CAD.
-- **Imports dinámicos inconsistentes para los mismos módulos.** `TopBar.tsx` hace `await import('../workers/geoWorkerClient')` y `await import('ol/format/GeoJSON')` dentro de handlers puntuales (`handleFindOverlaps`, `handleFindGaps`), mientras que `mapStore.ts` (cargado eager con toda la app) ya importa esos mismos módulos de forma estática. El code-splitting dinámico ahí no aporta nada real porque el módulo ya está en el bundle principal por otro camino.
-- **Sin tests visibles.** No se compartió ningún archivo de test (`*.test.ts`, `*.spec.ts`) entre los documentos. Si realmente no existen, es la brecha más riesgosa dado el volumen de geometría computacional pura (subdivisión, fillets, snapping) que es exactamente el tipo de código que más se beneficia de tests unitarios basados en casos fijos (polígonos de referencia con resultado esperado).
-- **Accesibilidad.** Bastantes elementos interactivos son `<div onClick=...>` sin `role`, `tabIndex` ni manejo de teclado (filas de `LayerPanel`, tarjetas de `ManzanoPanel`), en vez de `<button>` semántico. Aceptable si el público objetivo es 100% mouse/desktop, pero vale mencionarlo.
-- **Sin sistema de i18n real.** Todo el texto de UI está hardcodeado en español dentro de JSX/alerts. Funciona hoy, pero cualquier futura necesidad de otro idioma implica un refactor completo de extracción de strings, no una config.
+No requieren rearquitectura; se pueden desplegar de forma independiente.
 
----
+| Tarea                                                                                                                                                                    | Resuelve     | Archivos                                                                          | Esfuerzo |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------ | --------------------------------------------------------------------------------- | -------- |
+| Throttle de `pointermove` (cursor coords + snap live) vía `requestAnimationFrame` o intervalo mínimo (~50–80ms)                                                          | H5           | `map/Map.tsx`, `map/snapInteraction.ts`                                           | S        |
+| `StatsPanel`: suscribirse a cambios reales del `drawSource` (mismo patrón `tick` que ya usa `ManzanoPanel.tsx`) en vez de depender de que cambie la referencia del store | H19          | `components/StatsPanel.tsx`                                                       | S        |
+| Disparar `refreshSourceMetrics(drawSource)` al cambiar modo/zona CRS                                                                                                     | H10          | `store/projectCrsStore.ts` (o wrapper en `StatusBar.tsx`/`ProjectSetupModal.tsx`) | S        |
+| Escuchar `changefeature` en `drawSrc` y reinsertar en `SpatialIndex` (throttleado, o al menos en `modifyend`/`translateend`)                                             | H13          | `map/Map.tsx`, `map/spatialIndex.ts`                                              | S/M      |
+| Quitar `declutter: true` de `measurementLayer` (capa invisible, sin beneficio)                                                                                           | H2 (parcial) | `map/scene/DrawLayerRenderer.ts`                                                  | S        |
+| Acotar o eliminar el monkeypatch de `willReadFrequently`; si algún caso puntual lo necesita, aplicarlo solo a ese canvas                                                 | H6           | `map/Map.tsx`                                                                     | S        |
 
-## 6. 🟢 Lo que está bien (para que el diagnóstico sea justo)
+**Criterio de aceptación:** los 6 ítems son independientes entre sí y no cambian ningún flujo de usuario visible (excepto que el panel de estadísticas y las cotas quedan siempre actualizados). Se pueden mergear uno por uno.
 
-- Manejo de **zonas UTM dinámicas** (`utmZones.ts` + `ensureUtmZoneRegistered`) con registro lazy en `proj4`/OpenLayers: bien resuelto y reutilizado consistentemente en DXF, GPKG y métricas.
-- **Worker dedicado con JSTS** para uniones/diferencias/validación topológica (`workers/geoOperations.ts`): correcto, evita bloquear el hilo principal para las operaciones booleanas (aunque, como se señaló, la subdivisión no sigue el mismo patrón).
-- **Cache inteligente de fillets/cruces de calles** en `PostrenderPainter` (`cache.dirty`, hash de calles) — buen patrón, evita recomputar geometría de esquinas en cada frame (contrasta positivamente con el problema de colisión de etiquetas del mismo archivo).
-- Separación de responsabilidades por carpeta (`geo/` puro, `store/` estado, `map/scene/` interacciones OL, `commands/` mutaciones) es una base razonable si se resuelve la inconsistencia del punto 1.1.
-- El importador GPKG (`io/gpkg.ts`) resuelve razonablemente bien SRS custom vía tabla `gpkg_spatial_ref_sys` + WKT, con manejo de errores por geometría individual (no aborta todo el import por una fila corrupta).
+**Esfuerzo total:** S/M (días, no semanas). **Riesgo:** bajo.
 
 ---
 
-## 7. Priorización sugerida
+### Fase 2 — Rediseño del Undo/Redo (Command Stack real)
 
-**Ahora (rompe confianza del usuario / pérdida de datos):**
-1. Undo/Redo (1.1) — decidir arquitectura única y arreglar la corrupción del stack `future`.
-2. Candado de capa no enforced en `DeleteFeaturesCommand` + modo Erase + Ctrl+A (1.4).
-3. Exportación PNG rota (1.2).
-4. `vendor.d.ts` mal formado (1.5) — verificar que efectivamente compila hoy.
+**Objetivo:** resolver H1 (el hallazgo más crítico) y, de paso, eliminar el costo de serialización completa por comando (H14).
 
-**Próximo (bugs funcionales concretos):**
-5. Rotondas no disparan `recomputeManzanos` (2.1).
-6. `kind`/`type` desincronizado en toggle de equipamiento (2.3).
-7. Shapefile sin `.shx` / sin zip (1.7).
-8. Badge "Actual" en ProjectBrowserModal (1.6).
-9. Borrado múltiple en Erase = N comandos (2.2).
+1. Reemplazar `useHistoryStore` (snapshot-based) por una pila de comandos ejecutados (`executed: Command[]`, `pointer: number`) dentro de `useCommandStack`.
+2. `run(command)`: ejecutar, y si tiene éxito, truncar la pila a `pointer` y hacer `push`.
+3. `undo()`: llamar `executed[pointer].undo(ctx)`, decrementar `pointer`.
+4. `redo()`: incrementar `pointer`, llamar `executed[pointer].redo(ctx)` (o `execute(ctx)` si `redo` no está implementado — auditar cada comando).
+5. Verificar que cada `Command.undo()` existente sea realmente completo (varios ya tocan `streetStore`/`roundaboutStore` correctamente vía `getState()` directo, así que "simplemente empiezan a ejecutarse" sin cambios adicionales).
+6. Cerrar el caso borde de `InteractionModeController.ts::modify.on('modifyend', ...)` donde, si `pendingModify` es `null` (no se capturó `modifystart`), la edición se aplica **sin pasar por `runCommand`** — asegurar que siempre haya una captura antes de modificar, o forzar creación de comando en ese fallback.
+7. Mantener (opcional) un snapshot ligero de **solo geometría** cada N comandos como red de seguridad ante bugs de `undo()` individuales mal implementados, pero sin las propiedades derivadas (`segmentLengths`, `labelPoint`, `areaM2`, etc. — se recalculan solas al restaurar).
+8. Retirar `store/historyStore.ts` una vez validado (o dejarlo detrás de un flag por un tiempo, para rollback rápido).
 
-**Después (deuda técnica / arquitectura):**
-10. Conectar de verdad color/opacidad de capas al render WebGL, o simplificar el panel para no prometerlo (1.3).
-11. Sacar subdivisión del hilo principal al worker.
-12. Consolidar paletas de color y UI de CRS duplicadas.
-13. Auditoría de código muerto de la sección 3 con grep sobre el repo completo, y borrado.
-14. sql.js local en vez de CDN + unificar el loader.
-15. Tests unitarios para el motor de subdivisión (`subdivisionAlgorithms.ts`, `subdivisionCabeceraCuerpo.ts`).
+**Criterio de aceptación:** trazar una calle/rotonda y presionar Ctrl+Z debe eliminarla completamente (del mapa **y** del panel de calles/rotondas), sin dejar manzanos huérfanos. Suite de pruebas manuales: crear → editar → subdividir → deshacer × N → rehacer × N, verificando paridad de estado en cada paso.
+
+**Esfuerzo:** M/L. **Riesgo:** medio — es el cambio de mayor superficie del plan, pero está muy acotado (un solo archivo central, `CommandStack.ts`, más ajustes puntuales en `InteractionModeController.ts`).
 
 ---
 
-*Nota final: este diagnóstico se hizo leyendo el flujo de datos real entre archivos (quién llama a quién, qué campo lee cada componente), no solo cada archivo aislado. Aun así, antes de borrar cualquier cosa marcada como "candidato a código muerto" en la sección 3, correr un grep del símbolo en todo el repositorio (no solo en los archivos que compartiste), porque puede haber consumidores en archivos que no vi.*
+### Fase 3 — Motor gráfico: eliminar renderizado duplicado y trabajo innecesario por frame
+
+| Tarea                                                                                                                                                                                                                                                                                               | Resuelve        | Detalle                                                                                                                      |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| Migrar `cadGridLayer` de `VectorLayer`+`Feature` a una capa de canvas puro (mismo patrón que `PostrenderPainter`: función `render` custom sobre un `Layer` de OL)                                                                                                                                   | H3              | Elimina la creación de cientos de objetos `Feature`/`LineString` por pan/zoom y la función de estilo por feature.            |
+| Caché de `ctx.measureText` en `PostrenderPainter` por clave `(texto, fuente)`, invalidada solo si cambia el texto/tamaño de fuente                                                                                                                                                                  | H4              | Reduce drásticamente las llamadas a `measureText` en `paintFeatureLabels` y `pickStreetLabelSlots`.                          |
+| Dirty-check por frame en `PostrenderPainter.handle()`: comparar un hash barato (nº de features + bbox de vista redondeado + zoom redondeado + `selectedIds.size`) contra el del frame anterior; si no cambió, reusar el último resultado pintado (o simplemente no recalcular colisiones de labels) | H4              | Evita recomputar layout de texto en frames donde nada relevante cambió (p. ej. frames intermedios de una animación de zoom). |
+| Unificar el doble cálculo de `computeStreetFillets(outer:false)` / `computeStreetFillets(outer:true)` en una sola pasada que devuelva ambos offsets a partir del mismo cómputo de intersección/ángulo                                                                                               | H4/H7           | Evita repetir el O(n²) completo dos veces por cada cambio de calles.                                                         |
+| Modo "barato durante interacción": mientras hay un `movestart` sin `moveend` (pan/zoom activo), omitir el pintado de labels de texto (dejar solo geometría vía WebGL) y repintar labels completos en `moveend`                                                                                      | H4              | Patrón estándar en motores de mapas para mantener FPS durante gestos.                                                        |
+| Limpiar `streetSource` tras extraer la geometría en `drawend` (o no usarlo como acumulador — extraer coords y hacer `source.clear()` inmediatamente)                                                                                                                                                | H16             | Evita la fuga lenta de features huérfanas.                                                                                   |
+| (Opcional, mayor esfuerzo) Diseñar hit-testing propio con `SpatialIndex` (RBush) + `pointInPoly` (ya existe en `polygonEngine.ts`) para `Select`/`Modify`/`SafeTranslate`, permitiendo eliminar `measurementLayer` como fuente de verdad de interacción                                             | H2 (definitivo) | Ver Fase 6 — es el único ítem de esta fase que toca la lógica de interacción, por eso se separa como stretch goal.           |
+
+**Esfuerzo:** M. **Riesgo:** bajo-medio (los primeros 5 ítems son locales a `PostrenderPainter`/`cadGridLayer` y no cambian comportamiento de interacción).
+
+---
+
+### Fase 4 — Motor geométrico: cómputo pesado fuera del hilo principal + recálculo incremental
+
+| Tarea                                                                                                                                                                                                                                                                                           | Resuelve | Detalle                                                                                                                                                                                                                                                                                   |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Portar `subdivideManzano` / `subdivide` (todas las variantes: auto, exacto, modo2, cabecera-cuerpo, manual-slice) al Web Worker existente (extender `geoWorker.ts`/`geoOperations.ts`, o crear un worker dedicado de subdivisión)                                                               | H8       | Las funciones de `polygonEngine.ts` y `subdivisionAlgorithms.ts` son puras (no tocan OL/DOM) — se envían anillos planos + parámetros, se reciben anillos resultantes; la construcción de `ol.Feature` se hace de vuelta en el hilo principal, igual patrón que `computeManzanosInWorker`. |
+| `SubdivisionDialog.runPreview` / `applySubdivision` → async al worker, usando el `loading` que ya existe en `useSubdivisionStore`                                                                                                                                                               | H8       | Restaura feedback visual mientras se calcula, en vez de congelar la UI.                                                                                                                                                                                                                   |
+| `GenerateLotsCommand` / `RecomputeManzanoLotsCommand` → delegar el loop de subdivisión al worker                                                                                                                                                                                                | H8       | Mismo patrón.                                                                                                                                                                                                                                                                             |
+| Reemplazar los `refreshSourceMetrics(source)` "globales" dentro de comandos por recálculo puntual de las features realmente tocadas (`newLotIds`, `targets`, etc.); reservar el refresh global solo para: import de proyecto, restauración de snapshot (si aún existe tras F2), y cambio de CRS | H9       | Cada comando ya conoce su lista de features afectadas — es un cambio de alcance, no de algoritmo.                                                                                                                                                                                         |
+| Debounce de `recomputeManzanos()` (150–300ms) cuando se agregan varias calles/rotondas en sucesión rápida, o exponer un modo "batch" explícito para importaciones masivas                                                                                                                       | H12      | Evita recomputar la red vial completa N veces cuando el usuario traza N calles seguidas.                                                                                                                                                                                                  |
+| Agregar broad-phase espacial (RBush/STRtree) antes de las pruebas exactas JSTS en `findOverlaps` y `findGaps`/`validateTopology`                                                                                                                                                                | H11      | Pasa de O(n²) puro a ~O(n log n) + pares candidatos reales.                                                                                                                                                                                                                               |
+
+**Esfuerzo:** L (la migración a worker es el ítem más grande del plan completo, pero es aislable: el motor geométrico ya es puro TypeScript sin dependencias de OL/DOM). **Riesgo:** medio — requiere cuidado en la transferencia de datos (arrays planos, no objetos `Pt` con métodos) y en mantener el mismo resultado numérico que la versión síncrona actual (usar el mismo código, solo cambiar dónde corre).
+
+---
+
+### Fase 5 — Persistencia unificada (Desktop + Web)
+
+1. Definir una interfaz común de persistencia (`ProjectStore`: `save`, `load`, `list`, `delete`, `duplicate`) con dos implementaciones: `IndexedDbProjectStore` (web, Dexie — ya existe, reutilizar) y `TauriSqlProjectStore` (desktop, usando `@tauri-apps/plugin-sql` — ya está en `package.json` sin usar).
+2. Migrar `io/persistenceDesktop.ts` de `sql.js` en memoria a `@tauri-apps/plugin-sql` (SQLite nativo, persistente a disco de verdad).
+3. `App.tsx::startAutosave` debe elegir el backend según `isTauri()` (ya existe ese helper en `io/persistenceDesktop.ts`), en vez de usar Dexie incondicionalmente.
+4. `ProjectBrowserModal.tsx` y el flujo de autosave deben apuntar al **mismo** backend en Desktop, eliminando la desincronización actual.
+5. Conservar `sql.js` **exclusivamente** para lectura/escritura de archivos `.gpkg` (`io/gpkg.ts`), que es su uso legítimo — documentar esto explícitamente en el código para que no se vuelva a reutilizar por error como motor de persistencia de proyectos.
+6. Migración de datos: si ya hay usuarios de desktop con proyectos en la base `sql.js` en memoria, esos datos probablemente ya se perdieron en cada reinicio — no hay migración real posible, pero conviene verificar si hay algún export/backup accesible antes de cortar el camino viejo.
+
+**Esfuerzo:** M. **Riesgo:** medio-alto solo por ser un cambio de "dónde vive la verdad de los datos" — requiere pruebas exhaustivas de guardar/cerrar/reabrir la app.
+
+---
+
+### Fase 6 — Roadmap avanzado (stretch goals, no bloqueantes)
+
+| Tarea                                                                                                                                                                  | Resuelve        | Nota                                                                                                                                                                       |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Hit-testing propio (RBush + `pointInPoly`) para reemplazar `measurementLayer` por completo                                                                             | H2 (definitivo) | Mayor esfuerzo de reescritura de `InteractionModeController.ts` (Select/Modify/Translate/Lasso); alto beneficio en proyectos grandes.                                      |
+| LOD / simplificación geométrica dependiente de resolución (usar `geometry.simplify(tolerance)`, ya disponible en OL, para el estilo WebGL cuando el zoom está alejado) | H18             | Relevante sobre todo para geometría importada (DXF/KML) con muchos vértices por arco (`sampleArc` fijo en 32 segmentos) y rotondas con hasta 160 segmentos (`circleRing`). |
+| Culling/quadtree de labels en vez de recorrer todas las features en `paintFeatureLabels`                                                                               | H4 (extensión)  | Solo pintar candidatos a etiqueta dentro del extent visible, no todo el proyecto.                                                                                          |
+| Virtualización de listas largas en paneles (`ManzanoPanel`, `LayerPanel`) si el proyecto crece a cientos de manzanos/capas                                             | —               | Preventivo, no urgente con los volúmenes actuales del código.                                                                                                              |
+| Web Worker dedicado para la serialización de snapshots (si se conserva algún snapshot de respaldo tras F2) en proyectos muy grandes                                    | H14 (residual)  | Solo si F2 conserva snapshots periódicos como red de seguridad.                                                                                                            |
+
+---
+
+### Deuda técnica transversal (no bloqueante, hacer oportunistamente)
+
+- **H7 / H17 — Consolidar utilidades vectoriales:** crear `geo/vec2.ts` con `normalize`, `dist`, `midpoint`, `lineLineIntersection`, y constantes de épsilon documentadas (`EPS_COORD`, `EPS_AREA`, `EPS_ANGLE`), y migrar los ~7 archivos que las reimplementan. Reduce riesgo de divergencia numérica entre subsistemas.
+- **H20 — Generación de IDs:** unificar bajo un solo generador (contador global + prefijo, como ya usa `AddFeatureCommand`/`transforms.ts`) en vez de mezclar `Date.now()+Math.random()` en `SubdivideCommand`/`GenerateLotsCommand`.
+
+---
+
+## 8. Métricas de éxito (cómo medir que mejoró)
+
+| Métrica                                                                | Método                                                                                        | Objetivo orientativo                                                                                        |
+| ---------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| Frame time durante pan/zoom con proyecto de 1.000+ lotes               | `performance.measure` alrededor de `PostrenderPainter.handle` + `requestAnimationFrame` delta | < 16ms (60fps) en pan simple; < 33ms (30fps) aceptable con cotas/labels activos                             |
+| Latencia de "Generar lotes" en un manzano grande                       | Timestamp antes/después del comando                                                           | No debe bloquear el hilo de UI (verificable: la barra de progreso/spinner debe animarse durante el cálculo) |
+| Tiempo de Ctrl+Z / Ctrl+Y                                              | Timestamp en `CommandStack.undo/redo`                                                         | Prácticamente instantáneo (<5ms) tras Fase 2, independiente del tamaño del proyecto                         |
+| Memoria retenida por historial                                         | `performance.memory` (Chrome) o conteo de snapshots                                           | Debe dejar de crecer linealmente con `MAX_HISTORY × tamaño de proyecto` tras Fase 2                         |
+| Consistencia de datos tras Ctrl+Z sobre calles/rotondas                | Prueba manual/E2E                                                                             | 0 discrepancias entre `useStreetStore`/`useRoundaboutStore` y lo visible en el mapa                         |
+| Paridad de proyectos entre autosave y "Gestor de Proyectos" en Desktop | Prueba manual: guardar, cerrar, reabrir                                                       | 100% — un proyecto autosaveado debe aparecer en el gestor                                                   |
+
+---
+
+## 9. Riesgos y consideraciones de migración
+
+- **Fase 2 (Undo/Redo)** es la de mayor riesgo funcional porque toca una función que el usuario usa constantemente y que hoy "funciona, aunque mal" (deshace la mayoría de las cosas, salvo calles/rotondas). Se recomienda feature-flag o rollout gradual, y una batería de pruebas manuales de regresión antes de retirar `historyStore` definitivamente.
+- **Fase 4 (worker de subdivisión)** requiere que las funciones matemáticas involucradas sigan siendo deterministas y libres de referencias a `Feature`/`Polygon` de OL dentro del worker (ya lo son en su mayoría — son arrays `Pt[]`); el riesgo principal es de "costo de serialización" para anillos con miles de vértices (mitigable con `Transferable`/`ArrayBuffer` si hiciera falta, aunque para polígonos urbanos típicos no debería ser necesario).
+- **Fase 5 (persistencia)** implica decidir qué pasa con datos ya "perdidos" en la base `sql.js` en memoria de instalaciones existentes — comunicar claramente que no hay migración retroactiva posible si esos datos nunca tocaron disco.
+- **Desktop vs Web — diferencias de rendering:** el WebView de Tauri (WebView2 en Windows / WKWebView en macOS / WebKitGTK en Linux) no siempre garantiza la misma aceleración GPU que un navegador Chrome de escritorio. Se recomienda incluir explícitamente Tauri en la Fase 0 de instrumentación/baseline, no asumir que "si anda bien en Chrome, anda igual en la app de escritorio".
+
+---
+
+## 10. Anexo — Mapa de archivos por fase
+
+- **Fase 1:** `map/Map.tsx`, `map/snapInteraction.ts`, `map/spatialIndex.ts`, `components/StatsPanel.tsx`, `store/projectCrsStore.ts`, `map/scene/DrawLayerRenderer.ts`
+- **Fase 2:** `commands/CommandStack.ts`, `store/historyStore.ts` (retirar), `map/scene/InteractionModeController.ts`
+- **Fase 3:** `map/cadGridLayer.ts`, `map/scene/PostrenderPainter.ts`, `geo/streetEngine.ts`, `map/scene/InteractionModeController.ts` (limpieza de `streetSource`)
+- **Fase 4:** `geo/subdivisionAlgorithms.ts`, `geo/subdivisionCabeceraCuerpo.ts`, `geo/polygonEngine.ts`, `workers/geoWorker.ts`, `workers/geoOperations.ts`, `workers/geoWorkerClient.ts`, `geo/metrics.ts`, `commands/GenerateLotsCommand.ts`, `commands/RecomputeManzanoLotsCommand.ts`, `commands/SubdivideCommand.ts`, `components/SubdivisionDialog.tsx`, `store/mapStore.ts` (`recomputeManzanos`)
+- **Fase 5:** `io/persistence.ts`, `io/persistenceDesktop.ts`, `io/sqlLoader.ts`, `io/gpkg.ts`, `App.tsx`, `components/ProjectBrowserModal.tsx`
+- **Fase 6:** `map/scene/InteractionModeController.ts`, `geo/arcMath.ts`, `geo/roundaboutEngine.ts`, `components/ManzanoPanel.tsx`, `components/LayerPanel.tsx`
+
+---
+
+**Conclusión:** el diseño de fondo (WebGL + worker JSTS + RBush + canvas overlay) es una base correcta para un CAD/SIG web-first que también corre en desktop. Los problemas encontrados son de **integración incompleta** entre esas piezas (undo que no usa comandos, subdivisión que no usa el worker, persistencia con dos backends), más un puñado de gastos de render por frame sin memoización. Ninguno exige tirar código; el plan de fases prioriza justamente reconectar lo que ya está bien construido antes de agregar nada nuevo.

@@ -330,3 +330,24 @@ Canvas / WebGL
 
 Todo debe pasar por el modelo de objetos y el sistema de comandos, nunca
 directamente por el render.
+
+[ CAPA DE APLICACIÓN / INTERFAZ DE USUARIO ]
+│
+┌───────────────────┴─────────────────────────────┐
+│ MOTORES ESPECIALIZADOS URBANOS │
+│ - Lotización / Manzaneo │
+│ - Trazado Vial e Intersecciones │
+│ - Normativa Urbana y Zonificación (POT) │
+│ - Infraestructura y Servicios Básicos │
+│ - Topografía / Terreno (MDT) │
+│ - Métricas y Balance de Áreas │
+└───────────────────┬─────────────────────────────┘
+│
+┌───────────────────┴─────────────────────────────┐
+│ MOTORES INTRÍNSECOS / BASE (CAD + GIS) │
+│ - Motor Gráfico 2D/3D │
+│ - Motor Geométrico (CAD Core) │
+│ - Motor Topológico / Espacial (GIS Core) │
+│ - Base de Datos Espacial (Atributos) │
+│ - Motor de Coordenadas y Geodesia (CRS) │
+└─────────────────────────────────────────────────┘
