@@ -22,6 +22,10 @@ interface StreetState {
   addStreet: (
     street: Omit<Street, 'id' | 'name' | 'sideWidthM'> & { sideWidthM?: number }
   ) => string;
+  /** Re-inserta una calle con un id específico — usado por
+   *  AddStreetCommand.redo() para no perder la referencia al id original
+   *  entre un undo y su redo. */
+  addStreetWithId: (id: string, street: Omit<Street, 'id' | 'name'>) => void;
   updateStreet: (id: string, patch: Partial<Omit<Street, 'id'>>) => void;
   removeStreet: (id: string) => void;
   clearStreets: () => void;
@@ -64,6 +68,13 @@ export const useStreetStore = create<StreetState>()(
       });
       return newId;
     },
+
+    addStreetWithId: (id, street) =>
+      set((state) => {
+        if (state.streets.some((s) => s.id === id)) return;
+        const name = autoName(state.streets.length);
+        state.streets.push({ ...street, id, name });
+      }),
 
     updateStreet: (id, patch) =>
       set((state) => {

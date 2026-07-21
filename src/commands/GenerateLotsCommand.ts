@@ -17,11 +17,20 @@ export interface GenerateLotsOpts {
   frontMinM: number;
 }
 
+interface ConsumedManzanoSnapshot {
+  id: string | number;
+  geometry: Geometry;
+  props: Record<string, unknown>;
+}
+
 /** Genera lotes automáticos sobre todos los manzanos del drawSource. */
 export class GenerateLotsCommand extends Command {
   readonly label = 'Generar lotes';
   private readonly opts: GenerateLotsOpts;
-  private consumedManzanoIds: Array<string | number> = [];
+  /** Antes solo se guardaban los IDS consumidos (`consumedManzanoIds`),
+   *  nunca su geometría/propiedades — el undo() no tenía forma de
+   *  restaurarlos y los manzanos quedaban perdidos para siempre. */
+  private consumedManzanos: ConsumedManzanoSnapshot[] = [];
   private newLotIds: Array<string | number> = [];
 
   constructor(opts: GenerateLotsOpts) {
@@ -30,7 +39,7 @@ export class GenerateLotsCommand extends Command {
   }
 
   execute(ctx: CommandContext): void {
-    this.consumedManzanoIds = [];
+    this.consumedManzanos = [];
     this.newLotIds = [];
 
     const manzanos: Array<{ id: string | number; ring: Array<[number, number]> }> = [];
@@ -58,10 +67,15 @@ export class GenerateLotsCommand extends Command {
       const lots = subdivideManzano(ring, method, this.opts.targetAreaM2, this.opts.frontMinM, dirPref);
       if (lots.length === 0) continue;
 
-      const feat = ctx.drawSource.getFeatureById(id);
+      const feat = ctx.drawSource.getFeatureById(id) as Feature<Geometry> | null;
       if (feat) {
+        const g = feat.getGeometry();
+        if (g) {
+          const props = { ...feat.getProperties() };
+          delete props.geometry;
+          this.consumedManzanos.push({ id, geometry: g.clone(), props });
+        }
         ctx.drawSource.removeFeature(feat);
-        this.consumedManzanoIds.push(id);
       }
 
       for (let i = 0; i < lots.length; i++) {
@@ -111,8 +125,22 @@ export class GenerateLotsCommand extends Command {
       const f = ctx.drawSource.getFeatureById(id);
       if (f) ctx.drawSource.removeFeature(f);
     }
-    this.newLotIds = [];
+    for (const snap of this.consumedManzanos) {
+      if (ctx.drawSource.getFeatureById(snap.id) != null) continue;
+      const f = new FeatureOL({ geometry: snap.geometry });
+      f.setId(snap.id);
+      f.setProperties(snap.props);
+      ctx.drawSource.addFeature(f);
+    }
     ctx.drawSource.changed();
     refreshSourceMetrics(ctx.drawSource);
+  }
+
+  override redo(ctx: CommandContext): void {
+    // undo() ya restauró los manzanos consumidos con su id/geometría
+    // intactos, así que execute() los vuelve a encontrar y a subdividir
+    // desde cero. Genera ids nuevos para los lotes — inofensivo, porque el
+    // CommandStack limpia la selección en cada undo/redo.
+    this.execute(ctx);
   }
 }

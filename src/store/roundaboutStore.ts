@@ -21,6 +21,10 @@ interface RoundaboutState {
   panelVisible: boolean;
 
   addRoundabout: (r: RoundaboutParams) => string;
+  /** Re-inserta una rotonda con un id específico — usado por
+   *  AddRoundaboutCommand.redo() para no perder la referencia al id
+   *  original entre un undo y su redo. */
+  addRoundaboutWithId: (id: string, r: RoundaboutParams) => void;
   updateRoundabout: (id: string, patch: Partial<RoundaboutParams>) => void;
   removeRoundabout: (id: string) => void;
   clearRoundabouts: () => void;
@@ -67,6 +71,12 @@ export const useRoundaboutStore = create<RoundaboutState>()(
       });
       return newId;
     },
+
+    addRoundaboutWithId: (id, r) =>
+      set((state) => {
+        if (state.roundabouts.some((x) => x.id === id)) return;
+        state.roundabouts.push({ ...r, id, name: autoName(state.roundabouts.length) });
+      }),
 
     updateRoundabout: (id, patch) =>
       set((state) => {

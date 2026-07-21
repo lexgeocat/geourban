@@ -2,7 +2,6 @@ import Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
 import GeoJSON from 'ol/format/GeoJSON.js';
 import { Command, type CommandContext } from './Command';
-import { useSelectionStore } from '../store/selectionStore';
 import { refreshSourceMetrics, updateFeatureMetrics } from '../geo/metrics';
 import { subdivide } from '../geo/subdivisionAlgorithms';
 import { ensureKind } from '../core/objectModel';
@@ -18,13 +17,19 @@ export interface SubdivideCommandOpts {
   targetGeom?: GeoJsonPolygon | null;
 }
 
+interface RemovedTargetSnapshot {
+  id: string | number;
+  geometry: Geometry;
+  props: Record<string, unknown>;
+}
+
 export class SubdivideCommand extends Command {
   readonly label = 'Subdividir manzano';
   private readonly opts: SubdivideCommandOpts;
   private newFeatureIds: Array<string | number> = [];
-  private originalRemoved = false;
-  private originalSel: Array<string | number> = [];
-  private originalPrimary: string | number | null = null;
+  /** Antes: `originalRemoved: boolean` + un bloque de undo vacío que nunca
+   *  restauraba nada. Ahora se guarda geometría+props reales. */
+  private removedTarget: RemovedTargetSnapshot | null = null;
 
   constructor(opts: SubdivideCommandOpts) {
     super();
@@ -50,13 +55,15 @@ export class SubdivideCommand extends Command {
     const r = subdivide(geom, this.opts.options);
     if (!r.ok) return;
 
-    this.originalSel = Array.from(useSelectionStore.getState().selectedIds);
-    this.originalPrimary = useSelectionStore.getState().primaryId;
-
-    const target = ctx.drawSource.getFeatureById(this.opts.targetId);
+    const target = ctx.drawSource.getFeatureById(this.opts.targetId) as Feature<Geometry> | null;
     if (target) {
+      const g = target.getGeometry();
+      if (g) {
+        const props = { ...target.getProperties() };
+        delete props.geometry;
+        this.removedTarget = { id: this.opts.targetId, geometry: g.clone(), props };
+      }
       ctx.drawSource.removeFeature(target);
-      this.originalRemoved = true;
     }
 
     this.newFeatureIds = [];
@@ -89,7 +96,6 @@ export class SubdivideCommand extends Command {
 
     refreshSourceMetrics(ctx.drawSource);
     ctx.drawSource.changed();
-    useSelectionStore.getState().clear();
   }
 
   override undo(ctx: CommandContext): void {
@@ -97,13 +103,18 @@ export class SubdivideCommand extends Command {
       const f = ctx.drawSource.getFeatureById(id);
       if (f) ctx.drawSource.removeFeature(f);
     }
-    if (this.originalRemoved) {
-      const orig = ctx.drawSource.getFeatureById(this.opts.targetId);
-      if (orig == null) {
-      }
+    if (this.removedTarget && ctx.drawSource.getFeatureById(this.removedTarget.id) == null) {
+      const f = new Feature({ geometry: this.removedTarget.geometry });
+      f.setId(this.removedTarget.id);
+      f.setProperties(this.removedTarget.props);
+      ctx.drawSource.addFeature(f);
     }
     ctx.drawSource.changed();
     refreshSourceMetrics(ctx.drawSource);
-    useSelectionStore.getState().clear();
+  }
+
+  override redo(ctx: CommandContext): void {
+    // undo() restauró el polígono original con id/geometría intactos.
+    this.execute(ctx);
   }
 }

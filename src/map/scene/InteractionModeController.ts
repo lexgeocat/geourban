@@ -285,8 +285,23 @@ export class InteractionModeController {
               void runCommand(pendingModify);
               pendingModify = null;
             } else {
-              sel.getFeatures().forEach((f) => updateFeatureMetrics(f as Feature<Geometry>));
-              refreshLayers();
+          // No debería ocurrir (modifystart siempre precede a modifyend en
+          // OL), pero si pasa, igual pasa por el Command Stack: sin
+          // "before" real el undo de este paso puntual no será exacto,
+          // pero evita que canUndo/canRedo queden desincronizados con lo
+          // que realmente hay en drawSource.
+          console.warn('Modify: modifyend sin modifystart previo — undo no será exacto para este cambio.');
+          const fallbackTargets = sel.getFeatures().getArray().filter(
+            (f) => f.getId() != null,
+          ) as Feature<Geometry>[];
+          if (fallbackTargets.length > 0) {
+            const fallbackCmd = new ModifyGeometryCommand(fallbackTargets, 'Editar vértices');
+            fallbackCmd.captureBefore();
+            void runCommand(fallbackCmd);
+          } else {
+            sel.getFeatures().forEach((f) => updateFeatureMetrics(f as Feature<Geometry>));
+            refreshLayers();
+          }
             }
           });
           map.addInteraction(modify);
@@ -310,8 +325,18 @@ export class InteractionModeController {
                 void runCommand(pendingTranslate);
                 pendingTranslate = null;
               } else {
-                sel.getFeatures().forEach((f) => updateFeatureMetrics(f as Feature<Geometry>));
-                refreshLayers();
+                console.warn('Translate: translateend sin translatestart previo — undo no será exacto para este cambio.');
+                const fallbackTargets = sel.getFeatures().getArray().filter(
+                  (f) => f.getId() != null,
+                ) as Feature<Geometry>[];
+               if (fallbackTargets.length > 0) {
+                  const fallbackCmd = new ModifyGeometryCommand(fallbackTargets, 'Mover');
+                  fallbackCmd.captureBefore();
+                  void runCommand(fallbackCmd);
+                } else {
+                  sel.getFeatures().forEach((f) => updateFeatureMetrics(f as Feature<Geometry>));
+                  refreshLayers();
+                }
               }
             });
             map.addInteraction(translate);

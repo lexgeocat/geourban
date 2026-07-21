@@ -82,4 +82,18 @@ export class ModifyGeometryCommand extends Command {
     refreshSourceMetrics(ctx.drawSource);
     ctx.drawSource.changed();
   }
+
+  /** Fusiona el "after" de un paso de edición posterior dentro de este
+   *  comando — el "before" original de la secuencia completa se mantiene,
+   *  así el primer undo revierte TODOS los pasos coalescidos de una vez
+   *  (p.ej. varios drags consecutivos del mismo vértice/feature dentro de
+   *  la ventana de coalescing). */
+  override coalesceInto(previous: Command): boolean {
+    if (!(previous instanceof ModifyGeometryCommand)) return false;
+    if (previous.coalesceKey !== this.coalesceKey) return false;
+    for (const [id, geom] of this.after) {
+      previous.after.set(id, geom);
+    }
+    return true;
+  }
 }
