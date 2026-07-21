@@ -1,12 +1,13 @@
 import WebGLVectorLayer from 'ol/layer/WebGLVector.js';
 import VectorLayer from 'ol/layer/Vector.js';
 import VectorSource from 'ol/source/Vector.js';
-import { createMeasurementStyle } from '../styleFactory';
 import type { Layer } from '../../core/objectModel';
 
 export type WorkVisibility = {
   lots: boolean;
   streets: boolean;
+  /** Ya no controla ninguna capa de render (ver nota en DrawLayers más
+   *  abajo); se mantiene el campo para no romper el store/ribbon. */
   measurements: boolean;
 };
 
@@ -24,7 +25,6 @@ export const MZN_COLORS_STR = [
 
 export interface DrawLayers {
   webglLayer: WebGLVectorLayer;
-  measurementLayer: VectorLayer<VectorSource>;
   streetLayer: VectorLayer<VectorSource>;
   postrenderLayer: VectorLayer<VectorSource>;
   source: VectorSource;
@@ -43,9 +43,6 @@ export function withAlpha(color: string, alpha: number): string {
   return `rgba(${r},${g},${b},${alpha})`;
 }
 
-/** Construye un `match` para WebGL style: `get('layerId')` ↔ color de la capa.
- *  Si no hay match (o `layerId` es null/undefined), cae al fallback de manzana
- *  (paleta clásica por `colorIdx`). */
 function buildLayerColorMatch(
   layers: Layer[],
   property: 'fill' | 'stroke',
@@ -59,13 +56,10 @@ function buildLayerColorMatch(
     result.push(l.id);
     result.push(property === 'fill' ? withAlpha(color, 0.30 * a) : color);
   }
-  // default
   result.push(['case', ['==', ['get', 'type'], 'manzana'], fallbackManzanaExpr, fallbackOther]);
   return result;
 }
 
-/** Construye el style object de la WebGLVectorLayer. Acepta el array de
- *  capas para que el `match` por `layerId` use los colores reales. */
 export function buildWebglStyle(layers: Layer[]): Record<string, any> {
   const mznFillExpr: any[] = ['match', ['get', 'colorIdx'],
     0, MZN_COLORS_22[0], 1, MZN_COLORS_22[1], 2, MZN_COLORS_22[2],
@@ -87,8 +81,6 @@ export function buildWebglStyle(layers: Layer[]): Record<string, any> {
   };
 }
 
-/** Filter para WebGLVectorLayer: oculta features cuya `layerId` apunte a
- *  una capa con `visible: false`. Features sin `layerId` siempre pasan. */
 export function buildLayerFilter(layers: Layer[]): any[] {
   const hiddenIds = layers.filter((l) => !l.visible).map((l) => l.id);
   if (hiddenIds.length === 0) return ['==', 1, 1];
@@ -114,13 +106,16 @@ export function buildDrawLayers(
     disableHitDetection: true,
     style: buildWebglStyle(layers),
   });
-  // El filter se aplica en la creación (filter no es parte del style).
 
-  const measurementLayer = new VectorLayer({
-    source,
-    visible: visibility.measurements,
-    style: createMeasurementStyle(),
-  });
+  // La antigua `measurementLayer` (VectorLayer Canvas2D invisible, mismo
+  // source que webglLayer, con `declutter: true`) existía SOLO para que
+  // `ol/interaction/Select` / `forEachFeatureAtPixel` tuvieran una capa
+  // donde hacer hit-testing (WebGL no soporta hit-testing nativo acá) —
+  // ver diagnóstico H2. Ese hit-testing ahora corre por fuera del
+  // pipeline de render (RBush + test exacto de geometría, ver
+  // `map/hitTest.ts` y `map/scene/HitTestSelect.ts`), así que esta capa
+  // se elimina por completo: un rasterizado Canvas2D menos por frame
+  // sobre TODO el proyecto, sin cambiar nada visible.
 
   const streetSource = new VectorSource();
   const streetLayer = new VectorLayer({
@@ -129,12 +124,11 @@ export function buildDrawLayers(
     style: undefined, // el postrender de PostrenderPainter pinta las calles
   });
 
-  // Capa vacía: hook para postrender de labels/snap guides.
   const postrenderLayer = new VectorLayer({
     source: new VectorSource(),
     style: () => undefined,
     renderOrder: undefined,
   });
 
-  return { webglLayer, measurementLayer, streetLayer, postrenderLayer, source, streetSource };
+  return { webglLayer, streetLayer, postrenderLayer, source, streetSource };
 }

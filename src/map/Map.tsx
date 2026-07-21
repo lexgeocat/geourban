@@ -45,7 +45,6 @@ export default function MapView() {
   const baseLayerMgrRef = useRef<BaseLayerManager | null>(null);
   const baseMapInitializedRef = useRef(false);
   const baseMapEffectPrimedRef = useRef(false);
-  const measurementLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
   const drawLayerRef = useRef<WebGLVectorLayer | null>(null);
   const streetLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
   const drawSrcRef = useRef<VectorSource | null>(null);
@@ -77,8 +76,6 @@ const baseMapId = useLayerStore((s) => s.baseMap);
 
     const drawLayer = drawLayers.webglLayer;
     drawLayerRef.current = drawLayer;
-    const measurementLayer = drawLayers.measurementLayer;
-    measurementLayerRef.current = measurementLayer;
     const streetLayerSrc = drawLayers.streetSource;
     streetLayerSrcRef.current = streetLayerSrc;
     const streetLayer = drawLayers.streetLayer;
@@ -90,7 +87,7 @@ const baseMapId = useLayerStore((s) => s.baseMap);
 
     const map = new Map({
       target: mapDivRef.current!,
-      layers: [drawLayer, measurementLayer, streetLayer, postrenderLayer],
+      layers: [drawLayer, streetLayer, postrenderLayer],
       view: new View({
         center: fromLonLat(viewConfig.center),
         zoom: viewConfig.zoom,
@@ -278,14 +275,13 @@ const baseMapId = useLayerStore((s) => s.baseMap);
     drawSrc.on('changefeature', onSpatialChange);
 
     const interactionCtrl = new InteractionModeController({
-      map,
-      drawSource: drawSrc,
-      measurementLayer,
-      drawLayer,
-      streetLayer,
-      streetSource: streetLayerSrc,
-      postrenderPainter,
-    });
+  map,
+  drawSource: drawSrc,
+  drawLayer,
+  streetLayer,
+  streetSource: streetLayerSrc,
+  postrenderPainter,
+});
     interactionCtrlRef.current = interactionCtrl;
 
     const getAnchor = (): number[] | undefined => {
@@ -427,13 +423,6 @@ postrenderPainter.dispose();
     baseLayerRef.current = newLayer;
   }, [baseMapId]);
 
-  // --- Visibilidad de cotas automáticas ---
-  useEffect(() => {
-    if (measurementLayerRef.current) {
-      measurementLayerRef.current.setVisible(workVisibility.measurements);
-    }
-  }, [workVisibility.measurements]);
-
   // --- Visibilidad de calles/viales ---
   useEffect(() => {
     if (streetLayerRef.current) {
@@ -454,11 +443,9 @@ useEffect(() => {
     // y los toggles de "Lotes/Calles/Cotas" del ribbon de Vista).
     const anyLoteVisible = state.layers.some((l) => (l.kind === 'lote' || l.kind === 'manzana') && l.visible);
     const anyCalleVisible = state.layers.some((l) => l.kind === 'calle' && l.visible);
-    const anyCotaVisible = state.layers.some((l) => l.kind === 'cota' && l.visible);
+
     if (drawLayerRef.current) drawLayerRef.current.setVisible(anyLoteVisible);
     if (streetLayerRef.current) streetLayerRef.current.setVisible(anyCalleVisible);
-    if (measurementLayerRef.current) measurementLayerRef.current.setVisible(anyCotaVisible);
-
     // Reconstruir el style del WebGL para que los cambios de color/opacity
     // por capa se apliquen. El filter (visibility por layerId) también se
     // reconstruye acá.

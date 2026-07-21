@@ -4,11 +4,10 @@ import BaseEvent from 'ol/events/Event.js';
 import type { EventsKey } from 'ol/events.js';
 import type MapBrowserEvent from 'ol/MapBrowserEvent.js';
 import type Map from 'ol/Map.js';
-import type VectorLayer from 'ol/layer/Vector.js';
-import type VectorSource from 'ol/source/Vector.js';
 import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
 import type Collection from 'ol/Collection.js';
+import { hitTestFeature } from './hitTest';
 
 export class TranslateEvent extends BaseEvent {
   features: Collection<Feature<Geometry>>;
@@ -26,17 +25,25 @@ export class TranslateEvent extends BaseEvent {
 
 export interface SafeTranslateOptions {
   features: Collection<Feature<Geometry>>;
-  hitDetectionLayer: VectorLayer<VectorSource>;
+  /** Tolerancia de hit-test en píxeles (se convierte a unidades de mapa
+   *  con la resolución vigente en cada evento). */
   hitTolerance?: number;
 }
 
+/**
+ * Traslada las features seleccionadas por arrastre. Antes necesitaba una
+ * capa de render dedicada (`hitDetectionLayer`, la `measurementLayer`
+ * invisible) solo para que `map.forEachFeatureAtPixel` tuviera dónde
+ * buscar — ver diagnóstico H2. Ahora el hit-test corre directo contra
+ * las geometrías de `features` (el propio conjunto ya seleccionado,
+ * típicamente unas pocas), sin depender de ningún layer.
+ */
 export default class SafeTranslate extends Interaction {
   declare on: TranslateOnSignature<EventsKey>;
   declare once: TranslateOnSignature<EventsKey>;
   declare un: TranslateOnSignature<EventsKey>;
   private features_: Collection<Feature<Geometry>>;
-  private hitLayer_: VectorLayer<VectorSource>;
-  private hitTolerance_: number;
+  private hitTolerancePx_: number;
   private lastCoordinate_: [number, number] | null = null;
   private dragging_ = false;
 
@@ -45,17 +52,16 @@ export default class SafeTranslate extends Interaction {
       handleEvent: (evt) => this.handleEvent_(evt as MapBrowserEvent),
     });
     this.features_ = options.features;
-    this.hitLayer_ = options.hitDetectionLayer;
-    this.hitTolerance_ = options.hitTolerance ?? 5;
+    this.hitTolerancePx_ = options.hitTolerance ?? 6;
   }
 
-  private featureAtPixel_(map: Map, pixel: number[]): Feature<Geometry> | null {
-    const hitLayer = this.hitLayer_;
-    const found = map.forEachFeatureAtPixel(pixel, (feature) => feature as Feature<Geometry>, {
-      hitTolerance: this.hitTolerance_,
-      layerFilter: (layer) => layer === hitLayer,
-    });
-    return found ?? null;
+  private featureAtCoordinate_(map: Map, coordinate: [number, number]): Feature<Geometry> | null {
+    const resolution = map.getView().getResolution() ?? 1;
+    const tolerance = this.hitTolerancePx_ * resolution;
+    for (const feature of this.features_.getArray()) {
+      if (hitTestFeature(coordinate, feature, tolerance)) return feature;
+    }
+    return null;
   }
 
   private handleEvent_(evt: MapBrowserEvent): boolean {
@@ -63,8 +69,8 @@ export default class SafeTranslate extends Interaction {
     const type = evt.type;
 
     if (type === 'pointerdown') {
-      const feature = this.featureAtPixel_(map, evt.pixel);
-      if (feature && this.features_.getArray().includes(feature)) {
+      const feature = this.featureAtCoordinate_(map, evt.coordinate as [number, number]);
+      if (feature) {
         this.lastCoordinate_ = evt.coordinate as [number, number];
         this.dragging_ = true;
         this.dispatchEvent(
