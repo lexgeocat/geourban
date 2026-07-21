@@ -2,8 +2,11 @@ import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
 import { Command, type CommandContext } from './Command';
 import { useSelectionStore } from '../store/selectionStore';
+import { useLayersStore } from '../store/layersRegistryStore';
 
-/** Borra features por id. Si no se pasan ids, borra la selección actual. */
+/** Borra features por id. Si no se pasan ids, borra la selección actual.
+ *  Respeta el candado (`locked`) del registro de capas: los ids que
+ *  pertenezcan a una capa bloqueada son ignorados silenciosamente. */
 export class DeleteFeaturesCommand extends Command {
   readonly label = 'Borrar features';
   private readonly ids: Array<string | number>;
@@ -23,6 +26,11 @@ export class DeleteFeaturesCommand extends Command {
     for (const id of this.ids) {
       const f = ctx.drawSource.getFeatureById(id) as Feature<Geometry> | null;
       if (!f) continue;
+      const layerId = f.get('layerId') as string | undefined;
+      if (layerId) {
+        const layer = useLayersStore.getState().getById(layerId);
+        if (layer?.locked) continue;
+      }
       this.removed.push({ id, feature: f });
       ctx.drawSource.removeFeature(f);
       useSelectionStore.getState().remove(id);

@@ -6,11 +6,8 @@ import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
 import { Command, type CommandContext, getCommandContext } from './Command';
 import { useHistoryStore } from '../store/historyStore';
-import { useMapStore } from '../store/mapStore';
 import { useSelectionStore } from '../store/selectionStore';
 import { refreshSourceMetrics } from '../geo/metrics';
-import { ClearFeaturesCommand } from './ClearFeaturesCommand';
-import { AddFeaturesCommand } from './AddFeaturesCommand';
 
 const geoJsonFormat = new GeoJSON();
 
@@ -133,17 +130,19 @@ function applyRestoredSnapshot(
   drawSource: VectorSource,
   geojson: object[],
 ) {
+  // Mutamos drawSource directamente: NO pasamos por commandStack.run()
+  // porque eso vuelve a llamar pushState, que vaciaría el `future` del
+  // historyStore y rompería el redo. El snapshot ya viene del historyStore,
+  // así que restaurar es una operación de UI, no una nueva acción.
   const features = geoJsonFormat.readFeatures(
     { type: 'FeatureCollection', features: geojson as never },
     { featureProjection: 'EPSG:3857' },
   ) as Feature<Geometry>[];
-  const commandStack = useCommandStack.getState();
-  commandStack.run(new ClearFeaturesCommand());
-  commandStack.run(new AddFeaturesCommand(features));
+  drawSource.clear();
+  drawSource.addFeatures(features);
   drawSource.changed();
   refreshSourceMetrics(drawSource);
   useSelectionStore.getState().clear();
-  useMapStore.getState().restoreDrawFeatures({ type: 'FeatureCollection', features: geojson });
 }
 
 // ─── Helpers exportados ─────────────────────────────────────────────────

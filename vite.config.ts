@@ -21,6 +21,23 @@ export default defineConfig({
     outDir: 'dist',
     emptyOutDir: true,
     target: 'esnext',
+    assetsInlineLimit: 0,
+    rollupOptions: {
+      output: {
+        // Empaqueta el .wasm de sql.js como un asset estático servible.
+        // Lo exponemos bajo `/sql.js/` para que `locateFile` lo encuentre
+        // sin depender del CDN de sql.js.org.
+        assetFileNames: (assetInfo) => {
+          if (assetInfo.name?.endsWith('.wasm')) {
+            return 'sql.js/[name][extname]';
+          }
+          return 'assets/[name]-[hash][extname]';
+        },
+      },
+    },
+  },
+  optimizeDeps: {
+    exclude: ['sql.js'],
   },
   worker: {
     format: 'es',

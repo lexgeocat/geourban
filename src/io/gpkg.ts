@@ -1,19 +1,11 @@
-import initSqlJs, { type Database } from 'sql.js';
+import type { Database } from 'sql.js';
 import proj4 from 'proj4';
 import { register } from 'ol/proj/proj4.js';
 import type { Feature as GeoJSONFeature, FeatureCollection, Geometry as GeoJSONGeometry } from 'geojson';
 import { createEmptyProject, type GeoUrbanProject, type ImportResult } from './types';
 import { ensureUtmZoneRegistered } from '../geo/utmZones';
 import { reprojectFeatureCollection } from '../geo/crsTransform';
-
-let sqlPromise: ReturnType<typeof initSqlJs> | null = null;
- 
-async function getSql() {
-  if (!sqlPromise) {
-    sqlPromise = initSqlJs({ locateFile: (file) => `https://sql.js.org/dist/${file}` });
-  }
-  return sqlPromise;
-}
+import { getSql } from './sqlLoader';
 
 export async function importGpkg(file: File): Promise<ImportResult> {
   const SQL = await getSql();

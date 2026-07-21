@@ -20,15 +20,6 @@ export interface CutResult {
   isRemnant: boolean;
 }
 
-// ─── Helpers de escala
-
-const MPP = 1; // metros por unidad → 1 (EPSG:3857 es métrico)
-
-/** De unidades internas a metros (no-op en EPSG:3857) */
-function wm(d: number): number {
-  return d;
-}
-
 /** De metros a unidades internas (no-op en EPSG:3857) */
 function mw(m: number): number {
   return m;
@@ -45,11 +36,6 @@ export function polyArea(pts: Pt[]): number {
     a += pts[i][0] * pts[j][1] - pts[j][0] * pts[i][1];
   }
   return Math.abs(a) / 2;
-}
-
-/** Área en m² (alias de polyArea en EPSG:3857) */
-function polyAreaM2(pts: Pt[]): number {
-  return polyArea(pts);
 }
 
 /** Centroide de un polígono */
@@ -96,46 +82,6 @@ function lineLineIntersect(a: Pt, b: Pt, c: Pt, d: Pt): Pt | null {
   if (Math.abs(denom) < 1e-12) return null;
   const t = ((c[0] - a[0]) * dy2 - (c[1] - a[1]) * dx2) / denom;
   return [a[0] + t * dx1, a[1] + t * dy1];
-}
-
-/** Test SAT de superposición entre dos polígonos convexos */
-function polysOverlap(a: Pt[], b: Pt[]): boolean {
-  for (const poly of [a, b]) {
-    const n = poly.length;
-    for (let i = 0; i < n; i++) {
-      const p1 = poly[i], p2 = poly[(i + 1) % n];
-      const nx = -(p2[1] - p1[1]), ny = p2[0] - p1[0];
-      let minA = Infinity, maxA = -Infinity;
-      let minB = Infinity, maxB = -Infinity;
-      for (const pt of a) {
-        const d = pt[0] * nx + pt[1] * ny;
-        if (d < minA) minA = d;
-        if (d > maxA) maxA = d;
-      }
-      for (const pt of b) {
-        const d = pt[0] * nx + pt[1] * ny;
-        if (d < minB) minB = d;
-        if (d > maxB) maxB = d;
-      }
-      if (maxA < minB - 1e-9 || maxB < minA - 1e-9) return false;
-    }
-  }
-  return true;
-}
-
-/** Área aproximada de superposición entre dos polígonos (clip del primero contra el segundo) */
-function approxOverlapArea(polyA: Pt[], polyB: Pt[]): number {
-  let clipped = polyA.map((p) => [p[0], p[1]]) as Pt[];
-  const n = polyB.length;
-  for (let i = 0; i < n; i++) {
-    if (clipped.length < 3) break;
-    const a = polyB[i], b = polyB[(i + 1) % n];
-    const cenB = centroid(polyB);
-    const s = side(cenB, a, b);
-    clipped = clipHalfPlane(clipped, a, b, s >= 0 ? +1 : -1);
-  }
-  if (!clipped || clipped.length < 3) return 0;
-  return polyArea(clipped);
 }
 
 /** Punto-en-polígono (ray casting) — exportado para subdivisionAlgorithms.ts */
@@ -289,94 +235,4 @@ export function projectExtents(pts: Pt[], ax: number, ay: number): { min: number
     if (t > mx) mx = t;
   }
   return { min: mn, max: mx };
-}
-
-// ─── Intersección de calles vs polígonos ─────────────────────────────
-
-interface StreetRectData {
-  start: Pt;
-  end: Pt;
-  widthM: number;
-}
-
-/** Construye el rectángulo de una calle (4 vértices) */
-function streetRect(street: StreetRectData): Pt[] | null {
-  const { start: S, end: E, widthM: W } = street;
-  const dx = E[0] - S[0], dy = E[1] - S[1];
-  const len = Math.sqrt(dx * dx + dy * dy);
-  if (len < 1e-6) return null;
-  const nx = -dy / len, ny = dx / len;
-  const hw = W / 2;
-  return [
-    [S[0] + nx * hw, S[1] + ny * hw],
-    [E[0] + nx * hw, E[1] + ny * hw],
-    [E[0] - nx * hw, E[1] - ny * hw],
-    [S[0] - nx * hw, S[1] - ny * hw],
-  ];
-}
-
-function applyStreetToPolys(polysIn: Pt[][], street: StreetRectData): Pt[][] {
-  const rect = streetRect(street);
-  if (!rect) return polysIn;
-  const { start: S, end: E, widthM: W } = street;
-  const dx = E[0] - S[0], dy = E[1] - S[1];
-  const len = Math.sqrt(dx * dx + dy * dy);
-  if (len < 1e-6) return polysIn;
-  const ux = dx / len, uy = dy / len;
-  const nx = -uy, ny = ux;
-  const hw = W / 2;
-
-  const L1a: Pt = [S[0] + nx * hw, S[1] + ny * hw];
-  const L1b: Pt = [E[0] + nx * hw, E[1] + ny * hw];
-  const L2a: Pt = [S[0] - nx * hw, S[1] - ny * hw];
-  const L2b: Pt = [E[0] - nx * hw, E[1] - ny * hw];
-  const C1a: Pt = [S[0] + nx, S[1] + ny];
-  const C1b: Pt = [S[0] - nx, S[1] - ny];
-  const sideE_C1 = side(E, C1a, C1b);
-  const outsideC1 = sideE_C1 > 0 ? -1 : +1;
-  const C2a: Pt = [E[0] + nx, E[1] + ny];
-  const C2b: Pt = [E[0] - nx, E[1] - ny];
-  const sideS_C2 = side(S, C2a, C2b);
-  const outsideC2 = sideS_C2 > 0 ? -1 : +1;
-
-  const MIN_AREA = 0.5;
-  const result: Pt[][] = [];
-
-  for (const poly of polysIn) {
-    if (!polysOverlap(poly, rect)) {
-      result.push(poly);
-      continue;
-    }
-    const frags: Pt[][] = [];
-    const lf = clipHalfPlane(poly, L1a, L1b, +1);
-    if (lf.length >= 3 && polyArea(lf) > MIN_AREA) frags.push(lf);
-    const rf = clipHalfPlane(poly, L2a, L2b, -1);
-    if (rf.length >= 3 && polyArea(rf) > MIN_AREA) frags.push(rf);
-    let sf = clipHalfPlane(poly, C1a, C1b, outsideC1);
-    sf = clipHalfPlane(sf, L1a, L1b, -1);
-    sf = clipHalfPlane(sf, L2a, L2b, +1);
-    if (sf.length >= 3 && polyArea(sf) > MIN_AREA) frags.push(sf);
-    let ef = clipHalfPlane(poly, C2a, C2b, outsideC2);
-    ef = clipHalfPlane(ef, L1a, L1b, -1);
-    ef = clipHalfPlane(ef, L2a, L2b, +1);
-    if (ef.length >= 3 && polyArea(ef) > MIN_AREA) frags.push(ef);
-    if (frags.length === 0) continue;
-    for (const f of frags) result.push(f);
-  }
-  return result;
-}
-
-export function clipPolygonByAllStreets(
-  poly: Pt[],
-  streetData: Array<{ start: Pt; end: Pt; widthM: number }>,
-): Pt[][] {
-  let current: Pt[][] = [poly];
-  for (const sd of streetData) {
-    const next = applyStreetToPolys(current, sd);
-    // Vía degenerada respecto a lo que queda: se ignora en vez de tirar
-    // todo el recorte ya hecho por las demás vías.
-    if (next.length === 0) continue;
-    current = next;
-  }
-  return current;
 }

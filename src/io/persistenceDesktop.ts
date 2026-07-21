@@ -1,21 +1,12 @@
 import { create } from 'zustand';
 import type { GeoUrbanProject } from './types';
+import { getSql } from './sqlLoader';
 
 interface StoredProject {
   id: number;
   name: string;
   updated_at: string;
   thumbnail?: string;
-}
-
-let sqlPromise: Promise<any> | null = null;
-
-async function getSql() {
-  if (!sqlPromise) {
-    const { default: initSqlJs } = await import('sql.js');
-    sqlPromise = initSqlJs({ locateFile: (file) => `https://sql.js.org/dist/${file}` });
-  }
-  return sqlPromise;
 }
 
 let db: any = null;

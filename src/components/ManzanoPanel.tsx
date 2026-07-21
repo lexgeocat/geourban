@@ -11,6 +11,7 @@ import { polyArea, centroid, type Pt } from '../geo/polygonEngine';
 import { useDrawStore } from '../store/drawStore';
 import { useStreetStore } from '../store/streetStore';
 import { useRoundaboutStore } from '../store/roundaboutStore';
+import { getFeatureKind, ensureKind } from '../core/objectModel';
 
 const MZN_COLORS = [
   '#58a6ff',
@@ -177,8 +178,13 @@ export default function ManzanoPanel() {
     if (!drawSource) return;
     const feat = drawSource.getFeatureById(row.id) as Feature<Geometry> | null;
     if (!feat) return;
-    const wasEquip = feat.get('type') === 'equipamiento';
-    feat.set('type', wasEquip ? 'manzana' : 'equipamiento', true);
+    const wasEquip = getFeatureKind(feat) === 'equipamiento';
+    feat.setProperties(ensureKind(
+      { ...feat.getProperties(), kind: wasEquip ? 'manzana' : 'equipamiento' },
+      wasEquip ? 'manzana' : 'equipamiento',
+    ));
+    // Limpia el `type` legado para que `getFeatureKind` no caiga al fallback.
+    feat.unset('type', true);
     if (!wasEquip) {
       const toRemove: Feature<Geometry>[] = [];
       drawSource.forEachFeature((f) => {

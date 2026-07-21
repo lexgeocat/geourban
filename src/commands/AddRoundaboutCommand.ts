@@ -1,6 +1,7 @@
 // src/commands/AddRoundaboutCommand.ts
 import { Command, type CommandContext } from './Command';
 import { useRoundaboutStore } from '../store/roundaboutStore';
+import { recomputeManzanos } from '../store/mapStore';
 import type { RoundaboutParams } from '../geo/roundaboutEngine';
 
 export class AddRoundaboutCommand extends Command {
@@ -13,8 +14,9 @@ export class AddRoundaboutCommand extends Command {
     this.params = params;
   }
 
-  execute(_ctx: CommandContext): void {
+  override async execute(_ctx: CommandContext): Promise<void> {
     this.roundaboutId = useRoundaboutStore.getState().addRoundabout(this.params);
+    await recomputeManzanos();
   }
 
   override undo(_ctx: CommandContext): void {

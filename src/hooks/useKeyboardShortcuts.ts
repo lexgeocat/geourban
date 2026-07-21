@@ -4,6 +4,7 @@ import { undo, redo, useCommandStack } from '../commands/CommandStack';
 import { useMapStore } from '../store/mapStore';
 import { useSelectionStore } from '../store/selectionStore';
 import { useSnapSettingsStore } from '../store/snapSettingsStore';
+import { useLayersStore } from '../store/layersRegistryStore';
 import { DeleteFeaturesCommand } from '../commands/DeleteFeaturesCommand';
 import { runCommand } from '../commands/CommandStack';
 
@@ -41,15 +42,22 @@ export function useKeyboardShortcuts() {
         return;
       }
 
-      // Ctrl/Cmd + A: seleccionar todo
+      // Ctrl/Cmd + A: seleccionar todo (excluye capas locked)
       if (ctrlOrCmd && (key === 'a' || key === 'A')) {
         const src = useMapStore.getState().drawSource;
         if (!src) return;
         e.preventDefault();
         const ids: Array<string | number> = [];
+        const getLayer = useLayersStore.getState().getById;
         src.forEachFeature((f) => {
           const id = f.getId();
-          if (id !== undefined) ids.push(id as string | number);
+          if (id === undefined) return;
+          const layerId = f.get('layerId') as string | undefined;
+          if (layerId) {
+            const layer = getLayer(layerId);
+            if (layer?.locked) return;
+          }
+          ids.push(id as string | number);
         });
         useSelectionStore.getState().setSelection(ids, ids[0] ?? null);
         return;

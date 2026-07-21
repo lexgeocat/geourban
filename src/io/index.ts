@@ -61,11 +61,9 @@ export async function exportProject(
       break;
     }
     case 'shp': {
-      const { shp, dbf, prj } = exportShp(project);
-      downloadBlob(`${filename}.shp`, shp);
-      downloadBlob(`${filename}.dbf`, dbf);
-      downloadBlob(`${filename}.prj`, prj);
-      break;
+      const zipBlob = await exportShp(project);
+      downloadBlob(`${filename}.zip`, zipBlob);
+      return { message: 'Se exportó un .zip con .shp, .shx (si está disponible), .dbf y .prj.' };
     }
     case 'dxf': {
       const { dxfText, prjWkt, instructions } = exportDxf(project);

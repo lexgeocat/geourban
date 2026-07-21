@@ -14,7 +14,7 @@ interface ProjectBrowserModalProps {
   onClose: () => void;
   onOpenProject: (project: GeoUrbanProject) => void;
   onNewProject: () => void;
-  currentProjectName?: string;
+  currentProjectId?: number | null;
 }
 
 const isTauri = typeof window !== 'undefined' && (window as any).__TAURI__;
@@ -48,7 +48,7 @@ export const ProjectBrowserModal: React.FC<ProjectBrowserModalProps> = ({
   onClose,
   onOpenProject,
   onNewProject,
-  currentProjectName,
+  currentProjectId,
 }) => {
   const [projects, setProjects] = useState<StoredProject[]>([]);
   const [loading, setLoading] = useState(true);
@@ -165,7 +165,7 @@ export const ProjectBrowserModal: React.FC<ProjectBrowserModalProps> = ({
                         <span className="project-date">
                           {new Date(p.updated_at).toLocaleString()}
                         </span>
-                        {p.id === Number(currentProjectName) && <span className="current-badge">Actual</span>}
+                        {currentProjectId != null && p.id === currentProjectId && <span className="current-badge">Actual</span>}
                       </div>
                       <div className="project-actions">
                         <button

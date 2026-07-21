@@ -6,6 +6,7 @@ import { useMapStore } from '../store/mapStore';
 import { useProjectCrsStore } from '../store/projectCrsStore';
 import { ensureUtmZoneRegistered, utmZoneLabel } from '../geo/utmZones';
 import { reprojectFeatureCollection, mapFeatureCollectionCoords, utmWkt } from '../geo/crsTransform';
+import { sampleArc } from '../geo/arcMath';
 const GEOGRAPHIC = 'EPSG:4326';
 
 export async function importDxf(file: File): Promise<ImportResult> {
@@ -48,10 +49,41 @@ export async function importDxf(file: File): Promise<ImportResult> {
   project.data = collection;
 
   if (features.length === 0) {
-    warnings.push('No se encontraron entidades DXF convertibles (LWPOLYLINE, LINE, POLYLINE).');
+    warnings.push('No se encontraron entidades DXF convertibles (LWPOLYLINE, LINE, POLYLINE, CIRCLE, ARC, POINT).');
   }
 
   return { project, warnings };
+}
+
+/** Samplea un arco (CIRCLE/ARC) en un LineString con N segmentos.
+ *  CIRCLE/ARC en DXF vienen en grados; los pasamos a radianes para sampleArc. */
+function arcToLineString(
+  cx: number,
+  cy: number,
+  radius: number,
+  startAngleDeg: number,
+  endAngleDeg: number,
+  closed: boolean,
+  segments = 32,
+): [number, number][] {
+  const startRad = (startAngleDeg * Math.PI) / 180;
+  let endRad = (endAngleDeg * Math.PI) / 180;
+  // Para un arco completo (CIRCLE), endAngle - startAngle = 360° → 2π
+  if (closed && Math.abs(endRad - startRad) >= Math.PI * 2 - 1e-6) {
+    endRad = startRad + Math.PI * 2;
+  }
+  const points = sampleArc(
+    {
+      center: [cx, cy],
+      radius,
+      startAngle: startRad,
+      endAngle: endRad,
+      counterClockwise: false, // DXF usa sentido antihorario positivo pero para el muestreo no afecta el render
+    },
+    segments,
+  );
+  if (closed && points.length > 0) points.push(points[0]);
+  return points;
 }
 
 function entityToFeature(entity: IEntity): Feature | null {
@@ -86,12 +118,10 @@ function entityToFeature(entity: IEntity): Feature | null {
     const center = entity.position;
     const radius = entity.radius;
     if (!center || radius == null) return null;
-    // Store as Point with radius in properties for now
-    return {
-      type: 'Feature',
-      properties: { dxfType: type, radius },
-      geometry: { type: 'Point', coordinates: [center.x, center.y] }
-    };
+    // CIRCLE = arco completo (0° → 360°) sampleado y cerrado.
+    const coords = arcToLineString(center.x, center.y, radius, 0, 360, true);
+    const geometry: Polygon = { type: 'Polygon', coordinates: [coords] };
+    return { type: 'Feature', properties: { dxfType: type, radius }, geometry };
   }
   if (type === 'ARC') {
     const center = entity.position;
@@ -99,12 +129,10 @@ function entityToFeature(entity: IEntity): Feature | null {
     const startAngle = entity.startAngle ?? 0;
     const endAngle = entity.endAngle ?? 360;
     if (!center || radius == null) return null;
-    // Store as Point with arc properties for now
-    return {
-      type: 'Feature',
-      properties: { dxfType: type, radius, startAngle, endAngle },
-      geometry: { type: 'Point', coordinates: [center.x, center.y] }
-    };
+    // ARC = arco parcial sampleado, NO cerrado en el origen/fin.
+    const coords = arcToLineString(center.x, center.y, radius, startAngle, endAngle, false);
+    const geometry: LineString = { type: 'LineString', coordinates: coords };
+    return { type: 'Feature', properties: { dxfType: type, radius, startAngle, endAngle }, geometry };
   }
   return null;
 }

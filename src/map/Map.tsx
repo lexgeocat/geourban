@@ -23,14 +23,14 @@ import { useDrawStore } from '../store/drawStore';
 import { useSelectionStore } from '../store/selectionStore';
 import { useProjectCrsStore } from '../store/projectCrsStore';
 import { BaseLayerManager } from './scene/BaseLayerManager';
-import { buildDrawLayers } from './scene/DrawLayerRenderer';
+import { buildDrawLayers, buildLayerFilter, buildWebglStyle } from './scene/DrawLayerRenderer';
 import { PostrenderPainter } from './scene/PostrenderPainter';
 import { InteractionModeController } from './scene/InteractionModeController';
 import { SNAP_COLORS, type SnapGuideVisual } from './advancedSnap';
 import SnapEngine from './snapInteraction';
 import { RotateLotsInteraction } from './scene/RotateLotsInteraction';
 import { useRoundaboutStore } from '../store/roundaboutStore';
-import { getOrCreateSpatialIndex } from './demoDataset';
+import { getOrCreateSpatialIndex } from './spatialIndex';
 import { ensureUtmZoneRegistered } from '../geo/utmZones';
 import { useManzanoStore } from '../store/manzanoStore';
 import { runCommand } from '../commands/CommandStack';
@@ -77,7 +77,13 @@ const baseMapId = useLayerStore((s) => s.baseMap);
   useEffect(() => {
     if (!mapDivRef.current) return;
 
-    const drawLayers = buildDrawLayers(workVisibility);
+    const initialLayers = useLayersStore.getState().layers;
+    const drawLayers = buildDrawLayers(workVisibility, initialLayers);
+    // Aplicar filter inicial (visibilidad por layerId).
+    const initialWebgl = drawLayers.webglLayer as any;
+    if (typeof initialWebgl.setFilter === 'function') {
+      initialWebgl.setFilter(buildLayerFilter(initialLayers));
+    }
     const drawSrc = drawLayers.source;
     drawSrcRef.current = drawSrc;
     useMapStore.getState().setDrawSource(drawSrc);
@@ -428,12 +434,28 @@ postrenderPainter.dispose();
 
 useEffect(() => {
   const unsub = useLayersStore.subscribe((state) => {
+    // Visibilidad legacy por tipo (mantener compat con layerStore.workVisibility
+    // y los toggles de "Lotes/Calles/Cotas" del ribbon de Vista).
     const anyLoteVisible = state.layers.some((l) => (l.kind === 'lote' || l.kind === 'manzana') && l.visible);
     const anyCalleVisible = state.layers.some((l) => l.kind === 'calle' && l.visible);
     const anyCotaVisible = state.layers.some((l) => l.kind === 'cota' && l.visible);
     if (drawLayerRef.current) drawLayerRef.current.setVisible(anyLoteVisible);
     if (streetLayerRef.current) streetLayerRef.current.setVisible(anyCalleVisible);
     if (measurementLayerRef.current) measurementLayerRef.current.setVisible(anyCotaVisible);
+
+    // Reconstruir el style del WebGL para que los cambios de color/opacity
+    // por capa se apliquen. El filter (visibility por layerId) también se
+    // reconstruye acá.
+    const layer = drawLayerRef.current as any;
+    if (layer) {
+      layer.setStyle(buildWebglStyle(state.layers));
+      if (typeof layer.setFilter === 'function') {
+        layer.setFilter(buildLayerFilter(state.layers));
+      } else {
+        // Fallback: forzar re-render del layer.
+        layer.changed();
+      }
+    }
   });
   return unsub;
 }, []);

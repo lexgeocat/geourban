@@ -98,5 +98,3 @@ export function getOrCreateSpatialIndex(): SpatialIndex {
   }
   return globalSpatialIndex;
 }
-
-

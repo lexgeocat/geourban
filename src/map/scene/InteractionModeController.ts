@@ -20,7 +20,6 @@ import type { DrawMode } from '../../store/drawStore';
 import { useDrawStore } from '../../store/drawStore';
 import { useSelectionStore } from '../../store/selectionStore';
 import { useStreetStore } from '../../store/streetStore';
-import { useMapStore } from '../../store/mapStore';
 import { runCommand } from '../../commands/CommandStack';
 import { AddFeatureCommand } from '../../commands/AddFeatureCommand';
 import { ModifyGeometryCommand } from '../../commands/ModifyGeometryCommand';
@@ -31,6 +30,7 @@ import { LassoSelection, type LassoMode } from './LassoSelection';
 import { useLayersStore } from '../../store/layersRegistryStore';
 import { useRoundaboutStore } from '../../store/roundaboutStore';
 import { AddRoundaboutCommand } from '../../commands/AddRoundaboutCommand';
+import { DeleteFeaturesCommand } from '../../commands/DeleteFeaturesCommand';
 import { RoundaboutDrawInteraction } from './RoundaboutDrawInteraction';
 import { pointInPoly } from '../../geo/polygonEngine';
 import type { PostrenderPainter } from './PostrenderPainter';
@@ -587,10 +587,17 @@ if (mode === 'erase') {
         const ids: Array<string | number> = [];
         selected.forEach((f: Feature<Geometry>) => {
           const id = f.getId();
-          if (id !== undefined && id !== null) ids.push(id as string | number);
+          if (id === undefined || id === null) return;
+          const layerId = f.get('layerId') as string | undefined;
+          if (layerId) {
+            const layer = useLayersStore.getState().getById(layerId);
+            if (layer?.locked) return;
+          }
+          ids.push(id as string | number);
         });
-        // Import dinámico para evitar dependencia circular
-        ids.forEach((id) => useMapStore.getState().deleteFeatureById(id));
+        if (ids.length > 0) {
+          void runCommand(new DeleteFeaturesCommand(ids));
+        }
         select.getFeatures().clear();
       });
       map.addInteraction(select);

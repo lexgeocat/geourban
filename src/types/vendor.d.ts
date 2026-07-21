@@ -44,6 +44,13 @@ declare module 'dxf-parser' {
     radius?: number;
     startAngle?: number;
     endAngle?: number;
+  }
+  export interface IDxf {
+    entities?: IEntity[];
+  }
+  export default class DxfParser {
+    parseSync(source: string): IDxf | null;
+  }
 }
 
 declare module 'dxf-writer' {
@@ -56,12 +63,5 @@ declare module 'dxf-writer' {
     drawLinearDimension(x1: number, y1: number, x2: number, y2: number, textX: number, textY: number, text: string): void;
     drawPoint(x: number, y: number): void;
     toDxfString(): string;
-  }
-}
-  export interface IDxf {
-    entities?: IEntity[];
-  }
-  export default class DxfParser {
-    parseSync(source: string): IDxf | null;
   }
 }

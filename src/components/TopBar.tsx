@@ -1,5 +1,4 @@
 import React, { useRef, useState } from 'react';
-import { Map } from 'ol';
 import {
   ChevronUp,
   Trash2,
@@ -17,6 +16,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { useMapStore } from '../store/mapStore';
+import { useCurrentProjectStore } from '../store/currentProjectStore';
 import { useDrawStore, type DrawMode } from '../store/drawStore';
 import {
   useLayerStore,
@@ -282,7 +282,6 @@ function RibbonGroup({
    ================================================================ */
 
 export default function TopBar() {
-  const mapRef = useRef<Map | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [appMenuOpen, setAppMenuOpen] = useState(false);
   const [exportSubmenuOpen, setExportSubmenuOpen] = useState(false);
@@ -383,7 +382,7 @@ const setRoundaboutPanelVisible = useRoundaboutStore((s) => s.setPanelVisible);
     setAppMenuOpen(false);
     setExportSubmenuOpen(false);
     try {
-      const map = mapRef.current;
+      const map = useMapStore.getState().mapInstance;
       if (!map) throw new Error('Mapa no inicializado');
       
       // Wait for render to complete
@@ -450,6 +449,7 @@ const setRoundaboutPanelVisible = useRoundaboutStore((s) => s.setPanelVisible);
     refreshSourceMetrics(drawSource);
     drawSource.changed();
     useSelectionStore.getState().clear();
+    useCurrentProjectStore.getState().setCurrentProjectId(null);
   };
 
   const handleOpenProjectBrowser = () => {
@@ -468,6 +468,9 @@ const setRoundaboutPanelVisible = useRoundaboutStore((s) => s.setPanelVisible);
       refreshSourceMetrics(drawSource);
       drawSource.changed();
       fitToExtent();
+      useCurrentProjectStore.getState().setCurrentProjectId(
+        typeof project.id === 'number' ? project.id : null
+      );
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Error al abrir proyecto');
     }
@@ -920,14 +923,14 @@ const setRoundaboutPanelVisible = useRoundaboutStore((s) => s.setPanelVisible);
                   label="Área verde"
                   shortcut="Shift+G"
                   onClick={() => { setAreaKind('area_verde'); setMode('polygon'); }}
-                  data-tooltip="Crear área verde (Shift+G)"
+                  tooltip="Crear área verde (Shift+G)"
                 />
                 <RibbonTool
                   icon={<IconEquip />}
                   label="Equipamiento"
                   shortcut="Shift+E"
                   onClick={() => { setAreaKind('equipamiento'); setMode('polygon'); }}
-                  data-tooltip="Crear equipamiento (Shift+E)"
+                  tooltip="Crear equipamiento (Shift+E)"
                 />
               </RibbonGroup>
 <RibbonGroup label="Vialidad">
@@ -1058,12 +1061,12 @@ const setRoundaboutPanelVisible = useRoundaboutStore((s) => s.setPanelVisible);
         </RibbonContext.Provider>
       )}
     </div>
-<ProjectBrowserModal
+    <ProjectBrowserModal
       isOpen={projectBrowserOpen}
       onClose={() => setProjectBrowserOpen(false)}
       onOpenProject={handleProjectOpen}
       onNewProject={handleNewProject}
-      currentProjectName={getCurrentProject().name}
+      currentProjectId={useCurrentProjectStore((s) => s.currentProjectId)}
     />
     </>
   );

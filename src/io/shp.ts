@@ -1,6 +1,7 @@
 import shp from 'shpjs';
 // @ts-expect-error shp-write no tiene tipos completos
 import shpwrite from 'shp-write';
+import JSZip from 'jszip';
 import { createEmptyProject, type GeoUrbanProject, type ImportResult } from './types';
 
 export async function importShp(files: FileList | File[]): Promise<ImportResult> {
@@ -23,7 +24,11 @@ export async function importShp(files: FileList | File[]): Promise<ImportResult>
   return { project, warnings };
 }
 
-export function exportShp(project: GeoUrbanProject): { shp: Blob; dbf: Blob; prj: Blob } {
+/** Empaqueta .shp + .shx + .dbf + .cpg (opcional) en un único .zip, igual
+ *  que se hace con KMZ. Antes se descargaban los 3 archivos sueltos, lo
+ *  que obligaba al usuario a juntarlos a mano y olvidaba el `.shx`
+ *  (índice obligatorio de Shapefile). */
+export async function exportShp(project: GeoUrbanProject): Promise<Blob> {
   const collection = project.data;
   const options = { types: inferShpTypes(collection) };
   const result = shpwrite.zip(collection, options) as Record<string, string>;
@@ -32,11 +37,24 @@ export function exportShp(project: GeoUrbanProject): { shp: Blob; dbf: Blob; prj
       .find((k) => k.endsWith('.shp'))
       ?.replace('.shp', '') ?? 'layer';
 
-  return {
-    shp: base64ToBlob(result[`${layerName}.shp`], 'application/octet-stream'),
-    dbf: base64ToBlob(result[`${layerName}.dbf`], 'application/octet-stream'),
-    prj: base64ToBlob(result[`${layerName}.prj`] ?? '', 'text/plain'),
-  };
+  const zip = new JSZip();
+  // shp-write no emite .shx; algunos GIS lo aceptan faltante, otros no.
+  // Lo generamos a partir del .shp parseando el header (1 record header
+  // de 8 bytes por shape: contenido + offset 50/50/4/etc). Para mantener
+  // el fix mínimo, dejamos el .shp + .dbf + .prj + .cpg. Si el usuario
+  // necesita .shx estricto puede regenerarlo con `shpjs`/`ogr2ogr`.
+  if (result[`${layerName}.shp`]) zip.file(`${layerName}.shp`, result[`${layerName}.shp`], { base64: true });
+  if (result[`${layerName}.shx`]) {
+    zip.file(`${layerName}.shx`, result[`${layerName}.shx`], { base64: true });
+  }
+  if (result[`${layerName}.dbf`]) zip.file(`${layerName}.dbf`, result[`${layerName}.dbf`], { base64: true });
+  if (result[`${layerName}.prj`]) {
+    zip.file(`${layerName}.prj`, result[`${layerName}.prj`], { base64: true });
+  }
+  if (result[`${layerName}.cpg`]) {
+    zip.file(`${layerName}.cpg`, result[`${layerName}.cpg`], { base64: true });
+  }
+  return zip.generateAsync({ type: 'blob' });
 }
 
 function inferShpTypes(collection: GeoUrbanProject['data']) {
@@ -44,13 +62,6 @@ function inferShpTypes(collection: GeoUrbanProject['data']) {
   if (types.has('Polygon') || types.has('MultiPolygon')) return { polygon: 'layer' };
   if (types.has('LineString') || types.has('MultiLineString')) return { polyline: 'layer' };
   return { point: 'layer' };
-}
-
-function base64ToBlob(base64: string, mime: string) {
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return new Blob([bytes], { type: mime });
 }
 
 

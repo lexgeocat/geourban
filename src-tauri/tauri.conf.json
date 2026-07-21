@@ -36,10 +36,5 @@
     "android": {
       "debugApplicationIdSuffix": ".debug"
     }
-  },
-  "plugins": {
-    "sql": {
-      "preload": ["sqlite:geourban.db"]
-    }
   }
 }
