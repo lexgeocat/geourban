@@ -229,18 +229,6 @@ Las celdas de **impacto alto / esfuerzo bajo** (H5, H19, H10, H13, H6, parte de 
 
 ## 7. Plan de acción por fases
 
-### Fase 0 — Instrumentación y línea base (previo a optimizar)
-
-**Objetivo:** dejar de optimizar "a ojo" y tener números reales antes/después.
-
-- Agregar marcas de performance (`performance.mark`/`performance.measure`) alrededor de: `PostrenderPainter.handle()`, `CommandStack.run()`, llamadas al worker (`geoWorkerClient.ts`), `refreshSourceMetrics`.
-- HUD opcional de desarrollo (FPS + frame time + nº de features) activable por flag, para medir con proyectos sintéticos de 100 / 1.000 / 5.000 lotes.
-- Definir el proyecto de prueba "stress" (script que genere N manzanos + subdivisión automática) para reproducir cargas grandes de forma determinística.
-
-**Esfuerzo:** S. **Riesgo:** ninguno (solo instrumentación, no toca comportamiento).
-
----
-
 ### Fase 1 — Correcciones críticas de bajo riesgo (quick wins)
 
 No requieren rearquitectura; se pueden desplegar de forma independiente.
