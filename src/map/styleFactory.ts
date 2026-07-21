@@ -4,6 +4,7 @@ import type Geometry from 'ol/geom/Geometry.js';
 import type { StyleFunction } from 'ol/style/Style.js';
 import { Fill, Stroke, Style, Text } from 'ol/style.js';
 import type { SegmentMetric } from '../geo/metrics';
+import { measureCachedWidth } from './textMeasureCache';
 
 // ─── Colores
 const GEOURBAN_MANZANA_COLOR = '#58a6ff';
@@ -167,7 +168,7 @@ export function drawSegmentLabels(
     ctx.font = isManzana ? `600 ${fs}px Courier New` : `500 ${fs}px Courier New`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    const tw = ctx.measureText(label).width;
+    const tw = measureCachedWidth(ctx, label);
     ctx.fillStyle = GEOURBAN_TEXT_BG;
     ctx.fillRect(-tw / 2 - 3, -fs / 2 - 1.5, tw + 6, fs + 3);
     ctx.fillStyle = isManzana ? GEOURBAN_MANZANA_COLOR + 'ee' : '#e2e8f0ee';
@@ -192,7 +193,7 @@ export function drawMainMetricLabel(
   ctx.font = `700 ${fs}px Courier New`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  const tw = ctx.measureText(text).width;
+  const tw = measureCachedWidth(ctx, text);
   ctx.fillStyle = GEOURBAN_TEXT_BG;
   ctx.fillRect(px[0] - tw / 2 - 4, px[1] - fs / 2 - 2, tw + 8, fs + 4);
   ctx.fillStyle = mainColor + 'ee';
@@ -201,7 +202,7 @@ export function drawMainMetricLabel(
   if (options?.extraLine) {
     const fs2 = fs * 0.8;
     ctx.font = `500 ${fs2}px Courier New`;
-    const tw2 = ctx.measureText(options.extraLine).width;
+    const tw2 = measureCachedWidth(ctx, options.extraLine);
     const y2 = px[1] + fs * 0.5 + fs2 * 0.6 + 2;
     ctx.fillStyle = GEOURBAN_TEXT_BG;
     ctx.fillRect(px[0] - tw2 / 2 - 3, y2 - fs2 / 2 - 1.5, tw2 + 6, fs2 + 3);

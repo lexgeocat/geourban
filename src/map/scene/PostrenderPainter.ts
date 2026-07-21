@@ -7,7 +7,7 @@ import Polygon from 'ol/geom/Polygon.js';
 import LineString from 'ol/geom/LineString.js';
 import { useStreetStore, type Street } from '../../store/streetStore';
 import { useSelectionStore } from '../../store/selectionStore';
-import { computeStreetFillets, filletArcPoints, type StreetFillet } from '../../geo/streetEngine';
+import { computeStreetFilletsBoth, filletArcPoints, type StreetFillet } from '../../geo/streetEngine';
 import { type Pt } from '../../geo/polygonEngine';
 import { useRoundaboutStore } from '../../store/roundaboutStore';
 import { roundaboutGeometry } from '../../geo/roundaboutEngine';
@@ -19,9 +19,10 @@ import {
   computeLotGroupCounts,
   getApproxScreenArea,
 } from '../styleFactory';
-import { formatMetricArea, formatMetricLength, type SegmentMetric } from '../../geo/metrics';
+import { formatMetricLength, formatMetricArea, type SegmentMetric } from '../../geo/metrics';
 import { MZN_COLORS_STR } from './DrawLayerRenderer';
 import type { SnapGuideVisual } from '../advancedSnap';
+import { measureCached, measureCachedWidth } from '../textMeasureCache';
 
 // Función para calcular el zoom a partir de la resolución
 function getZoomFromResolution(resolution: number): number {
@@ -143,7 +144,7 @@ function pickStreetLabelSlots(
 
   ctx.save();
   ctx.font = `bold ${fontPx}px Courier New`;
-  const textHalfW = ctx.measureText(labelText).width / 2 + 4;
+  const textHalfW = measureCachedWidth(ctx, labelText) / 2 + 4;
   ctx.restore();
 
   const marginM = textHalfW + roadHalfWidthM + 4;
@@ -206,9 +207,9 @@ function isColliding(
   toPx: (c: number[]) => [number, number],
 ): boolean {
   const px = toPx(coord);
-  const m = ctx.measureText(text);
-  const w = Math.abs(m.actualBoundingBoxLeft) + Math.abs(m.actualBoundingBoxRight) + 12;
-  const h = Math.abs(m.actualBoundingBoxAscent) + Math.abs(m.actualBoundingBoxDescent) + 6;
+  const m = measureCached(ctx, text);
+  const w = Math.abs(m.left) + Math.abs(m.right) + 12;
+  const h = Math.abs(m.ascent) + Math.abs(m.descent) + 6;
   const bx = px[0] - w / 2;
   const by = px[1] - h / 2;
   for (const b of boxes) {
@@ -216,6 +217,38 @@ function isColliding(
   }
   boxes.push({ x: bx, y: by, w, h });
   return false;
+}
+
+function streetAllCoords(s: Street): Array<[number, number]> {
+  const coords: Array<[number, number]> = [s.start];
+  if (s.waypoints) coords.push(...s.waypoints);
+  coords.push(s.end);
+  return coords;
+}
+
+/**
+ * Precalcula, por calle, dónde va cada repetición del nombre de vía. Es
+ * lo más caro de pintar una calle (mide texto + evita cruces/puntas), así
+ * que se cachea en updateCache() en vez de correr en cada frame dentro de
+ * paintStreets() — ver diagnóstico H4.
+ */
+function computeAllStreetLabelSlots(
+  ctx: CanvasRenderingContext2D,
+  streets: Street[],
+  crossingsMap: CrossingsMap,
+  zoom: number,
+): globalThis.Map<string, StreetLabelSlot[]> {
+  const result = new globalThis.Map<string, StreetLabelSlot[]>();
+  if (zoom <= 12) return result; // por debajo de este zoom no se pintan etiquetas de calle
+  for (const s of streets) {
+    const crossings = crossingsMap.get(s.id) ?? [];
+    const fs1 = Math.max(9, Math.min(13, (10 * zoom) / 18));
+    const labelText = `--- ${s.name} (Ancho de Vía ${s.widthM.toFixed(2)}m) ---`;
+    const roadHalfWidthM = s.widthM / 2 + Math.max(0, s.sideWidthM ?? 0);
+    const slots = pickStreetLabelSlots(ctx, streetAllCoords(s), crossings, labelText, fs1, roadHalfWidthM, 140);
+    result.set(s.id, slots);
+  }
+  return result;
 }
 
 export class PostrenderPainter {
@@ -226,6 +259,8 @@ export class PostrenderPainter {
     cachedFillets: [] as StreetFillet[],
     cachedOuterFillets: [] as StreetFillet[],
     cachedCrossings: new globalThis.Map<string, Pt[]>(),
+    cachedStreetLabelSlots: new globalThis.Map<string, StreetLabelSlot[]>(),
+    lastLabelZoomBucket: -1,
     lotGroupCounts: new globalThis.Map<string, number>(),
     dirty: true,
   };
@@ -234,6 +269,10 @@ export class PostrenderPainter {
   private readonly drawSource: VectorSource;
   private readonly postrenderLayer: VectorLayer<VectorSource>;
   private readonly listener: (event: any) => void;
+
+  /** true mientras hay un gesto de pan/zoom activo (movestart sin
+   *  moveend) — ver diagnóstico H4 "modo barato durante interacción". */
+  private interacting = false;
 
   constructor(opts: {
     map: Map;
@@ -259,6 +298,16 @@ export class PostrenderPainter {
     this.cache.dirty = true;
   }
 
+  /** Activa/desactiva el modo barato durante pan/zoom. Mientras está
+   *  activo, se omite el pintado de etiquetas de texto (áreas,
+   *  perímetros, cotas de segmento, nombres de calle); la geometría de
+   *  lotes/manzanos sigue viéndose vía WebGL sin interrupción. */
+  setInteracting(value: boolean): void {
+    if (this.interacting === value) return;
+    this.interacting = value;
+    this.postrenderLayer.changed();
+  }
+
   private handle(event: any): void {
     const ctx = event.context as CanvasRenderingContext2D | undefined;
     if (!ctx) return;
@@ -267,34 +316,57 @@ export class PostrenderPainter {
     const zoom = getZoomFromResolution(resolution);
     const features = this.drawSource.getFeatures() ?? [];
 
-    this.updateCache(features, zoom);
+    this.updateCache(ctx, features, zoom);
 
     const toPx = (coord: number[]): [number, number] => {
       const px = this.map.getPixelFromCoordinate(coord as [number, number]);
       return px ? [px[0], px[1]] : [0, 0];
     };
 
-this.paintFeatureLabels(ctx, features, zoom, resolution, toPx);
-this.paintManualCotaz(ctx, features, zoom, resolution, toPx);
-this.paintStreets(ctx, zoom, resolution, toPx);
-this.paintRoundabouts(ctx, toPx);
-this.paintSnapGuides(ctx, resolution, toPx);
+    if (!this.interacting) {
+      this.paintFeatureLabels(ctx, features, zoom, resolution, toPx);
+    }
+    this.paintManualCotaz(ctx, features, zoom, resolution, toPx);
+    this.paintStreets(ctx, zoom, resolution, toPx);
+    this.paintRoundabouts(ctx, toPx);
+    this.paintSnapGuides(ctx, resolution, toPx);
     this.paintLassoPreview(ctx, toPx);
   }
 
-  private updateCache(features: Array<Feature<Geometry>>, _zoom: number): void {
+  private updateCache(ctx: CanvasRenderingContext2D, features: Array<Feature<Geometry>>, zoom: number): void {
     const currentFeatureCount = features.length;
     const streets = useStreetStore.getState().streets;
     const currentStreetHash = streetsHash(streets);
     const featuresChanged = currentFeatureCount !== this.cache.lastFeatureCount;
     const streetsChanged = currentStreetHash !== this.cache.lastStreetHash;
+    // Bucket grueso de zoom: el margen de las etiquetas de calle depende
+    // del tamaño de fuente (que depende del zoom), pero no vale la pena
+    // recalcular sus posiciones en cada frame de un pan puro (zoom
+    // constante) — ver diagnóstico H4.
+    const zoomBucket = Math.round(zoom * 4);
+    const zoomBucketChanged = zoomBucket !== this.cache.lastLabelZoomBucket;
 
     if (streetsChanged || this.cache.dirty) {
-      this.cache.cachedFillets = computeStreetFillets(streets);
-      this.cache.cachedOuterFillets = computeStreetFillets(streets, { outer: true });
+      // Antes: 2 llamadas a computeStreetFillets (outer:false / outer:true)
+      // repitiendo el doble loop completo sobre pares de calles. Ahora:
+      // una sola pasada — ver diagnóstico H4/H7.
+      const { inner, outer } = computeStreetFilletsBoth(streets);
+      this.cache.cachedFillets = inner;
+      this.cache.cachedOuterFillets = outer;
       this.cache.cachedCrossings = computeStreetCrossings(streets);
       this.cache.lastStreetHash = currentStreetHash;
     }
+
+    if (streetsChanged || this.cache.dirty || zoomBucketChanged) {
+      this.cache.cachedStreetLabelSlots = computeAllStreetLabelSlots(
+        ctx,
+        streets,
+        this.cache.cachedCrossings,
+        zoom,
+      );
+      this.cache.lastLabelZoomBucket = zoomBucket;
+    }
+
     if (featuresChanged || this.cache.dirty) {
       this.cache.lotGroupCounts = computeLotGroupCounts(features as Feature<Geometry>[]);
     }
@@ -483,7 +555,7 @@ this.paintSnapGuides(ctx, resolution, toPx);
         ctx.textAlign = 'center';
         ctx.textBaseline = 'bottom';
         ctx.font = `bold ${fs}px Courier New`;
-        const tw = ctx.measureText(text).width;
+        const tw = measureCachedWidth(ctx, text);
         ctx.fillStyle = 'rgba(13, 17, 23, 0.72)';
         ctx.fillRect(-tw / 2 - 4, -fs - 4, tw + 8, fs + 6);
         ctx.fillStyle = isSelected ? '#00ccff' : '#00b4ff';
@@ -595,14 +667,13 @@ this.paintSnapGuides(ctx, resolution, toPx);
       ctx.setLineDash([]);
       ctx.restore();
 
-      // Etiqueta de calle
-      if (zoom > 12) {
-        const crossings = this.cache.cachedCrossings.get(s.id) ?? [];
+      // Etiqueta de calle — posiciones ya precomputadas en updateCache()
+      // (dirty solo si cambian las calles o el bucket de zoom, ver H4).
+      if (!this.interacting && zoom > 12) {
+        const slots = this.cache.cachedStreetLabelSlots.get(s.id) ?? [];
         const fs1 = Math.max(9, Math.min(13, 10 * zoom / 18));
         const fs2 = Math.max(8, Math.min(11, 9 * zoom / 18));
         const labelText = `--- ${s.name} (Ancho de Vía ${s.widthM.toFixed(2)}m) ---`;
-        const roadHalfWidthM = s.widthM / 2 + sideWidthM;
-        const slots = pickStreetLabelSlots(ctx, allCoords, crossings, labelText, fs1, roadHalfWidthM, 140);
         for (const slot of slots) {
           const px = toPx(slot.pos);
           ctx.save();

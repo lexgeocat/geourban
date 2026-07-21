@@ -555,6 +555,11 @@ export class InteractionModeController {
           new AddStreetCommand(start, end, streetStore.defaultWidthM, waypoints, streetStore.defaultSideWidthM),
         );
 
+        // La calle real vive en useStreetStore (PostrenderPainter la pinta
+        // leyendo de ahí). Esta feature en streetSource solo existía para
+        // que Draw tuviera dónde dibujar el sketch — si no se limpia,
+        // queda huérfana para siempre (leak lento — H16).
+        this.ctx.streetSource?.removeFeature(feature);
         this.ctx.streetSource?.changed();
       });
 

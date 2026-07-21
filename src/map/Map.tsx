@@ -189,6 +189,10 @@ const baseMapId = useLayerStore((s) => s.baseMap);
     }
 
     const onMoveEnd = () => {
+      // Fin del gesto de pan/zoom: PostrenderPainter vuelve a pintar
+      // etiquetas de texto completas (ver H4 — modo barato durante
+      // interacción).
+      postrenderPainter.setInteracting(false);
       const center = view.getCenter();
       const currentZoom = view.getZoom();
       if (center && currentZoom !== undefined) {
@@ -197,6 +201,8 @@ const baseMapId = useLayerStore((s) => s.baseMap);
       }
     };
     const moveEndKey = map.on('moveend', onMoveEnd);
+    const onMoveStart = () => postrenderPainter.setInteracting(true);
+    const moveStartKey = map.on('movestart', onMoveStart);
 
     // --- Indicador visual de snap (capa overlay, agregada al final) ---
     const snapIndicatorSrc = new VectorSource();
@@ -395,6 +401,7 @@ if (rotateLotsInteractionRef.current) {
   rotateLotsInteractionRef.current = null;
 }
 unByKey(moveEndKey);
+unByKey(moveStartKey);
 postrenderPainter.dispose();
       drawSrc.un('addfeature', onSpatialInsert);
       drawSrc.un('removefeature', onSpatialRemove);

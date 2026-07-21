@@ -1,17 +1,8 @@
-import Feature from 'ol/Feature.js';
-import LineString from 'ol/geom/LineString.js';
-import Polygon, { fromExtent } from 'ol/geom/Polygon.js';
-import LayerGroup from 'ol/layer/Group.js';
-import VectorLayer from 'ol/layer/Vector.js';
+import ImageLayer from 'ol/layer/Image.js';
+import ImageCanvasSource from 'ol/source/ImageCanvas.js';
 import type Map from 'ol/Map.js';
-import { unByKey } from 'ol/Observable.js';
-import VectorSource from 'ol/source/Vector.js';
-import { Fill, Stroke, Style } from 'ol/style.js';
-
-/** Extensión Web Mercator — cubre el mundo proyectado */
-const WORLD_EXTENT: [number, number, number, number] = [
-  -20037508.342789244, -20037508.342789244, 20037508.342789244, 20037508.342789244,
-];
+import type { Extent } from 'ol/extent.js';
+import type { Size } from 'ol/size.js';
 
 const NICE_STEPS = [0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000];
 
@@ -19,20 +10,6 @@ const CAD_BG = '#0a0e14';
 const CAD_MINOR = 'rgba(36, 48, 68, 0.85)';
 const CAD_MAJOR = 'rgba(0, 212, 255, 0.22)';
 const CAD_AXIS = 'rgba(0, 212, 255, 0.45)';
-
-type GridKind = 'minor' | 'major' | 'axis';
-
-const GRID_STYLES: Record<GridKind, Style> = {
-  minor: new Style({
-    stroke: new Stroke({ color: CAD_MINOR, width: 1 }),
-  }),
-  major: new Style({
-    stroke: new Stroke({ color: CAD_MAJOR, width: 1.25 }),
-  }),
-  axis: new Style({
-    stroke: new Stroke({ color: CAD_AXIS, width: 1.5 }),
-  }),
-};
 
 export function snapSpacing(meters: number) {
   for (const step of NICE_STEPS) {
@@ -47,104 +24,123 @@ function isMultipleOf(value: number, step: number) {
   return Math.abs(ratio - Math.round(ratio)) < 1e-4;
 }
 
-function rebuildGridFeatures(source: VectorSource, map: Map) {
-  const view = map.getView();
-  const size = map.getSize();
-  if (!size) return;
+/**
+ * Dibuja la grilla CAD directamente en canvas — reemplaza el enfoque
+ * anterior de VectorLayer+Feature por línea (ver diagnóstico H3): un solo
+ * beginPath/stroke por color en vez de un Feature + función de estilo por
+ * cada línea de la grilla.
+ */
+function drawCadGrid(
+  ctx: CanvasRenderingContext2D,
+  extent: Extent,
+  resolution: number,
+  pixelRatio: number,
+  size: Size,
+): void {
+  const [minX, minY, maxX, maxY] = extent;
+  const width = size[0];
+  const height = size[1];
 
-  const extent = view.calculateExtent(size);
-  const resolution = view.getResolution() ?? 1;
+  // Fondo
+  ctx.fillStyle = CAD_BG;
+  ctx.fillRect(0, 0, width, height);
+
   const minorSpacing = snapSpacing(resolution * 52);
   const majorSpacing = minorSpacing * 5;
 
-  const [minX, minY, maxX, maxY] = extent;
   const pad = minorSpacing * 3;
   const x0 = Math.floor((minX - pad) / minorSpacing) * minorSpacing;
   const x1 = Math.ceil((maxX + pad) / minorSpacing) * minorSpacing;
   const y0 = Math.floor((minY - pad) / minorSpacing) * minorSpacing;
   const y1 = Math.ceil((maxY + pad) / minorSpacing) * minorSpacing;
 
-  const features: Feature[] = [];
+  // Mundo -> pixel de canvas (Y invertida; el canvas crece hacia abajo)
+  const toPxX = (x: number) => ((x - minX) / resolution) * pixelRatio;
+  const toPxY = (y: number) => ((maxY - y) / resolution) * pixelRatio;
 
+  const vMinor: number[] = [];
+  const vMajor: number[] = [];
+  const vAxis: number[] = [];
   for (let x = x0; x <= x1; x += minorSpacing) {
     const onAxis = Math.abs(x) < minorSpacing * 0.01;
     const isMajor = onAxis || isMultipleOf(x, majorSpacing);
-    features.push(
-      new Feature({
-        geometry: new LineString([
-          [x, y0],
-          [x, y1],
-        ]),
-        gridKind: onAxis ? 'axis' : isMajor ? 'major' : 'minor',
-      })
-    );
+    const px = toPxX(x);
+    (onAxis ? vAxis : isMajor ? vMajor : vMinor).push(px);
   }
 
+  const hMinor: number[] = [];
+  const hMajor: number[] = [];
+  const hAxis: number[] = [];
   for (let y = y0; y <= y1; y += minorSpacing) {
     const onAxis = Math.abs(y) < minorSpacing * 0.01;
     const isMajor = onAxis || isMultipleOf(y, majorSpacing);
-    features.push(
-      new Feature({
-        geometry: new LineString([
-          [x0, y],
-          [x1, y],
-        ]),
-        gridKind: onAxis ? 'axis' : isMajor ? 'major' : 'minor',
-      })
-    );
+    const py = toPxY(y);
+    (onAxis ? hAxis : isMajor ? hMajor : hMinor).push(py);
   }
 
-  source.clear(true);
-  source.addFeatures(features);
-}
+  const strokeV = (xs: number[], color: string, lineWidth: number) => {
+    if (xs.length === 0) return;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = lineWidth;
+    ctx.beginPath();
+    for (const px of xs) {
+      ctx.moveTo(px, 0);
+      ctx.lineTo(px, height);
+    }
+    ctx.stroke();
+  };
+  const strokeH = (ys: number[], color: string, lineWidth: number) => {
+    if (ys.length === 0) return;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = lineWidth;
+    ctx.beginPath();
+    for (const py of ys) {
+      ctx.moveTo(0, py);
+      ctx.lineTo(width, py);
+    }
+    ctx.stroke();
+  };
 
-function createBackgroundLayer() {
-  const source = new VectorSource({
-    features: [
-      new Feature({
-        geometry: fromExtent(WORLD_EXTENT),
-      }),
-    ],
-  });
-
-  return new VectorLayer({
-    source,
-    style: new Style({
-      fill: new Fill({ color: CAD_BG }),
-    }),
-  });
+  strokeV(vMinor, CAD_MINOR, pixelRatio);
+  strokeH(hMinor, CAD_MINOR, pixelRatio);
+  strokeV(vMajor, CAD_MAJOR, 1.25 * pixelRatio);
+  strokeH(hMajor, CAD_MAJOR, 1.25 * pixelRatio);
+  strokeV(vAxis, CAD_AXIS, 1.5 * pixelRatio);
+  strokeH(hAxis, CAD_AXIS, 1.5 * pixelRatio);
 }
 
 export type CadBaseMapBundle = {
-  layer: LayerGroup;
+  layer: ImageLayer<ImageCanvasSource>;
   attach: (map: Map) => () => void;
 };
 
 export function createCadBaseMap(): CadBaseMapBundle {
-  const gridSource = new VectorSource();
-  const gridLayer = new VectorLayer({
-    source: gridSource,
-    style: (feature) => GRID_STYLES[(feature.get('gridKind') as GridKind) ?? 'minor'],
-    updateWhileAnimating: true,
-    updateWhileInteracting: false,
-    renderBuffer: 100,
+  // Reusar un único canvas/contexto entre invocaciones de canvasFunction
+  // (mismo patrón que PostrenderPainter).
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('No se pudo obtener contexto 2D para la grilla CAD');
+
+  const source = new ImageCanvasSource({
+    canvasFunction: (extent, resolution, pixelRatio, size) => {
+      canvas.width = size[0];
+      canvas.height = size[1];
+      drawCadGrid(ctx, extent, resolution, pixelRatio, size);
+      return canvas;
+    },
+    projection: 'EPSG:3857',
+    // ratio > 1: renderiza un área algo más grande que el viewport, así
+    // paneos cortos no disparan un nuevo canvasFunction en cada frame.
+    ratio: 1.15,
   });
 
-  const layer = new LayerGroup({
-    layers: [createBackgroundLayer(), gridLayer],
-  });
+  const layer = new ImageLayer({ source });
 
-  const attach = (map: Map) => {
-    const update = () => rebuildGridFeatures(gridSource, map);
-    update();
-
-    const moveKey = map.on('moveend', update);
-    const resKey = map.getView().on('change:resolution', update);
-
-    return () => {
-      unByKey(moveKey);
-      unByKey(resKey);
-    };
+  const attach = (_map: Map) => {
+    // ImageCanvasSource ya se invalida sola cuando la vista sale del área
+    // cacheada o cambia la resolución — no hace falta escuchar
+    // 'moveend'/'change:resolution' a mano como con el VectorLayer viejo.
+    return () => {};
   };
 
   return { layer, attach };
@@ -152,4 +148,4 @@ export function createCadBaseMap(): CadBaseMapBundle {
 
 export const CAD_BASE_MAP_ATTRIBUTION = 'Fondo CAD — grilla métrica GeoUrban';
 
-export const cadBaseMapBundles = new WeakMap<LayerGroup, CadBaseMapBundle>();
+export const cadBaseMapBundles = new WeakMap<ImageLayer<ImageCanvasSource>, CadBaseMapBundle>();
