@@ -1,7 +1,7 @@
+// src/commands/CommandStack.ts
 import { create } from 'zustand';
 import { Command, type CommandContext, getCommandContext } from './Command';
 import { useSelectionStore } from '../store/selectionStore';
-import { refreshSourceMetrics } from '../geo/metrics';
 
 type RunResult =
   | { ok: true; command: Command }
@@ -110,7 +110,15 @@ export const useCommandStack = create<CommandStackState>()((set) => ({
     lastCoalesceKey = null;
     lastCommandAt = 0;
     useSelectionStore.getState().clear();
-    refreshSourceMetrics(ctx.drawSource);
+    // Cada Command.undo() ya deja sus propias métricas al día (H9): o
+    // restaura props con métricas cacheadas, o llama updateFeatureMetrics()
+    // puntual sobre lo que tocó. Los comandos cuyo efecto no está acotado
+    // (AddStreetCommand/AddRoundaboutCommand, por el recompute de manzanos)
+    // ya hacen su propio refreshSourceMetrics dentro de undo()/redo(). Un
+    // refreshSourceMetrics global acá volvía a recalcular TODO el proyecto
+    // en cada Ctrl+Z — el mismo costo que H9 eliminó de cada comando
+    // individual. `.changed()` solo dispara el re-render.
+    ctx.drawSource.changed();
     syncFlags(set);
     return true;
   },
@@ -140,7 +148,8 @@ export const useCommandStack = create<CommandStackState>()((set) => ({
     lastCoalesceKey = null;
     lastCommandAt = 0;
     useSelectionStore.getState().clear();
-    refreshSourceMetrics(ctx.drawSource);
+    // Mismo criterio que en undo(): sin refresh global, ver nota arriba.
+    ctx.drawSource.changed();
     syncFlags(set);
     return true;
   },
