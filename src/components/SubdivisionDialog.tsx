@@ -4,7 +4,7 @@ import { useMapStore } from '../store/mapStore';
 import { useCommandStack } from '../commands/CommandStack';
 import { SubdivideCommand } from '../commands/SubdivideCommand';
 import { useDrawStore } from '../store/drawStore';
-import { subdivide } from '../geo/subdivisionAlgorithms';
+import { subdivideInWorker } from '../workers/geoWorkerClient';
 import { polyArea, centroid, type Pt } from '../geo/polygonEngine';
 import type { Polygon as GeoJsonPolygon, LineString as GeoJsonLineString } from 'geojson';
 import GeoJSON from 'ol/format/GeoJSON.js';
@@ -83,7 +83,7 @@ export default function SubdivisionDialog() {
   if (!isOpen) return null;
   const combinedError = errorMessage ?? loadError;
 
-  const runPreview = () => {
+  const runPreview = async () => {
     setError(null);
     if (!targetGeom) {
       setError('No hay polígono target');
@@ -97,13 +97,24 @@ export default function SubdivisionDialog() {
     const effectiveOptions = method === 'manual-slice' && manualSplitLine
       ? { ...options, cutLine: { p1: manualSplitLine.coordinates[0] as [number, number], p2: manualSplitLine.coordinates[manualSplitLine.coordinates.length - 1] as [number, number] } }
       : options;
-    const r = subdivide(targetGeom, effectiveOptions);
-    if (!r.ok) {
-      setError(r.error ?? 'No se pudo generar el preview');
+
+    setLoading(true);
+    try {
+      // La subdivisión corre en el Web Worker — ver diagnóstico H8 — así
+      // que la vista previa ya no bloquea el hilo de UI mientras calcula.
+      const r = await subdivideInWorker(targetGeom, effectiveOptions);
+      if (!r.ok) {
+        setError(r.error ?? 'No se pudo generar el preview');
+        setPreview(null);
+        return;
+      }
+      setPreview({ count: r.features.length, warnings: r.warnings });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
       setPreview(null);
-      return;
+    } finally {
+      setLoading(false);
     }
-    setPreview({ count: r.features.length, warnings: r.warnings });
   };
 
   const applySubdivision = async () => {
@@ -315,19 +326,28 @@ export default function SubdivisionDialog() {
             gap: 8,
           }}
         >
-          <button onClick={runPreview} className="cad-icon-btn" style={secondaryBtnStyle}>
+          <button
+            onClick={() => void runPreview()}
+            disabled={loading}
+            className="cad-icon-btn"
+            style={{
+              ...secondaryBtnStyle,
+              opacity: loading ? 0.5 : 1,
+              cursor: loading ? 'wait' : 'pointer',
+            }}
+          >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 14, height: 14 }}>
               <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
               <circle cx="12" cy="12" r="3" />
             </svg>
-            Vista previa
+            {loading ? 'Calculando…' : 'Vista previa'}
           </button>
           <div style={{ display: 'flex', gap: 6 }}>
             <button onClick={close} className="cad-icon-btn" style={secondaryBtnStyle}>
               Cancelar
             </button>
             <button
-              onClick={applySubdivision}
+              onClick={() => void applySubdivision()}
               disabled={loading}
               className="cad-icon-btn"
               style={{

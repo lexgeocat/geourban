@@ -2,7 +2,7 @@ import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
 import type { Geometry as OlGeometry } from 'ol/geom';
 import { Command, type CommandContext } from './Command';
-import { updateFeatureMetrics, refreshSourceMetrics } from '../geo/metrics';
+import { updateFeatureMetrics } from '../geo/metrics';
 
 /** Captura el estado "antes" de un cambio de geometría para deshacer. */
 function captureGeom(f: Feature<Geometry>): unknown {
@@ -16,6 +16,13 @@ function restoreGeom(f: Feature<Geometry>, captured: unknown) {
   f.setGeometry(captured as OlGeometry);
 }
 
+/**
+ * Se eliminó el `refreshSourceMetrics` global tras cada execute/undo/redo
+ * — este comando ya conoce exactamente qué features tocó (`this.targets`)
+ * y ya recalcula su métrica una por una; barrer TODO `drawSource` en cada
+ * arrastre de vértice/traslado era trabajo puro desperdiciado sobre
+ * features que ni se movieron — ver diagnóstico H9.
+ */
 export class ModifyGeometryCommand extends Command {
   readonly label: string;
   readonly coalesceKey: string;
@@ -54,7 +61,6 @@ export class ModifyGeometryCommand extends Command {
       this.after.set(id, captureGeom(t));
       updateFeatureMetrics(t);
     }
-    refreshSourceMetrics(ctx.drawSource);
     ctx.drawSource.changed();
     this.applied = true;
   }
@@ -67,7 +73,6 @@ export class ModifyGeometryCommand extends Command {
       if (b !== undefined) restoreGeom(t, b);
       updateFeatureMetrics(t);
     }
-    refreshSourceMetrics(ctx.drawSource);
     ctx.drawSource.changed();
   }
 
@@ -79,7 +84,6 @@ export class ModifyGeometryCommand extends Command {
       if (a !== undefined) restoreGeom(t, a);
       updateFeatureMetrics(t);
     }
-    refreshSourceMetrics(ctx.drawSource);
     ctx.drawSource.changed();
   }
 

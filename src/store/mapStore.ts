@@ -4,7 +4,7 @@ import Map from 'ol/Map.js';
 import VectorSource from 'ol/source/Vector.js';
 import GeoJSON from 'ol/format/GeoJSON.js';
 import { extend as extendExtent, Extent } from 'ol/extent.js';
-import { refreshSourceMetrics } from '../geo/metrics';
+import { refreshSourceMetrics, updateFeatureMetrics } from '../geo/metrics';
 import { clipHalfPlane, pointInPoly, polyArea, type Pt } from '../geo/polygonEngine';
 import { useSelectionStore } from './selectionStore';
 import { useStreetStore } from './streetStore';
@@ -160,7 +160,13 @@ function closeGeoRing(ring: Pt[]): Pt[] {
   return ring;
 }
 
-export async function recomputeManzanos(): Promise<void> {
+/**
+ * Cuerpo real de recomputeManzanos() — ver wrapper debounced más abajo.
+ * Reconstruye TODOS los fragmentos de manzano desde las parcelas
+ * originales (origParcelId/origPts), cortando contra el estado COMPLETO
+ * actual de calles+rotondas.
+ */
+async function recomputeManzanosImmediate(): Promise<void> {
   const src = useMapStore.getState().drawSource;
   if (!src) return;
 
@@ -261,6 +267,10 @@ export async function recomputeManzanos(): Promise<void> {
       orig.set('origParcelId', group.origId, true);
       orig.set('origPts', group.origPts, true);
       src.addFeature(orig);
+      // Reasignamos geometría (misma forma, nueva instancia) — recalculamos
+      // SU métrica puntualmente en vez de barrer todo el source al final
+      // (ver diagnóstico H9).
+      updateFeatureMetrics(orig as Feature<Geometry>);
       return;
     }
 
@@ -282,9 +292,53 @@ export async function recomputeManzanos(): Promise<void> {
         ),
       );
       src.addFeature(newFeat);
+      updateFeatureMetrics(newFeat as Feature<Geometry>);
     });
   });
 
-  refreshSourceMetrics(src);
   src.changed();
+}
+
+const RECOMPUTE_DEBOUNCE_MS = 250;
+let recomputeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+let recomputeInFlight: Promise<void> | null = null;
+let recomputeResolve: (() => void) | null = null;
+let recomputeReject: ((err: unknown) => void) | null = null;
+
+/**
+ * Versión debounced de recomputeManzanosImmediate() — ver diagnóstico
+ * H12. `recomputeManzanosImmediate()` reconstruye TODOS los fragmentos de
+ * manzano contra el estado COMPLETO de calles/rotondas; si el usuario
+ * traza varias calles en sucesión rápida, cada llamada directa repetiría
+ * ese trabajo completo una vez por calle. Con el debounce, las llamadas
+ * dentro de la ventana comparten UNA sola ejecución real — y la MISMA
+ * Promise — así que cada llamador (`AddStreetCommand`/
+ * `AddRoundaboutCommand`) puede seguir haciendo `await recomputeManzanos()`
+ * de forma segura: se resuelve cuando el cómputo compartido corrió con el
+ * estado más reciente.
+ *
+ * IMPORTANTE: por esto mismo, `AddStreetCommand`/`AddRoundaboutCommand`
+ * fusionan (`coalesceInto`) instancias trazadas dentro de la ventana de
+ * coalescing del CommandStack en una sola entrada de historial — si no,
+ * dos comandos que comparten un recompute podrían capturar snapshots
+ * "before" inconsistentes entre sí. Ver AddStreetCommand.ts.
+ */
+export function recomputeManzanos(): Promise<void> {
+  if (!recomputeInFlight) {
+    recomputeInFlight = new Promise<void>((resolve, reject) => {
+      recomputeResolve = resolve;
+      recomputeReject = reject;
+    });
+  }
+  if (recomputeDebounceTimer) clearTimeout(recomputeDebounceTimer);
+  recomputeDebounceTimer = setTimeout(() => {
+    recomputeDebounceTimer = null;
+    const resolve = recomputeResolve!;
+    const reject = recomputeReject!;
+    recomputeInFlight = null;
+    recomputeResolve = null;
+    recomputeReject = null;
+    recomputeManzanosImmediate().then(resolve, reject);
+  }, RECOMPUTE_DEBOUNCE_MS);
+  return recomputeInFlight;
 }

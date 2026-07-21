@@ -2,7 +2,16 @@ import GeoJSONReader from 'jsts/org/locationtech/jts/io/GeoJSONReader.js';
 import GeoJSONWriter from 'jsts/org/locationtech/jts/io/GeoJSONWriter.js';
 import GeometryFactory from 'jsts/org/locationtech/jts/geom/GeometryFactory.js';
 import OverlayOp from 'jsts/org/locationtech/jts/operation/overlay/OverlayOp.js';
+import RBush from 'rbush';
 import type { FeatureCollection, Polygon as GeoJsonPolygon, Feature as GeoJsonFeature } from 'geojson';
+import {
+  subdivide,
+  subdivideManzano,
+  type SubdivisionOptions,
+  type SubdivisionResult,
+  type ManzanoLoteMethod,
+} from '../geo/subdivisionAlgorithms';
+import type { LotResult } from '../geo/polygonEngine';
 
 const geometryFactory = new GeometryFactory();
 const reader = new GeoJSONReader(geometryFactory);
@@ -47,6 +56,44 @@ export type ComputeManzanosRequest = {
   roadNetwork: FeatureCollection;
 };
 
+/**
+ * Subdivide un único polígono (todas las variantes: auto/exact/modo2/
+ * manual-slice/cabecera-cuerpo) — ver diagnóstico H8. `subdivide()` es
+ * matemática pura (bisecciones iterativas, hasta 200 iteraciones) sin
+ * dependencias de DOM/OL, así que corre acá sin cambios.
+ */
+export type SubdivideRequest = {
+  type: 'subdivide';
+  polygon: GeoJsonPolygon;
+  options: SubdivisionOptions;
+};
+
+/** Subdivide UN manzano ya conocido por su anillo — usado por
+ *  RecomputeManzanoLotsCommand (recálculo puntual, ej. al rotar). */
+export type SubdivideManzanoRequest = {
+  type: 'subdivideManzano';
+  ring: [number, number][];
+  method: ManzanoLoteMethod;
+  targetAreaM2: number;
+  frontMinM: number;
+  dirPref?: { ax: number; ay: number };
+};
+
+/** Subdivide TODOS los manzanos de una tanda en un solo viaje al worker
+ *  — usado por GenerateLotsCommand ("Generar lotes" sobre todo el
+ *  proyecto). Evita N round-trips de postMessage para N manzanos. */
+export type SubdivideManzanoBatchRequest = {
+  type: 'subdivideManzanoBatch';
+  manzanos: Array<{
+    id: string | number;
+    ring: [number, number][];
+    method: ManzanoLoteMethod;
+    targetAreaM2: number;
+    frontMinM: number;
+    dirPref?: { ax: number; ay: number };
+  }>;
+};
+
 export type GeoWorkerRequest =
   | UnionRequest
   | MergeRequest
@@ -55,7 +102,10 @@ export type GeoWorkerRequest =
   | ValidateRequest
   | FindOverlapsRequest
   | FindGapsRequest
-  | ComputeManzanosRequest;
+  | ComputeManzanosRequest
+  | SubdivideRequest
+  | SubdivideManzanoRequest
+  | SubdivideManzanoBatchRequest;
 
 export type GeoWorkerResponse =
   | { type: 'union' | 'merge' | 'intersect'; result: FeatureCollection; error?: string }
@@ -63,7 +113,10 @@ export type GeoWorkerResponse =
   | { type: 'validate'; valid: boolean; issues: string[]; error?: string }
   | { type: 'findOverlaps'; overlaps: Array<{ indexA: number; indexB: number; area: number }>; error?: string }
   | { type: 'findGaps'; gaps: FeatureCollection; error?: string }
-  | { type: 'computeManzanos'; manzanos: FeatureCollection; error?: string };
+  | { type: 'computeManzanos'; manzanos: FeatureCollection; error?: string }
+  | { type: 'subdivide'; result: SubdivisionResult; error?: string }
+  | { type: 'subdivideManzano'; lots: LotResult[]; error?: string }
+  | { type: 'subdivideManzanoBatch'; results: Array<{ id: string | number; lots: LotResult[] }>; error?: string };
 
 /* ---------- Helpers ---------- */
 
@@ -166,20 +219,58 @@ export function validateTopology(collection: FeatureCollection): {
   return { valid: issues.length === 0, issues };
 }
 
-/* ---------- NEW: Overlaps & Gaps ---------- */
+/* ---------- Overlaps & Gaps ---------- */
 
+interface BboxItem {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+  pos: number;
+}
+
+/**
+ * Broad-phase espacial (RBush) antes de la intersección JSTS exacta —
+ * ver diagnóstico H11. Antes: doble loop O(n²) evaluando una intersección
+ * JSTS (la operación más cara del worker) para CADA par de features,
+ * aunque ni compartieran bounding box. Ahora: se indexan los bboxes y
+ * solo se testean exactamente los pares candidatos que el índice
+ * devuelve como potencialmente solapados — pasa de O(n²) a ~O(n log n)
+ * + pares candidatos reales.
+ *
+ * (`findGaps`/`validateTopology` NO tienen este mismo problema: la
+ * primera hace una unión secuencial O(n), no pares; la segunda valida
+ * cada geometría de forma individual, sin comparar pares en absoluto —
+ * así que no aplica el mismo fix ahí.)
+ */
 export function findOverlaps(collection: FeatureCollection): Array<{ indexA: number; indexB: number; area: number }> {
   const overlaps: Array<{ indexA: number; indexB: number; area: number }> = [];
   const items = readAllGeometries(collection);
+  if (items.length < 2) return overlaps;
 
-  for (let i = 0; i < items.length; i++) {
-    for (let j = i + 1; j < items.length; j++) {
+  const tree = new RBush<BboxItem>();
+  const entries: BboxItem[] = items.map((item, pos) => {
+    const env = item.geom.getEnvelopeInternal();
+    return {
+      minX: env.getMinX(),
+      minY: env.getMinY(),
+      maxX: env.getMaxX(),
+      maxY: env.getMaxY(),
+      pos,
+    };
+  });
+  tree.load(entries);
+
+  for (let pos = 0; pos < entries.length; pos++) {
+    const candidates = tree.search(entries[pos]);
+    for (const cand of candidates) {
+      if (cand.pos <= pos) continue; // evita self-match y pares duplicados (A,B)/(B,A)
       try {
-        const intersection = OverlayOp.intersection(items[i].geom, items[j].geom);
+        const intersection = OverlayOp.intersection(items[pos].geom, items[cand.pos].geom);
         if (!intersection.isEmpty()) {
           const area = intersection.getArea();
           if (area > 0.01) { // umbral para evitar falsos positivos numéricos
-            overlaps.push({ indexA: items[i].index, indexB: items[j].index, area });
+            overlaps.push({ indexA: items[pos].index, indexB: items[cand.pos].index, area });
           }
         }
       } catch {
@@ -270,6 +361,31 @@ export function computeManzanos(
   return { type: 'FeatureCollection', features: outFeatures as never[] };
 }
 
+/* ---------- Subdivisión (H8) ---------- */
+
+function runSubdivide(request: SubdivideRequest): GeoWorkerResponse {
+  return { type: 'subdivide', result: subdivide(request.polygon, request.options) };
+}
+
+function runSubdivideManzano(request: SubdivideManzanoRequest): GeoWorkerResponse {
+  const lots = subdivideManzano(
+    request.ring,
+    request.method,
+    request.targetAreaM2,
+    request.frontMinM,
+    request.dirPref,
+  );
+  return { type: 'subdivideManzano', lots };
+}
+
+function runSubdivideManzanoBatch(request: SubdivideManzanoBatchRequest): GeoWorkerResponse {
+  const results = request.manzanos.map((m) => ({
+    id: m.id,
+    lots: subdivideManzano(m.ring, m.method, m.targetAreaM2, m.frontMinM, m.dirPref),
+  }));
+  return { type: 'subdivideManzanoBatch', results };
+}
+
 /* ---------- Dispatcher ---------- */
 
 export function handleGeoWorkerRequest(request: GeoWorkerRequest): GeoWorkerResponse {
@@ -299,6 +415,12 @@ export function handleGeoWorkerRequest(request: GeoWorkerRequest): GeoWorkerResp
       }
       case 'computeManzanos':
         return { type: 'computeManzanos', manzanos: computeManzanos(request.parcels, request.roadNetwork) };
+      case 'subdivide':
+        return runSubdivide(request);
+      case 'subdivideManzano':
+        return runSubdivideManzano(request);
+      case 'subdivideManzanoBatch':
+        return runSubdivideManzanoBatch(request);
       default:
         throw new Error(`Unknown request type: ${(request as any).type}`);
     }
@@ -325,6 +447,16 @@ export function handleGeoWorkerRequest(request: GeoWorkerRequest): GeoWorkerResp
         return { type: 'findGaps', gaps: { type: 'FeatureCollection', features: [] }, error: message };
       case 'computeManzanos':
         return { type: 'computeManzanos', manzanos: { type: 'FeatureCollection', features: [] }, error: message };
+      case 'subdivide':
+        return {
+          type: 'subdivide',
+          result: { ok: false, features: [], warnings: [], error: message },
+          error: message,
+        };
+      case 'subdivideManzano':
+        return { type: 'subdivideManzano', lots: [], error: message };
+      case 'subdivideManzanoBatch':
+        return { type: 'subdivideManzanoBatch', results: [], error: message };
       default:
         throw new Error(`Unknown request type in catch: ${(request as any).type}`);
     }

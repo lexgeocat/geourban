@@ -10,10 +10,11 @@ import GeoJSON from 'ol/format/GeoJSON.js';
 import PolygonGeom from 'ol/geom/Polygon.js';
 import FeatureOL from 'ol/Feature.js';
 import { Command, type CommandContext } from './Command';
-import { subdivideManzano, type ManzanoLoteMethod } from '../geo/subdivisionAlgorithms';
-import { refreshSourceMetrics, updateFeatureMetrics } from '../geo/metrics';
+import type { ManzanoLoteMethod } from '../geo/subdivisionAlgorithms';
+import { updateFeatureMetrics } from '../geo/metrics';
 import { ensureKind, getFeatureKind } from '../core/objectModel';
 import { resolveLayerId } from './AddFeatureCommand';
+import { subdivideManzanoInWorker } from '../workers/geoWorkerClient';
 
 const geoJsonFormat = new GeoJSON();
 
@@ -25,6 +26,21 @@ export interface RecomputeManzanoLotsOpts {
   dirPref?: { ax: number; ay: number };
 }
 
+/**
+ * La subdivisión (bisección iterativa) ahora corre en el Web Worker — ver
+ * diagnóstico H8 — así que rotar la dirección de corte de un manzano (un
+ * gesto interactivo de arrastre) ya no bloquea el hilo de UI.
+ *
+ * Nota de orden: a diferencia de la versión anterior, los lotes viejos se
+ * sacan de `drawSource` recién DESPUÉS de que el worker responde — así,
+ * si la subdivisión falla (promesa rechazada), el manzano no queda sin
+ * lotes por un error transitorio.
+ *
+ * Se eliminó también el `refreshSourceMetrics` global al final: las
+ * métricas de los lotes nuevos ya se calculan una por una, y los lotes
+ * restaurados en undo() ya traen sus métricas correctas guardadas en
+ * `props` — ver diagnóstico H9.
+ */
 export class RecomputeManzanoLotsCommand extends Command {
   readonly label = 'Recalcular lotes del manzano';
   private readonly opts: RecomputeManzanoLotsOpts;
@@ -36,7 +52,7 @@ export class RecomputeManzanoLotsCommand extends Command {
     this.opts = opts;
   }
 
-  execute(ctx: CommandContext): void {
+  override async execute(ctx: CommandContext): Promise<void> {
     this.newLotIds = [];
     this.removedLotSnapshots = [];
 
@@ -44,6 +60,22 @@ export class RecomputeManzanoLotsCommand extends Command {
     if (!mznFeat || getFeatureKind(mznFeat) !== 'manzana') return;
     const geom = mznFeat.getGeometry();
     if (!geom || geom.getType() !== 'Polygon') return;
+
+    const gj = geoJsonFormat.writeGeometryObject(geom, {
+      featureProjection: 'EPSG:3857',
+      dataProjection: 'EPSG:3857',
+    });
+    if (gj.type !== 'Polygon') return;
+    const ring = (gj as unknown as { coordinates: [number, number][][] }).coordinates[0];
+    if (!ring || ring.length < 4) return;
+
+    const lots = await subdivideManzanoInWorker(
+      ring,
+      this.opts.method,
+      this.opts.targetAreaM2,
+      this.opts.frontMinM,
+      this.opts.dirPref,
+    );
 
     // Sacar los lotes previos de este manzano (guardando snapshot para el undo).
     const toRemove: Feature<Geometry>[] = [];
@@ -64,16 +96,6 @@ export class RecomputeManzanoLotsCommand extends Command {
       });
       ctx.drawSource.removeFeature(f);
     }
-
-    const gj = geoJsonFormat.writeGeometryObject(geom, {
-      featureProjection: 'EPSG:3857',
-      dataProjection: 'EPSG:3857',
-    });
-    if (gj.type !== 'Polygon') return;
-    const ring = (gj as unknown as { coordinates: [number, number][][] }).coordinates[0];
-    if (!ring || ring.length < 4) return;
-
-    const lots = subdivideManzano(ring, this.opts.method, this.opts.targetAreaM2, this.opts.frontMinM, this.opts.dirPref);
 
     lots.forEach((lot, i) => {
       if (lot.pts.length < 3) return;
@@ -109,7 +131,6 @@ export class RecomputeManzanoLotsCommand extends Command {
       this.newLotIds.push(newId);
     });
 
-    refreshSourceMetrics(ctx.drawSource);
     ctx.drawSource.changed();
   }
 
@@ -126,6 +147,5 @@ export class RecomputeManzanoLotsCommand extends Command {
       ctx.drawSource.addFeature(f);
     }
     ctx.drawSource.changed();
-    refreshSourceMetrics(ctx.drawSource);
   }
 }

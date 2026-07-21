@@ -8,20 +8,41 @@ import {
   type DrawSourceSnapshot,
 } from './drawSourceSnapshot';
 
+interface StreetEntry {
+  id: string | null;
+  start: [number, number];
+  end: [number, number];
+  widthM: number;
+  sideWidthM: number;
+  waypoints?: Array<[number, number]>;
+}
+
+/**
+ * Traza una calle.
+ *
+ * `recomputeManzanos()` ahora es debounced (ver diagnóstico H12 en
+ * mapStore.ts): varias llamadas próximas comparten UN solo recompute
+ * real. Esto significa que si el usuario traza varias calles en sucesión
+ * rápida, sus respectivos `execute()` pueden terminar esperando la MISMA
+ * ejecución compartida — y por lo tanto, ya no es seguro asumir que el
+ * `before`/`after` de cada comando individual es exacto respecto al
+ * resto.
+ *
+ * Solución: instancias trazadas dentro de la ventana de coalescing del
+ * CommandStack se FUSIONAN vía `coalesceInto` en una sola entrada de
+ * historial (mismo mecanismo que ya usa ModifyGeometryCommand para
+ * arrastres consecutivos). El comando resultante conserva el `before`
+ * original (antes de CUALQUIER calle del lote) y adopta el `after` de la
+ * última absorbida — que ya refleja el estado combinado, porque para
+ * cuando ese recompute compartido corre, TODAS las calles del lote ya
+ * fueron agregadas a streetStore (cada `addStreet()` es síncrono, ocurre
+ * antes de cualquier `await`).
+ */
 export class AddStreetCommand extends Command {
   readonly label = 'Trazar calle';
-  private readonly start: [number, number];
-  private readonly end: [number, number];
-  private readonly widthM: number;
-  private readonly sideWidthM: number;
-  private readonly waypoints?: Array<[number, number]>;
-  private streetId: string | null = null;
+  readonly coalesceKey = 'AddStreetCommand';
 
-  // recomputeManzanos() puede reparticionar cualquier manzano/lote del
-  // proyecto — no solo los que tocan esta calle — así que el undo/redo no
-  // se puede reconstruir con una lista acotada de ids. Antes, undo() solo
-  // borraba la calle de useStreetStore y dejaba los fragmentos de manzano
-  // huérfanos en el mapa (H1 del diagnóstico).
+  private entries: StreetEntry[];
   private before: DrawSourceSnapshot | null = null;
   private after: DrawSourceSnapshot | null = null;
 
@@ -33,29 +54,35 @@ export class AddStreetCommand extends Command {
     sideWidthM?: number,
   ) {
     super();
-    this.start = start;
-    this.end = end;
-    this.widthM = widthM;
-    this.waypoints = waypoints;
-    this.sideWidthM = sideWidthM ?? useStreetStore.getState().defaultSideWidthM;
+    this.entries = [{
+      id: null,
+      start,
+      end,
+      widthM,
+      waypoints,
+      sideWidthM: sideWidthM ?? useStreetStore.getState().defaultSideWidthM,
+    }];
   }
 
   override async execute(ctx: CommandContext): Promise<void> {
-    this.before = snapshotDrawSource(ctx.drawSource);
-    this.streetId = useStreetStore.getState().addStreet({
-      start: this.start,
-      end: this.end,
-      widthM: this.widthM,
-      sideWidthM: this.sideWidthM,
-      waypoints: this.waypoints,
+    if (this.before == null) {
+      this.before = snapshotDrawSource(ctx.drawSource);
+    }
+    const entry = this.entries[this.entries.length - 1];
+    entry.id = useStreetStore.getState().addStreet({
+      start: entry.start,
+      end: entry.end,
+      widthM: entry.widthM,
+      sideWidthM: entry.sideWidthM,
+      waypoints: entry.waypoints,
     });
     await recomputeManzanos();
     this.after = snapshotDrawSource(ctx.drawSource);
   }
 
   override undo(ctx: CommandContext): void {
-    if (this.streetId) {
-      useStreetStore.getState().removeStreet(this.streetId);
+    for (const e of this.entries) {
+      if (e.id) useStreetStore.getState().removeStreet(e.id);
     }
     if (this.before != null) {
       restoreDrawSourceSnapshot(ctx.drawSource, this.before);
@@ -64,14 +91,16 @@ export class AddStreetCommand extends Command {
   }
 
   override async redo(ctx: CommandContext): Promise<void> {
-    if (this.streetId) {
-      useStreetStore.getState().addStreetWithId(this.streetId, {
-        start: this.start,
-        end: this.end,
-        widthM: this.widthM,
-        sideWidthM: this.sideWidthM,
-        waypoints: this.waypoints,
-      });
+    for (const e of this.entries) {
+      if (e.id) {
+        useStreetStore.getState().addStreetWithId(e.id, {
+          start: e.start,
+          end: e.end,
+          widthM: e.widthM,
+          sideWidthM: e.sideWidthM,
+          waypoints: e.waypoints,
+        });
+      }
     }
     if (this.after != null) {
       restoreDrawSourceSnapshot(ctx.drawSource, this.after);
@@ -79,5 +108,12 @@ export class AddStreetCommand extends Command {
     } else {
       await this.execute(ctx);
     }
+  }
+
+  override coalesceInto(previous: Command): boolean {
+    if (!(previous instanceof AddStreetCommand)) return false;
+    previous.entries.push(...this.entries);
+    previous.after = this.after;
+    return true;
   }
 }

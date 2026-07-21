@@ -2,17 +2,18 @@ import Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
 import GeoJSON from 'ol/format/GeoJSON.js';
 import { Command, type CommandContext } from './Command';
-import { refreshSourceMetrics, updateFeatureMetrics } from '../geo/metrics';
-import { subdivide } from '../geo/subdivisionAlgorithms';
+import { updateFeatureMetrics } from '../geo/metrics';
+import { subdivideInWorker } from '../workers/geoWorkerClient';
 import { ensureKind } from '../core/objectModel';
 import { resolveLayerId } from './AddFeatureCommand';
+import type { SubdivisionOptions } from '../geo/subdivisionAlgorithms';
 import type { Polygon as GeoJsonPolygon } from 'geojson';
 
 const geoJsonFormat = new GeoJSON();
 
 export interface SubdivideCommandOpts {
   targetId: string | number;
-  options: Parameters<typeof subdivide>[1];
+  options: SubdivisionOptions;
   /** geometría del target (si no se pasa, se lee del drawSource) */
   targetGeom?: GeoJsonPolygon | null;
 }
@@ -23,12 +24,21 @@ interface RemovedTargetSnapshot {
   props: Record<string, unknown>;
 }
 
+/**
+ * La subdivisión (bisección iterativa, hasta 200 iteraciones) ahora corre
+ * en el Web Worker — ver diagnóstico H8 — así que "Aplicar" en
+ * SubdivisionDialog ya no bloquea el hilo de UI mientras calcula.
+ *
+ * También se eliminó el `refreshSourceMetrics` global al final de
+ * execute()/undo(): los lotes nuevos ya reciben su métrica una por una
+ * (`updateFeatureMetrics`), y el target restaurado en undo() ya trae su
+ * métrica correcta guardada en `props` (capturada antes de removerlo) —
+ * ver diagnóstico H9.
+ */
 export class SubdivideCommand extends Command {
   readonly label = 'Subdividir manzano';
   private readonly opts: SubdivideCommandOpts;
   private newFeatureIds: Array<string | number> = [];
-  /** Antes: `originalRemoved: boolean` + un bloque de undo vacío que nunca
-   *  restauraba nada. Ahora se guarda geometría+props reales. */
   private removedTarget: RemovedTargetSnapshot | null = null;
 
   constructor(opts: SubdivideCommandOpts) {
@@ -49,10 +59,10 @@ export class SubdivideCommand extends Command {
     return gj.type === 'Polygon' ? (gj as GeoJsonPolygon) : null;
   }
 
-  execute(ctx: CommandContext): void {
+  override async execute(ctx: CommandContext): Promise<void> {
     const geom = this.readTargetGeom(ctx);
     if (!geom) return;
-    const r = subdivide(geom, this.opts.options);
+    const r = await subdivideInWorker(geom, this.opts.options);
     if (!r.ok) return;
 
     const target = ctx.drawSource.getFeatureById(this.opts.targetId) as Feature<Geometry> | null;
@@ -94,7 +104,6 @@ export class SubdivideCommand extends Command {
       this.newFeatureIds.push(newId);
     });
 
-    refreshSourceMetrics(ctx.drawSource);
     ctx.drawSource.changed();
   }
 
@@ -110,11 +119,10 @@ export class SubdivideCommand extends Command {
       ctx.drawSource.addFeature(f);
     }
     ctx.drawSource.changed();
-    refreshSourceMetrics(ctx.drawSource);
   }
 
-  override redo(ctx: CommandContext): void {
+  override async redo(ctx: CommandContext): Promise<void> {
     // undo() restauró el polígono original con id/geometría intactos.
-    this.execute(ctx);
+    await this.execute(ctx);
   }
 }

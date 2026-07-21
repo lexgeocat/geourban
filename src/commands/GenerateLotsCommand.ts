@@ -2,11 +2,11 @@ import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
 import GeoJSON from 'ol/format/GeoJSON.js';
 import { Command, type CommandContext } from './Command';
-import { subdivideManzano } from '../geo/subdivisionAlgorithms';
 import { useManzanoStore } from '../store/manzanoStore';
-import { refreshSourceMetrics, updateFeatureMetrics } from '../geo/metrics';
+import { updateFeatureMetrics } from '../geo/metrics';
 import { ensureKind, getFeatureKind } from '../core/objectModel';
 import { resolveLayerId } from './AddFeatureCommand';
+import { subdivideManzanoBatchInWorker } from '../workers/geoWorkerClient';
 import PolygonGeom from 'ol/geom/Polygon.js';
 import FeatureOL from 'ol/Feature.js';
 
@@ -23,13 +23,21 @@ interface ConsumedManzanoSnapshot {
   props: Record<string, unknown>;
 }
 
-/** Genera lotes automáticos sobre todos los manzanos del drawSource. */
+/**
+ * Genera lotes automáticos sobre todos los manzanos del drawSource.
+ *
+ * La subdivisión ahora corre en el Web Worker — ver diagnóstico H8 — en
+ * UN solo viaje para TODOS los manzanos (`subdivideManzanoBatchInWorker`),
+ * en vez de bloquear el hilo de UI con el cálculo síncrono de cada uno
+ * (hasta 200 iteraciones de bisección por lote, por manzano).
+ *
+ * Las propiedades derivadas (área/perímetro/label) se calculan solo para
+ * las features que este comando efectivamente crea o restaura — nunca
+ * para todo `drawSource` — ver diagnóstico H9.
+ */
 export class GenerateLotsCommand extends Command {
   readonly label = 'Generar lotes';
   private readonly opts: GenerateLotsOpts;
-  /** Antes solo se guardaban los IDS consumidos (`consumedManzanoIds`),
-   *  nunca su geometría/propiedades — el undo() no tenía forma de
-   *  restaurarlos y los manzanos quedaban perdidos para siempre. */
   private consumedManzanos: ConsumedManzanoSnapshot[] = [];
   private newLotIds: Array<string | number> = [];
 
@@ -38,7 +46,7 @@ export class GenerateLotsCommand extends Command {
     this.opts = opts;
   }
 
-  execute(ctx: CommandContext): void {
+  override async execute(ctx: CommandContext): Promise<void> {
     this.consumedManzanos = [];
     this.newLotIds = [];
 
@@ -61,11 +69,27 @@ export class GenerateLotsCommand extends Command {
 
     if (manzanos.length === 0) return;
 
-    for (const { id, ring } of manzanos) {
-      const method = useManzanoStore.getState().getMethod(id);
-      const dirPref = useManzanoStore.getState().getRotateDir(id);
-      const lots = subdivideManzano(ring, method, this.opts.targetAreaM2, this.opts.frontMinM, dirPref);
+    // Capturamos method/dirPref ANTES del viaje al worker — si el usuario
+    // toca el ManzanoPanel mientras esperamos la respuesta, no queremos
+    // etiquetar los lotes con un método distinto al que realmente se usó
+    // para calcularlos.
+    const batchInput = manzanos.map(({ id, ring }) => ({
+      id,
+      ring,
+      method: useManzanoStore.getState().getMethod(id),
+      targetAreaM2: this.opts.targetAreaM2,
+      frontMinM: this.opts.frontMinM,
+      dirPref: useManzanoStore.getState().getRotateDir(id),
+    }));
+    const methodById = new Map(batchInput.map((b) => [String(b.id), b.method]));
+
+    const batchResults = await subdivideManzanoBatchInWorker(batchInput);
+    const lotsById = new Map(batchResults.map((r) => [String(r.id), r.lots]));
+
+    for (const { id } of manzanos) {
+      const lots = lotsById.get(String(id)) ?? [];
       if (lots.length === 0) continue;
+      const method = methodById.get(String(id))!;
 
       const feat = ctx.drawSource.getFeatureById(id) as Feature<Geometry> | null;
       if (feat) {
@@ -116,7 +140,6 @@ export class GenerateLotsCommand extends Command {
       }
     }
 
-    refreshSourceMetrics(ctx.drawSource);
     ctx.drawSource.changed();
   }
 
@@ -133,14 +156,13 @@ export class GenerateLotsCommand extends Command {
       ctx.drawSource.addFeature(f);
     }
     ctx.drawSource.changed();
-    refreshSourceMetrics(ctx.drawSource);
   }
 
-  override redo(ctx: CommandContext): void {
+  override async redo(ctx: CommandContext): Promise<void> {
     // undo() ya restauró los manzanos consumidos con su id/geometría
     // intactos, así que execute() los vuelve a encontrar y a subdividir
     // desde cero. Genera ids nuevos para los lotes — inofensivo, porque el
     // CommandStack limpia la selección en cada undo/redo.
-    this.execute(ctx);
+    await this.execute(ctx);
   }
 }
