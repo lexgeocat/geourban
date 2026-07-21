@@ -32,7 +32,8 @@ import { DeleteFeaturesCommand } from '../../commands/DeleteFeaturesCommand';
 import { RoundaboutDrawInteraction } from './RoundaboutDrawInteraction';
 import { pointInPoly } from '../../geo/polygonEngine';
 import type { PostrenderPainter } from './PostrenderPainter';
-import { HitTestSelect, type HitTestSelectEvent } from './HitTestSelect';
+import { HitTestSelect } from './HitTestSelect';
+import type { HitTestSelectEvent } from './HitTestSelect';
 import { getOrCreateSpatialIndex, type SpatialIndex } from '../spatialIndex';
 import { hitTestCandidatesInExtent } from '../hitTest';
 
@@ -134,8 +135,8 @@ export class InteractionModeController {
     const wireSelectBehavior = (select: HitTestSelect, style: Style) => {
       seedFromStore(select);
       syncHighlight(select, style);
-      select.on('select', (evt) => {
-        const e = evt as HitTestSelectEvent;
+      select.addEventListener('select', (evt) => {
+        const e = evt as unknown as HitTestSelectEvent;
         const allSelected = select.getFeatures().getArray();
         const ids = allSelected
           .map((f) => f.getId())
@@ -606,8 +607,8 @@ export class InteractionModeController {
         multi: false,
       });
       this.highlightLayer.setStyle(ERASE_STYLE);
-      select.on('select', (evt) => {
-        const e = evt as HitTestSelectEvent;
+      select.addEventListener('select', (evt) => {
+        const e = evt as unknown as HitTestSelectEvent;
         if (e.selected.length === 0) return;
         const ids: Array<string | number> = [];
         e.selected.forEach((f) => {

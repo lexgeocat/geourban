@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
 import Polygon from 'ol/geom/Polygon.js';
@@ -12,6 +12,7 @@ import { useDrawStore } from '../store/drawStore';
 import { useStreetStore } from '../store/streetStore';
 import { useRoundaboutStore } from '../store/roundaboutStore';
 import { getFeatureKind, ensureKind } from '../core/objectModel';
+import { useIncrementalRender } from '../hooks/useIncrementalRender';
 
 const MZN_COLORS = [
   '#58a6ff',
@@ -128,6 +129,10 @@ export default function ManzanoPanel() {
   const [lotsBusy, setLotsBusy] = useState(false);
   const [expandedLots, setExpandedLots] = useState<Record<string, boolean>>({});
 
+  // Fase 6 (H18): renderizado incremental de tarjetas de manzano.
+  const panelRef = useRef<HTMLDivElement>(null);
+  const { visibleCount, sentinelRef } = useIncrementalRender(rows.length, 40, panelRef);
+
   // ── Parámetros contextuales de vía / rotonda: se muestran acá (panel
   // fijo a la izquierda) mientras esas herramientas están activas — igual
   // que las tarjetas "vias-params-card" / "rotonda-params-card" de
@@ -236,6 +241,7 @@ export default function ManzanoPanel() {
 
   return (
     <div
+      ref={panelRef}
       className="cad-panel-glass"
       style={{
         position: 'fixed',
@@ -391,7 +397,7 @@ export default function ManzanoPanel() {
         </p>
       ) : (
         <>
-          {rows.map((row) => {
+          {rows.slice(0, visibleCount).map((row) => {
             const isOpen = !!openCards[String(row.id)];
             const color = MZN_COLORS[row.colorIdx];
             const method = getMethod(row.id);
@@ -590,6 +596,10 @@ export default function ManzanoPanel() {
               </div>
             );
           })}
+
+          {rows.length > visibleCount && (
+            <div ref={sentinelRef} style={{ height: 1 }} />
+          )}
 
           <div
             style={{

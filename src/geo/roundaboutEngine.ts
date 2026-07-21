@@ -1,12 +1,10 @@
 // src/geo/roundaboutEngine.ts
 import type { Pt } from './polygonEngine';
+import { resolutionAwareSegments } from './lod';
 
-/** Parámetros geométricos de una rotonda. `Roundabout` (roundaboutStore) extiende
- *  esto agregando solo identidad (id/name) — una sola fuente de verdad. */
 export interface RoundaboutParams {
   center: Pt;
   radiusM: number;
-  /** 0 = círculo; 3-8 = polígono regular (triángulo…octógono) */
   sides: number;
   rotation: number;
   roadWidthM: number;
@@ -14,18 +12,12 @@ export interface RoundaboutParams {
 }
 
 export interface RoundaboutGeometry {
-  /** Borde exterior de calzada (lo que se uniría con las calles que llegan) */
   roadOuter: Pt[];
-  /** Borde exterior de vereda */
   sideOuter: Pt[];
-  /** Isleta central (null si el radio no deja isleta) */
   island: Pt[] | null;
-  /** Circunferencia/polígono del eje central (referencia visual punteada) */
   centerAxis: Pt[];
 }
 
-/** Polígono regular de n lados inscrito en una circunferencia de radio
- *  `circumR`, centrado en `center` y rotado `rot` radianes. */
 export function ngonRing(center: Pt, circumR: number, n: number, rot = 0): Pt[] {
   const pts: Pt[] = [];
   for (let i = 0; i < n; i++) {
@@ -35,9 +27,21 @@ export function ngonRing(center: Pt, circumR: number, n: number, rot = 0): Pt[] 
   return pts;
 }
 
-/** Circunferencia tesselada; la cantidad de segmentos escala con el radio. */
-export function circleRing(center: Pt, radius: number, segs?: number): Pt[] {
-  const n = segs ?? Math.max(32, Math.min(160, Math.round(radius * 4)));
+/**
+ * Circunferencia tesselada. Si se pasa `resolution` (unidades de mapa
+ * por píxel, la vigente al momento de pintar), la cantidad de segmentos
+ * se calcula para que el error de tesselación no supere ~1.5px en
+ * pantalla — a diferencia del criterio viejo (fijo por radio), esto
+ * baja los segmentos automáticamente cuando el usuario aleja el zoom.
+ * Sin `resolution` (o con `segs` explícito) se mantiene el
+ * comportamiento anterior, para no romper otros call-sites.
+ */
+export function circleRing(center: Pt, radius: number, segs?: number, resolution?: number): Pt[] {
+  const n =
+    segs ??
+    (resolution != null
+      ? resolutionAwareSegments(radius, resolution)
+      : Math.max(32, Math.min(160, Math.round(radius * 4))));
   const pts: Pt[] = [];
   for (let i = 0; i < n; i++) {
     const a = (i * 2 * Math.PI) / n;
@@ -46,23 +50,26 @@ export function circleRing(center: Pt, radius: number, segs?: number): Pt[] {
   return pts;
 }
 
-/** Geometría completa de una rotonda a partir de sus parámetros de diseño. */
-export function roundaboutGeometry(rb: RoundaboutParams): RoundaboutGeometry {
+/** Geometría completa de una rotonda. `resolution` es opcional — pasarla
+ *  desde el postrender habilita el LOD de `circleRing`; los polígonos
+ *  regulares (`sides >= 3`) no la necesitan, su vértice count depende
+ *  solo de `sides`, no de tesselación. */
+export function roundaboutGeometry(rb: RoundaboutParams, resolution?: number): RoundaboutGeometry {
   const half = rb.roadWidthM / 2;
   const sw = Math.max(0, rb.sidewalkWidthM);
 
   if (!rb.sides || rb.sides < 3) {
     const islandR = rb.radiusM - half;
     return {
-      roadOuter: circleRing(rb.center, rb.radiusM + half),
-      sideOuter: circleRing(rb.center, rb.radiusM + half + sw),
-      island: islandR > 0.3 ? circleRing(rb.center, islandR) : null,
-      centerAxis: circleRing(rb.center, rb.radiusM),
+      roadOuter: circleRing(rb.center, rb.radiusM + half, undefined, resolution),
+      sideOuter: circleRing(rb.center, rb.radiusM + half + sw, undefined, resolution),
+      island: islandR > 0.3 ? circleRing(rb.center, islandR, undefined, resolution) : null,
+      centerAxis: circleRing(rb.center, rb.radiusM, undefined, resolution),
     };
   }
 
   const n = rb.sides;
-  const k = 1 / Math.cos(Math.PI / n); // apotema → circunradio
+  const k = 1 / Math.cos(Math.PI / n);
   const islandR = rb.radiusM - half * k;
   return {
     roadOuter: ngonRing(rb.center, rb.radiusM + half * k, n, rb.rotation),
@@ -72,7 +79,6 @@ export function roundaboutGeometry(rb: RoundaboutParams): RoundaboutGeometry {
   };
 }
 
-/** Área aproximada de calzada (anillo entre borde de calzada e isleta), en m². */
 export function roundaboutRoadAreaM2(rb: RoundaboutParams): number {
   const geom = roundaboutGeometry(rb);
   return Math.max(0, ringArea(geom.roadOuter) - (geom.island ? ringArea(geom.island) : 0));

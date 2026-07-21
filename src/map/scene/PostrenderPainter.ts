@@ -1,3 +1,4 @@
+import { getOrCreateSpatialIndex } from '../spatialIndex';
 import type Map from 'ol/Map.js';
 import type VectorSource from 'ol/source/Vector.js';
 import type VectorLayer from 'ol/layer/Vector.js';
@@ -323,14 +324,44 @@ export class PostrenderPainter {
       return px ? [px[0], px[1]] : [0, 0];
     };
 
+    // H4/Fase 6 (culling): medir/colisionar labels de TODAS las features
+    // en cada frame es, en proyectos grandes, el costo dominante de este
+    // pintor. Se acota al subconjunto cuyo bbox intersecta el extent
+    // visible actual, usando el mismo índice espacial que ya mantiene
+    // sincronizado map/Map.tsx (ver H13). `updateCache` sigue recibiendo
+    // el listado COMPLETO: lotGroupCounts y el conteo de features deben
+    // seguir siendo globales, no solo de lo visible.
+    const visibleFeatures = this.getVisibleFeatures(features as Array<Feature<Geometry>>);
+
     if (!this.interacting) {
-      this.paintFeatureLabels(ctx, features, zoom, resolution, toPx);
+      this.paintFeatureLabels(ctx, visibleFeatures, zoom, resolution, toPx);
     }
-    this.paintManualCotaz(ctx, features, zoom, resolution, toPx);
+    this.paintManualCotaz(ctx, visibleFeatures, zoom, resolution, toPx);
     this.paintStreets(ctx, zoom, resolution, toPx);
-    this.paintRoundabouts(ctx, toPx);
+    this.paintRoundabouts(ctx, toPx, resolution);
     this.paintSnapGuides(ctx, resolution, toPx);
     this.paintLassoPreview(ctx, toPx);
+  }
+
+  /** Subconjunto de features cuyo bbox cae dentro del extent visible
+   *  (+ margen del 15%, para que labels con offset perpendicular cerca
+   *  del borde no desaparezcan de golpe). Cae a la lista completa si el
+   *  índice todavía no está poblado (arranque en frío). */
+  private getVisibleFeatures(all: Array<Feature<Geometry>>): Array<Feature<Geometry>> {
+    const index = getOrCreateSpatialIndex();
+    if (index.size === 0) return all;
+    const size = this.map.getSize();
+    if (!size) return all;
+    const extent = this.map.getView().calculateExtent(size);
+    const [minX, minY, maxX, maxY] = extent;
+    const marginX = (maxX - minX) * 0.15;
+    const marginY = (maxY - minY) * 0.15;
+    return index.search(
+      minX - marginX,
+      minY - marginY,
+      maxX + marginX,
+      maxY + marginY,
+    ) as unknown as Array<Feature<Geometry>>;
   }
 
   private updateCache(ctx: CanvasRenderingContext2D, features: Array<Feature<Geometry>>, zoom: number): void {
@@ -751,11 +782,12 @@ setRoundaboutPreview(preview: RoundaboutDrawPreview | null): void {
 private paintRoundabouts(
   ctx: CanvasRenderingContext2D,
   toPx: (c: number[]) => [number, number],
+  resolution: number,
 ): void {
   const { roundabouts, visible } = useRoundaboutStore.getState();
   if (visible) {
     for (const rb of roundabouts) {
-      const geom = roundaboutGeometry(rb);
+      const geom = roundaboutGeometry(rb, resolution);
       this.fillRing(ctx, geom.roadOuter, toPx, 'rgba(247, 129, 102, 0.10)');
       this.strokeRing(ctx, geom.sideOuter, toPx, 'rgba(247, 129, 102, 0.55)', 1.5);
       this.strokeRing(ctx, geom.roadOuter, toPx, 'rgba(247, 129, 102, 0.75)', 2);
@@ -782,14 +814,17 @@ private paintRoundabouts(
     const radius = Math.hypot(current[0] - center[0], current[1] - center[1]);
     if (radius > 0.1) {
       const defaults = useRoundaboutStore.getState();
-      const previewGeom = roundaboutGeometry({
-        center: center as [number, number],
-        radiusM: radius,
-        sides: defaults.defaultSides,
-        rotation: 0,
-        roadWidthM: defaults.defaultRoadWidthM,
-        sidewalkWidthM: defaults.defaultSidewalkWidthM,
-      });
+      const previewGeom = roundaboutGeometry(
+        {
+          center: center as [number, number],
+          radiusM: radius,
+          sides: defaults.defaultSides,
+          rotation: 0,
+          roadWidthM: defaults.defaultRoadWidthM,
+          sidewalkWidthM: defaults.defaultSidewalkWidthM,
+        },
+        resolution,
+      );
       ctx.save();
       ctx.setLineDash([6, 4]);
       this.strokeRing(ctx, previewGeom.sideOuter, toPx, 'rgba(0, 212, 255, 0.85)', 1.5);

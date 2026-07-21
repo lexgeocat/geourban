@@ -93,7 +93,7 @@ export class HitTestSelect extends Interaction {
     let deselected: Feature<Geometry>[] = [];
 
     if (!hit) {
-      if (prevArr.length === 0) return true; // nada que cambiar
+      if (prevArr.length === 0) return true;
       deselected = prevArr;
       this.features_.clear();
     } else if (additive) {

@@ -2,6 +2,7 @@ import React, { useState, useRef, useCallback } from 'react';
 import { useLayersStore } from '../store/layersRegistryStore';
 import type { Layer } from '../core/objectModel';
 import { useLayerStore } from '../store/layerStore';
+import { useIncrementalRender } from '../hooks/useIncrementalRender';
 
 /* ─────────── Icons ─────────── */
 
@@ -139,6 +140,9 @@ export default function LayerPanel() {
   const toggleVisibility = useLayersStore((s) => s.toggleVisibility);
   const toggleLock = useLayersStore((s) => s.toggleLock);
   const setActiveLayer = useLayersStore((s) => s.setActiveLayer);
+  // Fase 6 (H18): renderizado incremental si la lista de capas crece mucho.
+  const panelRef = useRef<HTMLDivElement>(null);
+  const { visibleCount, sentinelRef } = useIncrementalRender(layers.length, 60, panelRef);
 
   // Sync layerStore.workVisibility ↔ registry visibility
   const setWorkVisibility = useLayerStore((s) => s.setWorkVisibility);
@@ -207,7 +211,11 @@ export default function LayerPanel() {
       </button>
 
       {open && (
-        <div className="cad-panel-glass animate-fade-in" style={{ padding: '10px 12px', minWidth: 230, maxHeight: '60vh', overflowY: 'auto' }}>
+        <div
+          ref={panelRef}
+          className="cad-panel-glass animate-fade-in"
+          style={{ padding: '10px 12px', minWidth: 230, maxHeight: '60vh', overflowY: 'auto' }}
+        >
           {/* Header */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, paddingBottom: 6, borderBottom: '1px solid var(--cad-border)' }}>
             <span style={{ fontSize: '0.6rem', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--cad-text-dim)' }}>
@@ -236,7 +244,7 @@ export default function LayerPanel() {
 
             {expanded && (
               <div style={{ marginTop: 2 }}>
-                {layers.map((layer) => {
+                {layers.slice(0, visibleCount).map((layer) => {
                   const isActive = activeLayerId === layer.id;
                   return (
                     <div
@@ -310,6 +318,9 @@ export default function LayerPanel() {
                     </div>
                   );
                 })}
+                {layers.length > visibleCount && (
+                  <div ref={sentinelRef} style={{ height: 1 }} />
+                )}
               </div>
             )}
           </div>
