@@ -1,14 +1,3 @@
-// src/geo/subdivisionCabeceraCuerpo.ts
-//
-// Método "Cabecera + Cuerpo": 1 fila de lotes angostos en cada extremo del
-// manzano (junto a las esquinas) + un cuerpo central a doble frente (2
-// columnas). Portado de index_modelo.html (motor hbLotize*), adaptado al
-// formato Pt = [number, number] de polygonEngine.ts en vez de {x,y}.
-//
-// A diferencia del modelo, acá SIEMPRE se opera sobre el contorno real del
-// manzano (con sus ochaves ya aplicados por recomputeManzanos), así que se
-// eliminó la rama "sin fillet" del motor original (dead code en nuestro caso).
-
 import { type Pt, type LotResult, polyArea, centroid } from './polygonEngine';
 
 const lerp = (a: Pt, b: Pt, t: number): Pt => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];

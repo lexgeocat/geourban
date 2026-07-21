@@ -36,9 +36,6 @@ export default defineConfig({
       },
     },
   },
-  optimizeDeps: {
-    exclude: ['sql.js'],
-  },
   worker: {
     format: 'es',
   },

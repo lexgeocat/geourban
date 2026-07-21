@@ -53,6 +53,11 @@ declare module 'dxf-parser' {
   }
 }
 
+declare module 'sql.js/dist/sql-wasm.wasm?url' {
+  const url: string;
+  export default url;
+}
+
 declare module 'dxf-writer' {
   export default class Drawing {
     constructor();
