@@ -1,31 +1,25 @@
-import Dexie, { type Table } from 'dexie';
+// src/io/persistence.ts
+import { getProjectStore } from './projectStore';
+import { useCurrentProjectStore } from '../store/currentProjectStore';
 import type { GeoUrbanProject } from './types';
 
-class GeoUrbanDB extends Dexie {
-  projects!: Table<GeoUrbanProject & { id?: number; savedAt: string }, number>;
+/**
+ * Guarda/actualiza el proyecto en el backend correcto (Dexie en Web,
+ * SQLite vía plugin-sql en Desktop — ver projectStore.ts). Usa
+ * `currentProjectId` para saber A QUÉ proyecto pertenece este autosave;
+ * antes se asumía "el último registro", lo cual era incorrecto en cuanto
+ * hubiera más de un proyecto guardado.
+ */
+export async function autosaveProject(project: GeoUrbanProject): Promise<number> {
+  const store = getProjectStore();
+  const currentId = useCurrentProjectStore.getState().currentProjectId;
+  const payload: GeoUrbanProject = { ...project, id: project.id ?? currentId ?? undefined };
 
-  constructor() {
-    super('GeoUrbanDB');
-    this.version(1).stores({
-      projects: '++id, name, updatedAt, savedAt',
-    });
+  const id = await store.save(payload);
+  if (useCurrentProjectStore.getState().currentProjectId !== id) {
+    useCurrentProjectStore.getState().setCurrentProjectId(id);
   }
-}
-
-const db = new GeoUrbanDB();
-
-export async function autosaveProject(project: GeoUrbanProject) {
-  const payload = {
-    ...project,
-    updatedAt: new Date().toISOString(),
-    savedAt: new Date().toISOString(),
-  };
-  const existing = await db.projects.orderBy('id').reverse().first();
-  if (existing?.id) {
-    await db.projects.update(existing.id, payload);
-    return existing.id;
-  }
-  return db.projects.add(payload);
+  return id;
 }
 
 export function startAutosave(getProject: () => GeoUrbanProject, intervalMs = 30_000) {

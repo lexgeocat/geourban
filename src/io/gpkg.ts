@@ -6,7 +6,14 @@ import { createEmptyProject, type GeoUrbanProject, type ImportResult } from './t
 import { ensureUtmZoneRegistered } from '../geo/utmZones';
 import { reprojectFeatureCollection } from '../geo/crsTransform';
 import { getSql } from './sqlLoader';
-
+/**
+ * sql.js se usa ACÁ de forma legítima: un GeoPackage (.gpkg) es, por
+ * especificación, un archivo SQLite — no hay forma de leer/escribirlo
+ * sin un motor SQL embebido. No confundir con usar sql.js como motor de
+ * PERSISTENCIA DE PROYECTOS: eso vivía en io/persistenceDesktop.ts como
+ * una base en memoria que nunca tocaba disco (H15) — reemplazado en la
+ * Fase 5 por io/projectStore.ts.
+ */
 export async function importGpkg(file: File): Promise<ImportResult> {
   const SQL = await getSql();
   const buffer = new Uint8Array(await file.arrayBuffer());
