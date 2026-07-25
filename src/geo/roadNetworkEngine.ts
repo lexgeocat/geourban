@@ -15,12 +15,13 @@ function streetPolyline(street: Street): Pt[] {
   return pts;
 }
 
-/**
- * Offset de una polilínea abierta a distancia constante `d` (positivo =
- * hacia la izquierda del sentido de avance), con empalme a inglete (miter)
- * en cada vértice interior. Para el ancho de una calle el miter es
- * indistinguible de un arco real y es mucho más simple/rápido.
- */
+/** Multiplicador máximo de la distancia del miter respecto al offset base
+ *  `d` (medio-ancho de calzada+vereda). En un ángulo muy agudo (zig-zag)
+ *  el punto de miter puede alejarse arbitrariamente del vértice real —
+ *  por encima de este límite se cae a un bisel en vez de la intersección
+ *  exacta. Ver H-VIA-1 del diagnóstico. */
+const MITER_LIMIT = 4;
+
 function offsetPolylineMiter(pts: Pt[], d: number): Pt[] {
   const n = pts.length;
   if (n < 2) return pts.map((p) => [p[0], p[1]] as Pt);
@@ -36,6 +37,8 @@ function offsetPolylineMiter(pts: Pt[], d: number): Pt[] {
   const out: Pt[] = [];
   out.push([pts[0][0] + normals[0][0] * d, pts[0][1] + normals[0][1] * d]);
 
+  const absD = Math.abs(d) || 1e-9;
+
   for (let i = 0; i < n - 2; i++) {
     const n0 = normals[i], n1 = normals[i + 1];
     const d0 = dirs[i], d1 = dirs[i + 1];
@@ -47,7 +50,16 @@ function offsetPolylineMiter(pts: Pt[], d: number): Pt[] {
       continue;
     }
     const t = ((p1[0] - p0[0]) * d1[1] - (p1[1] - p0[1]) * d1[0]) / det;
-    out.push([p0[0] + d0[0] * t, p0[1] + d0[1] * t]);
+    const miter: Pt = [p0[0] + d0[0] * t, p0[1] + d0[1] * t];
+    const miterDist = Math.hypot(miter[0] - pts[i + 1][0], miter[1] - pts[i + 1][1]);
+
+    if (miterDist > absD * MITER_LIMIT) {
+      // Bisel: la "espiga" del miter excede el límite — se insertan los
+      // dos offsets del vértice sin unirlos en un único punto puntiagudo.
+      out.push(p0, p1);
+    } else {
+      out.push(miter);
+    }
   }
 
   const last = normals[normals.length - 1];

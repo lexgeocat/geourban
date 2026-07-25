@@ -39,6 +39,10 @@ interface RoundaboutState {
 
 let nextId = 1;
 
+function resetNextId(): void {
+  nextId = 1;
+}
+
 /** Rotonda A, Rotonda B, ... Rotonda Z, Rotonda AA, ... (mismo criterio que streetStore.autoName) */
 function autoName(index: number): string {
   let name = '';
@@ -90,7 +94,11 @@ export const useRoundaboutStore = create<RoundaboutState>()(
         state.roundabouts.forEach((r, i) => { r.name = autoName(i); });
       }),
 
-    clearRoundabouts: () => set((state) => { state.roundabouts = []; }),
+    clearRoundabouts: () =>
+      set((state) => {
+        state.roundabouts = [];
+        resetNextId();
+      }),
 
     setDefaultRadius: (v) => set((state) => { state.defaultRadiusM = Math.max(1, v); }),
     setDefaultSides: (v) => set((state) => { state.defaultSides = v; }),

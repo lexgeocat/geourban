@@ -93,3 +93,23 @@ function ringArea(ring: Pt[]): number {
   }
   return Math.abs(a) / 2;
 }
+/**
+ * Valida que los parámetros de una rotonda no produzcan un polígono
+ * externo auto-intersectante (H-VIA-9): con pocos lados (3-4) y una
+ * calzada muy ancha respecto al radio, `k = 1/cos(π/n)` puede inflar el
+ * radio efectivo tanto que las esquinas del ochave se crucen entre sí.
+ * Devuelve un mensaje de error, o null si los parámetros son seguros.
+ */
+export function validateRoundaboutParams(rb: RoundaboutParams): string | null {
+  if (!(rb.radiusM > 0)) return 'El radio debe ser mayor a 0.';
+  if (rb.sides !== 0 && rb.sides < 3) return 'Un polígono necesita al menos 3 lados (o 0 para círculo).';
+
+  const half = rb.roadWidthM / 2 + Math.max(0, rb.sidewalkWidthM);
+  if (rb.sides && rb.sides >= 3) {
+    const k = 1 / Math.cos(Math.PI / rb.sides);
+    if (half * k > rb.radiusM * 3) {
+      return `La calzada (+ vereda) es demasiado ancha para un radio de ${rb.radiusM.toFixed(1)}m con ${rb.sides} lados — el ochave puede autointersectarse. Reducí el ancho o aumentá el radio.`;
+    }
+  }
+  return null;
+}

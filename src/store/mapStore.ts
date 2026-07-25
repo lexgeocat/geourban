@@ -15,6 +15,8 @@ import {
   validateTopologyInWorker,
   computeManzanosInWorker,
   subdivideManzanoInWorker,
+    findOverlapsInWorker,
+  findGapsInWorker,
 } from '../workers/geoWorkerClient';
 import type { FeatureCollection, Feature as GeoJSONFeature } from 'geojson';
 import Feature from 'ol/Feature.js';
@@ -26,6 +28,7 @@ import { ensureKind, getFeatureKind, getLotStatus, setLotStatus } from '../core/
 import type { ManzanoLoteMethod } from '../geo/subdivisionAlgorithms';
 import { buildRoadNetworkRings } from '../geo/roadNetworkEngine';
 import { roundRingReflex } from '../geo/ringFillet';
+import { useTopologyWarningsStore } from './topologyWarningsStore';
 
 const geoJsonFormat = new GeoJSON();
 
@@ -201,6 +204,33 @@ function resolveLoteLayerId(): string | undefined {
     if (active) return active.id;
   }
   return reg.getLayerForKind('lote')?.id;
+}
+
+/** H-VIA-4: corre en segundo plano, sin bloquear la UI ni el debounce de
+ *  recompute. No se `await`ea desde el caller — es "fire and forget"
+ *  intencional, el resultado se refleja vía topologyWarningsStore y un
+ *  badge en StatusBar. */
+async function runBackgroundTopologyCheck(src: VectorSource): Promise<void> {
+  useTopologyWarningsStore.getState().setChecking(true);
+  try {
+    const collection: FeatureCollection = {
+      type: 'FeatureCollection',
+      features: src.getFeatures().map((f) =>
+        geoJsonFormat.writeFeatureObject(f, {
+          featureProjection: 'EPSG:3857',
+          dataProjection: 'EPSG:3857',
+        })
+      ),
+    };
+    const [overlaps, gaps] = await Promise.all([
+      findOverlapsInWorker(collection),
+      findGapsInWorker(collection),
+    ]);
+    useTopologyWarningsStore.getState().setResults(overlaps.length, gaps.features.length);
+  } catch (err) {
+    console.error('Validación topológica automática falló', err);
+    useTopologyWarningsStore.getState().setChecking(false);
+  }
 }
 
 /**
@@ -531,6 +561,7 @@ async function recomputeManzanosImmediate(): Promise<void> {
   useManzanoStore.getState().pruneToIds(aliveManzanoIds);
 
   src.changed();
+  void runBackgroundTopologyCheck(src);
 }
 
 const RECOMPUTE_DEBOUNCE_MS = 250;

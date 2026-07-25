@@ -36,6 +36,8 @@ import { HitTestSelect } from './HitTestSelect';
 import type { HitTestSelectEvent } from './HitTestSelect';
 import { getOrCreateSpatialIndex, type SpatialIndex } from '../spatialIndex';
 import { hitTestCandidatesInExtent } from '../hitTest';
+import type { Street } from '../../store/streetStore';
+import { validateRoundaboutParams } from '../../geo/roundaboutEngine';
 
 export interface InteractionContext {
   map: Map;
@@ -54,6 +56,26 @@ const ERASE_STYLE = new Style({
   fill: new Fill({ color: 'rgba(239, 68, 68, 0.25)' }),
   stroke: new Stroke({ color: '#ef4444', width: 2 }),
 });
+
+/** H-VIA-2: no hay snapping obligatorio en el trazado de calles — dos
+ *  calles a pocos centímetros generan un manzano-sliver invisible en
+ *  zoom bajo. Se avisa (no se bloquea) cuando un extremo queda "casi"
+ *  tocando otra calle sin llegar al snap exacto. */
+function findNearbyStreetEndpointWarning(
+  point: [number, number],
+  streets: Street[],
+  toleranceM: number,
+): string | null {
+  for (const s of streets) {
+    for (const candidate of [s.start, s.end]) {
+      const d = Math.hypot(point[0] - candidate[0], point[1] - candidate[1]);
+      if (d > 1e-6 && d < toleranceM) {
+        return `El extremo del trazo está a ${d.toFixed(2)}m de un extremo de "${s.name}" sin llegar a conectarse — puede generar un manzano-sliver.`;
+      }
+    }
+  }
+  return null;
+}
 
 export class InteractionModeController {
   private ctx: InteractionContext;
@@ -552,6 +574,17 @@ export class InteractionModeController {
         const waypoints = coords.length > 2
           ? (coords.slice(1, -1) as Array<[number, number]>)
           : undefined;
+
+        const TOL_M = 2; // ~2x la tolerancia típica de OSNAP en pantalla
+        const warning =
+          findNearbyStreetEndpointWarning(start, streetStore.streets, TOL_M) ??
+          findNearbyStreetEndpointWarning(end, streetStore.streets, TOL_M);
+        if (warning && !window.confirm(`${warning}\n\n¿Trazar de todos modos?`)) {
+          this.ctx.streetSource?.removeFeature(feature);
+          this.ctx.streetSource?.changed();
+          return;
+        }
+
         void runCommand(
           new AddStreetCommand(start, end, streetStore.defaultWidthM, waypoints, streetStore.defaultSideWidthM),
         );
@@ -574,16 +607,21 @@ export class InteractionModeController {
         map,
         onComplete: (center, radiusM) => {
           const rb = useRoundaboutStore.getState();
-          void runCommand(
-            new AddRoundaboutCommand({
-              center: center as [number, number],
-              radiusM,
-              sides: rb.defaultSides,
-              rotation: 0,
-              roadWidthM: rb.defaultRoadWidthM,
-              sidewalkWidthM: rb.defaultSidewalkWidthM,
-            }),
-          );
+          const params = {
+            center: center as [number, number],
+            radiusM,
+            sides: rb.defaultSides,
+            rotation: 0,
+            roadWidthM: rb.defaultRoadWidthM,
+            sidewalkWidthM: rb.defaultSidewalkWidthM,
+          };
+          const error = validateRoundaboutParams(params);
+          if (error) {
+            alert(error);
+            map.render();
+            return;
+          }
+          void runCommand(new AddRoundaboutCommand(params));
           map.render();
         },
         onCancel: () => map.render(),

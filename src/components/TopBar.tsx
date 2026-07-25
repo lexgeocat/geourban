@@ -447,6 +447,8 @@ const setRoundaboutPanelVisible = useRoundaboutStore((s) => s.setPanelVisible);
     );
     if (!ok || !drawSource) return;
     await useCommandStack.getState().run(new ClearFeaturesCommand());
+    useStreetStore.getState().clearStreets();
+    useRoundaboutStore.getState().clearRoundabouts();
     refreshSourceMetrics(drawSource);
     drawSource.changed();
     useSelectionStore.getState().clear();

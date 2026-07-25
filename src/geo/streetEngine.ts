@@ -60,125 +60,41 @@ function inSweep(ang: number, a: number, b: number): boolean {
   return rel <= sweep;
 }
 
-/**
- * Tabla de radios de ochave por ángulo interno del vértice — igual que
- * index_modelo.html (manzanos.xlsx). El ochave de una calle SIEMPRE es
- * automático: no hay override manual en ningún lado de la UI.
- */
-const MAX_FILLET_R = 8;
-export function getFilletRadiusForAngle(angleDeg: number): number {
-  if (angleDeg <= 35) return 2.5;
-  if (angleDeg <= 45) return 3;
-  if (angleDeg <= 95) return 4;
-  if (angleDeg <= 120) return 4.5;
-  if (angleDeg <= 150) return 5;
-  return MAX_FILLET_R;
+/** Radio máximo de ochave, configurable por proyecto (H-VIA-3). Antes era
+ *  una constante fija de 8m sin UI ni relación con el ancho real de
+ *  calzada. El control vive en ManzanoPanel → llama setMaxFilletRadius. */
+let filletMaxRadiusM = 8;
+
+export function setMaxFilletRadius(radiusM: number): void {
+  filletMaxRadiusM = Math.max(1, radiusM);
 }
 
-export interface ComputeFilletsOptions {
-  outer?: boolean;
+export function getMaxFilletRadius(): number {
+  return filletMaxRadiusM;
 }
 
 /**
- * @deprecated Preferir `computeStreetFilletsBoth` — esta versión hace un
- * doble loop completo por variante; si necesitás calzada Y vereda (el
- * caso normal), llamarla dos veces repite intersección de ejes, normales
- * y direcciones de cada par de calles (ver diagnóstico H4/H7). Se
- * mantiene por compatibilidad.
+ * Radio de ochave por ángulo interno del vértice. `roadHalfWidthM`
+ * (medio-ancho combinado de calzada+vereda de las 2 calles que se
+ * cruzan) es opcional: si se pasa, el radio de tabla se escala hacia
+ * arriba para vías anchas (una avenida de 30m no puede tener el mismo
+ * ochave que una calle de 6m), sin superar `filletMaxRadiusM`.
  */
-export function computeStreetFillets(
-  streets: Street[],
-  opts: ComputeFilletsOptions = {},
-): StreetFillet[] {
-  const results: StreetFillet[] = [];
-  const outer = !!opts.outer;
+export function getFilletRadiusForAngle(angleDeg: number, roadHalfWidthM?: number): number {
+  const tableValue = (() => {
+    if (angleDeg <= 35) return 2.5;
+    if (angleDeg <= 45) return 3;
+    if (angleDeg <= 95) return 4;
+    if (angleDeg <= 120) return 4.5;
+    if (angleDeg <= 150) return 5;
+    return filletMaxRadiusM;
+  })();
 
-  for (let i = 0; i < streets.length; i++) {
-    for (let j = i + 1; j < streets.length; j++) {
-      const sA = streets[i], sB = streets[j];
-      const a0 = sA.start, a1 = sA.end;
-      const b0 = sB.start, b1 = sB.end;
+  const base = Math.min(tableValue, filletMaxRadiusM);
+  if (roadHalfWidthM == null) return base;
 
-      const ip = lineLineIntersect(a0, a1, b0, b1);
-      if (!ip) continue;
-
-      const swA = Math.max(0, sA.sideWidthM ?? 0);
-      const swB = Math.max(0, sB.sideWidthM ?? 0);
-      const halfA = sA.widthM / 2 + (outer ? swA : 0);
-      const halfB = sB.widthM / 2 + (outer ? swB : 0);
-      const nA = norm(a0, a1), dA = normalize(sub(a1, a0));
-      const nB = norm(b0, b1), dB = normalize(sub(b1, b0));
-
-      for (const sAs of [1, -1]) {
-        for (const sBs of [1, -1]) {
-          const eA0 = add(a0, scale(nA, sAs * halfA));
-          const eA1 = add(a1, scale(nA, sAs * halfA));
-          const eB0 = add(b0, scale(nB, sBs * halfB));
-          const eB1 = add(b1, scale(nB, sBs * halfB));
-
-          const corner = lineLineIntersect(eA0, eA1, eB0, eB1);
-          if (!corner) continue;
-
-          const cRel = sub(corner, ip);
-          if (sAs * dot(nA, cRel) <= 0) continue;
-          if (sBs * dot(nB, cRel) <= 0) continue;
-          if (Math.hypot(cRel[0], cRel[1]) < 1) continue;
-
-          const ipRel = sub(ip, corner);
-          const projA = dot(ipRel, dA);
-          const projB = dot(ipRel, dB);
-          const outA: [number, number] = projA >= 0 ? [-dA[0], -dA[1]] : [dA[0], dA[1]];
-          const outB: [number, number] = projB >= 0 ? [-dB[0], -dB[1]] : [dB[0], dB[1]];
-
-          const cosT = Math.max(-1, Math.min(1, dot(outA, outB)));
-          const theta = Math.acos(cosT);
-          if (theta < 0.05 || theta > Math.PI - 0.05) continue;
-
-          const cornerAngleDeg = (theta * 180) / Math.PI;
-          const baseFillet = getFilletRadiusForAngle(cornerAngleDeg);
-          const filletM = outer ? baseFillet : baseFillet + Math.max(swA, swB);
-
-          const tol = halfA + halfB + filletM;
-          if (!onSegment(ip, a0, a1, tol)) continue;
-          if (!onSegment(ip, b0, b1, tol)) continue;
-          if (Math.hypot(cRel[0], cRel[1]) > tol * 3) continue;
-
-          const t = filletM / Math.tan(theta / 2);
-          if (t <= 0 || !isFinite(t)) continue;
-
-          const tangA = add(corner, scale(outA, t));
-          const tangB = add(corner, scale(outB, t));
-
-          const bisRaw: [number, number] = [outA[0] + outB[0], outA[1] + outB[1]];
-          const bisLen = Math.hypot(bisRaw[0], bisRaw[1]);
-          if (bisLen < 1e-9) continue;
-          const bis: [number, number] = [bisRaw[0] / bisLen, bisRaw[1] / bisLen];
-          const distToCtr = filletM / Math.sin(theta / 2);
-          const acx = corner[0] + bis[0] * distToCtr;
-          const acy = corner[1] + bis[1] * distToCtr;
-
-          const angA = Math.atan2(tangA[1] - acy, tangA[0] - acx);
-          const angB = Math.atan2(tangB[1] - acy, tangB[0] - acx);
-          const caRel = Math.atan2(-bis[1], -bis[0]);
-          const acw = !inSweep(caRel, angA, angB);
-
-          results.push({
-            corner,
-            tangA,
-            tangB,
-            arcCenter: [acx, acy],
-            angA,
-            angB,
-            acw,
-            radius: filletM,
-            streetA: sA,
-            streetB: sB,
-          });
-        }
-      }
-    }
-  }
-  return results;
+  const scaledForWidth = Math.min(filletMaxRadiusM, roadHalfWidthM * 0.5);
+  return Math.max(base, scaledForWidth);
 }
 
 export interface StreetFilletsBundle {
@@ -246,7 +162,7 @@ export function computeStreetFilletsBoth(streets: Street[]): StreetFilletsBundle
             if (theta < 0.05 || theta > Math.PI - 0.05) continue;
 
             const cornerAngleDeg = (theta * 180) / Math.PI;
-            const baseFillet = getFilletRadiusForAngle(cornerAngleDeg);
+            const baseFillet = getFilletRadiusForAngle(cornerAngleDeg, Math.max(halfA, halfB));
             const filletM = isOuter ? baseFillet : baseFillet + Math.max(swA, swB);
 
             const tol = halfA + halfB + filletM;

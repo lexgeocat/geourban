@@ -36,6 +36,13 @@ interface StreetState {
 
 let nextId = 1;
 
+/** H-VIA-8: antes `nextId` vivía a nivel de módulo y nunca se reiniciaba
+ *  entre proyectos. Se resetea desde `clearStreets()`, invocado al crear
+ *  un proyecto nuevo (ver TopBar.handleNewProject). */
+function resetNextId(): void {
+  nextId = 1;
+}
+
 function autoName(index: number): string {
   let name = '';
   let n = index;
@@ -55,12 +62,17 @@ export const useStreetStore = create<StreetState>()(
 
     addStreet: (street) => {
       let newId = '';
+      // H-VIA-6: una calle con ancho <= 0 se podía guardar y dibujar sin
+      // cortar ningún manzano ("calle fantasma") — se clampea acá como
+      // última barrera, además del clamp en setDefaultWidth.
+      const widthM = Math.max(0.5, street.widthM);
       set((state) => {
         const id = `street-${nextId++}`;
         newId = id;
         const name = autoName(state.streets.length);
         state.streets.push({
           ...street,
+          widthM,
           sideWidthM: street.sideWidthM ?? state.defaultSideWidthM,
           id,
           name,
@@ -79,7 +91,10 @@ export const useStreetStore = create<StreetState>()(
     updateStreet: (id, patch) =>
       set((state) => {
         const s = state.streets.find((s) => s.id === id);
-        if (s) Object.assign(s, patch);
+        if (!s) return;
+        const next = { ...patch };
+        if (next.widthM != null) next.widthM = Math.max(0.5, next.widthM);
+        Object.assign(s, next);
       }),
 
     removeStreet: (id) =>
@@ -91,11 +106,12 @@ export const useStreetStore = create<StreetState>()(
     clearStreets: () =>
       set((state) => {
         state.streets = [];
+        resetNextId();
       }),
 
     setDefaultWidth: (w) =>
       set((state) => {
-        state.defaultWidthM = w;
+        state.defaultWidthM = Math.max(0.5, w);
       }),
 
     setDefaultSideWidth: (w) =>

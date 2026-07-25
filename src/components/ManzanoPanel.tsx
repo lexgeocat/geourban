@@ -13,6 +13,7 @@ import { useStreetStore } from '../store/streetStore';
 import { useRoundaboutStore } from '../store/roundaboutStore';
 import { getFeatureKind, ensureKind, getLotStatus, setLotStatus, type LotStatus } from '../core/objectModel';
 import { useIncrementalRender } from '../hooks/useIncrementalRender';
+import { setMaxFilletRadius, getMaxFilletRadius } from '../geo/streetEngine';
 
 const MZN_COLORS = [
   '#58a6ff',
@@ -139,6 +140,7 @@ export default function ManzanoPanel() {
 
   const [lotsBusy, setLotsBusy] = useState(false);
   const [expandedLots, setExpandedLots] = useState<Record<string, boolean>>({});
+  const [maxFilletR, setMaxFilletR] = useState(() => getMaxFilletRadius());
 
   // Fase 6 (H18): renderizado incremental de tarjetas de manzano.
   const panelRef = useRef<HTMLDivElement>(null);
@@ -319,6 +321,21 @@ export default function ManzanoPanel() {
             step={0.5}
             value={defaultSideWidthM}
             onChange={(e) => setDefaultSideWidth(Math.max(0, parseFloat(e.target.value) || 0))}
+            style={inputStyle}
+          />
+          <label style={{ display: 'block', fontSize: '0.65rem', color: 'var(--cad-text-dim)', marginTop: 6 }}>
+            Radio máx. de ochave (m)
+          </label>
+          <input
+            type="number"
+            min={1}
+            step={0.5}
+            value={maxFilletR}
+            onChange={(e) => {
+              const v = parseFloat(e.target.value) || maxFilletR;
+              setMaxFilletR(v);
+              setMaxFilletRadius(v);
+            }}
             style={inputStyle}
           />
         </div>
