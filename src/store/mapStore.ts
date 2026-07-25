@@ -11,14 +11,19 @@ import { useStreetStore } from './streetStore';
 import { useRoundaboutStore } from './roundaboutStore';
 import { useManzanoStore } from './manzanoStore';
 import { useLayersStore } from './layersRegistryStore';
-import { validateTopologyInWorker, computeManzanosInWorker } from '../workers/geoWorkerClient';
+import {
+  validateTopologyInWorker,
+  computeManzanosInWorker,
+  subdivideManzanoInWorker,
+} from '../workers/geoWorkerClient';
 import type { FeatureCollection, Feature as GeoJSONFeature } from 'geojson';
 import Feature from 'ol/Feature.js';
 import PolygonGeom from 'ol/geom/Polygon.js';
 import type Geometry from 'ol/geom/Geometry.js';
 import { runCommand } from '../commands/CommandStack';
 import { DeleteFeaturesCommand } from '../commands/DeleteFeaturesCommand';
-import { ensureKind, getFeatureKind } from '../core/objectModel';
+import { ensureKind, getFeatureKind, getLotStatus, setLotStatus } from '../core/objectModel';
+import type { ManzanoLoteMethod } from '../geo/subdivisionAlgorithms';
 import { buildRoadNetworkRings } from '../geo/roadNetworkEngine';
 import { roundRingReflex } from '../geo/ringFillet';
 
@@ -27,7 +32,6 @@ const geoJsonFormat = new GeoJSON();
 type CursorCoords = { x: number; y: number; isProjected?: boolean } | null;
 
 export type ViewConfig = {
-  /** Centro del mapa en [lng, lat] (EPSG:4326) */
   center: [number, number];
   zoom: number;
 };
@@ -40,7 +44,6 @@ type MapState = {
   viewConfig: ViewConfig;
   setMap: (map: Map | null) => void;
   setDrawSource: (src: VectorSource | null) => void;
-  /** Recibe GeoJSON array serializado desde historyStore y reemplaza features */
   restoreDrawFeatures: (geojson: any) => void;
   setCursorCoords: (coords: CursorCoords) => void;
   setZoom: (zoom: number) => void;
@@ -48,9 +51,7 @@ type MapState = {
   fitToExtent: () => void;
   zoomIn: () => void;
   zoomOut: () => void;
-  /** Borra las features seleccionadas (de drawSource) y refresca metricas */
   deleteSelected: () => number;
-  /** Borra UNA feature concreta (por id OL) */
   deleteFeatureById: (id: string | number) => boolean;
   validateProjectTopology: () => Promise<{ valid: boolean; issues: string[] }>;
 };
@@ -70,7 +71,7 @@ export const useMapStore = create<MapState>()(
     setDrawSource: (src) =>
       set((state) => {
         state.drawSource = src;
-       }),
+      }),
     restoreDrawFeatures: (geojson) => {
       const src = get().drawSource;
       if (!src) return;
@@ -86,7 +87,7 @@ export const useMapStore = create<MapState>()(
     setCursorCoords: (coords) =>
       set((state) => {
         state.cursorCoords = coords;
-       }),
+      }),
     setZoom: (zoom) =>
       set((state) => {
         state.zoom = zoom;
@@ -98,7 +99,6 @@ export const useMapStore = create<MapState>()(
     fitToExtent: () => {
       const map = get().mapInstance;
       if (!map) return;
-      // Itera todas las capas vectoriales y calcula el extent combinado
       const layers = map.getLayers().getArray();
       let fullExtent: Extent | null = null;
       for (const layer of layers) {
@@ -139,7 +139,7 @@ export const useMapStore = create<MapState>()(
       void runCommand(new DeleteFeaturesCommand([id]));
       return true;
     },
-   validateProjectTopology: async () => {
+    validateProjectTopology: async () => {
       const src = get().drawSource;
       if (!src) return { valid: true, issues: [] };
       const collection: FeatureCollection = {
@@ -162,8 +162,6 @@ function closeGeoRing(ring: Pt[]): Pt[] {
   return ring;
 }
 
-/** Extent combinado de un conjunto de anillos (para el chequeo broad-phase
- *  de H-LOT-2 más abajo). */
 function ringsExtent(rings: Pt[][]): Extent | null {
   let result: Extent | null = null;
   for (const ring of rings) {
@@ -182,11 +180,6 @@ function ringsExtent(rings: Pt[][]): Extent | null {
   return result;
 }
 
-/** Resuelve el layerId para una manzana nueva (capa activa, o la primera
- *  capa registrada para kind 'manzana'). Duplica intencionalmente la
- *  lógica de resolveLayerId() de AddFeatureCommand.ts en vez de
- *  importarla, para no crear un ciclo de imports
- *  (mapStore → commands/AddFeatureCommand → commands/Command → mapStore). */
 function resolveManzanaLayerId(): string | undefined {
   const reg = useLayersStore.getState();
   if (reg.activeLayerId) {
@@ -196,11 +189,50 @@ function resolveManzanaLayerId(): string | undefined {
   return reg.getLayerForKind('manzana')?.id;
 }
 
+/** Fase 4: análogo a resolveManzanaLayerId, para lotes creados por la
+ *  re-lotización automática dentro de recomputeManzanosImmediate. Se
+ *  duplica en vez de importar de commands/AddFeatureCommand.ts por el
+ *  mismo motivo que resolveManzanaLayerId (evitar el ciclo de imports
+ *  mapStore → commands/AddFeatureCommand → commands/Command → mapStore). */
+function resolveLoteLayerId(): string | undefined {
+  const reg = useLayersStore.getState();
+  if (reg.activeLayerId) {
+    const active = reg.getById(reg.activeLayerId);
+    if (active) return active.id;
+  }
+  return reg.getLayerForKind('lote')?.id;
+}
+
 /**
  * Cuerpo real de recomputeManzanos() — ver wrapper debounced más abajo.
- * Reconstruye TODOS los fragmentos de manzano desde las parcelas
- * originales (origParcelId/origPts), cortando contra el estado COMPLETO
- * actual de calles+rotondas.
+ *
+ * Fase 4 (ver diagnostico-motores-lotizacion-vial.md): además de
+ * reconstruir los fragmentos de manzano contra el estado actual de
+ * calles+rotondas, esta versión:
+ *
+ *  1. Acota el viaje al worker a los orígenes cuyo extent intersecta el
+ *     extent de la red vial (broad-phase barato antes del union+difference
+ *     caro) — orígenes lejos de cualquier calle/rotonda no pueden haber
+ *     sido afectados y se dejan completamente intactos.
+ *  2. Si un origen tenía lotes vivos (lotStatus 'subdivided') antes del
+ *     recorte, intenta re-lotizar automáticamente el fragmento resultante
+ *     con el mismo método/dirección/área que tenía guardado.
+ *  3. Si el recorte partió ese origen en 2+ fragmentos (reparto de área
+ *     ambiguo) o la re-lotización automática no generó lotes, marca el/los
+ *     fragmento(s) como lotStatus 'pending' — el usuario los regenera a
+ *     mano desde ManzanoPanel (badge "⏳ pendiente de re-lotizar").
+ *
+ * NOTA (hallazgo colateral, no resuelto acá): la clasificación "untouched"
+ * compara el fragmento nuevo contra `origPts` (el polígono ORIGINAL sin
+ * cortar), no contra la geometría actual del manzano. Esto significa que
+ * un manzano que ya fue cortado alguna vez por una calle SIEMPRE se
+ * re-clasifica como "no tocado" en cualquier recompute posterior (aunque
+ * la calle nueva esté en la otra punta del proyecto y su extent no
+ * intersecte), y se regenera con id nuevo cada vez — es la causa raíz de
+ * H-VIA-11. El acotamiento espacial de este pase ayuda para orígenes
+ * genuinamente lejos de TODA la red vial, pero no resuelve esto: requiere
+ * diffing incremental contra lo que cambió (no contra el estado completo),
+ * que queda fuera del alcance de esta fase.
  */
 async function recomputeManzanosImmediate(): Promise<void> {
   const src = useMapStore.getState().drawSource;
@@ -210,13 +242,18 @@ async function recomputeManzanosImmediate(): Promise<void> {
   const roundabouts = useRoundaboutStore.getState().roundabouts;
   if (streets.length === 0 && roundabouts.length === 0) return;
 
-  type OriginGroup = { origId: string; origPts: Pt[]; members: Array<Feature<Geometry>> };
+  type OriginGroup = {
+    origId: string;
+    origPts: Pt[];
+    members: Array<Feature<Geometry>>;
+    /** Fase 4: método/dirección guardados en manzanoStore para el primer
+     *  miembro con lotStatus 'subdivided' — se pierden en cuanto el
+     *  feature original se reemplaza por fragmentos nuevos más abajo. */
+    savedMethod: ManzanoLoteMethod | null;
+    savedDirPref: { ax: number; ay: number } | undefined;
+    wasSubdivided: boolean;
+  };
   const groups = new globalThis.Map<string, OriginGroup>();
-
-  // H-LOT-2/3 (Fase 0): las features kind='lote' con lotGroupId son hijas
-  // de una manzana ya lotizada — quedan afuera del escaneo de orígenes,
-  // pero las guardamos acá agrupadas por lotGroupId para poder limpiarlas
-  // más abajo si su manzana "padre" se reconstruye o ya no existe.
   const lotsByGroupId = new globalThis.Map<string, Array<Feature<Geometry>>>();
 
   src.forEachFeature((f) => {
@@ -251,33 +288,32 @@ async function recomputeManzanosImmediate(): Promise<void> {
 
     let group = groups.get(origId);
     if (!group) {
-      group = { origId, origPts, members: [] };
+      group = { origId, origPts, members: [], savedMethod: null, savedDirPref: undefined, wasSubdivided: false };
       groups.set(origId, group);
     }
     group.members.push(feature);
+
+    if (kind === 'manzana' && getLotStatus(feature) === 'subdivided') {
+      group.wasSubdivided = true;
+      const fid = feature.getId();
+      if (fid != null && group.savedMethod === null) {
+        group.savedMethod = useManzanoStore.getState().getMethod(fid);
+        group.savedDirPref = useManzanoStore.getState().getRotateDir(fid);
+      }
+    }
   });
 
   if (groups.size === 0) return;
 
-  // Red vial completa unida en UNA sola operación booleana — el resultado
-  // no depende del orden en que las calles se agregaron, y un cruce de 3+
-  // vías (o una vía atravesando una rotonda) sale correcto sin casos
-  // especiales, a diferencia del recorte secuencial anterior.
   const roadRings = buildRoadNetworkRings(streets, roundabouts);
-  if (roadRings.length === 0) return; // nada que recortar todavía
+  if (roadRings.length === 0) return;
 
-  // H-LOT-2 (Fase 0): grupos de lotes cuya manzana "padre" ya NO existe
-  // como feature (el usuario corrió "Generar todos", que borra la
-  // manzana). Sin un origen vivo no hay forma de re-cortarlos con
-  // precisión (eso queda para una fase posterior de regeneración
-  // automática); acá, siguiendo el mínimo del diagnóstico, se eliminan
-  // si su extent se solapa con la red vial nueva, para no dejarlos
-  // huérfanos y superpuestos a la calle. Los grupos cuya manzana SÍ
-  // sigue viva se resuelven más abajo, dentro del loop principal.
   const roadExtentForOrphans = ringsExtent(roadRings);
+
+  // H-LOT-2 (Fase 0): huérfanos de manzanas ya borradas por "Generar todos".
   if (roadExtentForOrphans) {
     for (const [gid, lots] of lotsByGroupId) {
-      if (src.getFeatureById(gid) != null) continue; // manzana viva: la maneja el loop principal
+      if (src.getFeatureById(gid) != null) continue;
       let lotsExtent: Extent | null = null;
       for (const lot of lots) {
         const g = lot.getGeometry();
@@ -296,6 +332,18 @@ async function recomputeManzanosImmediate(): Promise<void> {
     }
   }
 
+  // Fase 4, punto 4: acotamiento espacial — ver nota de cabecera sobre
+  // sus límites reales.
+  const allGroups = Array.from(groups.values());
+  const parcelIndexToGroup: OriginGroup[] = roadExtentForOrphans
+    ? allGroups.filter((g) => {
+        const ext = ringsExtent([g.origPts]);
+        return ext != null && extentIntersects(ext, roadExtentForOrphans);
+      })
+    : allGroups;
+
+  if (parcelIndexToGroup.length === 0) return;
+
   const roadNetworkFC: FeatureCollection = {
     type: 'FeatureCollection',
     features: roadRings.map((ring) => ({
@@ -305,7 +353,6 @@ async function recomputeManzanosImmediate(): Promise<void> {
     })) as never[],
   };
 
-  const parcelIndexToGroup: OriginGroup[] = Array.from(groups.values());
   const parcelsFC: FeatureCollection = {
     type: 'FeatureCollection',
     features: parcelIndexToGroup.map((group) => ({
@@ -333,19 +380,16 @@ async function recomputeManzanosImmediate(): Promise<void> {
     fragmentsByGroup.get(idx)!.push(ring);
   });
 
-  parcelIndexToGroup.forEach((group, idx) => {
+  const targetAreaM2 = useManzanoStore.getState().targetAreaM2;
+  const frontMinM = useManzanoStore.getState().frontMinM;
+
+  for (let idx = 0; idx < parcelIndexToGroup.length; idx++) {
+    const group = parcelIndexToGroup[idx];
     const fragments = fragmentsByGroup.get(idx) ?? [];
 
     const untouched =
       fragments.length === 1 && polyArea(fragments[0]) >= polyArea(group.origPts) * 0.999;
 
-    // H-LOT-3 (Fase 0): si el origen SÍ cambió (no está "untouched"), un
-    // miembro manzana de este grupo puede tener lotes hijos vivos
-    // (RecomputeManzanoLotsCommand no borra la manzana al lotizar) — esos
-    // lotes quedarían huérfanos/superpuestos en cuanto reemplacemos la
-    // manzana por los fragmentos nuevos. Se eliminan acá. Si está
-    // "untouched" no se toca nada: la manzana (y sus lotes, si los
-    // tiene) siguen siendo geométricamente válidos.
     if (!untouched) {
       for (const m of group.members) {
         const mid = m.getId();
@@ -366,23 +410,24 @@ async function recomputeManzanosImmediate(): Promise<void> {
       const orig = group.members[0];
       orig.setGeometry(new PolygonGeom([closeGeoRing(fragments[0])]));
       orig.set('kind', 'lote', true);
+      orig.unset('lotStatus', true);
       orig.set('origParcelId', group.origId, true);
       orig.set('origPts', group.origPts, true);
       src.addFeature(orig);
       updateFeatureMetrics(orig as Feature<Geometry>);
-      return;
+      continue;
     }
 
+    const newFragmentIds: string[] = [];
     fragments.forEach((ring, i) => {
       const rounded = roundRingReflex(ring);
       if (rounded.length < 4) return;
       const newFeat = new Feature({ geometry: new PolygonGeom([rounded]) });
-      newFeat.setId(`${group.origId}-mzn-${i}`);
+      const newId = `${group.origId}-mzn-${i}`;
+      newFeat.setId(newId);
       newFeat.setProperties(
         ensureKind(
           {
-            // Fase 0 (§4): ya no se escribe `type` — `kind` es la única
-            // fuente de verdad (ver core/objectModel.ts).
             colorIdx: i % 10,
             createdAt: new Date().toISOString(),
             origParcelId: group.origId,
@@ -391,21 +436,91 @@ async function recomputeManzanosImmediate(): Promise<void> {
           'manzana',
         ),
       );
-      // Fase 0 (§4): asignar layerId explícito — antes las manzanas de
-      // este flujo dependían exclusivamente del fallback `type==='manzana'`
-      // del match de WebGL (DrawLayerRenderer.buildWebglStyle), que ya no
-      // existe.
       const lid = resolveManzanaLayerId();
       if (lid) newFeat.set('layerId', lid);
       src.addFeature(newFeat);
       updateFeatureMetrics(newFeat as Feature<Geometry>);
+      newFragmentIds.push(newId);
     });
-  });
 
-  // H-LOT-10 (Fase 0): purga manzanoStore de ids que ya no existen en
-  // drawSource — los fragmentos nuevos siempre reciben id nuevo
-  // (`${origId}-mzn-${i}`), así que el manzano viejo queda huérfano en
-  // methods/rotateDir/geomSnapshots/openCards si no se poda acá.
+    // Fase 4, puntos 1-2: qué hacer con el/los fragmento(s) de un origen
+    // que SÍ tenía lotes vivos antes del corte.
+    if (group.wasSubdivided && group.savedMethod) {
+      if (newFragmentIds.length === 1) {
+        const fragId = newFragmentIds[0];
+        const fragFeat = src.getFeatureById(fragId) as Feature<Geometry> | null;
+        const fragGeom = fragFeat?.getGeometry();
+
+        if (fragFeat && fragGeom instanceof PolygonGeom) {
+          const ring = ((fragGeom.getCoordinates()[0] ?? []) as number[][]).map(
+            (c) => [c[0], c[1]] as Pt,
+          );
+          try {
+            const lots = await subdivideManzanoInWorker(
+              ring,
+              group.savedMethod,
+              targetAreaM2,
+              frontMinM,
+              group.savedDirPref,
+            );
+            let created = 0;
+            lots.forEach((lot, i) => {
+              if (lot.pts.length < 3) return;
+              const closedRing = [...lot.pts];
+              if (
+                closedRing[0][0] !== closedRing[closedRing.length - 1][0] ||
+                closedRing[0][1] !== closedRing[closedRing.length - 1][1]
+              ) {
+                closedRing.push([closedRing[0][0], closedRing[0][1]]);
+              }
+              const lotFeat = new Feature({ geometry: new PolygonGeom([closedRing]) });
+              const lotId = `lot-${fragId}-${Date.now()}-${i}`;
+              lotFeat.setId(lotId);
+              lotFeat.setProperties(
+                ensureKind(
+                  {
+                    subdivision: group.savedMethod,
+                    lotGroupId: fragId,
+                    label: lot.isRemnant ? `Remanente ${i + 1}` : `Lote ${i + 1}`,
+                    areaM2: lot.areaM2,
+                    frontM: lot.frontM,
+                    depthM: lot.depthM,
+                    isRemnant: lot.isRemnant,
+                  },
+                  'lote',
+                ),
+              );
+              const lotLid = resolveLoteLayerId();
+              if (lotLid) lotFeat.set('layerId', lotLid);
+              src.addFeature(lotFeat);
+              updateFeatureMetrics(lotFeat as Feature<Geometry>);
+              created++;
+            });
+            setLotStatus(fragFeat, created > 0 ? 'subdivided' : 'pending');
+            useManzanoStore.getState().setMethod(fragId, group.savedMethod);
+            if (group.savedDirPref) useManzanoStore.getState().setRotateDir(fragId, group.savedDirPref);
+          } catch (err) {
+            console.error('recomputeManzanos: fallo la re-lotización automática', err);
+            setLotStatus(fragFeat, 'pending');
+          }
+        } else if (fragFeat) {
+          setLotStatus(fragFeat, 'pending');
+        }
+      } else if (newFragmentIds.length > 1) {
+        // Corte ambiguo: el manzano se partió en 2+ piezas. No hay forma
+        // confiable de repartir el área objetivo original entre ellas —
+        // se marcan 'pending', el usuario decide método/área por fragmento
+        // a mano en ManzanoPanel (se preserva el método que tenía, como
+        // punto de partida).
+        for (const fragId of newFragmentIds) {
+          const fragFeat = src.getFeatureById(fragId) as Feature<Geometry> | null;
+          setLotStatus(fragFeat, 'pending');
+          useManzanoStore.getState().setMethod(fragId, group.savedMethod);
+        }
+      }
+    }
+  }
+
   const aliveManzanoIds = new Set<string>();
   src.forEachFeature((f) => {
     if (getFeatureKind(f as Feature<Geometry>) === 'manzana') {
@@ -424,24 +539,6 @@ let recomputeInFlight: Promise<void> | null = null;
 let recomputeResolve: (() => void) | null = null;
 let recomputeReject: ((err: unknown) => void) | null = null;
 
-/**
- * Versión debounced de recomputeManzanosImmediate() — ver diagnóstico
- * H12. `recomputeManzanosImmediate()` reconstruye TODOS los fragmentos de
- * manzano contra el estado COMPLETO de calles/rotondas; si el usuario
- * traza varias calles en sucesión rápida, cada llamada directa repetiría
- * ese trabajo completo una vez por calle. Con el debounce, las llamadas
- * dentro de la ventana comparten UNA sola ejecución real — y la MISMA
- * Promise — así que cada llamador (`AddStreetCommand`/
- * `AddRoundaboutCommand`) puede seguir haciendo `await recomputeManzanos()`
- * de forma segura: se resuelve cuando el cómputo compartido corrió con el
- * estado más reciente.
- *
- * IMPORTANTE: por esto mismo, `AddStreetCommand`/`AddRoundaboutCommand`
- * fusionan (`coalesceInto`) instancias trazadas dentro de la ventana de
- * coalescing del CommandStack en una sola entrada de historial — si no,
- * dos comandos que comparten un recompute podrían capturar snapshots
- * "before" inconsistentes entre sí. Ver AddStreetCommand.ts.
- */
 export function recomputeManzanos(): Promise<void> {
   if (!recomputeInFlight) {
     recomputeInFlight = new Promise<void>((resolve, reject) => {

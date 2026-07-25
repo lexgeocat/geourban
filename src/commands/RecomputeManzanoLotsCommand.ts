@@ -1,9 +1,3 @@
-// src/commands/RecomputeManzanoLotsCommand.ts
-//
-// Recalcula los lotes de UN solo manzano (a diferencia de GenerateLotsCommand,
-// que hace todos), respetando el método/rotación guardados en manzanoStore.
-// Con undo, igual que el resto de los comandos.
-
 import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
 import GeoJSON from 'ol/format/GeoJSON.js';
@@ -12,7 +6,13 @@ import FeatureOL from 'ol/Feature.js';
 import { Command, type CommandContext } from './Command';
 import type { ManzanoLoteMethod } from '../geo/subdivisionAlgorithms';
 import { updateFeatureMetrics } from '../geo/metrics';
-import { ensureKind, getFeatureKind } from '../core/objectModel';
+import {
+  ensureKind,
+  getFeatureKind,
+  getLotStatus,
+  setLotStatus,
+  type LotStatus,
+} from '../core/objectModel';
 import { resolveLayerId } from './AddFeatureCommand';
 import { subdivideManzanoInWorker } from '../workers/geoWorkerClient';
 
@@ -26,26 +26,12 @@ export interface RecomputeManzanoLotsOpts {
   dirPref?: { ax: number; ay: number };
 }
 
-/**
- * La subdivisión (bisección iterativa) ahora corre en el Web Worker — ver
- * diagnóstico H8 — así que rotar la dirección de corte de un manzano (un
- * gesto interactivo de arrastre) ya no bloquea el hilo de UI.
- *
- * Nota de orden: a diferencia de la versión anterior, los lotes viejos se
- * sacan de `drawSource` recién DESPUÉS de que el worker responde — así,
- * si la subdivisión falla (promesa rechazada), el manzano no queda sin
- * lotes por un error transitorio.
- *
- * Se eliminó también el `refreshSourceMetrics` global al final: las
- * métricas de los lotes nuevos ya se calculan una por una, y los lotes
- * restaurados en undo() ya traen sus métricas correctas guardadas en
- * `props` — ver diagnóstico H9.
- */
 export class RecomputeManzanoLotsCommand extends Command {
   readonly label = 'Recalcular lotes del manzano';
   private readonly opts: RecomputeManzanoLotsOpts;
   private newLotIds: Array<string | number> = [];
   private removedLotSnapshots: Array<{ id: string | number; geometry: Geometry; props: Record<string, unknown> }> = [];
+  private prevLotStatus: LotStatus | null = null;
 
   constructor(opts: RecomputeManzanoLotsOpts) {
     super();
@@ -58,6 +44,11 @@ export class RecomputeManzanoLotsCommand extends Command {
 
     const mznFeat = ctx.drawSource.getFeatureById(this.opts.manzanoId) as Feature<Geometry> | null;
     if (!mznFeat || getFeatureKind(mznFeat) !== 'manzana') return;
+
+    if (this.prevLotStatus === null) {
+      this.prevLotStatus = getLotStatus(mznFeat);
+    }
+
     const geom = mznFeat.getGeometry();
     if (!geom || geom.getType() !== 'Polygon') return;
 
@@ -77,7 +68,6 @@ export class RecomputeManzanoLotsCommand extends Command {
       this.opts.dirPref,
     );
 
-    // Sacar los lotes previos de este manzano (guardando snapshot para el undo).
     const toRemove: Feature<Geometry>[] = [];
     ctx.drawSource.forEachFeature((f) => {
       if (f.get('lotGroupId') === String(this.opts.manzanoId)) toRemove.push(f as Feature<Geometry>);
@@ -131,6 +121,8 @@ export class RecomputeManzanoLotsCommand extends Command {
       this.newLotIds.push(newId);
     });
 
+    setLotStatus(mznFeat, this.newLotIds.length > 0 ? 'subdivided' : 'none');
+
     ctx.drawSource.changed();
   }
 
@@ -145,6 +137,10 @@ export class RecomputeManzanoLotsCommand extends Command {
       f.setId(snap.id);
       f.setProperties(snap.props);
       ctx.drawSource.addFeature(f);
+    }
+    if (this.prevLotStatus !== null) {
+      const mznFeat = ctx.drawSource.getFeatureById(this.opts.manzanoId) as Feature<Geometry> | null;
+      setLotStatus(mznFeat, this.prevLotStatus);
     }
     ctx.drawSource.changed();
   }

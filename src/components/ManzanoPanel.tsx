@@ -11,7 +11,7 @@ import { polyArea, centroid, type Pt } from '../geo/polygonEngine';
 import { useDrawStore } from '../store/drawStore';
 import { useStreetStore } from '../store/streetStore';
 import { useRoundaboutStore } from '../store/roundaboutStore';
-import { getFeatureKind, ensureKind } from '../core/objectModel';
+import { getFeatureKind, ensureKind, getLotStatus, setLotStatus, type LotStatus } from '../core/objectModel';
 import { useIncrementalRender } from '../hooks/useIncrementalRender';
 
 const MZN_COLORS = [
@@ -46,6 +46,9 @@ interface ManzanoRow {
   perimeterM: number;
   isEquip: boolean;
   lots: LotInfo[];
+  /** Fase 4: 'pending' = fue recortada por una calle/rotonda nueva y el
+   *  motor vial no pudo re-lotizarla sola. */
+  lotStatus: LotStatus;
 }
 
 function ringPerimeter(pts: Pt[]): number {
@@ -83,7 +86,15 @@ function readManzanoRows(drawSource: any): ManzanoRow[] {
       });
     });
     const colorIdx = (f.get('colorIdx') as number | undefined) ?? fallbackIdx;
-    rows.push({ id, colorIdx: colorIdx % MZN_COLORS.length, areaM2, perimeterM, isEquip: kind === 'equipamiento', lots });
+    rows.push({
+      id,
+      colorIdx: colorIdx % MZN_COLORS.length,
+      areaM2,
+      perimeterM,
+      isEquip: kind === 'equipamiento',
+      lots,
+      lotStatus: getLotStatus(f),
+    });
     fallbackIdx++;
   });
   return rows;
@@ -184,18 +195,24 @@ export default function ManzanoPanel() {
     const feat = drawSource.getFeatureById(row.id) as Feature<Geometry> | null;
     if (!feat) return;
     const wasEquip = getFeatureKind(feat) === 'equipamiento';
+    const nextKind = wasEquip ? 'manzana' : 'equipamiento';
     feat.setProperties(ensureKind(
-      { ...feat.getProperties(), kind: wasEquip ? 'manzana' : 'equipamiento' },
-      wasEquip ? 'manzana' : 'equipamiento',
+      { ...feat.getProperties(), kind: nextKind },
+      nextKind,
     ));
-    // Fase 0 (§4): ya no hace falta limpiar `type` — ningún consumidor
-    // lo lee más, `kind` es la única fuente de verdad.
     if (!wasEquip) {
+      // Pasa a equipamiento: borra lotes hijos vivos y limpia lotStatus
+      // (Fase 1 — solo aplica a kind:'manzana').
       const toRemove: Feature<Geometry>[] = [];
       drawSource.forEachFeature((f) => {
         if (f.get('lotGroupId') === String(row.id)) toRemove.push(f as Feature<Geometry>);
       });
       toRemove.forEach((f) => drawSource.removeFeature(f));
+      feat.unset('lotStatus', true);
+    } else {
+      // Vuelve a manzana: sus lotes ya se borraron al marcarla equipamiento
+      // — no arrastrar un lotStatus viejo del spread de arriba.
+      setLotStatus(feat, 'none');
     }
     drawSource.changed();
   };
@@ -430,6 +447,7 @@ export default function ManzanoPanel() {
                     <div style={{ color: 'var(--cad-text-muted)', fontSize: '0.65rem' }}>
                       {row.areaM2.toFixed(1)} m²{row.lots.length ? ` · ${row.lots.length} lotes` : ''}
                       {geomChanged && <span style={{ color: 'var(--cad-accent-amber)' }}> · ⚠ desactualizado</span>}
+                      {row.lotStatus === 'pending' && <span style={{ color: 'var(--cad-accent-red)' }}> · ⏳ pendiente</span>}
                     </div>
                   </div>
                   <span
@@ -462,6 +480,30 @@ export default function ManzanoPanel() {
 
                     {!row.isEquip && (
                       <>
+                        {row.lotStatus === 'pending' && (
+                          <div
+                            style={{
+                              padding: '6px 8px',
+                              marginBottom: 6,
+                              background: 'rgba(239,68,68,0.10)',
+                              border: '1px solid var(--cad-accent-red)',
+                              borderRadius: 4,
+                              fontSize: '0.62rem',
+                              color: 'var(--cad-accent-red)',
+                            }}
+                          >
+                            <div style={{ marginBottom: 4 }}>
+                              Una vía nueva recortó este manzano — el sistema no pudo re-lotizarlo solo.
+                            </div>
+                            <button
+                              onClick={() => runRecompute(row)}
+                              className="cad-icon-btn"
+                              style={{ width: '100%', height: 24, fontSize: '0.62rem', color: 'var(--cad-accent-red)', borderColor: 'var(--cad-accent-red)' }}
+                            >
+                              ⏳ Generar lotes ahora
+                            </button>
+                          </div>
+                        )}
                         <div style={{ display: 'flex', gap: 4, marginBottom: 6 }}>
                           {METHOD_BTNS.map((m) => (
                             <button
