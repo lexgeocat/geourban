@@ -51,6 +51,7 @@ import { ProjectBrowserModal } from './ProjectBrowserModal';
 import { useManzanoStore } from '../store/manzanoStore';
 import { useRoundaboutStore } from '../store/roundaboutStore';
 import type { GeoUrbanProject } from '../io/types';
+import { getFeatureKind } from '../core/objectModel';
 
 /* ================================================================
    Import accept list (formats supported by io/importers)
@@ -560,9 +561,9 @@ const setRoundaboutPanelVisible = useRoundaboutStore((s) => s.setPanelVisible);
     const src = useMapStore.getState().drawSource;
     if (!src) return;
     let manzanoCount = 0;
-    src.forEachFeature((f) => {
-      if (f.get('type') === 'manzana') manzanoCount++;
-    });
+src.forEachFeature((f) => {
+  if (getFeatureKind(f as any) === 'manzana') manzanoCount++;
+});
     if (manzanoCount === 0) {
       alert('No hay manzanos para subdividir. Trazá calles primero para generar manzanos.');
       return;
@@ -577,12 +578,12 @@ const setRoundaboutPanelVisible = useRoundaboutStore((s) => s.setPanelVisible);
         return;
       }
       let newLotes = 0;
-      src.forEachFeature((f) => {
-        const k = (f.get('kind') as string | undefined) ?? (f.get('type') as string | undefined);
-        if (k === 'lote' || (typeof f.get('label') === 'string' && f.get('label')?.toString().startsWith('Lote'))) {
-          newLotes++;
-        }
-      });
+src.forEachFeature((f) => {
+  const k = getFeatureKind(f as any);
+  if (k === 'lote' || (typeof f.get('label') === 'string' && f.get('label')?.toString().startsWith('Lote'))) {
+    newLotes++;
+  }
+});
       if (newLotes > 0) alert(`${newLotes} lotes generados automáticamente.`);
       else alert('No se pudieron generar lotes. Verificá que los manzanos sean lo suficientemente grandes.');
     } catch (err) {

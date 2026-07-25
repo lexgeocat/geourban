@@ -6,6 +6,7 @@ import { polyArea, type Pt } from '../geo/polygonEngine';
 import Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
 import Polygon from 'ol/geom/Polygon.js';
+import { getFeatureKind } from '../core/objectModel';
 
 const MZN_COLORS = [
   '#58a6ff', '#3fb950', '#f59e0b', '#ef4444', '#8b5cf6',
@@ -68,9 +69,10 @@ function computeStats(drawSource: any, streets: any[]): StatsData {
 
     result.totalAreaM2 += area;
 
-    const isManzana = f.get('type') === 'manzana';
+    const kind = getFeatureKind(f);
+    const isManzana = kind === 'manzana';
     const isLot = f.get('subdivision') || f.get('label')?.startsWith('Lote');
-    const isEquip = f.get('type') === 'equipamiento';
+    const isEquip = kind === 'equipamiento';
 
     if (isManzana) {
       result.manzanoCount++;

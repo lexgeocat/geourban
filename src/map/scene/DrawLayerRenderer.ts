@@ -56,7 +56,11 @@ function buildLayerColorMatch(
     result.push(l.id);
     result.push(property === 'fill' ? withAlpha(color, 0.30 * a) : color);
   }
-  result.push(['case', ['==', ['get', 'type'], 'manzana'], fallbackManzanaExpr, fallbackOther]);
+  // Fase 0 (§4): las expresiones de estilo WebGL no pueden invocar
+  // getFeatureKind() (son un DSL evaluado, no JS arbitrario), pero como
+  // `kind` ya es una propiedad plana del feature (seteada por ensureKind),
+  // se puede leer igual que antes se leía `type` — que ya no se escribe.
+  result.push(['case', ['==', ['get', 'kind'], 'manzana'], fallbackManzanaExpr, fallbackOther]);
   return result;
 }
 

@@ -63,8 +63,8 @@ function readManzanoRows(drawSource: any): ManzanoRow[] {
   const rows: ManzanoRow[] = [];
   let fallbackIdx = 0;
   drawSource.forEachFeature((f: Feature<Geometry>) => {
-    const type = f.get('type');
-    if (type !== 'manzana' && type !== 'equipamiento') return;
+    const kind = getFeatureKind(f);
+    if (kind !== 'manzana' && kind !== 'equipamiento') return;
     const id = f.getId();
     if (id == null) return;
     const geom = f.getGeometry();
@@ -83,7 +83,7 @@ function readManzanoRows(drawSource: any): ManzanoRow[] {
       });
     });
     const colorIdx = (f.get('colorIdx') as number | undefined) ?? fallbackIdx;
-    rows.push({ id, colorIdx: colorIdx % MZN_COLORS.length, areaM2, perimeterM, isEquip: type === 'equipamiento', lots });
+    rows.push({ id, colorIdx: colorIdx % MZN_COLORS.length, areaM2, perimeterM, isEquip: kind === 'equipamiento', lots });
     fallbackIdx++;
   });
   return rows;
@@ -188,8 +188,8 @@ export default function ManzanoPanel() {
       { ...feat.getProperties(), kind: wasEquip ? 'manzana' : 'equipamiento' },
       wasEquip ? 'manzana' : 'equipamiento',
     ));
-    // Limpia el `type` legado para que `getFeatureKind` no caiga al fallback.
-    feat.unset('type', true);
+    // Fase 0 (§4): ya no hace falta limpiar `type` — ningún consumidor
+    // lo lee más, `kind` es la única fuente de verdad.
     if (!wasEquip) {
       const toRemove: Feature<Geometry>[] = [];
       drawSource.forEachFeature((f) => {

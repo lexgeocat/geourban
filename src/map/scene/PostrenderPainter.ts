@@ -24,6 +24,7 @@ import { formatMetricLength, formatMetricArea, type SegmentMetric } from '../../
 import { MZN_COLORS_STR } from './DrawLayerRenderer';
 import type { SnapGuideVisual } from '../advancedSnap';
 import { measureCached, measureCachedWidth } from '../textMeasureCache';
+import { getFeatureKind } from '../../core/objectModel';
 
 // Función para calcular el zoom a partir de la resolución
 function getZoomFromResolution(resolution: number): number {
@@ -422,7 +423,7 @@ export class PostrenderPainter {
       const geometry = feature.getGeometry();
       if (!geometry) continue;
 
-      const isManzana = feature.get('type') === 'manzana';
+      const isManzana = getFeatureKind(feature as Feature<Geometry>) === 'manzana';
       const colorIdx = feature.get('colorIdx') ?? 0;
       const featureId = feature.getId();
       const isSelected = featureId != null && selectedIds.has(featureId as string | number);

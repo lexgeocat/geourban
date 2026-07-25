@@ -38,6 +38,10 @@ interface ManzanoState {
   setPanelVisible: (v: boolean) => void;
   setTargetAreaM2: (v: number) => void;
   setFrontMinM: (v: number) => void;
+  /** H-LOT-10 (Fase 0): purga entradas cuyo id de feature ya no existe en
+   *  drawSource — evita que methods/rotateDir/geomSnapshots/openCards
+   *  crezca sin límite con ids de manzanos ya reemplazados por recompute. */
+  pruneToIds: (aliveIds: Set<string>) => void;
 }
 
 const MIN_DRAG_LEN = 0.5;
@@ -94,4 +98,26 @@ export const useManzanoStore = create<ManzanoState>()((set, get) => ({
   setPanelVisible: (v) => set({ panelVisible: v }),
   setTargetAreaM2: (v) => set({ targetAreaM2: v }),
   setFrontMinM: (v) => set({ frontMinM: v }),
+
+  pruneToIds: (aliveIds) =>
+    set((s) => {
+      const filterRecord = <T>(rec: Record<string, T>): Record<string, T> => {
+        let changed = false;
+        const out: Record<string, T> = {};
+        for (const key of Object.keys(rec)) {
+          if (aliveIds.has(key)) {
+            out[key] = rec[key];
+          } else {
+            changed = true;
+          }
+        }
+        return changed ? out : rec;
+      };
+      return {
+        methods: filterRecord(s.methods),
+        rotateDir: filterRecord(s.rotateDir),
+        geomSnapshots: filterRecord(s.geomSnapshots),
+        openCards: filterRecord(s.openCards),
+      };
+    }),
 }));

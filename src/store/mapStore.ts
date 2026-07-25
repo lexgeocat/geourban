@@ -3,12 +3,14 @@ import { immer } from 'zustand/middleware/immer';
 import Map from 'ol/Map.js';
 import VectorSource from 'ol/source/Vector.js';
 import GeoJSON from 'ol/format/GeoJSON.js';
-import { extend as extendExtent, Extent } from 'ol/extent.js';
+import { extend as extendExtent, intersects as extentIntersects, Extent } from 'ol/extent.js';
 import { refreshSourceMetrics, updateFeatureMetrics } from '../geo/metrics';
 import { clipHalfPlane, pointInPoly, polyArea, type Pt } from '../geo/polygonEngine';
 import { useSelectionStore } from './selectionStore';
 import { useStreetStore } from './streetStore';
 import { useRoundaboutStore } from './roundaboutStore';
+import { useManzanoStore } from './manzanoStore';
+import { useLayersStore } from './layersRegistryStore';
 import { validateTopologyInWorker, computeManzanosInWorker } from '../workers/geoWorkerClient';
 import type { FeatureCollection, Feature as GeoJSONFeature } from 'geojson';
 import Feature from 'ol/Feature.js';
@@ -160,6 +162,40 @@ function closeGeoRing(ring: Pt[]): Pt[] {
   return ring;
 }
 
+/** Extent combinado de un conjunto de anillos (para el chequeo broad-phase
+ *  de H-LOT-2 más abajo). */
+function ringsExtent(rings: Pt[][]): Extent | null {
+  let result: Extent | null = null;
+  for (const ring of rings) {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const [x, y] of ring) {
+      if (x < minX) minX = x;
+      if (y < minY) minY = y;
+      if (x > maxX) maxX = x;
+      if (y > maxY) maxY = y;
+    }
+    if (!isFinite(minX)) continue;
+    const e: Extent = [minX, minY, maxX, maxY];
+    if (!result) result = e;
+    else extendExtent(result, e);
+  }
+  return result;
+}
+
+/** Resuelve el layerId para una manzana nueva (capa activa, o la primera
+ *  capa registrada para kind 'manzana'). Duplica intencionalmente la
+ *  lógica de resolveLayerId() de AddFeatureCommand.ts en vez de
+ *  importarla, para no crear un ciclo de imports
+ *  (mapStore → commands/AddFeatureCommand → commands/Command → mapStore). */
+function resolveManzanaLayerId(): string | undefined {
+  const reg = useLayersStore.getState();
+  if (reg.activeLayerId) {
+    const active = reg.getById(reg.activeLayerId);
+    if (active) return active.id;
+  }
+  return reg.getLayerForKind('manzana')?.id;
+}
+
 /**
  * Cuerpo real de recomputeManzanos() — ver wrapper debounced más abajo.
  * Reconstruye TODOS los fragmentos de manzano desde las parcelas
@@ -177,6 +213,12 @@ async function recomputeManzanosImmediate(): Promise<void> {
   type OriginGroup = { origId: string; origPts: Pt[]; members: Array<Feature<Geometry>> };
   const groups = new globalThis.Map<string, OriginGroup>();
 
+  // H-LOT-2/3 (Fase 0): las features kind='lote' con lotGroupId son hijas
+  // de una manzana ya lotizada — quedan afuera del escaneo de orígenes,
+  // pero las guardamos acá agrupadas por lotGroupId para poder limpiarlas
+  // más abajo si su manzana "padre" se reconstruye o ya no existe.
+  const lotsByGroupId = new globalThis.Map<string, Array<Feature<Geometry>>>();
+
   src.forEachFeature((f) => {
     const feature = f as Feature<Geometry>;
     const geom = feature.getGeometry();
@@ -184,7 +226,15 @@ async function recomputeManzanosImmediate(): Promise<void> {
 
     const kind = getFeatureKind(feature);
     if (kind !== 'lote' && kind !== 'manzana') return;
-    if (kind === 'lote' && feature.get('lotGroupId')) return;
+
+    if (kind === 'lote') {
+      const gid = feature.get('lotGroupId') as string | undefined;
+      if (gid) {
+        if (!lotsByGroupId.has(gid)) lotsByGroupId.set(gid, []);
+        lotsByGroupId.get(gid)!.push(feature);
+        return;
+      }
+    }
 
     let origId = feature.get('origParcelId') as string | undefined;
     let origPts = feature.get('origPts') as Pt[] | undefined;
@@ -215,6 +265,36 @@ async function recomputeManzanosImmediate(): Promise<void> {
   // especiales, a diferencia del recorte secuencial anterior.
   const roadRings = buildRoadNetworkRings(streets, roundabouts);
   if (roadRings.length === 0) return; // nada que recortar todavía
+
+  // H-LOT-2 (Fase 0): grupos de lotes cuya manzana "padre" ya NO existe
+  // como feature (el usuario corrió "Generar todos", que borra la
+  // manzana). Sin un origen vivo no hay forma de re-cortarlos con
+  // precisión (eso queda para una fase posterior de regeneración
+  // automática); acá, siguiendo el mínimo del diagnóstico, se eliminan
+  // si su extent se solapa con la red vial nueva, para no dejarlos
+  // huérfanos y superpuestos a la calle. Los grupos cuya manzana SÍ
+  // sigue viva se resuelven más abajo, dentro del loop principal.
+  const roadExtentForOrphans = ringsExtent(roadRings);
+  if (roadExtentForOrphans) {
+    for (const [gid, lots] of lotsByGroupId) {
+      if (src.getFeatureById(gid) != null) continue; // manzana viva: la maneja el loop principal
+      let lotsExtent: Extent | null = null;
+      for (const lot of lots) {
+        const g = lot.getGeometry();
+        if (!g) continue;
+        const e = g.getExtent();
+        if (!lotsExtent) lotsExtent = [...e] as Extent;
+        else extendExtent(lotsExtent, e);
+      }
+      if (lotsExtent && extentIntersects(lotsExtent, roadExtentForOrphans)) {
+        for (const lot of lots) {
+          if (src.getFeatureById(lot.getId() as string | number) != null) {
+            src.removeFeature(lot);
+          }
+        }
+      }
+    }
+  }
 
   const roadNetworkFC: FeatureCollection = {
     type: 'FeatureCollection',
@@ -255,10 +335,32 @@ async function recomputeManzanosImmediate(): Promise<void> {
 
   parcelIndexToGroup.forEach((group, idx) => {
     const fragments = fragmentsByGroup.get(idx) ?? [];
-    for (const m of group.members) src.removeFeature(m);
 
     const untouched =
       fragments.length === 1 && polyArea(fragments[0]) >= polyArea(group.origPts) * 0.999;
+
+    // H-LOT-3 (Fase 0): si el origen SÍ cambió (no está "untouched"), un
+    // miembro manzana de este grupo puede tener lotes hijos vivos
+    // (RecomputeManzanoLotsCommand no borra la manzana al lotizar) — esos
+    // lotes quedarían huérfanos/superpuestos en cuanto reemplacemos la
+    // manzana por los fragmentos nuevos. Se eliminan acá. Si está
+    // "untouched" no se toca nada: la manzana (y sus lotes, si los
+    // tiene) siguen siendo geométricamente válidos.
+    if (!untouched) {
+      for (const m of group.members) {
+        const mid = m.getId();
+        if (mid == null) continue;
+        const childLots = lotsByGroupId.get(String(mid));
+        if (!childLots) continue;
+        for (const lot of childLots) {
+          if (src.getFeatureById(lot.getId() as string | number) != null) {
+            src.removeFeature(lot);
+          }
+        }
+      }
+    }
+
+    for (const m of group.members) src.removeFeature(m);
 
     if (untouched) {
       const orig = group.members[0];
@@ -267,9 +369,6 @@ async function recomputeManzanosImmediate(): Promise<void> {
       orig.set('origParcelId', group.origId, true);
       orig.set('origPts', group.origPts, true);
       src.addFeature(orig);
-      // Reasignamos geometría (misma forma, nueva instancia) — recalculamos
-      // SU métrica puntualmente en vez de barrer todo el source al final
-      // (ver diagnóstico H9).
       updateFeatureMetrics(orig as Feature<Geometry>);
       return;
     }
@@ -282,7 +381,8 @@ async function recomputeManzanosImmediate(): Promise<void> {
       newFeat.setProperties(
         ensureKind(
           {
-            type: 'manzana',
+            // Fase 0 (§4): ya no se escribe `type` — `kind` es la única
+            // fuente de verdad (ver core/objectModel.ts).
             colorIdx: i % 10,
             createdAt: new Date().toISOString(),
             origParcelId: group.origId,
@@ -291,10 +391,29 @@ async function recomputeManzanosImmediate(): Promise<void> {
           'manzana',
         ),
       );
+      // Fase 0 (§4): asignar layerId explícito — antes las manzanas de
+      // este flujo dependían exclusivamente del fallback `type==='manzana'`
+      // del match de WebGL (DrawLayerRenderer.buildWebglStyle), que ya no
+      // existe.
+      const lid = resolveManzanaLayerId();
+      if (lid) newFeat.set('layerId', lid);
       src.addFeature(newFeat);
       updateFeatureMetrics(newFeat as Feature<Geometry>);
     });
   });
+
+  // H-LOT-10 (Fase 0): purga manzanoStore de ids que ya no existen en
+  // drawSource — los fragmentos nuevos siempre reciben id nuevo
+  // (`${origId}-mzn-${i}`), así que el manzano viejo queda huérfano en
+  // methods/rotateDir/geomSnapshots/openCards si no se poda acá.
+  const aliveManzanoIds = new Set<string>();
+  src.forEachFeature((f) => {
+    if (getFeatureKind(f as Feature<Geometry>) === 'manzana') {
+      const id = f.getId();
+      if (id != null) aliveManzanoIds.add(String(id));
+    }
+  });
+  useManzanoStore.getState().pruneToIds(aliveManzanoIds);
 
   src.changed();
 }

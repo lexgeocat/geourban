@@ -16,6 +16,22 @@ function restoreGeom(f: Feature<Geometry>, captured: unknown) {
   f.setGeometry(captured as OlGeometry);
 }
 
+/** H-LOT-1 (Fase 0): si el feature tiene `origPts`/`origParcelId`
+ *  (los guarda recomputeManzanosImmediate para poder re-cortarlo contra
+ *  la red vial), y el usuario edita su geometría a mano (Modify/Translate),
+ *  esa copia congelada queda desincronizada del dibujo real. Sin
+ *  invalidarla, el próximo trazado de calle en CUALQUIER parte del
+ *  proyecto revierte silenciosamente la edición manual (recompute corre
+ *  sobre origPts, no sobre la geometría actual). Se elimina para forzar
+ *  que el feature se re-derive como parcela nueva desde su geometría
+ *  vigente en el próximo recompute. */
+function invalidateOrigin(f: Feature<Geometry>): void {
+  if (f.get('origPts') !== undefined || f.get('origParcelId') !== undefined) {
+    f.unset('origPts', true);
+    f.unset('origParcelId', true);
+  }
+}
+
 /**
  * Se eliminó el `refreshSourceMetrics` global tras cada execute/undo/redo
  * — este comando ya conoce exactamente qué features tocó (`this.targets`)
@@ -60,6 +76,7 @@ export class ModifyGeometryCommand extends Command {
       if (id == null) continue;
       this.after.set(id, captureGeom(t));
       updateFeatureMetrics(t);
+      invalidateOrigin(t);
     }
     ctx.drawSource.changed();
     this.applied = true;
@@ -72,6 +89,7 @@ export class ModifyGeometryCommand extends Command {
       const b = this.before.get(id);
       if (b !== undefined) restoreGeom(t, b);
       updateFeatureMetrics(t);
+      invalidateOrigin(t);
     }
     ctx.drawSource.changed();
   }
@@ -83,6 +101,7 @@ export class ModifyGeometryCommand extends Command {
       const a = this.after.get(id);
       if (a !== undefined) restoreGeom(t, a);
       updateFeatureMetrics(t);
+      invalidateOrigin(t);
     }
     ctx.drawSource.changed();
   }

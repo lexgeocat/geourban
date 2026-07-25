@@ -5,6 +5,7 @@ import type { StyleFunction } from 'ol/style/Style.js';
 import { Fill, Stroke, Style, Text } from 'ol/style.js';
 import type { SegmentMetric } from '../geo/metrics';
 import { measureCachedWidth } from './textMeasureCache';
+import { getFeatureKind } from '../core/objectModel';
 
 // ─── Colores
 const GEOURBAN_MANZANA_COLOR = '#58a6ff';
@@ -34,7 +35,7 @@ export function resolveDimensionOrientation(
   feature: Feature<Geometry>,
   lotGroupCounts: Map<string, number>,
 ): DimensionOrientation {
-  if (feature.get('type') === 'manzana') return 'outward';
+  if (getFeatureKind(feature) === 'manzana') return 'outward';
   const groupId = feature.get('lotGroupId') as string | undefined;
   if (groupId && (lotGroupCounts.get(groupId) ?? 0) >= 2) return 'inward';
   return 'outward';
