@@ -48,6 +48,21 @@ export function centroid(pts: Pt[]): Pt {
   return [cx / pts.length, cy / pts.length];
 }
 
+/** Perímetro de un anillo, asumiendo cierre implícito (último punto
+ *  conecta con el primero). Compartido entre ManzanoPanel y los
+ *  comandos de recálculo de lotes (H-LOT-9) — antes había una copia
+ *  duplicada local en ManzanoPanel.tsx. */
+export function ringPerimeter(pts: Pt[]): number {
+  let per = 0;
+  const n = pts.length;
+  for (let i = 0; i < n; i++) {
+    const a = pts[i];
+    const b = pts[(i + 1) % n];
+    per += Math.hypot(b[0] - a[0], b[1] - a[1]);
+  }
+  return per;
+}
+
 /** Cross product para determinar de qué lado de la recta lp1→lp2 está pt */
 function side(pt: Pt, lp1: Pt, lp2: Pt): number {
   return (lp2[0] - lp1[0]) * (pt[1] - lp1[1]) - (lp2[1] - lp1[1]) * (pt[0] - lp1[0]);

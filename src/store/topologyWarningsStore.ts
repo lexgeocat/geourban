@@ -4,23 +4,24 @@ type TopologyWarningsState = {
   checking: boolean;
   overlapCount: number;
   gapCount: number;
+  /** ids de manzana (o lotGroupId) involucrados en al menos una
+   *  superposición detectada — permite mostrar el aviso por tarjeta en
+   *  ManzanoPanel, no solo un badge global (Fase 3, punto 6). */
+  affectedManzanoIds: Set<string>;
   lastCheckedAt: number | null;
   setChecking: (v: boolean) => void;
-  setResults: (overlapCount: number, gapCount: number) => void;
+  setResults: (overlapCount: number, gapCount: number, affectedManzanoIds?: Set<string>) => void;
   clear: () => void;
 };
 
-/** Resultado de la validación topológica automática que corre después de
- *  cada `recomputeManzanosImmediate` (H-VIA-4) — antes esto solo existía
- *  como botones manuales "Overlaps"/"Huecos" en TopBar, que el usuario
- *  tenía que acordarse de clickear. */
 export const useTopologyWarningsStore = create<TopologyWarningsState>()((set) => ({
   checking: false,
   overlapCount: 0,
   gapCount: 0,
+  affectedManzanoIds: new Set(),
   lastCheckedAt: null,
   setChecking: (v) => set({ checking: v }),
-  setResults: (overlapCount, gapCount) =>
-    set({ overlapCount, gapCount, checking: false, lastCheckedAt: Date.now() }),
-  clear: () => set({ overlapCount: 0, gapCount: 0, checking: false, lastCheckedAt: null }),
+  setResults: (overlapCount, gapCount, affectedManzanoIds = new Set()) =>
+    set({ overlapCount, gapCount, affectedManzanoIds, checking: false, lastCheckedAt: Date.now() }),
+  clear: () => set({ overlapCount: 0, gapCount: 0, affectedManzanoIds: new Set(), checking: false, lastCheckedAt: null }),
 }));

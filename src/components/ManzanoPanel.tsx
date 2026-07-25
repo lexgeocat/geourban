@@ -7,13 +7,15 @@ import { useManzanoStore, type ManzanoLoteMethod } from '../store/manzanoStore';
 import { useCommandStack } from '../commands/CommandStack';
 import { RecomputeManzanoLotsCommand } from '../commands/RecomputeManzanoLotsCommand';
 import { GenerateLotsCommand } from '../commands/GenerateLotsCommand';
-import { polyArea, centroid, type Pt } from '../geo/polygonEngine';
+import { polyArea, centroid, ringPerimeter, type Pt } from '../geo/polygonEngine';
 import { useDrawStore } from '../store/drawStore';
 import { useStreetStore } from '../store/streetStore';
 import { useRoundaboutStore } from '../store/roundaboutStore';
 import { getFeatureKind, ensureKind, getLotStatus, setLotStatus, type LotStatus } from '../core/objectModel';
 import { useIncrementalRender } from '../hooks/useIncrementalRender';
 import { setMaxFilletRadius, getMaxFilletRadius } from '../geo/streetEngine';
+import { SUBDIVISION_METHOD_INFO } from '../geo/subdivisionMethodLabels';
+import { useTopologyWarningsStore } from '../store/topologyWarningsStore';
 
 const MZN_COLORS = [
   '#58a6ff',
@@ -28,11 +30,11 @@ const MZN_COLORS = [
   '#84cc16',
 ];
 
-const METHOD_BTNS: { key: ManzanoLoteMethod; label: string; color: string }[] = [
-  { key: 'auto', label: '▣ Auto', color: 'var(--cad-accent)' },
-  { key: 'exact', label: '◈ Modo 1', color: 'var(--cad-accent-green)' },
-  { key: 'modo2', label: '◆ Modo 2', color: '#4dd0c4' },
-];
+const METHOD_BTNS = (['auto', 'exact', 'modo2'] as ManzanoLoteMethod[]).map((key) => ({
+  key,
+  label: SUBDIVISION_METHOD_INFO[key].shortLabel,
+  color: SUBDIVISION_METHOD_INFO[key].color,
+}));
 
 interface LotInfo {
   label: string;
@@ -45,21 +47,10 @@ interface ManzanoRow {
   colorIdx: number;
   areaM2: number;
   perimeterM: number;
+  centroid: Pt;
   isEquip: boolean;
   lots: LotInfo[];
-  /** Fase 4: 'pending' = fue recortada por una calle/rotonda nueva y el
-   *  motor vial no pudo re-lotizarla sola. */
   lotStatus: LotStatus;
-}
-
-function ringPerimeter(pts: Pt[]): number {
-  let per = 0;
-  for (let i = 0; i < pts.length; i++) {
-    const a = pts[i];
-    const b = pts[(i + 1) % pts.length];
-    per += Math.hypot(b[0] - a[0], b[1] - a[1]);
-  }
-  return per;
 }
 
 function readManzanoRows(drawSource: any): ManzanoRow[] {
@@ -77,6 +68,7 @@ function readManzanoRows(drawSource: any): ManzanoRow[] {
       : [];
     const areaM2 = (f.get('areaM2') as number | undefined) ?? (ring.length ? polyArea(ring) : 0);
     const perimeterM = ring.length ? ringPerimeter(ring) : 0;
+    const centroidPt: Pt = ring.length ? centroid(ring) : [0, 0];
     const lots: LotInfo[] = [];
     drawSource.forEachFeature((g: Feature<Geometry>) => {
       if (g.get('lotGroupId') !== String(id)) return;
@@ -92,6 +84,7 @@ function readManzanoRows(drawSource: any): ManzanoRow[] {
       colorIdx: colorIdx % MZN_COLORS.length,
       areaM2,
       perimeterM,
+      centroid: centroidPt,
       isEquip: kind === 'equipamiento',
       lots,
       lotStatus: getLotStatus(f),
@@ -130,13 +123,13 @@ export default function ManzanoPanel() {
   const setMethod = useManzanoStore((s) => s.setMethod);
   const getRotateDir = useManzanoStore((s) => s.getRotateDir);
   const setRotateDir = useManzanoStore((s) => s.setRotateDir);
-  const setGeomSnapshot = useManzanoStore((s) => s.setGeomSnapshot);
   const hasGeomChanged = useManzanoStore((s) => s.hasGeomChanged);
   const openCards = useManzanoStore((s) => s.openCards);
   const toggleCardOpen = useManzanoStore((s) => s.toggleCardOpen);
   const rotatingId = useManzanoStore((s) => s.rotatingId);
   const startRotateLots = useManzanoStore((s) => s.startRotateLots);
   const cancelRotateLots = useManzanoStore((s) => s.cancelRotateLots);
+  const affectedManzanoIds = useTopologyWarningsStore((s) => s.affectedManzanoIds);
 
   const [lotsBusy, setLotsBusy] = useState(false);
   const [expandedLots, setExpandedLots] = useState<Record<string, boolean>>({});
@@ -171,6 +164,8 @@ export default function ManzanoPanel() {
     async (row: ManzanoRow) => {
       const method = getMethod(row.id);
       const dirPref = getRotateDir(row.id);
+      // El snapshot geométrico ahora lo actualiza el propio comando
+      // (H-LOT-9) — sin importar si hay dirPref o no.
       await useCommandStack
         .getState()
         .run(
@@ -182,9 +177,8 @@ export default function ManzanoPanel() {
             dirPref,
           }),
         );
-      if (dirPref) setGeomSnapshot(row.id, { area: row.areaM2, perimeter: row.perimeterM });
     },
-    [targetAreaM2, frontMinM, getMethod, getRotateDir, setGeomSnapshot],
+    [targetAreaM2, frontMinM, getMethod, getRotateDir],
   );
 
   const handleMethodClick = (row: ManzanoRow, method: ManzanoLoteMethod) => {
@@ -437,7 +431,7 @@ export default function ManzanoPanel() {
             const method = getMethod(row.id);
             const rotateDir = getRotateDir(row.id);
             const isRotatingThis = rotatingId === row.id;
-            const geomChanged = rotateDir != null && hasGeomChanged(row.id, { area: row.areaM2, perimeter: row.perimeterM });
+            const geomChanged = rotateDir != null && hasGeomChanged(row.id, { area: row.areaM2, perimeter: row.perimeterM, centroid: row.centroid });
             const lotsOpen = !!expandedLots[String(row.id)];
             const normalLots = row.lots.filter((l) => !l.isRemnant).length;
             const remLots = row.lots.filter((l) => l.isRemnant).length;
@@ -465,6 +459,9 @@ export default function ManzanoPanel() {
                       {row.areaM2.toFixed(1)} m²{row.lots.length ? ` · ${row.lots.length} lotes` : ''}
                       {geomChanged && <span style={{ color: 'var(--cad-accent-amber)' }}> · ⚠ desactualizado</span>}
                       {row.lotStatus === 'pending' && <span style={{ color: 'var(--cad-accent-red)' }}> · ⏳ pendiente</span>}
+                      {affectedManzanoIds.has(String(row.id)) && (
+                        <span style={{ color: 'var(--cad-accent-red)' }}> · ⚠ topología</span>
+                      )}
                     </div>
                   </div>
                   <span

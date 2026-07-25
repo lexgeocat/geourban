@@ -15,9 +15,10 @@ import {
   validateTopologyInWorker,
   computeManzanosInWorker,
   subdivideManzanoInWorker,
-    findOverlapsInWorker,
+  findOverlapsInWorker,
   findGapsInWorker,
 } from '../workers/geoWorkerClient';
+import { useTopologyWarningsStore } from './topologyWarningsStore';
 import type { FeatureCollection, Feature as GeoJSONFeature } from 'geojson';
 import Feature from 'ol/Feature.js';
 import PolygonGeom from 'ol/geom/Polygon.js';
@@ -28,7 +29,6 @@ import { ensureKind, getFeatureKind, getLotStatus, setLotStatus } from '../core/
 import type { ManzanoLoteMethod } from '../geo/subdivisionAlgorithms';
 import { buildRoadNetworkRings } from '../geo/roadNetworkEngine';
 import { roundRingReflex } from '../geo/ringFillet';
-import { useTopologyWarningsStore } from './topologyWarningsStore';
 
 const geoJsonFormat = new GeoJSON();
 
@@ -213,9 +213,10 @@ function resolveLoteLayerId(): string | undefined {
 async function runBackgroundTopologyCheck(src: VectorSource): Promise<void> {
   useTopologyWarningsStore.getState().setChecking(true);
   try {
+    const features = src.getFeatures();
     const collection: FeatureCollection = {
       type: 'FeatureCollection',
-      features: src.getFeatures().map((f) =>
+      features: features.map((f) =>
         geoJsonFormat.writeFeatureObject(f, {
           featureProjection: 'EPSG:3857',
           dataProjection: 'EPSG:3857',
@@ -226,11 +227,45 @@ async function runBackgroundTopologyCheck(src: VectorSource): Promise<void> {
       findOverlapsInWorker(collection),
       findGapsInWorker(collection),
     ]);
-    useTopologyWarningsStore.getState().setResults(overlaps.length, gaps.features.length);
+
+    // Fase 3, punto 6: mapear cada índice de overlap de vuelta a un id
+    // de manzana (o lotGroupId, si el feature involucrado es un lote)
+    // para que ManzanoPanel pueda marcar la tarjeta afectada, no solo
+    // mostrar un contador global en StatusBar.
+    const affected = new Set<string>();
+    const attributeToManzano = (idx: number) => {
+      const f = features[idx] as Feature<Geometry> | undefined;
+      if (!f) return;
+      const kind = getFeatureKind(f);
+      if (kind === 'manzana') {
+        const id = f.getId();
+        if (id != null) affected.add(String(id));
+      } else if (kind === 'lote') {
+        const gid = f.get('lotGroupId') as string | undefined;
+        if (gid) affected.add(gid);
+      }
+    };
+    for (const o of overlaps) {
+      attributeToManzano(o.indexA);
+      attributeToManzano(o.indexB);
+    }
+
+    useTopologyWarningsStore.getState().setResults(overlaps.length, gaps.features.length, affected);
   } catch (err) {
     console.error('Validación topológica automática falló', err);
     useTopologyWarningsStore.getState().setChecking(false);
   }
+}
+
+/** Wrapper público — antes solo lo llamaba recomputeManzanosImmediate
+ *  (trazado vial, Fase 2). Ahora también lo llaman SubdivideCommand,
+ *  RecomputeManzanoLotsCommand y GenerateLotsCommand (Fase 3, punto 6),
+ *  para que el badge de topología se mantenga al día sin importar qué
+ *  operación tocó el drawSource. */
+export function checkTopologyInBackground(): void {
+  const src = useMapStore.getState().drawSource;
+  if (!src) return;
+  void runBackgroundTopologyCheck(src);
 }
 
 /**

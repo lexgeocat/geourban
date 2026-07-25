@@ -35,7 +35,7 @@ import { ensureUtmZoneRegistered } from '../geo/utmZones';
 import { useManzanoStore } from '../store/manzanoStore';
 import { runCommand } from '../commands/CommandStack';
 import { RecomputeManzanoLotsCommand } from '../commands/RecomputeManzanoLotsCommand';
-import { polyArea } from '../geo/polygonEngine';
+import { polyArea, centroid } from '../geo/polygonEngine';
 import { rafThrottle } from '../utils/rafThrottle';
 
 export default function MapView() {
@@ -366,7 +366,7 @@ const rotateLotsInteraction = new RotateLotsInteraction(map, (id, dir) => {
       const b = ring[(i + 1) % ring.length];
       perimeter += Math.hypot(b[0] - a[0], b[1] - a[1]);
     }
-    setGeomSnapshot(id, { area: polyArea(ring), perimeter });
+    setGeomSnapshot(id, { area: polyArea(ring), perimeter, centroid: centroid(ring) });
   }
   void runCommand(
     new RecomputeManzanoLotsCommand({ manzanoId: id, targetAreaM2, frontMinM, method: getMethod(id), dirPref: dir }),

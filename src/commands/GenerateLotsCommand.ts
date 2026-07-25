@@ -9,6 +9,8 @@ import { resolveLayerId } from './AddFeatureCommand';
 import { subdivideManzanoBatchInWorker } from '../workers/geoWorkerClient';
 import PolygonGeom from 'ol/geom/Polygon.js';
 import FeatureOL from 'ol/Feature.js';
+import { polyArea, ringPerimeter, centroid } from '../geo/polygonEngine';
+import { checkTopologyInBackground } from '../store/mapStore';
 
 const geoJsonFormat = new GeoJSON();
 
@@ -86,10 +88,20 @@ export class GenerateLotsCommand extends Command {
     const batchResults = await subdivideManzanoBatchInWorker(batchInput);
     const lotsById = new Map(batchResults.map((r) => [String(r.id), r.lots]));
 
-    for (const { id } of manzanos) {
+    for (const { id, ring } of manzanos) {
       const lots = lotsById.get(String(id)) ?? [];
       if (lots.length === 0) continue;
       const method = methodById.get(String(id))!;
+
+      // H-LOT-9: antes GenerateLotsCommand nunca tocaba geomSnapshots —
+      // manzanos rotados y luego regenerados en bloque quedaban con el
+      // badge "desactualizado" permanentemente desincronizado.
+      const ringPts = ring.map((c) => [c[0], c[1]] as [number, number]);
+      useManzanoStore.getState().setGeomSnapshot(id, {
+        area: polyArea(ringPts),
+        perimeter: ringPerimeter(ringPts),
+        centroid: centroid(ringPts),
+      });
 
       const feat = ctx.drawSource.getFeatureById(id) as Feature<Geometry> | null;
       if (feat) {
@@ -141,6 +153,7 @@ export class GenerateLotsCommand extends Command {
     }
 
     ctx.drawSource.changed();
+    checkTopologyInBackground();
   }
 
   override undo(ctx: CommandContext): void {

@@ -10,6 +10,12 @@ export interface RotateDir {
 export interface GeomSnapshot {
   area: number;
   perimeter: number;
+  /** Centroide (unidades de mapa) al momento del snapshot — H-LOT-8:
+   *  comparar posición además de área/perímetro detecta traslados puros
+   *  (que no cambian área ni perímetro) y es más robusto al ruido de
+   *  reproyección repetida que antes producía falsos positivos del badge
+   *  "desactualizado". Opcional para no romper snapshots viejos. */
+  centroid?: [number, number];
 }
 
 interface ManzanoState {
@@ -65,12 +71,23 @@ export const useManzanoStore = create<ManzanoState>()((set, get) => ({
   hasGeomChanged: (id, snap) => {
     const prev = get().geomSnapshots[String(id)];
     if (!prev) return false;
-    const areaTol = Math.max(0.05, prev.area * 5e-4);
-    const perimTol = Math.max(0.01, prev.perimeter * 5e-4);
-    return (
-      Math.abs(snap.area - prev.area) > areaTol ||
-      Math.abs(snap.perimeter - prev.perimeter) > perimTol
-    );
+    // H-LOT-8: tolerancias más generosas — antes 0.05% relativo era más
+    // ajustado que el ruido esperable de reproyectar repetidamente entre
+    // EPSG:3857 y el plano métrico UTM/local (metrics.ts), generando
+    // falsos positivos de "desactualizado".
+    const areaTol = Math.max(0.5, prev.area * 2e-3);
+    const perimTol = Math.max(0.1, prev.perimeter * 2e-3);
+    const areaChanged = Math.abs(snap.area - prev.area) > areaTol;
+    const perimChanged = Math.abs(snap.perimeter - prev.perimeter) > perimTol;
+
+    let centroidChanged = false;
+    if (prev.centroid && snap.centroid) {
+      const centroidTol = Math.max(0.1, Math.sqrt(Math.max(1, prev.area)) * 1e-3);
+      const d = Math.hypot(snap.centroid[0] - prev.centroid[0], snap.centroid[1] - prev.centroid[1]);
+      centroidChanged = d > centroidTol;
+    }
+
+    return areaChanged || perimChanged || centroidChanged;
   },
   clearGeomSnapshot: (id) =>
     set((s) => {

@@ -10,22 +10,9 @@ import type { Polygon as GeoJsonPolygon, LineString as GeoJsonLineString } from 
 import GeoJSON from 'ol/format/GeoJSON.js';
 import Feature from 'ol/Feature';
 import type Geometry from 'ol/geom/Geometry';
+import { SUBDIVISION_METHOD_INFO } from '../geo/subdivisionMethodLabels';
 
 const geoJsonFormat = new GeoJSON();
-
-const METHOD_LABELS: Record<string, string> = {
-  auto: 'Auto (Cabecera+Cuerpo)',
-  modo2: 'Modo 2 (grilla PCA)',
-  exact: 'Modo 1 (área exacta)',
-  'manual-slice': 'Manual (bisección)',
-};
-
-const METHOD_DESCRIPTIONS: Record<string, string> = {
-  auto: 'Genera 1 fila de lotes angostos en cada extremo (junto a las esquinas) y un cuerpo central a doble frente. Es el método recomendado para manzanos rectangulares o trapezoidales típicos.',
-  modo2: 'Subdivide usando el eje principal (PCA). Detecta polígonos angostos y adapta la dirección de corte automáticamente. Genera lotes con el área objetivo indicada.',
-  exact: 'Busca que cada lote tenga exactamente el área objetivo, con cortes alineados a un cuadrilátero ideal. Último lote puede ser remanente.',
-  'manual-slice': 'Seleccioná un frente del polígono y un segmento auxiliar (dirección de corte). El sistema bisecta para generar un sub-manzano con el área indicada.',
-};
 
 export default function SubdivisionDialog() {
   const isOpen = useSubdivisionStore((s) => s.isOpen);
@@ -213,7 +200,7 @@ export default function SubdivisionDialog() {
         <div style={{ marginBottom: 14 }}>
           <label style={labelStyle}>Método</label>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-            {Object.entries(METHOD_LABELS).map(([key, label]) => (
+            {Object.entries(SUBDIVISION_METHOD_INFO).map(([key, info]) => (
               <button
                 key={key}
                 onClick={() => setMethod(key as never)}
@@ -223,11 +210,11 @@ export default function SubdivisionDialog() {
                   ...(method === key ? methodBtnActiveStyle : {}),
                 }}
               >
-                {label}
+                {info.label}
               </button>
             ))}
           </div>
-          <p style={helpStyle}>{METHOD_DESCRIPTIONS[method]}</p>
+          <p style={helpStyle}>{SUBDIVISION_METHOD_INFO[method]?.description}</p>
         </div>
 
         {/* Parámetros comunes */}

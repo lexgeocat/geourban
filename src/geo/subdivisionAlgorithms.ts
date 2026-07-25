@@ -339,9 +339,14 @@ export function subdivideManzanoAuto(
       const actualEnd = Math.min(masterCuts[ci].t, myMax);
       if (actualEnd <= prevT + 1e-6) continue;
       const stripPoly = clipToStrip(halfPoly, lx, ly, prevT, actualEnd);
-      if (!stripPoly || stripPoly.length < 3) { prevT = actualEnd; continue; }
+      // H-LOT-6: antes, un clip inválido o un strip < 0.5 m² avanzaba
+      // `prevT` igual, perdiendo esa área para siempre. Ahora `prevT`
+      // se mantiene sin avanzar: el próximo corte real de este mismo
+      // half arranca desde el mismo punto y absorbe ese remanente
+      // angosto en vez de descartarlo silenciosamente.
+      if (!stripPoly || stripPoly.length < 3) continue;
       const areaM2 = polyAreaM2(stripPoly);
-      if (areaM2 < 0.5) { prevT = actualEnd; continue; }
+      if (areaM2 < 0.5) continue;
       const extSStrip = projectExtents(stripPoly, sx, sy);
       const depthM = Math.max(wm(extSStrip.max - extSStrip.min), realDepthM);
       const isRemnant = masterCuts[ci].isRemnant || areaM2 < targetAreaM2 * 0.5;
@@ -592,141 +597,6 @@ export function sliceBisectManzano(
   return best;
 }
 
-// ─── sliceBisectLote
-
-function sliceBisectLote(
-  wp: Pt[],
-  targetAreaM2: number,
-  cutDirX: number,
-  cutDirY: number,
-  frenteMidX: number,
-  frenteMidY: number,
-): SliceResult | null {
-  const TOL_M2 = 1e-6;
-  const perpX = -cutDirY, perpY = cutDirX;
-  const projs = wp.map(p => p[0] * perpX + p[1] * perpY);
-  const pMin = Math.min(...projs), pMax = Math.max(...projs);
-  const pRange = pMax - pMin;
-  if (pRange < 1e-9) return null;
-  const cen = centroid(wp);
-  const cenPerpProj = cen[0] * perpX + cen[1] * perpY;
-  const fProj = frenteMidX * perpX + frenteMidY * perpY;
-  const frenteEsMin = Math.abs(fProj - pMin) <= Math.abs(fProj - pMax);
-  const bordeFrenteProj = frenteEsMin ? pMin : pMax;
-  const tol = pRange * 0.15;
-  const frenteVerts = wp.filter(p => Math.abs(p[0] * perpX + p[1] * perpY - bordeFrenteProj) < tol);
-  const frenteRefPts = frenteVerts.length >= 2 ? frenteVerts : [[frenteMidX, frenteMidY] as Pt];
-
-  function fragmentContainsFronte(poly: Pt[]): boolean {
-    let inside = 0;
-    for (const p of frenteRefPts) { if (pointInPoly(p[0], p[1], poly)) inside++; }
-    return inside >= Math.ceil(frenteRefPts.length * 0.5);
-  }
-
-  function evalT(t: number): SliceResult | null {
-    const proj = frenteEsMin ? pMin + t * pRange : pMax - t * pRange;
-    const ox = cen[0] + (proj - cenPerpProj) * perpX;
-    const oy = cen[1] + (proj - cenPerpProj) * perpY;
-    const FAR = 1e7;
-    const rA: Pt = [ox + cutDirX * FAR, oy + cutDirY * FAR];
-    const rB: Pt = [ox - cutDirX * FAR, oy - cutDirY * FAR];
-    const n = wp.length;
-    const rawHits: { x: number; y: number; segIdx: number; u: number; tCut: number }[] = [];
-    for (let i = 0; i < n; i++) {
-      const a = wp[i], b = wp[(i + 1) % n];
-      const d1x = b[0] - a[0], d1y = b[1] - a[1];
-      const d2x = rB[0] - rA[0], d2y = rB[1] - rA[1];
-      const denom = d1x * d2y - d1y * d2x;
-      if (Math.abs(denom) < 1e-10) continue;
-      const tt = ((rA[0] - a[0]) * d2y - (rA[1] - a[1]) * d2x) / denom;
-      const u = ((rA[0] - a[0]) * d1y - (rA[1] - a[1]) * d1x) / denom;
-      if (tt < -1e-9 || tt > 1 + 1e-9 || u < -1e-9 || u > 1 + 1e-9) continue;
-      rawHits.push({ x: a[0] + tt * d1x, y: a[1] + tt * d1y, segIdx: i, u: Math.max(0, Math.min(1, tt)), tCut: u });
-    }
-    if (rawHits.length < 2) return null;
-    rawHits.sort((a, b) => a.tCut - b.tCut);
-    const hits = [rawHits[0]];
-    for (let i = 1; i < rawHits.length; i++) {
-      if (Math.hypot(rawHits[i].x - hits[hits.length - 1].x, rawHits[i].y - hits[hits.length - 1].y) > 1e-6)
-        hits.push(rawHits[i]);
-    }
-    if (hits.length < 2) return null;
-    for (let i = 0; i < hits.length - 1; i++) {
-      const hA = hits[i], hB = hits[i + 1];
-      const mx = (hA.x + hB.x) / 2, my = (hA.y + hB.y) / 2;
-      if (!pointInPoly(mx, my, wp)) continue;
-      const sl = buildCutPolys(wp, { segIdx: hA.segIdx, u: hA.u, pt: [hA.x, hA.y] }, { segIdx: hB.segIdx, u: hB.u, pt: [hB.x, hB.y] });
-      if (!sl || sl.poly1.length < 3 || sl.poly2.length < 3) continue;
-      const p1HasFronte = fragmentContainsFronte(sl.poly1);
-      const p2HasFronte = fragmentContainsFronte(sl.poly2);
-      let front: Pt[], rest: Pt[];
-      if (p1HasFronte && !p2HasFronte) { front = sl.poly1; rest = sl.poly2; }
-      else if (p2HasFronte && !p1HasFronte) { front = sl.poly2; rest = sl.poly1; }
-      else {
-        const d1 = Math.hypot(centroid(sl.poly1)[0] - frenteMidX, centroid(sl.poly1)[1] - frenteMidY);
-        const d2 = Math.hypot(centroid(sl.poly2)[0] - frenteMidX, centroid(sl.poly2)[1] - frenteMidY);
-        front = d1 <= d2 ? sl.poly1 : sl.poly2;
-        rest = d1 <= d2 ? sl.poly2 : sl.poly1;
-      }
-      return { front, rest, areaM2: polyAreaM2(front) };
-    }
-    return null;
-  }
-
-  const samples: { t: number; areaM2: number }[] = [];
-  for (let k = 1; k <= 24; k++) {
-    const t = k / 25;
-    const ev = evalT(t);
-    if (ev) samples.push({ t, areaM2: ev.areaM2 });
-  }
-  if (samples.length === 0) return null;
-
-  let bestLo: number | null = null, bestHi: number | null = null;
-  for (let i = 0; i < samples.length - 1; i++) {
-    const s0 = samples[i], s1 = samples[i + 1];
-    if ((s0.areaM2 - targetAreaM2) * (s1.areaM2 - targetAreaM2) <= 0) {
-      bestLo = s0.t; bestHi = s1.t; break;
-    }
-  }
-
-  if (bestLo === null) {
-    let bestSample = samples[0], bestErr = Infinity;
-    for (const s of samples) {
-      const err = Math.abs(s.areaM2 - targetAreaM2);
-      if (err < bestErr) { bestErr = err; bestSample = s; }
-    }
-    return evalT(bestSample.t);
-  }
-
-  let lo = bestLo, hi = bestHi!;
-  const evLo0 = evalT(lo);
-  const increasing = evLo0 ? evLo0.areaM2 < targetAreaM2 : true;
-  let best: SliceResult | null = null, bestErr = Infinity;
-  for (let iter = 0; iter < 200; iter++) {
-    const mid = (lo + hi) / 2;
-    const ev = evalT(mid);
-    if (!ev) {
-      const evQ1 = evalT(lo + (mid - lo) * 0.5);
-      const evQ2 = evalT(mid + (hi - mid) * 0.5);
-      if (evQ1) {
-        hi = mid;
-        if (Math.abs(evQ1.areaM2 - targetAreaM2) < bestErr) { bestErr = Math.abs(evQ1.areaM2 - targetAreaM2); best = evQ1; }
-      } else if (evQ2) {
-        lo = mid;
-        if (Math.abs(evQ2.areaM2 - targetAreaM2) < bestErr) { bestErr = Math.abs(evQ2.areaM2 - targetAreaM2); best = evQ2; }
-      } else break;
-      continue;
-    }
-    const err = Math.abs(ev.areaM2 - targetAreaM2);
-    if (err < bestErr) { bestErr = err; best = ev; }
-    if (err <= TOL_M2) break;
-    const errSigned = ev.areaM2 - targetAreaM2;
-    if (increasing ? errSigned < 0 : errSigned > 0) lo = mid; else hi = mid;
-  }
-  return best;
-}
-
-// ─── Dispatcher ─────────────────────────────────────────────────────
 // ─── Dispatcher directo por anillo (Pt[]), sin pasar por GeoJSON ───────
 // Lo usan GenerateLotsCommand (subdivisión masiva por manzano) y
 // RecomputeManzanoLotsCommand (recálculo puntual desde el panel).

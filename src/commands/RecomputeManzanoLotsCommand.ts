@@ -15,6 +15,9 @@ import {
 } from '../core/objectModel';
 import { resolveLayerId } from './AddFeatureCommand';
 import { subdivideManzanoInWorker } from '../workers/geoWorkerClient';
+import { useManzanoStore } from '../store/manzanoStore';
+import { polyArea, ringPerimeter, centroid } from '../geo/polygonEngine';
+import { checkTopologyInBackground } from '../store/mapStore';
 
 const geoJsonFormat = new GeoJSON();
 
@@ -59,6 +62,11 @@ export class RecomputeManzanoLotsCommand extends Command {
     if (gj.type !== 'Polygon') return;
     const ring = (gj as unknown as { coordinates: [number, number][][] }).coordinates[0];
     if (!ring || ring.length < 4) return;
+
+    const ringPts = ring.map((c) => [c[0], c[1]] as [number, number]);
+    const areaM2 = polyArea(ringPts);
+    const perimeterM = ringPerimeter(ringPts);
+    const centroidPt = centroid(ringPts);
 
     const lots = await subdivideManzanoInWorker(
       ring,
@@ -122,8 +130,18 @@ export class RecomputeManzanoLotsCommand extends Command {
     });
 
     setLotStatus(mznFeat, this.newLotIds.length > 0 ? 'subdivided' : 'none');
+    // H-LOT-9: el snapshot geométrico se actualiza siempre acá, no solo
+    // cuando el llamador (ManzanoPanel) se acuerda de hacerlo — antes
+    // quedaba condicionado a `if (dirPref)`, dejando el badge
+    // "desactualizado" inconsistente para el resto de los flujos.
+    useManzanoStore.getState().setGeomSnapshot(this.opts.manzanoId, {
+      area: areaM2,
+      perimeter: perimeterM,
+      centroid: centroidPt,
+    });
 
     ctx.drawSource.changed();
+    checkTopologyInBackground();
   }
 
   override undo(ctx: CommandContext): void {
