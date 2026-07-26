@@ -342,6 +342,7 @@ export class PostrenderPainter {
     this.paintRoundabouts(ctx, toPx, resolution);
     this.paintSnapGuides(ctx, resolution, toPx);
     this.paintLassoPreview(ctx, toPx);
+    this.paintSubdivisionPreview(ctx, toPx);
   }
 
   /** Subconjunto de features cuyo bbox cae dentro del extent visible
@@ -830,6 +831,15 @@ private paintRoundabouts(
       ctx.setLineDash([6, 4]);
       this.strokeRing(ctx, previewGeom.sideOuter, toPx, 'rgba(0, 212, 255, 0.85)', 1.5);
       ctx.restore();
+
+      const curPx = toPx(current);
+      ctx.save();
+      ctx.font = 'bold 11px Courier New';
+      ctx.fillStyle = 'rgba(0, 212, 255, 0.95)';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`R ${formatMetricLength(radius)}`, curPx[0] + 10, curPx[1]);
+      ctx.restore();
     }
     const centerPx = toPx(center);
     ctx.save();
@@ -936,6 +946,41 @@ private paintLassoPreview(
         ctx.fill();
         ctx.stroke();
       }
+    }
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
+
+  private currentSubdivisionPreview: import('../../geo/polygonEngine').Pt[][] | null = null;
+
+  setSubdivisionPreview(rings: import('../../geo/polygonEngine').Pt[][] | null): void {
+    this.currentSubdivisionPreview = rings;
+    this.postrenderLayer.changed();
+  }
+
+  private paintSubdivisionPreview(
+    ctx: CanvasRenderingContext2D,
+    toPx: (c: number[]) => [number, number],
+  ): void {
+    const rings = this.currentSubdivisionPreview;
+    if (!rings || rings.length === 0) return;
+    ctx.save();
+    ctx.setLineDash([6, 4]);
+    for (const ring of rings) {
+      if (ring.length < 3) continue;
+      ctx.beginPath();
+      const first = toPx(ring[0]);
+      ctx.moveTo(first[0], first[1]);
+      for (let i = 1; i < ring.length; i++) {
+        const p = toPx(ring[i]);
+        ctx.lineTo(p[0], p[1]);
+      }
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(16, 185, 129, 0.12)';
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(16, 185, 129, 0.85)';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
     }
     ctx.setLineDash([]);
     ctx.restore();

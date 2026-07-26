@@ -9,6 +9,7 @@ import { BASE_MAP_DEFS, type BaseMapId } from '../map/baseMaps';
 import { refreshSourceMetrics } from '../geo/metrics';
 import SnapPanel from './SnapPanel';
 import { useTopologyWarningsStore } from '../store/topologyWarningsStore';
+import { useRecomputeStatusStore } from '../store/recomputeStatusStore';
 
 /* ─── Icons ─── */
 
@@ -106,6 +107,7 @@ export default function StatusBar() {
   const baseMapRef = useRef<HTMLDivElement>(null);
   const crsRef = useRef<HTMLDivElement>(null);
 
+  const recomputingRoads = useRecomputeStatusStore((s) => s.running);
   const topoChecking = useTopologyWarningsStore((s) => s.checking);
   const overlapCount = useTopologyWarningsStore((s) => s.overlapCount);
   const gapCount = useTopologyWarningsStore((s) => s.gapCount);
@@ -445,6 +447,14 @@ export default function StatusBar() {
           <IconProperties />
           <span style={{ textTransform: 'uppercase', letterSpacing: '0.04em' }}>Props</span>
         </label>
+        {recomputingRoads && (
+          <>
+            <span style={{ opacity: 0.2, margin: '0 4px' }}>│</span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.65rem', color: 'var(--cad-text-dim)' }}>
+              <span className="cad-spinner" /> recalculando red vial…
+            </span>
+          </>
+        )}
         {(topoIssues > 0 || topoChecking) && (
           <>
             <span style={{ opacity: 0.2, margin: '0 4px' }}>│</span>

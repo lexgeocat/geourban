@@ -13,9 +13,13 @@ import { useStreetStore } from '../store/streetStore';
 import { useRoundaboutStore } from '../store/roundaboutStore';
 import { getFeatureKind, ensureKind, getLotStatus, setLotStatus, type LotStatus } from '../core/objectModel';
 import { useIncrementalRender } from '../hooks/useIncrementalRender';
+import { useViewportWidth } from '../hooks/useViewportWidth';
 import { setMaxFilletRadius, getMaxFilletRadius } from '../geo/streetEngine';
 import { SUBDIVISION_METHOD_INFO } from '../geo/subdivisionMethodLabels';
 import { useTopologyWarningsStore } from '../store/topologyWarningsStore';
+import { useSubdivisionPreviewStore } from '../store/subdivisionPreviewStore';
+import { formatMetricArea } from '../geo/metrics';
+import { subdivideManzanoInWorker } from '../workers/geoWorkerClient';
 
 const MZN_COLORS = [
   '#58a6ff',
@@ -133,6 +137,9 @@ export default function ManzanoPanel() {
 
   const [lotsBusy, setLotsBusy] = useState(false);
   const [expandedLots, setExpandedLots] = useState<Record<string, boolean>>({});
+  const [recomputingIds, setRecomputingIds] = useState<Set<string>>(new Set());
+  const [manualAngleOpen, setManualAngleOpen] = useState<Record<string, boolean>>({});
+  const [manualAngleValue, setManualAngleValue] = useState<Record<string, string>>({});
   const [maxFilletR, setMaxFilletR] = useState(() => getMaxFilletRadius());
 
   // Fase 6 (H18): renderizado incremental de tarjetas de manzano.
@@ -157,26 +164,37 @@ export default function ManzanoPanel() {
   const rbSidewalkM = useRoundaboutStore((s) => s.defaultSidewalkWidthM);
   const setRbSidewalk = useRoundaboutStore((s) => s.setDefaultSidewalkWidth);
 
+  const viewportWidth = useViewportWidth();
+  const panelWidth = Math.min(280, viewportWidth - 20);
   const showStreetParams = drawMode === 'street';
   const showRoundaboutParams = drawMode === 'roundabout';
 
   const runRecompute = useCallback(
     async (row: ManzanoRow) => {
-      const method = getMethod(row.id);
-      const dirPref = getRotateDir(row.id);
-      // El snapshot geométrico ahora lo actualiza el propio comando
-      // (H-LOT-9) — sin importar si hay dirPref o no.
-      await useCommandStack
-        .getState()
-        .run(
-          new RecomputeManzanoLotsCommand({
-            manzanoId: row.id,
-            targetAreaM2,
-            frontMinM,
-            method,
-            dirPref,
-          }),
-        );
+      const key = String(row.id);
+      setRecomputingIds((s) => new Set(s).add(key));
+      useSubdivisionPreviewStore.getState().clear();
+      try {
+        const method = getMethod(row.id);
+        const dirPref = getRotateDir(row.id);
+        await useCommandStack
+          .getState()
+          .run(
+            new RecomputeManzanoLotsCommand({
+              manzanoId: row.id,
+              targetAreaM2,
+              frontMinM,
+              method,
+              dirPref,
+            }),
+          );
+      } finally {
+        setRecomputingIds((s) => {
+          const next = new Set(s);
+          next.delete(key);
+          return next;
+        });
+      }
     },
     [targetAreaM2, frontMinM, getMethod, getRotateDir],
   );
@@ -184,6 +202,22 @@ export default function ManzanoPanel() {
   const handleMethodClick = (row: ManzanoRow, method: ManzanoLoteMethod) => {
     setMethod(row.id, method);
     void runRecompute(row);
+  };
+
+  const handlePreviewLots = async (row: ManzanoRow) => {
+    if (!drawSource) return;
+    const feat = drawSource.getFeatureById(row.id) as Feature<Geometry> | null;
+    const geom = feat?.getGeometry();
+    if (!(geom instanceof Polygon)) return;
+    const ring = ((geom.getCoordinates()[0] ?? []) as number[][]).map((c) => [c[0], c[1]] as Pt);
+    const method = getMethod(row.id);
+    const dirPref = getRotateDir(row.id);
+    try {
+      const lots = await subdivideManzanoInWorker(ring, method, targetAreaM2, frontMinM, dirPref);
+      useSubdivisionPreviewStore.getState().setRings(lots.map((l) => l.pts));
+    } catch (err) {
+      console.error('Preview de lotes falló', err);
+    }
   };
 
   const handleToggleEquip = (row: ManzanoRow) => {
@@ -234,6 +268,7 @@ export default function ManzanoPanel() {
   };
 
   const handleGenerarTodos = async () => {
+    useSubdivisionPreviewStore.getState().clear();
     setLotsBusy(true);
     try {
       await useCommandStack.getState().run(new GenerateLotsCommand({ targetAreaM2, frontMinM }));
@@ -247,6 +282,10 @@ export default function ManzanoPanel() {
   // trazar una vía. Ahora queda visible mientras el usuario no lo cierre
   // explícitamente con ✕ — igual que la tarjeta "Manzanos" del sidebar de
   // referencia, siempre presente aunque esté vacía.
+  useEffect(() => {
+    if (!panelVisible) useSubdivisionPreviewStore.getState().clear();
+  }, [panelVisible]);
+
   if (!panelVisible) return null;
 
   const totalLotes = rows.reduce((a, r) => a + r.lots.length, 0);
@@ -260,7 +299,7 @@ export default function ManzanoPanel() {
         position: 'fixed',
         top: 90,
         left: 10,
-        width: 280,
+        width: panelWidth,
         maxHeight: 'calc(100vh - 140px)',
         overflowY: 'auto',
         zIndex: 900,
@@ -413,9 +452,9 @@ export default function ManzanoPanel() {
           onClick={handleGenerarTodos}
           disabled={lotsBusy || rows.length === 0}
           className="cad-icon-btn"
-          style={{ width: '100%', marginTop: 8, height: 28 }}
+          style={{ width: '100%', marginTop: 8, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
         >
-          {lotsBusy ? 'Generando…' : '▶ Generar todos'}
+          {lotsBusy ? (<><span className="cad-spinner" /> Generando…</>) : '▶ Generar todos'}
         </button>
       </div>
 
@@ -456,11 +495,14 @@ export default function ManzanoPanel() {
                       {row.isEquip ? '★ Equipamiento' : `Mzo. ${row.colorIdx + 1}`}
                     </div>
                     <div style={{ color: 'var(--cad-text-muted)', fontSize: '0.65rem' }}>
-                      {row.areaM2.toFixed(1)} m²{row.lots.length ? ` · ${row.lots.length} lotes` : ''}
+                      {formatMetricArea(row.areaM2)}{row.lots.length ? ` · ${row.lots.length} lotes` : ''}
                       {geomChanged && <span style={{ color: 'var(--cad-accent-amber)' }}> · ⚠ desactualizado</span>}
                       {row.lotStatus === 'pending' && <span style={{ color: 'var(--cad-accent-red)' }}> · ⏳ pendiente</span>}
                       {affectedManzanoIds.has(String(row.id)) && (
                         <span style={{ color: 'var(--cad-accent-red)' }}> · ⚠ topología</span>
+                      )}
+                      {recomputingIds.has(String(row.id)) && (
+                        <span style={{ color: 'var(--cad-accent)' }}> · ⏳ calculando…</span>
                       )}
                     </div>
                   </div>
@@ -535,6 +577,13 @@ export default function ManzanoPanel() {
                               {m.label}
                             </button>
                           ))}
+                          <button
+                            onClick={() => void handlePreviewLots(row)}
+                            className="cad-icon-btn"
+                            style={{ width: '100%', height: 24, fontSize: '0.62rem', marginBottom: 6 }}
+                          >
+                            👁 Vista previa de corte
+                          </button>
                         </div>
 
                         {isRotatingThis ? (
@@ -562,19 +611,57 @@ export default function ManzanoPanel() {
                             </button>
                           </div>
                         ) : (
-                          <div style={{ display: 'flex', gap: 4 }}>
-                            <button onClick={() => handleStartRotate(row)} className="cad-icon-btn" style={{ flex: 1, height: 24, fontSize: '0.62rem' }}>
-                              ↻ Rotar lotes
-                            </button>
-                            {rotateDir && (
-                              <button
-                                onClick={() => handleResetRotate(row)}
-                                className="cad-icon-btn"
-                                style={{ height: 24, fontSize: '0.62rem', color: 'var(--cad-accent-red)' }}
-                              >
-                                Reset
+                          <div style={{ display: 'flex', gap: 4, flexDirection: 'column' }}>
+                            <div style={{ display: 'flex', gap: 4 }}>
+                              <button onClick={() => handleStartRotate(row)} className="cad-icon-btn" style={{ flex: 1, height: 24, fontSize: '0.62rem' }}>
+                                ↻ Rotar lotes
                               </button>
-                            )}
+                              {rotateDir && (
+                                <button
+                                  onClick={() => handleResetRotate(row)}
+                                  className="cad-icon-btn"
+                                  style={{ height: 24, fontSize: '0.62rem', color: 'var(--cad-accent-red)' }}
+                                >
+                                  Reset
+                                </button>
+                              )}
+                            </div>
+                            <div style={{ marginTop: 4 }}>
+                              <button
+                                onClick={() => setManualAngleOpen((s) => ({ ...s, [String(row.id)]: !s[String(row.id)] }))}
+                                className="cad-icon-btn"
+                                style={{ width: '100%', height: 22, fontSize: '0.6rem', color: 'var(--cad-text-muted)' }}
+                                aria-label="Alternativa por teclado: ingresar ángulo de rotación manualmente"
+                              >
+                                {manualAngleOpen[String(row.id)] ? '▲ Ocultar ángulo manual' : '⌨ Ángulo manual (accesible)'}
+                              </button>
+                              {manualAngleOpen[String(row.id)] && (
+                                <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
+                                  <input
+                                    type="number"
+                                    step={1}
+                                    placeholder="grados"
+                                    value={manualAngleValue[String(row.id)] ?? ''}
+                                    onChange={(e) => setManualAngleValue((s) => ({ ...s, [String(row.id)]: e.target.value }))}
+                                    style={inputStyle}
+                                    aria-label={`Ángulo de rotación de lotes para Mzo. ${row.colorIdx + 1}, en grados`}
+                                  />
+                                  <button
+                                    onClick={() => {
+                                      const deg = parseFloat(manualAngleValue[String(row.id)] ?? '');
+                                      if (!Number.isFinite(deg)) return;
+                                      const rad = (deg * Math.PI) / 180;
+                                      setRotateDir(row.id, { ax: Math.cos(rad), ay: Math.sin(rad) });
+                                      void runRecompute(row);
+                                    }}
+                                    className="cad-icon-btn"
+                                    style={{ height: 'auto', fontSize: '0.6rem', padding: '0 8px' }}
+                                  >
+                                    Aplicar
+                                  </button>
+                                </div>
+                              )}
+                            </div>
                           </div>
                         )}
 
@@ -638,7 +725,7 @@ export default function ManzanoPanel() {
                                     }}
                                   >
                                     <span>{l.label}</span>
-                                    <span>{l.areaM2.toFixed(1)} m²</span>
+                                    <span>{formatMetricArea(l.areaM2)}</span>
                                   </div>
                                 ))}
                               </div>
@@ -666,7 +753,7 @@ export default function ManzanoPanel() {
               color: 'var(--cad-text-muted)',
             }}
           >
-            Manzanos: {totalMznArea.toFixed(1)} m² · {totalLotes} lotes en total
+            Manzanos: {formatMetricArea(totalMznArea)} · {totalLotes} lotes en total
           </div>
         </>
       )}

@@ -6,7 +6,7 @@ import VectorLayer from 'ol/layer/Vector.js';
 import Feature from 'ol/Feature.js';
 import Point from 'ol/geom/Point.js';
 import LineString from 'ol/geom/LineString.js';
-import { Style, Stroke, Fill, Circle as CircleStyle } from 'ol/style.js';
+import { Style, Stroke, Fill, Circle as CircleStyle, Text } from 'ol/style.js';
 import { useManzanoStore } from '../../store/manzanoStore';
 
 const HIT_TOLERANCE_PX = 14;
@@ -39,6 +39,13 @@ export class RotateLotsInteraction extends Interaction {
               radius: 7,
               fill: new Fill({ color: '#f1c40f' }),
               stroke: new Stroke({ color: '#e74c3c', width: 1.5 }),
+            }),
+            text: new Text({
+              text: feature.get('angleLabel') as string | undefined,
+              offsetY: -16,
+              font: 'bold 11px Courier New',
+              fill: new Fill({ color: '#f1c40f' }),
+              stroke: new Stroke({ color: 'rgba(0,0,0,0.75)', width: 3 }),
             }),
           });
         }
@@ -86,6 +93,8 @@ export class RotateLotsInteraction extends Interaction {
     anchorFeat.set('role', 'anchor');
     const handleFeat = new Feature({ geometry: new Point(handle) });
     handleFeat.set('role', 'handle');
+    const angleDeg = ((Math.atan2(handle[1] - anchor[1], handle[0] - anchor[0]) * 180) / Math.PI + 360) % 360;
+    handleFeat.set('angleLabel', `${angleDeg.toFixed(1)}°`);
     source.addFeatures([line, anchorFeat, handleFeat]);
     this.hostMap.render();
   }

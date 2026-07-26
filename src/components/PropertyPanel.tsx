@@ -5,6 +5,8 @@ import { useSubdivisionStore } from '../store/subdivisionStore';
 import { useDrawStore } from '../store/drawStore';
 import { useLayerStore } from '../store/layerStore';
 import { formatMetricArea, formatMetricLength, type SegmentMetric } from '../geo/metrics';
+import { useManzanoStore } from '../store/manzanoStore';
+import { getFeatureKind } from '../core/objectModel';
 
 const panelStyle: React.CSSProperties = {
   position: 'absolute',
@@ -214,7 +216,15 @@ export default function PropertyPanel() {
         <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 4 }}>
           {isPolygon && (
             <button
-              onClick={() => openSubdivision(primaryId)}
+              onClick={() => {
+                const kind = getFeatureKind(feat);
+                if (kind === 'manzana') {
+                  const { targetAreaM2, frontMinM } = useManzanoStore.getState();
+                  openSubdivision(primaryId, 'auto', { targetAreaM2, frontMinM });
+                } else {
+                  openSubdivision(primaryId);
+                }
+              }}
               className="cad-icon-btn"
               style={{
                 width: '100%',

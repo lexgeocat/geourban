@@ -3,6 +3,8 @@ import React from 'react';
 import { useRoundaboutStore } from '../store/roundaboutStore';
 import { useDrawStore } from '../store/drawStore';
 import { roundaboutRoadAreaM2 } from '../geo/roundaboutEngine';
+import { formatMetricArea } from '../geo/metrics';
+import { useViewportWidth } from '../hooks/useViewportWidth';
 
 const SIDES_OPTIONS: Array<{ value: number; label: string }> = [
   { value: 0, label: 'Círculo' },
@@ -45,6 +47,10 @@ export default function RoundaboutPanel() {
   const mode = useDrawStore((s) => s.mode);
   const setMode = useDrawStore((s) => s.setMode);
 
+  const viewportWidth = useViewportWidth();
+  const panelWidth = Math.min(260, viewportWidth - 20);
+  const panelLeft = Math.min(280, Math.max(6, viewportWidth - panelWidth - 10));
+
   if (!panelVisible) return null;
 
   return (
@@ -53,8 +59,8 @@ export default function RoundaboutPanel() {
       style={{
         position: 'fixed',
         top: 'calc(var(--cad-topbar-height) + 12px)',
-        left: 280,
-        width: 260,
+        left: panelLeft,
+        width: panelWidth,
         maxHeight: 'calc(100vh - 160px)',
         overflowY: 'auto',
         zIndex: 90,
@@ -115,7 +121,7 @@ export default function RoundaboutPanel() {
               <button onClick={() => removeRoundabout(rb.id)} style={{ background: 'none', border: 'none', color: 'var(--cad-accent-red)', cursor: 'pointer', fontSize: '0.75rem' }} title="Eliminar rotonda">✕</button>
             </div>
             <div style={{ color: 'var(--cad-text-muted)', fontSize: '0.65rem', marginBottom: 4 }}>
-              {roundaboutRoadAreaM2(rb).toFixed(1)} m² de calzada
+              {formatMetricArea(roundaboutRoadAreaM2(rb))} de calzada
             </div>
             <div style={{ display: 'flex', gap: 6 }}>
               <label style={{ flex: 1, fontSize: '0.6rem', color: 'var(--cad-text-dim)' }}>

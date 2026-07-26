@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useEffect } from 'react';
 import { useSubdivisionStore } from '../store/subdivisionStore';
 import { useMapStore } from '../store/mapStore';
 import { useCommandStack } from '../commands/CommandStack';
@@ -10,7 +10,11 @@ import type { Polygon as GeoJsonPolygon, LineString as GeoJsonLineString } from 
 import GeoJSON from 'ol/format/GeoJSON.js';
 import Feature from 'ol/Feature';
 import type Geometry from 'ol/geom/Geometry';
+import { formatMetricArea } from '../geo/metrics';
+import { useSubdivisionPreviewStore } from '../store/subdivisionPreviewStore';
 import { SUBDIVISION_METHOD_INFO } from '../geo/subdivisionMethodLabels';
+
+
 
 const geoJsonFormat = new GeoJSON();
 
@@ -46,8 +50,12 @@ export default function SubdivisionDialog() {
     return null;
   }, [isOpen, targetId, drawSource]);
 
+  useEffect(() => {
+    if (!isOpen) useSubdivisionPreviewStore.getState().clear();
+  }, [isOpen]);
+
   const loadError: string | null = useMemo(() => {
-    if (!isOpen) return null;
+  if (!isOpen) return null;
     if (targetId == null) return 'No hay feature seleccionada';
     if (!drawSource) return 'Source no inicializado';
     if (drawSource.getFeatureById(targetId) == null) return 'Feature no encontrada';
@@ -66,6 +74,10 @@ export default function SubdivisionDialog() {
     });
     return gj.type === 'LineString' ? (gj as GeoJsonLineString) : null;
   }, [isOpen, method, drawSource, lastDrawnLineId]);
+
+  useEffect(() => {
+    if (!isOpen) useSubdivisionPreviewStore.getState().clear();
+  }, [isOpen]);
 
   if (!isOpen) return null;
   const combinedError = errorMessage ?? loadError;
@@ -93,9 +105,14 @@ export default function SubdivisionDialog() {
       if (!r.ok) {
         setError(r.error ?? 'No se pudo generar el preview');
         setPreview(null);
+        useSubdivisionPreviewStore.getState().clear();
         return;
       }
       setPreview({ count: r.features.length, warnings: r.warnings });
+      const rings = r.features
+        .map((f) => (f.geometry.type === 'Polygon' ? (f.geometry.coordinates[0] as [number, number][]) : null))
+        .filter((ring): ring is [number, number][] => ring != null);
+      useSubdivisionPreviewStore.getState().setRings(rings);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       setPreview(null);
@@ -124,6 +141,7 @@ export default function SubdivisionDialog() {
         setError(result.error);
         return;
       }
+      useSubdivisionPreviewStore.getState().clear();
       close();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -374,7 +392,7 @@ function TargetInfo({ geom }: { geom: GeoJsonPolygon }) {
         gap: 16,
       }}
     >
-      <span>Área: <strong style={{ color: '#3fb950' }}>{areaM2.toFixed(1)} m²</strong></span>
+      <span>Área: <strong style={{ color: '#3fb950' }}>{formatMetricArea(areaM2)}</strong></span>
       <span>Vértices: <strong>{ring.length - 1}</strong></span>
       <span>Centroide: <strong>{cen[0].toFixed(1)}, {cen[1].toFixed(1)}</strong></span>
     </div>

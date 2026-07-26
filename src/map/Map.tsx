@@ -37,6 +37,7 @@ import { runCommand } from '../commands/CommandStack';
 import { RecomputeManzanoLotsCommand } from '../commands/RecomputeManzanoLotsCommand';
 import { polyArea, centroid } from '../geo/polygonEngine';
 import { rafThrottle } from '../utils/rafThrottle';
+import { useSubdivisionPreviewStore } from '../store/subdivisionPreviewStore';
 
 export default function MapView() {
   const mapDivRef = useRef<HTMLDivElement>(null);
@@ -51,6 +52,7 @@ export default function MapView() {
   const streetLayerSrcRef = useRef<VectorSource | null>(null);
   const snapGuideRef = useRef<SnapGuideVisual | null>(null);
   const snapEngineRef = useRef<SnapEngine | null>(null);
+  const postrenderPainterRef = useRef<PostrenderPainter | null>(null);
 const interactionCtrlRef = useRef<InteractionModeController | null>(null);
 const rotateLotsInteractionRef = useRef<RotateLotsInteraction | null>(null);
 const rotateLotsCleanupRef = useRef<(() => void) | null>(null);
@@ -148,7 +150,7 @@ const baseMapId = useLayerStore((s) => s.baseMap);
       drawSource: drawSrc,
       postrenderLayer,
     });
-
+    postrenderPainterRef.current = postrenderPainter;
 
     // --- Live cursor coordinates & zoom ---
     const setCursorCoords = useMapStore.getState().setCursorCoords;
@@ -399,6 +401,7 @@ if (rotateLotsInteractionRef.current) {
 unByKey(moveEndKey);
 unByKey(moveStartKey);
 postrenderPainter.dispose();
+      postrenderPainterRef.current = null;
       drawSrc.un('addfeature', onSpatialInsert);
       drawSrc.un('removefeature', onSpatialRemove);
       drawSrc.un('changefeature', onSpatialChange);
@@ -466,6 +469,12 @@ useEffect(() => {
 useEffect(() => {
   const unsub = useRoundaboutStore.subscribe(() => {
     mapInstanceRef.current?.render();
+  });
+  return unsub;
+}, []);
+useEffect(() => {
+  const unsub = useSubdivisionPreviewStore.subscribe((state) => {
+    postrenderPainterRef.current?.setSubdivisionPreview(state.rings);
   });
   return unsub;
 }, []);

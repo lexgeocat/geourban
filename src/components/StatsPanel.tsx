@@ -132,6 +132,17 @@ export default function StatsPanel() {
     };
   }, [drawSource]);
 
+  useEffect(() => {
+    const onResize = () => {
+      setPos((p) => ({
+        x: Math.min(p.x, window.innerWidth - 40),
+        y: Math.min(p.y, window.innerHeight - 40),
+      }));
+    };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
   const stats = useMemo(() => computeStats(drawSource, streets), [drawSource, streets, tick]);
 
   const onMouseDown = useCallback((e: React.MouseEvent) => {
@@ -139,9 +150,13 @@ export default function StatsPanel() {
     dragRef.current = { startX: e.clientX, startY: e.clientY, posX: pos.x, posY: pos.y };
     const onMove = (ev: MouseEvent) => {
       if (!dragRef.current) return;
+      const nextX = dragRef.current.posX + (ev.clientX - dragRef.current.startX);
+      const nextY = dragRef.current.posY + (ev.clientY - dragRef.current.startY);
+      const maxX = window.innerWidth - 40;
+      const maxY = window.innerHeight - 40;
       setPos({
-        x: dragRef.current.posX + (ev.clientX - dragRef.current.startX),
-        y: dragRef.current.posY + (ev.clientY - dragRef.current.startY),
+        x: Math.min(Math.max(0, nextX), maxX),
+        y: Math.min(Math.max(0, nextY), maxY),
       });
     };
     const onUp = () => {

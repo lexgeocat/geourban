@@ -11,7 +11,7 @@ type SubdivisionState = {
   loading: boolean;
   errorMessage: string | null;
 
-  open: (targetFeatureId: string | number, method?: SubdivisionMethod) => void;
+  open: (targetFeatureId: string | number, method?: SubdivisionMethod, initialOptions?: Partial<SubdivisionOptions>) => void;
   close: () => void;
   setMethod: (m: SubdivisionMethod) => void;
   setOption: <K extends keyof SubdivisionOptions>(k: K, v: SubdivisionOptions[K]) => void;
@@ -37,12 +37,12 @@ export const useSubdivisionStore = create<SubdivisionState>()(
     loading: false,
     errorMessage: null,
 
-    open: (targetFeatureId, method = 'auto') =>
+    open: (targetFeatureId, method = 'auto', initialOptions) =>
       set((state) => {
         state.isOpen = true;
         state.targetFeatureId = targetFeatureId;
         state.method = method;
-        state.options = { ...DEFAULT_OPTIONS, method };
+        state.options = { ...DEFAULT_OPTIONS, method, ...initialOptions };
         state.preview = null;
         state.loading = false;
         state.errorMessage = null;

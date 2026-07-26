@@ -11,6 +11,7 @@ import { useStreetStore } from './streetStore';
 import { useRoundaboutStore } from './roundaboutStore';
 import { useManzanoStore } from './manzanoStore';
 import { useLayersStore } from './layersRegistryStore';
+import { useRecomputeStatusStore } from './recomputeStatusStore';
 import {
   validateTopologyInWorker,
   computeManzanosInWorker,
@@ -612,6 +613,7 @@ export function recomputeManzanos(): Promise<void> {
       recomputeReject = reject;
     });
   }
+  useRecomputeStatusStore.getState().setRunning(true);
   if (recomputeDebounceTimer) clearTimeout(recomputeDebounceTimer);
   recomputeDebounceTimer = setTimeout(() => {
     recomputeDebounceTimer = null;
@@ -620,7 +622,9 @@ export function recomputeManzanos(): Promise<void> {
     recomputeInFlight = null;
     recomputeResolve = null;
     recomputeReject = null;
-    recomputeManzanosImmediate().then(resolve, reject);
+    recomputeManzanosImmediate()
+      .then(resolve, reject)
+      .finally(() => useRecomputeStatusStore.getState().setRunning(false));
   }, RECOMPUTE_DEBOUNCE_MS);
   return recomputeInFlight;
 }

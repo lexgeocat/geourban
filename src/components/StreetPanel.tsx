@@ -1,0 +1,209 @@
+import React, { useState } from 'react';
+import { useStreetStore } from '../store/streetStore';
+import { recomputeManzanos } from '../store/mapStore';
+import { formatMetricLength, formatMetricArea } from '../geo/metrics';
+import { useViewportWidth } from '../hooks/useViewportWidth';
+
+const inputStyle: React.CSSProperties = {
+  width: '100%',
+  padding: '5px 8px',
+  background: 'var(--cad-bg-deepest)',
+  border: '1px solid var(--cad-border)',
+  borderRadius: 4,
+  color: 'var(--cad-text)',
+  fontSize: '0.72rem',
+  fontFamily: 'JetBrains Mono, monospace',
+};
+
+const inputStyleSmall: React.CSSProperties = { ...inputStyle, padding: '3px 6px', fontSize: '0.65rem', marginTop: 2 };
+
+function streetLengthM(street: { start: [number, number]; end: [number, number]; waypoints?: Array<[number, number]> }): number {
+  const pts = [street.start, ...(street.waypoints ?? []), street.end];
+  let len = 0;
+  for (let i = 0; i < pts.length - 1; i++) {
+    len += Math.hypot(pts[i + 1][0] - pts[i][0], pts[i + 1][1] - pts[i][1]);
+  }
+  return len;
+}
+
+/** H-VIA-5: antes no existía forma de editar una calle ya trazada más
+ *  que borrarla y re-trazarla — `streetStore.updateStreet` existía pero
+ *  ningún componente lo llamaba. Análogo directo de RoundaboutPanel.tsx. */
+export default function StreetPanel() {
+  const panelVisible = useStreetStore((s) => s.panelVisible);
+  const setPanelVisible = useStreetStore((s) => s.setPanelVisible);
+  const streets = useStreetStore((s) => s.streets);
+  const updateStreet = useStreetStore((s) => s.updateStreet);
+  const removeStreet = useStreetStore((s) => s.removeStreet);
+  const defaultWidthM = useStreetStore((s) => s.defaultWidthM);
+  const defaultSideWidthM = useStreetStore((s) => s.defaultSideWidthM);
+  const setDefaultWidth = useStreetStore((s) => s.setDefaultWidth);
+  const setDefaultSideWidth = useStreetStore((s) => s.setDefaultSideWidth);
+
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState('');
+
+  // Fase 5, punto 7: clamp de viewport — el panel no se posiciona fuera
+  // de pantalla en resoluciones angostas.
+  const viewportWidth = useViewportWidth();
+  const panelWidth = Math.min(280, viewportWidth - 20);
+  const panelLeft = Math.min(550, Math.max(6, viewportWidth - panelWidth - 10));
+
+  if (!panelVisible) return null;
+
+  const handleWidthChange = (id: string, widthM: number) => {
+    updateStreet(id, { widthM });
+    void recomputeManzanos();
+  };
+
+  const handleSideWidthChange = (id: string, sideWidthM: number) => {
+    updateStreet(id, { sideWidthM });
+    void recomputeManzanos();
+  };
+
+  const handleDelete = (id: string) => {
+    removeStreet(id);
+    void recomputeManzanos();
+  };
+
+  const startRename = (id: string, currentName: string) => {
+    setEditingId(id);
+    setEditName(currentName);
+  };
+
+  const commitRename = () => {
+    if (editingId && editName.trim()) {
+      updateStreet(editingId, { name: editName.trim() });
+    }
+    setEditingId(null);
+  };
+
+  return (
+    <div
+      className="cad-panel-glass animate-fade-in"
+      style={{
+        position: 'fixed',
+        top: 'calc(var(--cad-topbar-height) + 12px)',
+        left: panelLeft,
+        width: panelWidth,
+        maxHeight: 'calc(100vh - 160px)',
+        overflowY: 'auto',
+        zIndex: 90,
+        padding: '10px 10px',
+        fontSize: '0.72rem',
+      }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, borderBottom: '1px solid var(--cad-border)', paddingBottom: 6 }}>
+        <span style={{ fontWeight: 700, color: 'var(--cad-text)', letterSpacing: '0.03em' }}>
+          Calles <span style={{ color: 'var(--cad-text-muted)', fontWeight: 400 }}>({streets.length})</span>
+        </span>
+        <button onClick={() => setPanelVisible(false)} style={{ background: 'none', border: 'none', color: 'var(--cad-text-dim)', cursor: 'pointer', fontSize: '0.85rem' }} title="Cerrar" aria-label="Cerrar panel de calles">✕</button>
+      </div>
+
+      <div style={{ background: 'var(--cad-bg-surface)', borderRadius: 6, padding: 8, marginBottom: 8 }}>
+        <div style={{ fontSize: '0.62rem', color: 'var(--cad-accent)', fontWeight: 700, marginBottom: 6, letterSpacing: '0.05em' }}>
+          ◼ VALORES POR DEFECTO (próximas calles)
+        </div>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <div style={{ flex: 1 }}>
+            <label style={{ display: 'block', fontSize: '0.65rem', color: 'var(--cad-text-dim)' }} htmlFor="street-panel-default-width">
+              Calzada (m)
+            </label>
+            <input
+              id="street-panel-default-width"
+              type="number"
+              min={0.5}
+              step={0.5}
+              value={defaultWidthM}
+              onChange={(e) => setDefaultWidth(parseFloat(e.target.value) || defaultWidthM)}
+              style={inputStyle}
+              aria-label="Ancho de calzada por defecto en metros"
+            />
+          </div>
+          <div style={{ flex: 1 }}>
+            <label style={{ display: 'block', fontSize: '0.65rem', color: 'var(--cad-text-dim)' }} htmlFor="street-panel-default-side">
+              Vereda (m)
+            </label>
+            <input
+              id="street-panel-default-side"
+              type="number"
+              min={0}
+              step={0.5}
+              value={defaultSideWidthM}
+              onChange={(e) => setDefaultSideWidth(Math.max(0, parseFloat(e.target.value) || 0))}
+              style={inputStyle}
+              aria-label="Ancho de vereda por defecto en metros"
+            />
+          </div>
+        </div>
+      </div>
+
+      {streets.length === 0 ? (
+        <p style={{ fontSize: '0.68rem', color: 'var(--cad-text-muted)' }}>Todavía no hay calles trazadas.</p>
+      ) : (
+        streets.map((s) => (
+          <div key={s.id} style={{ border: '1px solid var(--cad-border)', borderLeft: '3px solid #8b5cf6', borderRadius: 4, marginBottom: 6, padding: '6px 8px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              {editingId === s.id ? (
+                <input
+                  autoFocus
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  onBlur={commitRename}
+                  onKeyDown={(e) => { if (e.key === 'Enter') commitRename(); if (e.key === 'Escape') setEditingId(null); }}
+                  style={{ ...inputStyleSmall, marginTop: 0, flex: 1, marginRight: 6 }}
+                  aria-label={`Nombre de ${s.name}`}
+                />
+              ) : (
+                <span
+                  onDoubleClick={() => startRename(s.id, s.name)}
+                  style={{ fontWeight: 700, color: 'var(--cad-text)', cursor: 'text' }}
+                  title="Doble click para renombrar"
+                >
+                  {s.name}
+                </span>
+              )}
+              <button
+                onClick={() => handleDelete(s.id)}
+                style={{ background: 'none', border: 'none', color: 'var(--cad-accent-red)', cursor: 'pointer', fontSize: '0.75rem' }}
+                title="Eliminar calle"
+                aria-label={`Eliminar ${s.name}`}
+              >
+                ✕
+              </button>
+            </div>
+            <div style={{ color: 'var(--cad-text-muted)', fontSize: '0.65rem', marginBottom: 4 }}>
+              {formatMetricLength(streetLengthM(s))} · {formatMetricArea(streetLengthM(s) * s.widthM)} de calzada
+            </div>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <label style={{ flex: 1, fontSize: '0.6rem', color: 'var(--cad-text-dim)' }}>
+                Calzada
+                <input
+                  type="number"
+                  min={0.5}
+                  step={0.5}
+                  value={s.widthM}
+                  onChange={(e) => handleWidthChange(s.id, Math.max(0.5, parseFloat(e.target.value) || s.widthM))}
+                  style={inputStyleSmall}
+                  aria-label={`Ancho de calzada de ${s.name} en metros`}
+                />
+              </label>
+              <label style={{ flex: 1, fontSize: '0.6rem', color: 'var(--cad-text-dim)' }}>
+                Vereda
+                <input
+                  type="number"
+                  min={0}
+                  step={0.5}
+                  value={s.sideWidthM}
+                  onChange={(e) => handleSideWidthChange(s.id, Math.max(0, parseFloat(e.target.value) || 0))}
+                  style={inputStyleSmall}
+                  aria-label={`Ancho de vereda de ${s.name} en metros`}
+                />
+              </label>
+            </div>
+          </div>
+        ))
+      )}
+    </div>
+  );
+}

@@ -14,6 +14,7 @@ import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import ProjectSetupModal from './components/ProjectSetupModal';
 import ManzanoPanel from './components/ManzanoPanel';
 import RoundaboutPanel from './components/RoundaboutPanel';
+import StreetPanel from './components/StreetPanel';
 
 function App() {
   useKeyboardShortcuts();
@@ -66,6 +67,7 @@ function App() {
       <StatsPanel />
       <ManzanoPanel />
       <RoundaboutPanel />
+      <StreetPanel />
     </div>
       </div>
       <ProjectSetupModal />

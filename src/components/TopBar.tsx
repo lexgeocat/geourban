@@ -318,10 +318,12 @@ const setManzanoPanelVisible = useManzanoStore((s) => s.setPanelVisible);
 const statsPanelVisible = useLayerStore((s) => s.statsPanelVisible);
 const setStatsPanelVisible = useLayerStore((s) => s.setStatsPanelVisible);
 const activeTab = useLayerStore((s) => s.activeTab);
-const rbDefaultRadiusM = useRoundaboutStore((s) => s.defaultRadiusM);
+  const rbDefaultRadiusM = useRoundaboutStore((s) => s.defaultRadiusM);
 const setRbDefaultRadius = useRoundaboutStore((s) => s.setDefaultRadius);
 const roundaboutPanelVisible = useRoundaboutStore((s) => s.panelVisible);
 const setRoundaboutPanelVisible = useRoundaboutStore((s) => s.setPanelVisible);
+const streetPanelVisible = useStreetStore((s) => s.panelVisible);
+const setStreetPanelVisible = useStreetStore((s) => s.setPanelVisible);
   const setActiveTab = useLayerStore((s) => s.setActiveTab);
   const ribbonCollapsed = useLayerStore((s) => s.ribbonCollapsed);
   const setRibbonCollapsed = useLayerStore((s) => s.setRibbonCollapsed);
@@ -555,7 +557,14 @@ const setRoundaboutPanelVisible = useRoundaboutStore((s) => s.setPanelVisible);
       alert('Seleccioná un polígono para subdividir.');
       return;
     }
-    openSubdivision(primaryId);
+    const src = useMapStore.getState().drawSource;
+    const feat = src?.getFeatureById(primaryId) as any;
+    if (feat && getFeatureKind(feat) === 'manzana') {
+      const { targetAreaM2, frontMinM } = useManzanoStore.getState();
+      openSubdivision(primaryId, 'auto', { targetAreaM2, frontMinM });
+    } else {
+      openSubdivision(primaryId);
+    }
   };
 
   const handleGenerateLots = async () => {
@@ -1050,6 +1059,18 @@ src.forEachFeature((f) => {
                   label="Rotondas"
                   active={roundaboutPanelVisible}
                   onClick={() => setRoundaboutPanelVisible(!roundaboutPanelVisible)}
+                />
+                <RibbonTool
+                  icon={<IconStreet />}
+                  label="Panel vías"
+                  active={streetPanelVisible}
+                  onClick={() => setStreetPanelVisible(!streetPanelVisible)}
+                />
+                <RibbonTool
+                  icon={<IconStreet />}
+                  label="Panel vías"
+                  active={streetPanelVisible}
+                  onClick={() => setStreetPanelVisible(!streetPanelVisible)}
                 />
                 <RibbonTool
                   icon={<IconCursor />}
