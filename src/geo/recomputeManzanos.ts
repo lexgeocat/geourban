@@ -42,6 +42,16 @@ function closeGeoRing(ring: Pt[]): Pt[] {
   return ring;
 }
 
+function orientRingCcw(ring: Pt[]): Pt[] {
+  let area = 0;
+  for (let i = 0; i < ring.length; i++) {
+    const [x1, y1] = ring[i];
+    const [x2, y2] = ring[(i + 1) % ring.length];
+    area += x1 * y2 - x2 * y1;
+  }
+  return area >= 0 ? ring : ring.slice().reverse();
+}
+
 function ringsExtent(rings: Pt[][]): Extent | null {
   let result: Extent | null = null;
   for (const ring of rings) {
@@ -438,7 +448,7 @@ async function recomputeManzanosImmediate(): Promise<void> {
 
     const newFragmentIds: string[] = [];
     fragments.forEach((ring, i) => {
-      const rounded = roundRingReflex(ring);
+      const rounded = roundRingReflex(orientRingCcw(ring));
       if (rounded.length < 4) return;
       const newFeat = new Feature({ geometry: new PolygonGeom([rounded]) });
       const newId = `${group.origId}-mzn-${i}`;

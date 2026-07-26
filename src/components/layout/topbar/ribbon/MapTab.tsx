@@ -5,6 +5,7 @@ import { useSelectionStore } from '../../../../store/map/selectionStore';
 import { useStreetStore } from '../../../../store/entities/streetStore';
 import { useRoundaboutStore } from '../../../../store/entities/roundaboutStore';
 import { useGenerateLotsProgressStore } from '../../../../store/ui/generateLotsProgressStore';
+import { recomputeManzanos, resetIncrementalRoadTracking } from '../../../../geo/recomputeManzanos';
 import { RibbonGroup, RibbonTool } from '../RibbonPrimitives';
 import {
   IconCursor, IconEraser, IconPolygon, IconLine, IconRect, IconEdit,
@@ -31,6 +32,14 @@ export default function MapTab({ lotsBusy, onToggleEdit, onDeleteSelected, onOpe
   const setDefaultSideWidth = useStreetStore((s) => s.setDefaultSideWidth);
   const streets = useStreetStore((s) => s.streets);
   const clearStreets = useStreetStore((s) => s.clearStreets);
+  const clearRoundabouts = useRoundaboutStore((s) => s.clearRoundabouts);
+
+  const handleClearStreets = () => {
+    clearStreets();
+    clearRoundabouts();
+    resetIncrementalRoadTracking();
+    void recomputeManzanos();
+  };
 
   return (
     <>
@@ -87,7 +96,7 @@ export default function MapTab({ lotsBusy, onToggleEdit, onDeleteSelected, onOpe
           <span className="ribbon-inline-text">Vereda (m) · {streets.length} trazadas</span>
         </div>
         {streets.length > 0 && (
-          <button className="ribbon-tool small" onClick={clearStreets} style={{ color: 'var(--cad-accent-red)' }} data-tooltip="Limpiar todas las calles" title="Limpiar todas las calles">
+          <button className="ribbon-tool small" onClick={handleClearStreets} style={{ color: 'var(--cad-accent-red)' }} data-tooltip="Limpiar todas las calles" title="Limpiar todas las calles">
             <Trash2 />
             <span className="ribbon-tool-label">Limpiar</span>
           </button>
