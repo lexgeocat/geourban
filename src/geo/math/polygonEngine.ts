@@ -48,6 +48,28 @@ export function centroid(pts: Pt[]): Pt {
   return [cx / pts.length, cy / pts.length];
 }
 
+/** Envolvente convexa (monotone chain) — única implementación
+ *  compartida; antes vivía duplicada dentro de
+ *  `geo/subdivisionCabeceraCuerpo.ts` (una vez a nivel de módulo, y otra
+ *  como `mergePolys()` inline dentro de `hbMergeHeadRemainders`). Fase 2. */
+export function convexHull(pts: Pt[]): Pt[] {
+  const arr = pts.slice().sort((a, b) => (a[0] !== b[0] ? a[0] - b[0] : a[1] - b[1]));
+  if (arr.length < 3) return arr;
+  const cross = (O: Pt, A: Pt, B: Pt) => (A[0] - O[0]) * (B[1] - O[1]) - (A[1] - O[1]) * (B[0] - O[0]);
+  const lower: Pt[] = [], upper: Pt[] = [];
+  for (const p of arr) {
+    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) lower.pop();
+    lower.push(p);
+  }
+  for (let i = arr.length - 1; i >= 0; i--) {
+    const p = arr[i];
+    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) upper.pop();
+    upper.push(p);
+  }
+  upper.pop(); lower.pop();
+  return lower.concat(upper);
+}
+
 /** Perímetro de un anillo, asumiendo cierre implícito (último punto
  *  conecta con el primero). Compartido entre ManzanoPanel y los
  *  comandos de recálculo de lotes (H-LOT-9) — antes había una copia
@@ -61,6 +83,19 @@ export function ringPerimeter(pts: Pt[]): number {
     per += Math.hypot(b[0] - a[0], b[1] - a[1]);
   }
   return per;
+}
+
+/** Longitud de un camino ABIERTO (sin wraparound del último punto al
+ *  primero) — complemento de `ringPerimeter` para anillos cerrados.
+ *  Centraliza lo que antes se reimplementaba por separado en
+ *  `geo/metrics.ts::planarPathLength` y
+ *  `components/StreetPanel.tsx::streetLengthM` (Fase 2). */
+export function pathLength(pts: Pt[]): number {
+  let total = 0;
+  for (let i = 0; i < pts.length - 1; i++) {
+    total += Math.hypot(pts[i + 1][0] - pts[i][0], pts[i + 1][1] - pts[i][1]);
+  }
+  return total;
 }
 
 /** Cross product para determinar de qué lado de la recta lp1→lp2 está pt */

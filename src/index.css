@@ -263,6 +263,76 @@ body,
 }
 
 /* ============================================================
+   CAD Form Controls & Panel Header (Fase 2 — consolida estilos
+   inline duplicados en ManzanoPanel/StreetPanel/RoundaboutPanel/
+   PropertyPanel/SubdivisionDialog)
+   ============================================================ */
+.cad-input {
+  width: 100%;
+  padding: 5px 8px;
+  background: var(--cad-bg-deepest);
+  border: 1px solid var(--cad-border);
+  border-radius: 4px;
+  color: var(--cad-text);
+  font-size: 0.72rem;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  outline: none;
+}
+.cad-input:focus {
+  border-color: var(--cad-accent);
+  box-shadow: 0 0 0 1px rgba(0, 212, 255, 0.3);
+}
+.cad-input-sm {
+  padding: 3px 6px;
+  font-size: 0.65rem;
+  margin-top: 2px;
+}
+
+
+.cad-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--cad-border);
+}
+.cad-panel-header-close {
+  background: none;
+  border: none;
+  color: var(--cad-text-dim);
+  cursor: pointer;
+  font-size: 0.85rem;
+  line-height: 1;
+  padding: 0 2px;
+}
+
+
+.cad-section-title {
+  font-size: 0.6rem;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--cad-text-muted);
+  margin-bottom: 6px;
+  display: block;
+}
+
+
+.cad-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 0;
+  font-size: 0.7rem;
+  color: var(--cad-text-dim);
+}
+.cad-row-value {
+  color: var(--cad-accent);
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-weight: 500;
+}
+
+/* ============================================================
    CAD Separator (toolbar divider)
    ============================================================ */
 .cad-separator {

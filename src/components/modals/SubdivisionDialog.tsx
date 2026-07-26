@@ -427,7 +427,8 @@ function NumberField({
         min={min}
         step={step}
         onChange={(e) => onChange(parseFloat(e.target.value) || 0)}
-        style={inputStyle}
+        className="cad-input"
+        style={{ padding: '6px 10px', fontSize: '0.8rem' }}
       />
     </div>
   );
@@ -450,17 +451,6 @@ const helpStyle: React.CSSProperties = {
   color: 'var(--cad-text-muted)',
   marginTop: 6,
   fontStyle: 'italic',
-};
-
-const inputStyle: React.CSSProperties = {
-  width: '100%',
-  padding: '6px 10px',
-  background: 'var(--cad-bg-deepest)',
-  border: '1px solid var(--cad-border)',
-  borderRadius: 4,
-  color: 'var(--cad-text)',
-  fontSize: '0.8rem',
-  fontFamily: 'JetBrains Mono, monospace',
 };
 
 const methodBtnStyle: React.CSSProperties = {

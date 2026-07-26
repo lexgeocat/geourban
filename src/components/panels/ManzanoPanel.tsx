@@ -13,6 +13,7 @@ import { useStreetStore } from '../store/streetStore';
 import { useRoundaboutStore } from '../store/roundaboutStore';
 import { getFeatureKind, ensureKind, getLotStatus, setLotStatus, type LotStatus } from '../core/objectModel';
 import { useIncrementalRender } from '../hooks/useIncrementalRender';
+import { useDrawSourceTick } from '../hooks/useDrawSourceTick';
 import { useViewportWidth } from '../hooks/useViewportWidth';
 import { setMaxFilletRadius, getMaxFilletRadius } from '../geo/streetEngine';
 import { SUBDIVISION_METHOD_INFO } from '../geo/subdivisionMethodLabels';
@@ -98,26 +99,11 @@ function readManzanoRows(drawSource: any): ManzanoRow[] {
   });
   return rows;
 }
-
 export default function ManzanoPanel() {
   const drawSource = useMapStore((s) => s.drawSource);
-  const [tick, setTick] = useState(0);
-
-  useEffect(() => {
-    if (!drawSource) return;
-    const bump = () => setTick((n) => n + 1);
-    drawSource.on('addfeature', bump);
-    drawSource.on('removefeature', bump);
-    drawSource.on('change', bump);
-    return () => {
-      drawSource.un('addfeature', bump);
-      drawSource.un('removefeature', bump);
-      drawSource.un('change', bump);
-    };
-  }, [drawSource]);
+  const tick = useDrawSourceTick(drawSource);
 
   const rows = useMemo(() => readManzanoRows(drawSource), [drawSource, tick]);
-
   const panelVisible = useManzanoStore((s) => s.panelVisible);
   const setPanelVisible = useManzanoStore((s) => s.setPanelVisible);
   const targetAreaM2 = useManzanoStore((s) => s.targetAreaM2);
@@ -349,7 +335,7 @@ export default function ManzanoPanel() {
             min={1}
             value={defaultWidthM}
             onChange={(e) => setDefaultWidth(parseFloat(e.target.value) || defaultWidthM)}
-            style={inputStyle}
+            className="cad-input"
           />
           <label style={{ display: 'block', fontSize: '0.65rem', color: 'var(--cad-text-dim)', marginTop: 6 }}>
             Ancho de vereda (m)
@@ -360,7 +346,7 @@ export default function ManzanoPanel() {
             step={0.5}
             value={defaultSideWidthM}
             onChange={(e) => setDefaultSideWidth(Math.max(0, parseFloat(e.target.value) || 0))}
-            style={inputStyle}
+            className="cad-input"
           />
           <label style={{ display: 'block', fontSize: '0.65rem', color: 'var(--cad-text-dim)', marginTop: 6 }}>
             Radio máx. de ochave (m)
@@ -375,7 +361,7 @@ export default function ManzanoPanel() {
               setMaxFilletR(v);
               setMaxFilletRadius(v);
             }}
-            style={inputStyle}
+            className="cad-input"
           />
         </div>
       )}
@@ -391,7 +377,7 @@ export default function ManzanoPanel() {
             min={3}
             value={rbRadiusM}
             onChange={(e) => setRbRadius(parseFloat(e.target.value) || rbRadiusM)}
-            style={inputStyle}
+            className="cad-input"
           />
           <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
             <div style={{ flex: 1 }}>
@@ -402,7 +388,7 @@ export default function ManzanoPanel() {
                 step={0.5}
                 value={rbRoadWidthM}
                 onChange={(e) => setRbRoadWidth(parseFloat(e.target.value) || rbRoadWidthM)}
-                style={inputStyle}
+                className="cad-input"
               />
             </div>
             <div style={{ flex: 1 }}>
@@ -413,7 +399,7 @@ export default function ManzanoPanel() {
                 step={0.5}
                 value={rbSidewalkM}
                 onChange={(e) => setRbSidewalk(parseFloat(e.target.value) || 0)}
-                style={inputStyle}
+                className="cad-input"
               />
             </div>
           </div>
@@ -421,7 +407,7 @@ export default function ManzanoPanel() {
           <select
             value={rbSides}
             onChange={(e) => setRbSides(parseInt(e.target.value, 10))}
-            style={{ ...inputStyle, cursor: 'pointer' }}
+            className="cad-input" style={{ cursor: 'pointer' }}
           >
             <option value={0}>Círculo</option>
             <option value={3}>Triángulo</option>
@@ -443,7 +429,7 @@ export default function ManzanoPanel() {
           type="number"
           value={targetAreaM2}
           onChange={(e) => setTargetAreaM2(parseFloat(e.target.value) || 0)}
-          style={inputStyle}
+          className="cad-input"
         />
         <label style={{ display: 'block', fontSize: '0.65rem', color: 'var(--cad-text-dim)', marginTop: 6 }}>
           Frente mínimo (m)
@@ -452,7 +438,7 @@ export default function ManzanoPanel() {
           type="number"
           value={frontMinM}
           onChange={(e) => setFrontMinM(parseFloat(e.target.value) || 0)}
-          style={inputStyle}
+          className="cad-input"
         />
         <button
           onClick={handleGenerarTodos}
@@ -673,7 +659,7 @@ export default function ManzanoPanel() {
                                     placeholder="grados"
                                     value={manualAngleValue[String(row.id)] ?? ''}
                                     onChange={(e) => setManualAngleValue((s) => ({ ...s, [String(row.id)]: e.target.value }))}
-                                    style={inputStyle}
+                                    className="cad-input"
                                     aria-label={`Ángulo de rotación de lotes para Mzo. ${row.colorIdx + 1}, en grados`}
                                   />
                                   <button
@@ -790,14 +776,3 @@ export default function ManzanoPanel() {
     </div>
   );
 }
-
-const inputStyle: React.CSSProperties = {
-  width: '100%',
-  padding: '5px 8px',
-  background: 'var(--cad-bg-deepest)',
-  border: '1px solid var(--cad-border)',
-  borderRadius: 4,
-  color: 'var(--cad-text)',
-  fontSize: '0.72rem',
-  fontFamily: 'JetBrains Mono, monospace',
-};

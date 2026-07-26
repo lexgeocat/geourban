@@ -7,6 +7,7 @@ import { transform } from 'ol/proj.js';
 import { DISPLAY_PROJECTION, GEOGRAPHIC_PROJECTION } from './projections';
 import { useProjectCrsStore } from '../store/projectCrsStore';
 import { ensureUtmZoneRegistered } from './utmZones';
+import { pathLength } from './polygonEngine';
 
 export type SegmentMetric = {
   midpoint: [number, number];
@@ -54,17 +55,6 @@ function planarArea(ringMetric: [number, number][]): number {
   return Math.abs(sum) / 2;
 }
 
-function planarPathLength(coordsMetric: [number, number][]): number {
-  let total = 0;
-  for (let i = 0; i < coordsMetric.length - 1; i++) {
-    total += Math.hypot(
-      coordsMetric[i + 1][0] - coordsMetric[i][0],
-      coordsMetric[i + 1][1] - coordsMetric[i][1]
-    );
-  }
-  return total;
-}
-
 function normalizeTextAngle(angleRad: number) {
   if (angleRad > Math.PI / 2 || angleRad < -Math.PI / 2) {
     return angleRad + Math.PI;
@@ -108,7 +98,7 @@ function calculatePolygonMetrics(geometry: Polygon): FeatureMetrics {
 
   const ringMetric = projectRingToMetricPlane(ring3857);
   const areaM2 = planarArea(ringMetric);
-  const perimeterM = planarPathLength(ringMetric);
+  const perimeterM = pathLength(ringMetric);
 
   let cx = 0, cy = 0;
   const vertexCount = ring3857.length - 1;
@@ -133,7 +123,7 @@ function calculateLineMetrics(geometry: LineString): FeatureMetrics {
   }
 
   const coordsMetric = projectRingToMetricPlane(coords3857);
-  const lengthM = planarPathLength(coordsMetric);
+  const lengthM = pathLength(coordsMetric);
 
   const halfLength = lengthM / 2;
   let accumulated = 0;

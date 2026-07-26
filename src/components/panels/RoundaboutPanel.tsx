@@ -16,19 +16,6 @@ const SIDES_OPTIONS: Array<{ value: number; label: string }> = [
   { value: 8, label: 'Octógono' },
 ];
 
-const inputStyle: React.CSSProperties = {
-  width: '100%',
-  padding: '5px 8px',
-  background: 'var(--cad-bg-deepest)',
-  border: '1px solid var(--cad-border)',
-  borderRadius: 4,
-  color: 'var(--cad-text)',
-  fontSize: '0.72rem',
-  fontFamily: 'JetBrains Mono, monospace',
-};
-
-const inputStyleSmall: React.CSSProperties = { ...inputStyle, padding: '3px 6px', fontSize: '0.65rem', marginTop: 2 };
-
 export default function RoundaboutPanel() {
   const panelVisible = useRoundaboutStore((s) => s.panelVisible);
   const roundabouts = useRoundaboutStore((s) => s.roundabouts);
@@ -82,10 +69,10 @@ export default function RoundaboutPanel() {
 
         <label style={{ display: 'block', fontSize: '0.65rem', color: 'var(--cad-text-dim)' }}>Radio al eje (m)</label>
         <input type="number" min={3} step={1} value={defaultRadiusM}
-          onChange={(e) => setDefaultRadius(parseFloat(e.target.value) || defaultRadiusM)} style={inputStyle} />
+          onChange={(e) => setDefaultRadius(parseFloat(e.target.value) || defaultRadiusM)} className="cad-input" />
 
         <label style={{ display: 'block', fontSize: '0.65rem', color: 'var(--cad-text-dim)', marginTop: 6 }}>Forma</label>
-        <select value={defaultSides} onChange={(e) => setDefaultSides(parseInt(e.target.value, 10))} style={{ ...inputStyle, cursor: 'pointer' }}>
+        <select value={defaultSides} onChange={(e) => setDefaultSides(parseInt(e.target.value, 10))} className="cad-input" style={{ cursor: 'pointer' }}>
           {SIDES_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
 
@@ -93,12 +80,12 @@ export default function RoundaboutPanel() {
           <div style={{ flex: 1 }}>
             <label style={{ display: 'block', fontSize: '0.65rem', color: 'var(--cad-text-dim)' }}>Calzada (m)</label>
             <input type="number" min={1} step={0.5} value={defaultRoadWidthM}
-              onChange={(e) => setDefaultRoadWidth(parseFloat(e.target.value) || defaultRoadWidthM)} style={inputStyle} />
+              onChange={(e) => setDefaultRoadWidth(parseFloat(e.target.value) || defaultRoadWidthM)} className="cad-input" />
           </div>
           <div style={{ flex: 1 }}>
             <label style={{ display: 'block', fontSize: '0.65rem', color: 'var(--cad-text-dim)' }}>Vereda (m)</label>
             <input type="number" min={0} step={0.5} value={defaultSidewalkWidthM}
-              onChange={(e) => setDefaultSidewalkWidth(parseFloat(e.target.value) || 0)} style={inputStyle} />
+              onChange={(e) => setDefaultSidewalkWidth(parseFloat(e.target.value) || 0)} className="cad-input" />
           </div>
         </div>
 
@@ -127,12 +114,12 @@ export default function RoundaboutPanel() {
               <label style={{ flex: 1, fontSize: '0.6rem', color: 'var(--cad-text-dim)' }}>
                 Radio
                 <input type="number" min={3} step={1} value={rb.radiusM}
-                  onChange={(e) => updateRoundabout(rb.id, { radiusM: parseFloat(e.target.value) || rb.radiusM })} style={inputStyleSmall} />
+                  onChange={(e) => updateRoundabout(rb.id, { radiusM: parseFloat(e.target.value) || rb.radiusM })} className="cad-input cad-input-sm" />
               </label>
               <label style={{ flex: 1, fontSize: '0.6rem', color: 'var(--cad-text-dim)' }}>
                 Calzada
                 <input type="number" min={1} step={0.5} value={rb.roadWidthM}
-                  onChange={(e) => updateRoundabout(rb.id, { roadWidthM: parseFloat(e.target.value) || rb.roadWidthM })} style={inputStyleSmall} />
+                  onChange={(e) => updateRoundabout(rb.id, { roadWidthM: parseFloat(e.target.value) || rb.roadWidthM })} className="cad-input cad-input-sm" />
               </label>
             </div>
           </div>

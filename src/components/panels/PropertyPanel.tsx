@@ -28,30 +28,6 @@ const headerStyle: React.CSSProperties = {
   WebkitUserSelect: 'none',
 };
 
-const sectionTitleStyle: React.CSSProperties = {
-  fontSize: '0.6rem',
-  fontWeight: 500,
-  letterSpacing: '0.06em',
-  textTransform: 'uppercase',
-  color: 'var(--cad-text-muted)',
-  marginBottom: 6,
-  display: 'block',
-};
-
-const rowStyle: React.CSSProperties = {
-  display: 'flex',
-  justifyContent: 'space-between',
-  padding: '4px 0',
-  fontSize: '0.7rem',
-  color: 'var(--cad-text-dim)',
-};
-
-const valueStyle: React.CSSProperties = {
-  color: 'var(--cad-accent)',
-  fontFamily: 'JetBrains Mono, monospace',
-  fontWeight: 500,
-};
-
 export default function PropertyPanel() {
   const drawMode = useDrawStore((s) => s.mode);
   const propertiesVisible = useUiShellStore((s) => s.panelVisibility.properties);
@@ -115,7 +91,7 @@ export default function PropertyPanel() {
       <div style={{ ...panelStyle, top: position.top, right: position.right }} className="cad-panel-glass animate-fade-in">
         <div style={{ padding: '10px 12px' }}>
           <div style={headerStyle} onMouseDown={handleMouseDown}>
-            <span style={sectionTitleStyle}>Propiedades</span>
+            <span className="cad-section-title">Propiedades</span>
           </div>
           <p style={{ fontSize: '0.7rem', color: 'var(--cad-text-muted)' }}>
             Selecciona un polígono para ver sus propiedades.
@@ -142,7 +118,7 @@ export default function PropertyPanel() {
     <div style={{ ...panelStyle, top: position.top, right: position.right }} className="cad-panel-glass animate-fade-in">
       <div style={{ padding: '10px 12px' }}>
         <div style={headerStyle} onMouseDown={handleMouseDown}>
-          <span style={sectionTitleStyle}>Propiedades</span>
+          <span className="cad-section-title">Propiedades</span>
           <span
             style={{
               fontSize: '0.55rem',
@@ -162,30 +138,30 @@ export default function PropertyPanel() {
 
         {isPolygon ? (
           <>
-            <div style={rowStyle}>
+            <div className="cad-row">
               <span>Área</span>
-              <span style={valueStyle}>{formatMetricArea(areaM2)}</span>
+              <span className="cad-row-value">{formatMetricArea(areaM2)}</span>
             </div>
-            <div style={rowStyle}>
+            <div className="cad-row">
               <span>Perímetro</span>
-              <span style={valueStyle}>{formatMetricLength(perimeterM)}</span>
+              <span className="cad-row-value">{formatMetricLength(perimeterM)}</span>
             </div>
           </>
         ) : (
-          <div style={rowStyle}>
+          <div className="cad-row">
             <span>Longitud</span>
-            <span style={valueStyle}>{formatMetricLength(lengthM)}</span>
+            <span className="cad-row-value">{formatMetricLength(lengthM)}</span>
           </div>
         )}
 
         {method && (
-          <div style={rowStyle}>
+          <div className="cad-row">
             <span>Origen</span>
             <span style={{ color: 'var(--cad-text-muted)' }}>{method}</span>
           </div>
         )}
         {mergedAt && (
-          <div style={rowStyle}>
+          <div className="cad-row">
             <span>Fusionado</span>
             <span style={{ color: 'var(--cad-text-muted)', fontSize: '0.6rem' }}>
               {new Date(mergedAt).toLocaleString()}
@@ -197,15 +173,15 @@ export default function PropertyPanel() {
         {segmentLengths.length > 0 && (
           <>
             <span
-              style={{ ...sectionTitleStyle, marginTop: 12 }}
+              className="cad-section-title" style={{ marginTop: 12 }}
             >
               Lados ({segmentLengths.length})
             </span>
             <div style={{ maxHeight: 140, overflowY: 'auto' }}>
               {segmentLengths.map((seg, i) => (
-                <div key={i} style={rowStyle}>
+                <div key={i} className="cad-row">
                   <span>Lado {i + 1}</span>
-                  <span style={valueStyle}>{formatMetricLength(seg.lengthM)}</span>
+                  <span className="cad-row-value">{formatMetricLength(seg.lengthM)}</span>
                 </div>
               ))}
             </div>

@@ -2,6 +2,7 @@ import React, { useMemo, useState, useRef, useCallback, useEffect } from 'react'
 import { useMapStore } from '../store/mapStore';
 import { useStreetStore } from '../store/streetStore';
 import { useUiShellStore } from '../store/uiShellStore';
+import { useDrawSourceTick } from '../hooks/useDrawSourceTick';
 import { polyArea, type Pt } from '../geo/polygonEngine';
 import { formatMetricArea } from '../geo/metrics';
 import Feature from 'ol/Feature.js';
@@ -112,21 +113,9 @@ export default function StatsPanel() {
 
   // drawSource es un VectorSource mutable: agregar/borrar/editar features
   // no cambia la referencia que devuelve useMapStore, así que
-  // useMemo([drawSource, streets]) nunca se invalidaba solo. Mismo patrón
- // "tick" que ya usa ManzanoPanel: suscribirse a los eventos reales.
-  const [tick, setTick] = useState(0);
-  useEffect(() => {
-    if (!drawSource) return;
-    const bump = () => setTick((n) => n + 1);
-    drawSource.on('addfeature', bump);
-    drawSource.on('removefeature', bump);
-   drawSource.on('change', bump);
-    return () => {
-      drawSource.un('addfeature', bump);
-      drawSource.un('removefeature', bump);
-      drawSource.un('change', bump);
-    };
-  }, [drawSource]);
+  // useMemo([drawSource, streets]) nunca se invalidaba solo. Hook
+  // compartido con ManzanoPanel (Fase 2).
+  const tick = useDrawSourceTick(drawSource);
 
   useEffect(() => {
     const onResize = () => {

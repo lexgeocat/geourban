@@ -3,13 +3,7 @@ import type Geometry from 'ol/geom/Geometry.js';
 import { Command, type CommandContext } from './Command';
 import { GeoUrbanFeatureKind } from '../core/objectModel';
 import { useLayersStore } from '../store/layersRegistryStore';
-
-let _idCounter = 0;
-function nextId(prefix: string): string {
-  _idCounter += 1;
-  return `${prefix}-${Date.now()}-${_idCounter.toString(36)}`;
-}
-
+import { nextId } from '../lib/id';
 /**
  * Resuelve el layerId para una feature nueva: usa el override, luego la
  * capa activa, y por último la primera capa que coincida con el kind.

@@ -1,4 +1,4 @@
-import { type Pt, type LotResult, polyArea, centroid } from './polygonEngine';
+import { type Pt, type LotResult, polyArea, centroid, convexHull } from './polygonEngine';
 
 const lerp = (a: Pt, b: Pt, t: number): Pt => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
 const dist = (a: Pt, b: Pt): number => Math.hypot(b[0] - a[0], b[1] - a[1]);
@@ -13,24 +13,6 @@ function bisect(fn: (x: number) => number, lo: number, hi: number, target: numbe
 }
 
 // ─── Envolvente cuadrilátera del manzano (para orientar cabecera/cuerpo) ──
-
-function convexHull(pts: Pt[]): Pt[] {
-  const arr = pts.slice().sort((a, b) => (a[0] !== b[0] ? a[0] - b[0] : a[1] - b[1]));
-  if (arr.length < 3) return arr;
-  const cross = (O: Pt, A: Pt, B: Pt) => (A[0] - O[0]) * (B[1] - O[1]) - (A[1] - O[1]) * (B[0] - O[0]);
-  const lower: Pt[] = [], upper: Pt[] = [];
-  for (const p of arr) {
-    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) lower.pop();
-    lower.push(p);
-  }
-  for (let i = arr.length - 1; i >= 0; i--) {
-    const p = arr[i];
-    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) upper.pop();
-    upper.push(p);
-  }
-  upper.pop(); lower.pop();
-  return lower.concat(upper);
-}
 
 function minAreaBoundingQuad(pts: Pt[]): Pt[] {
   const hull = convexHull(pts);
@@ -542,20 +524,7 @@ function hbMergeHeadRemainders(lots: HbLot[], targetLotArea: number): HbLot[] {
   const THRESHOLD = 0.8;
 
   function mergePolys(a: Pt[], b: Pt[]): Pt[] {
-    const all = [...a, ...b].sort((p, q) => (p[0] !== q[0] ? p[0] - q[0] : p[1] - q[1]));
-    const cross = (O: Pt, A: Pt, B: Pt) => (A[0] - O[0]) * (B[1] - O[1]) - (A[1] - O[1]) * (B[0] - O[0]);
-    const lower: Pt[] = [], upper: Pt[] = [];
-    for (const p of all) {
-      while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) lower.pop();
-      lower.push(p);
-    }
-    for (let i = all.length - 1; i >= 0; i--) {
-      const p = all[i];
-      while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) upper.pop();
-      upper.push(p);
-    }
-    upper.pop(); lower.pop();
-    return [...lower, ...upper];
+    return convexHull([...a, ...b]);
   }
 
   function sharedEdgeLen(a: Pt[], b: Pt[]): number {
