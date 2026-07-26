@@ -17,7 +17,7 @@ import { resolveLayerId } from '../features/AddFeatureCommand';
 import { subdivideManzanoInWorker } from '../../workers/geoWorkerClient';
 import { useManzanoStore } from '../../store/entities/manzanoStore';
 import { polyArea, ringPerimeter, centroid } from '../../geo/math/polygonEngine';
-import { checkTopologyInBackground } from '../../store/map/mapStore';
+import { checkTopologyInBackground } from '../../geo/recomputeManzanos';
 import { estimateGeometryBytes } from '../core/memoryEstimate';
 
 const geoJsonFormat = new GeoJSON();

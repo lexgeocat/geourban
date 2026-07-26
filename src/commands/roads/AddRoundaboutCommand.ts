@@ -1,6 +1,6 @@
 ﻿import { Command, type CommandContext } from '../core/Command';
 import { useRoundaboutStore } from '../../store/entities/roundaboutStore';
-import { recomputeManzanos } from '../../store/map/mapStore';
+import { recomputeManzanos } from '../../geo/recomputeManzanos';
 import { refreshSourceMetrics } from '../../geo/metrics';
 import {
   snapshotDrawSource,

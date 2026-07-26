@@ -1,6 +1,6 @@
 ﻿import React, { useState } from 'react';
 import { useStreetStore } from '../../store/entities/streetStore';
-import { recomputeManzanos } from '../../store/map/mapStore';
+import { recomputeManzanos } from '../../geo/recomputeManzanos';
 import { formatMetricLength, formatMetricArea } from '../../geo/metrics';
 import { pathLength } from '../../geo/math/polygonEngine';
 import { useViewportWidth } from '../../hooks/useViewportWidth';

@@ -8,7 +8,7 @@ import { ensureKind } from '../../core/objectModel';
 import { resolveLayerId } from '../features/AddFeatureCommand';
 import type { SubdivisionOptions } from '../../geo/subdivision/subdivisionAlgorithms';
 import type { Polygon as GeoJsonPolygon } from 'geojson';
-import { checkTopologyInBackground } from '../../store/map/mapStore';
+import { checkTopologyInBackground } from '../../geo/recomputeManzanos';
 import { estimateGeometryBytes } from '../core/memoryEstimate';
 
 const geoJsonFormat = new GeoJSON();
