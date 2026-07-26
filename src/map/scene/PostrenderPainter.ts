@@ -8,7 +8,7 @@ import Polygon from 'ol/geom/Polygon.js';
 import LineString from 'ol/geom/LineString.js';
 import { useStreetStore, type Street } from '../../store/streetStore';
 import { useSelectionStore } from '../../store/selectionStore';
-import { computeStreetFilletsBoth, filletArcPoints, type StreetFillet } from '../../geo/streetEngine';
+import { computeStreetFilletsBoth, computeStreetPairFillets, filletArcPoints, type StreetFillet } from '../../geo/streetEngine';
 import { type Pt } from '../../geo/polygonEngine';
 import { useRoundaboutStore } from '../../store/roundaboutStore';
 import { roundaboutGeometry } from '../../geo/roundaboutEngine';
@@ -67,29 +67,17 @@ function segSegIntersection(
 
 type CrossingsMap = globalThis.Map<string, Pt[]>;
 
-function computeStreetCrossings(streets: Street[]): CrossingsMap {
-  const map: CrossingsMap = new globalThis.Map();
-  for (const s of streets) {
-    map.set(s.id, []);
-  }
-  for (let i = 0; i < streets.length; i++) {
-    const si = streets[i];
-    const chainI = buildStreetChain([si.start, ...(si.waypoints ?? []), si.end]);
-    for (let j = i + 1; j < streets.length; j++) {
-      const sj = streets[j];
-      const chainJ = buildStreetChain([sj.start, ...(sj.waypoints ?? []), sj.end]);
-      for (const segI of chainI) {
-        for (const segJ of chainJ) {
-          const pt = segSegIntersection(segI.from, segI.to, segJ.from, segJ.to);
-          if (pt) {
-            map.get(si.id)!.push(pt);
-            map.get(sj.id)!.push(pt);
-          }
-        }
-      }
+function computeStreetPairCrossings(si: Street, sj: Street): Pt[] {
+  const chainI = buildStreetChain([si.start, ...(si.waypoints ?? []), si.end]);
+  const chainJ = buildStreetChain([sj.start, ...(sj.waypoints ?? []), sj.end]);
+  const points: Pt[] = [];
+  for (const segI of chainI) {
+    for (const segJ of chainJ) {
+      const pt = segSegIntersection(segI.from, segI.to, segJ.from, segJ.to);
+      if (pt) points.push(pt);
     }
   }
-  return map;
+  return points;
 }
 
 type StreetLabelSlot = { pos: Pt; angle: number; len: number };
@@ -267,6 +255,12 @@ export class PostrenderPainter {
     dirty: true,
   };
 
+  /** Cache por par de calles (Fase 6, punto 2) — sobrevive entre frames;
+   *  solo se invalida el par si el hash de A o B cambió. Se poda cuando
+   *  alguna de las dos calles del par deja de existir. */
+  private pairFilletCache = new globalThis.Map<string, { inner: StreetFillet[]; outer: StreetFillet[]; hashA: string; hashB: string }>();
+  private pairCrossingCache = new globalThis.Map<string, { points: Pt[]; hashA: string; hashB: string }>();
+
   private readonly map: Map;
   private readonly drawSource: VectorSource;
   private readonly postrenderLayer: VectorLayer<VectorSource>;
@@ -308,6 +302,64 @@ export class PostrenderPainter {
     if (this.interacting === value) return;
     this.interacting = value;
     this.postrenderLayer.changed();
+  }
+
+  private streetPairHash(s: Street): string {
+    return `${s.start[0]},${s.start[1]}|${s.end[0]},${s.end[1]}|${s.widthM}|${s.sideWidthM}|${(s.waypoints ?? []).map((w) => `${w[0]},${w[1]}`).join(';')}`;
+  }
+
+  /** Reemplaza al recompute completo de fillets/crossings ante CUALQUIER
+   *  cambio en la red vial. Solo recalcula el par (A,B) si el hash de A
+   *  o B cambió desde la última vez — el resto se reutiliza del cache. */
+  private updateIncrementalStreetCaches(streets: Street[]): void {
+    const currentIds = new Set(streets.map((s) => s.id));
+    for (const key of this.pairFilletCache.keys()) {
+      const [idA, idB] = key.split('::');
+      if (!currentIds.has(idA) || !currentIds.has(idB)) {
+        this.pairFilletCache.delete(key);
+        this.pairCrossingCache.delete(key);
+      }
+    }
+
+    const hashes = new globalThis.Map<string, string>();
+    for (const s of streets) hashes.set(s.id, this.streetPairHash(s));
+
+    const inner: StreetFillet[] = [];
+    const outer: StreetFillet[] = [];
+    const crossings: CrossingsMap = new globalThis.Map();
+    for (const s of streets) crossings.set(s.id, []);
+
+    for (let i = 0; i < streets.length; i++) {
+      for (let j = i + 1; j < streets.length; j++) {
+        const sA = streets[i], sB = streets[j];
+        const key = sA.id < sB.id ? `${sA.id}::${sB.id}` : `${sB.id}::${sA.id}`;
+        const hA = hashes.get(sA.id)!, hB = hashes.get(sB.id)!;
+
+        let filletEntry = this.pairFilletCache.get(key);
+        if (!filletEntry || filletEntry.hashA !== hA || filletEntry.hashB !== hB) {
+          const pair = computeStreetPairFillets(sA, sB);
+          filletEntry = { inner: pair.inner, outer: pair.outer, hashA: hA, hashB: hB };
+          this.pairFilletCache.set(key, filletEntry);
+        }
+        inner.push(...filletEntry.inner);
+        outer.push(...filletEntry.outer);
+
+        let crossEntry = this.pairCrossingCache.get(key);
+        if (!crossEntry || crossEntry.hashA !== hA || crossEntry.hashB !== hB) {
+          const points = computeStreetPairCrossings(sA, sB);
+          crossEntry = { points, hashA: hA, hashB: hB };
+          this.pairCrossingCache.set(key, crossEntry);
+        }
+        if (crossEntry.points.length > 0) {
+          crossings.get(sA.id)!.push(...crossEntry.points);
+          crossings.get(sB.id)!.push(...crossEntry.points);
+        }
+      }
+    }
+
+    this.cache.cachedFillets = inner;
+    this.cache.cachedOuterFillets = outer;
+    this.cache.cachedCrossings = crossings;
   }
 
   private handle(event: any): void {
@@ -380,13 +432,10 @@ export class PostrenderPainter {
     const zoomBucketChanged = zoomBucket !== this.cache.lastLabelZoomBucket;
 
     if (streetsChanged || this.cache.dirty) {
-      // Antes: 2 llamadas a computeStreetFillets (outer:false / outer:true)
-      // repitiendo el doble loop completo sobre pares de calles. Ahora:
-      // una sola pasada — ver diagnóstico H4/H7.
-      const { inner, outer } = computeStreetFilletsBoth(streets);
-      this.cache.cachedFillets = inner;
-      this.cache.cachedOuterFillets = outer;
-      this.cache.cachedCrossings = computeStreetCrossings(streets);
+      // Fase 6, punto 2 (H-VIA-10): ya no se recalcula TODO el O(n²)
+      // ante cualquier cambio — solo los pares donde intervino una
+      // calle nueva/modificada.
+      this.updateIncrementalStreetCaches(streets);
       this.cache.lastStreetHash = currentStreetHash;
     }
 

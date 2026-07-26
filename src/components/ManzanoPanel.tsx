@@ -20,6 +20,7 @@ import { useTopologyWarningsStore } from '../store/topologyWarningsStore';
 import { useSubdivisionPreviewStore } from '../store/subdivisionPreviewStore';
 import { formatMetricArea } from '../geo/metrics';
 import { subdivideManzanoInWorker } from '../workers/geoWorkerClient';
+import { useGenerateLotsProgressStore } from '../store/generateLotsProgressStore';
 
 const MZN_COLORS = [
   '#58a6ff',
@@ -136,6 +137,7 @@ export default function ManzanoPanel() {
   const affectedManzanoIds = useTopologyWarningsStore((s) => s.affectedManzanoIds);
 
   const [lotsBusy, setLotsBusy] = useState(false);
+  const genProgress = useGenerateLotsProgressStore();
   const [expandedLots, setExpandedLots] = useState<Record<string, boolean>>({});
   const [recomputingIds, setRecomputingIds] = useState<Set<string>>(new Set());
   const [manualAngleOpen, setManualAngleOpen] = useState<Record<string, boolean>>({});
@@ -275,6 +277,10 @@ export default function ManzanoPanel() {
     } finally {
       setLotsBusy(false);
     }
+  };
+
+  const handleCancelGenerarTodos = () => {
+    useGenerateLotsProgressStore.getState().requestCancel();
   };
 
   // Antes el panel entero desaparecía hasta que hubiera manzanos
@@ -456,6 +462,30 @@ export default function ManzanoPanel() {
         >
           {lotsBusy ? (<><span className="cad-spinner" /> Generando…</>) : '▶ Generar todos'}
         </button>
+        {genProgress.active && (
+          <div style={{ marginTop: 6 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.6rem', color: 'var(--cad-text-muted)', marginBottom: 3 }}>
+              <span>{genProgress.processed}/{genProgress.total} manzanos</span>
+              <button
+                onClick={handleCancelGenerarTodos}
+                disabled={genProgress.cancelRequested}
+                style={{ background: 'none', border: 'none', color: 'var(--cad-accent-red)', cursor: genProgress.cancelRequested ? 'default' : 'pointer', fontSize: '0.6rem' }}
+              >
+                {genProgress.cancelRequested ? 'Cancelando…' : 'Cancelar'}
+              </button>
+            </div>
+            <div style={{ height: 4, borderRadius: 2, background: 'var(--cad-bg-deepest)', overflow: 'hidden' }}>
+              <div
+                style={{
+                  height: '100%',
+                  width: `${genProgress.total > 0 ? (genProgress.processed / genProgress.total) * 100 : 0}%`,
+                  background: 'var(--cad-accent)',
+                  transition: 'width 150ms ease',
+                }}
+              />
+            </div>
+          </div>
+        )}
       </div>
 
       {rows.length === 0 ? (

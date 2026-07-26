@@ -116,4 +116,8 @@ export class AddStreetCommand extends Command {
     previous.after = this.after;
     return true;
   }
+
+  override approxMemoryBytes(): number {
+    return (this.before?.length ?? 0) * 2 + (this.after?.length ?? 0) * 2;
+  }
 }

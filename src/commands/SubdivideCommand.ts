@@ -9,6 +9,7 @@ import { resolveLayerId } from './AddFeatureCommand';
 import type { SubdivisionOptions } from '../geo/subdivisionAlgorithms';
 import type { Polygon as GeoJsonPolygon } from 'geojson';
 import { checkTopologyInBackground } from '../store/mapStore';
+import { estimateGeometryBytes } from './memoryEstimate';
 
 const geoJsonFormat = new GeoJSON();
 
@@ -126,5 +127,9 @@ export class SubdivideCommand extends Command {
   override async redo(ctx: CommandContext): Promise<void> {
     // undo() restauró el polígono original con id/geometría intactos.
     await this.execute(ctx);
+  }
+
+  override approxMemoryBytes(): number {
+    return estimateGeometryBytes(this.removedTarget?.geometry ?? null);
   }
 }

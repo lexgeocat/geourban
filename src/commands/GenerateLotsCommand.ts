@@ -9,14 +9,30 @@ import { resolveLayerId } from './AddFeatureCommand';
 import { subdivideManzanoBatchInWorker } from '../workers/geoWorkerClient';
 import PolygonGeom from 'ol/geom/Polygon.js';
 import FeatureOL from 'ol/Feature.js';
-import { polyArea, ringPerimeter, centroid } from '../geo/polygonEngine';
+import type { ManzanoLoteMethod } from '../geo/subdivisionAlgorithms';
+import { polyArea, ringPerimeter, centroid, type LotResult } from '../geo/polygonEngine';
 import { checkTopologyInBackground } from '../store/mapStore';
+import { useGenerateLotsProgressStore } from '../store/generateLotsProgressStore';
+import { estimateGeometryBytes } from './memoryEstimate';
 
 const geoJsonFormat = new GeoJSON();
+
+/** Manzanos por tanda enviada al worker — balance entre granularidad de
+ *  progreso/cancelación y overhead de múltiples round-trips. */
+const CHUNK_SIZE = 8;
 
 export interface GenerateLotsOpts {
   targetAreaM2: number;
   frontMinM: number;
+}
+
+interface ManzanoBatchInput {
+  id: string | number;
+  ring: Array<[number, number]>;
+  method: ManzanoLoteMethod;
+  targetAreaM2: number;
+  frontMinM: number;
+  dirPref?: { ax: number; ay: number };
 }
 
 interface ConsumedManzanoSnapshot {
@@ -28,14 +44,12 @@ interface ConsumedManzanoSnapshot {
 /**
  * Genera lotes automáticos sobre todos los manzanos del drawSource.
  *
- * La subdivisión ahora corre en el Web Worker — ver diagnóstico H8 — en
- * UN solo viaje para TODOS los manzanos (`subdivideManzanoBatchInWorker`),
- * en vez de bloquear el hilo de UI con el cálculo síncrono de cada uno
- * (hasta 200 iteraciones de bisección por lote, por manzano).
- *
- * Las propiedades derivadas (área/perímetro/label) se calculan solo para
- * las features que este comando efectivamente crea o restaura — nunca
- * para todo `drawSource` — ver diagnóstico H9.
+ * Fase 6, punto 4: la subdivisión ahora se envía al worker en TANDAS
+ * (`CHUNK_SIZE` manzanos por vez) en vez de un único postMessage con
+ * todos — esto permite (a) reportar progreso real entre tandas y (b)
+ * cancelar de verdad a mitad de camino: lo ya aplicado queda aplicado
+ * (y es exactamente lo que undo() revierte), lo no procesado nunca se
+ * generó.
  */
 export class GenerateLotsCommand extends Command {
   readonly label = 'Generar lotes';
@@ -71,11 +85,10 @@ export class GenerateLotsCommand extends Command {
 
     if (manzanos.length === 0) return;
 
-    // Capturamos method/dirPref ANTES del viaje al worker — si el usuario
-    // toca el ManzanoPanel mientras esperamos la respuesta, no queremos
-    // etiquetar los lotes con un método distinto al que realmente se usó
-    // para calcularlos.
-    const batchInput = manzanos.map(({ id, ring }) => ({
+    // Capturamos method/dirPref ANTES del viaje al worker (igual que
+    // antes) — si el usuario toca ManzanoPanel mientras esperamos, no
+    // queremos etiquetar lotes con un método distinto al calculado.
+    const batchInput: ManzanoBatchInput[] = manzanos.map(({ id, ring }) => ({
       id,
       ring,
       method: useManzanoStore.getState().getMethod(id),
@@ -85,17 +98,43 @@ export class GenerateLotsCommand extends Command {
     }));
     const methodById = new Map(batchInput.map((b) => [String(b.id), b.method]));
 
-    const batchResults = await subdivideManzanoBatchInWorker(batchInput);
-    const lotsById = new Map(batchResults.map((r) => [String(r.id), r.lots]));
+    useGenerateLotsProgressStore.getState().start(batchInput.length);
 
-    for (const { id, ring } of manzanos) {
+    try {
+      let processedCount = 0;
+      for (let start = 0; start < batchInput.length; start += CHUNK_SIZE) {
+        if (useGenerateLotsProgressStore.getState().cancelRequested) break;
+
+        const chunk = batchInput.slice(start, start + CHUNK_SIZE);
+        const chunkResults = await subdivideManzanoBatchInWorker(chunk);
+        this.applyChunkResults(ctx, chunk, chunkResults, methodById);
+
+        processedCount += chunk.length;
+        useGenerateLotsProgressStore.getState().setProgress(processedCount);
+      }
+    } finally {
+      useGenerateLotsProgressStore.getState().finish();
+    }
+
+    ctx.drawSource.changed();
+    checkTopologyInBackground();
+  }
+
+  private applyChunkResults(
+    ctx: CommandContext,
+    chunk: ManzanoBatchInput[],
+    chunkResults: Array<{ id: string | number; lots: LotResult[] }>,
+    methodById: Map<string, ManzanoLoteMethod>,
+  ): void {
+    const lotsById = new Map(chunkResults.map((r) => [String(r.id), r.lots]));
+
+    for (const { id, ring } of chunk) {
       const lots = lotsById.get(String(id)) ?? [];
       if (lots.length === 0) continue;
       const method = methodById.get(String(id))!;
 
-      // H-LOT-9: antes GenerateLotsCommand nunca tocaba geomSnapshots —
-      // manzanos rotados y luego regenerados en bloque quedaban con el
-      // badge "desactualizado" permanentemente desincronizado.
+      // H-LOT-9 (Fase 3): snapshot geométrico actualizado siempre que
+      // este comando lotiza un manzano.
       const ringPts = ring.map((c) => [c[0], c[1]] as [number, number]);
       useManzanoStore.getState().setGeomSnapshot(id, {
         area: polyArea(ringPts),
@@ -151,9 +190,7 @@ export class GenerateLotsCommand extends Command {
         this.newLotIds.push(newId);
       }
     }
-
     ctx.drawSource.changed();
-    checkTopologyInBackground();
   }
 
   override undo(ctx: CommandContext): void {
@@ -172,10 +209,13 @@ export class GenerateLotsCommand extends Command {
   }
 
   override async redo(ctx: CommandContext): Promise<void> {
-    // undo() ya restauró los manzanos consumidos con su id/geometría
-    // intactos, así que execute() los vuelve a encontrar y a subdividir
-    // desde cero. Genera ids nuevos para los lotes — inofensivo, porque el
-    // CommandStack limpia la selección en cada undo/redo.
     await this.execute(ctx);
+  }
+
+  /** Fase 6, punto 5: memoria retenida por este comando en el
+   *  historial — la suma de las geometrías clonadas de los manzanos
+   *  consumidos (potencialmente muchas en un "Generar todos" grande). */
+  override approxMemoryBytes(): number {
+    return this.consumedManzanos.reduce((sum, s) => sum + estimateGeometryBytes(s.geometry), 0);
   }
 }

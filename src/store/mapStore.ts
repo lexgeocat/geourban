@@ -7,8 +7,8 @@ import { extend as extendExtent, intersects as extentIntersects, Extent } from '
 import { refreshSourceMetrics, updateFeatureMetrics } from '../geo/metrics';
 import { clipHalfPlane, pointInPoly, polyArea, type Pt } from '../geo/polygonEngine';
 import { useSelectionStore } from './selectionStore';
-import { useStreetStore } from './streetStore';
-import { useRoundaboutStore } from './roundaboutStore';
+import { useStreetStore, type Street } from './streetStore';
+import { useRoundaboutStore, type Roundabout } from './roundaboutStore';
 import { useManzanoStore } from './manzanoStore';
 import { useLayersStore } from './layersRegistryStore';
 import { useRecomputeStatusStore } from './recomputeStatusStore';
@@ -182,6 +182,45 @@ function ringsExtent(rings: Pt[][]): Extent | null {
     else extendExtent(result, e);
   }
   return result;
+}
+
+interface RoadElementFingerprint {
+  hash: string;
+  extent: Extent;
+}
+
+/** Fase 6, punto 3: fingerprint por elemento vial — permite acotar el
+ *  recompute a la región que cambió, no al bbox de TODA la red vial. */
+let lastRoadFingerprints = new globalThis.Map<string, RoadElementFingerprint>();
+
+export function resetIncrementalRoadTracking(): void {
+  lastRoadFingerprints = new globalThis.Map();
+}
+
+function streetFingerprint(s: Street): string {
+  return `${s.start[0]},${s.start[1]}|${s.end[0]},${s.end[1]}|${s.widthM}|${s.sideWidthM}|${(s.waypoints ?? []).map((w) => `${w[0]},${w[1]}`).join(';')}`;
+}
+
+function streetApproxExtent(s: Street): Extent {
+  const half = s.widthM / 2 + Math.max(0, s.sideWidthM ?? 0) + 2;
+  const pts: Array<[number, number]> = [s.start, ...(s.waypoints ?? []), s.end];
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const [x, y] of pts) {
+    if (x < minX) minX = x;
+    if (x > maxX) maxX = x;
+    if (y < minY) minY = y;
+    if (y > maxY) maxY = y;
+  }
+  return [minX - half, minY - half, maxX + half, maxY + half];
+}
+
+function roundaboutFingerprint(r: Roundabout): string {
+  return `${r.center[0]},${r.center[1]}|${r.radiusM}|${r.sides}|${r.rotation}|${r.roadWidthM}|${r.sidewalkWidthM}`;
+}
+
+function roundaboutApproxExtent(r: Roundabout): Extent {
+  const half = r.radiusM + r.roadWidthM + Math.max(0, r.sidewalkWidthM) + 2;
+  return [r.center[0] - half, r.center[1] - half, r.center[0] + half, r.center[1] + half];
 }
 
 function resolveManzanaLayerId(): string | undefined {
@@ -376,6 +415,33 @@ async function recomputeManzanosImmediate(): Promise<void> {
 
   const roadExtentForOrphans = ringsExtent(roadRings);
 
+  // Fase 6, punto 3: acotar el recompute a la región que REALMENTE
+  // cambió desde la última pasada — antes se usaba el bbox de TODA la
+  // red vial, que en un proyecto grande puede cubrir casi todo aunque
+  // el cambio real sea una sola calle nueva en una esquina.
+  const currentFingerprints = new globalThis.Map<string, RoadElementFingerprint>();
+  for (const s of streets) {
+    currentFingerprints.set(`s:${s.id}`, { hash: streetFingerprint(s), extent: streetApproxExtent(s) });
+  }
+  for (const rb of roundabouts) {
+    currentFingerprints.set(`r:${rb.id}`, { hash: roundaboutFingerprint(rb), extent: roundaboutApproxExtent(rb) });
+  }
+  let changedExtent: Extent | null = null;
+  for (const [key, fp] of currentFingerprints) {
+    const prev = lastRoadFingerprints.get(key);
+    if (!prev || prev.hash !== fp.hash) {
+      if (changedExtent) extendExtent(changedExtent, fp.extent);
+      else changedExtent = [...fp.extent] as Extent;
+    }
+  }
+  for (const [key, prev] of lastRoadFingerprints) {
+    if (!currentFingerprints.has(key)) {
+      if (changedExtent) extendExtent(changedExtent, prev.extent);
+      else changedExtent = [...prev.extent] as Extent;
+    }
+  }
+  lastRoadFingerprints = currentFingerprints;
+
   // H-LOT-2 (Fase 0): huérfanos de manzanas ya borradas por "Generar todos".
   if (roadExtentForOrphans) {
     for (const [gid, lots] of lotsByGroupId) {
@@ -404,7 +470,9 @@ async function recomputeManzanosImmediate(): Promise<void> {
   const parcelIndexToGroup: OriginGroup[] = roadExtentForOrphans
     ? allGroups.filter((g) => {
         const ext = ringsExtent([g.origPts]);
-        return ext != null && extentIntersects(ext, roadExtentForOrphans);
+        if (ext == null) return false;
+        if (changedExtent && !extentIntersects(ext, changedExtent)) return false;
+        return extentIntersects(ext, roadExtentForOrphans);
       })
     : allGroups;
 

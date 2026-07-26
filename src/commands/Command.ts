@@ -26,6 +26,10 @@ export abstract class Command {
    * `coalesceKey` se apila igual como un paso de undo independiente.
    */
   coalesceInto?(previous: Command): boolean;
+
+  approxMemoryBytes(): number {
+    return 256;
+  }
 }
 
 /** Helper para obtener un contexto fresco en cualquier punto. */

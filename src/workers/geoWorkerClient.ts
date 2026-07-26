@@ -3,18 +3,42 @@ import type { GeoWorkerRequest, GeoWorkerResponse } from './geoOperations';
 import type { SubdivisionOptions, SubdivisionResult, ManzanoLoteMethod } from '../geo/subdivisionAlgorithms';
 import type { LotResult } from '../geo/polygonEngine';
 
-let worker: Worker | null = null;
+let interactiveWorker: Worker | null = null;
+let batchWorker: Worker | null = null;
 
-function getWorker() {
-  if (!worker) {
-    worker = new Worker(new URL('./geoWorker.ts', import.meta.url), { type: 'module' });
+function getInteractiveWorker(): Worker {
+  if (!interactiveWorker) {
+    interactiveWorker = new Worker(new URL('./geoWorker.ts', import.meta.url), { type: 'module' });
   }
-  return worker;
+  return interactiveWorker;
+}
+
+function getBatchWorker(): Worker {
+  if (!batchWorker) {
+    batchWorker = new Worker(new URL('./geoWorker.ts', import.meta.url), { type: 'module' });
+  }
+  return batchWorker;
+}
+
+/** Fase 6, punto 1 (H-LOT-11): antes un único Worker serializaba TODAS
+ *  las operaciones — un "Generar todos" pesado bloqueaba la cola para
+ *  el recompute puntual que dispara RotateLotsInteraction mientras el
+ *  usuario arrastra. Ahora hay dos instancias del mismo script: una
+ *  para ediciones interactivas de baja latencia y otra para batch/
+ *  validación, que pueden correr en paralelo sin pisarse. */
+const INTERACTIVE_TYPES = new Set<GeoWorkerRequest['type']>([
+  'subdivide',
+  'subdivideManzano',
+  'computeManzanos',
+]);
+
+function pickWorker(type: GeoWorkerRequest['type']): Worker {
+  return INTERACTIVE_TYPES.has(type) ? getInteractiveWorker() : getBatchWorker();
 }
 
 function runWorker<T extends GeoWorkerResponse>(request: GeoWorkerRequest): Promise<T> {
   return new Promise((resolve, reject) => {
-    const w = getWorker();
+    const w = pickWorker(request.type);
 
     const onMessage = (event: MessageEvent<T>) => {
       w.removeEventListener('message', onMessage);

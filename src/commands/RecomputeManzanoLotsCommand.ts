@@ -18,6 +18,7 @@ import { subdivideManzanoInWorker } from '../workers/geoWorkerClient';
 import { useManzanoStore } from '../store/manzanoStore';
 import { polyArea, ringPerimeter, centroid } from '../geo/polygonEngine';
 import { checkTopologyInBackground } from '../store/mapStore';
+import { estimateGeometryBytes } from './memoryEstimate';
 
 const geoJsonFormat = new GeoJSON();
 
@@ -161,5 +162,9 @@ export class RecomputeManzanoLotsCommand extends Command {
       setLotStatus(mznFeat, this.prevLotStatus);
     }
     ctx.drawSource.changed();
+  }
+
+  override approxMemoryBytes(): number {
+    return this.removedLotSnapshots.reduce((sum, s) => sum + estimateGeometryBytes(s.geometry), 0);
   }
 }

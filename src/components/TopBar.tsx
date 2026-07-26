@@ -15,7 +15,8 @@ import {
   BarChart3,
   ChevronRight,
 } from 'lucide-react';
-import { useMapStore } from '../store/mapStore';
+import { useMapStore, resetIncrementalRoadTracking } from '../store/mapStore';
+import { useGenerateLotsProgressStore } from '../store/generateLotsProgressStore';
 import { useCurrentProjectStore } from '../store/currentProjectStore';
 import { useDrawStore, type DrawMode } from '../store/drawStore';
 import {
@@ -343,6 +344,7 @@ const setStreetPanelVisible = useStreetStore((s) => s.setPanelVisible);
   const streets = useStreetStore((s) => s.streets);
 
   const [lotsBusy, setLotsBusy] = React.useState(false);
+  const genLotsProgress = useGenerateLotsProgressStore((s) => s);
 
   const [projectBrowserOpen, setProjectBrowserOpen] = useState(false);
 
@@ -451,6 +453,7 @@ const setStreetPanelVisible = useStreetStore((s) => s.setPanelVisible);
     await useCommandStack.getState().run(new ClearFeaturesCommand());
     useStreetStore.getState().clearStreets();
     useRoundaboutStore.getState().clearRoundabouts();
+    resetIncrementalRoadTracking();
     refreshSourceMetrics(drawSource);
     drawSource.changed();
     useSelectionStore.getState().clear();
@@ -823,6 +826,7 @@ src.forEachFeature((f) => {
                   icon={<IconLots />}
                   label="Gen. Lotes"
                   disabled={lotsBusy}
+                  badge={genLotsProgress.active ? genLotsProgress.processed : undefined}
                   onClick={handleGenerateLots}
                 />
               </RibbonGroup>
@@ -993,7 +997,7 @@ src.forEachFeature((f) => {
               </RibbonGroup>
               <RibbonGroup label="Subdivisión">
                 <RibbonTool icon={<IconSubdivide />} label="Subdividir" disabled={!primarySelected} onClick={handleOpenSubdivision} />
-                <RibbonTool icon={<IconLots />} label="Gen. Lotes" disabled={lotsBusy} onClick={handleGenerateLots} />
+                <RibbonTool icon={<IconLots />} label="Gen. Lotes" disabled={lotsBusy} badge={genLotsProgress.active ? genLotsProgress.processed : undefined} onClick={handleGenerateLots} />
               </RibbonGroup>
             </>
           )}

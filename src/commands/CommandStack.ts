@@ -13,6 +13,13 @@ const COALESCE_WINDOW_MS = 250;
  *  memoria), acá cada entrada es un Command — mucho más liviano — así que
  *  el tope puede ser generoso. */
 const MAX_STACK = 100;
+/** Fase 6, punto 5: tope adicional por tamaño aproximado del historial
+ *  — 100 entradas de AddStreetCommand (cada una con snapshot completo
+ *  de drawSource) en un proyecto grande pueden pesar mucho más que 100
+ *  entradas de AddFeatureCommand. 24MB permite ~10-20 snapshots
+ *  completos coexistiendo, suficiente profundidad de undo típica sin
+ *  dejar crecer la memoria sin límite. */
+const MAX_STACK_BYTES = 24 * 1024 * 1024;
 
 // Pila de comandos ejecutados. Vive fuera del store de Zustand (ver nota
 // arriba). El store solo sincroniza banderas derivadas vía syncFlags().
@@ -35,6 +42,23 @@ type CommandStackState = {
 
 function syncFlags(set: (partial: Partial<CommandStackState>) => void) {
   set({ canUndo: pointer >= 0, canRedo: pointer < executed.length - 1 });
+}
+
+function pruneStack(): void {
+  if (executed.length > MAX_STACK) {
+    const drop = executed.length - MAX_STACK;
+    executed.splice(0, drop);
+    pointer -= drop;
+  }
+
+  let total = 0;
+  for (const cmd of executed) total += cmd.approxMemoryBytes();
+  while (total > MAX_STACK_BYTES && executed.length > 1) {
+    const removed = executed.shift();
+    if (removed) total -= removed.approxMemoryBytes();
+    pointer -= 1;
+  }
+  if (pointer < -1) pointer = -1;
 }
 
 export const useCommandStack = create<CommandStackState>()((set) => ({
@@ -75,11 +99,7 @@ export const useCommandStack = create<CommandStackState>()((set) => ({
     if (!coalesced) {
       executed.push(command);
       pointer = executed.length - 1;
-      if (executed.length > MAX_STACK) {
-        const drop = executed.length - MAX_STACK;
-        executed.splice(0, drop);
-        pointer -= drop;
-      }
+      pruneStack();
     }
 
     lastCoalesceKey = key;
