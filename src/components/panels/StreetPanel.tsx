@@ -9,9 +9,9 @@ function streetLengthM(street: { start: [number, number]; end: [number, number];
   return pathLength([street.start, ...(street.waypoints ?? []), street.end]);
 }
 
-/** H-VIA-5: antes no existÃƒÂ­a forma de editar una calle ya trazada mÃƒÂ¡s
- *  que borrarla y re-trazarla Ã¢â‚¬â€ `streetStore.updateStreet` existÃƒÂ­a pero
- *  ningÃƒÂºn componente lo llamaba. AnÃƒÂ¡logo directo de RoundaboutPanel.tsx. */
+/** H-VIA-5: antes no existía forma de editar una calle ya trazada más
+ *  que borrarla y re-trazarla — `streetStore.updateStreet` existía pero
+ *  ningún componente lo llamaba. Análogo directo de RoundaboutPanel.tsx. */
 export default function StreetPanel() {
   const panelVisible = useStreetStore((s) => s.panelVisible);
   const setPanelVisible = useStreetStore((s) => s.setPanelVisible);
@@ -26,7 +26,7 @@ export default function StreetPanel() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
 
-  // Fase 5, punto 7: clamp de viewport Ã¢â‚¬â€ el panel no se posiciona fuera
+  // Fase 5, punto 7: clamp de viewport — el panel no se posiciona fuera
   // de pantalla en resoluciones angostas.
   const viewportWidth = useViewportWidth();
   const panelWidth = Math.min(280, viewportWidth - 20);
@@ -80,12 +80,12 @@ export default function StreetPanel() {
         <span style={{ fontWeight: 700, color: 'var(--cad-text)', letterSpacing: '0.03em' }}>
           Calles <span style={{ color: 'var(--cad-text-muted)', fontWeight: 400 }}>({streets.length})</span>
         </span>
-        <button onClick={() => setPanelVisible(false)} style={{ background: 'none', border: 'none', color: 'var(--cad-text-dim)', cursor: 'pointer', fontSize: '0.85rem' }} title="Cerrar" aria-label="Cerrar panel de calles">Ã¢Å“â€¢</button>
+        <button onClick={() => setPanelVisible(false)} style={{ background: 'none', border: 'none', color: 'var(--cad-text-dim)', cursor: 'pointer', fontSize: '0.85rem' }} title="Cerrar" aria-label="Cerrar panel de calles">×</button>
       </div>
 
       <div style={{ background: 'var(--cad-bg-surface)', borderRadius: 6, padding: 8, marginBottom: 8 }}>
         <div style={{ fontSize: '0.62rem', color: 'var(--cad-accent)', fontWeight: 700, marginBottom: 6, letterSpacing: '0.05em' }}>
-          Ã¢â€”Â¼ VALORES POR DEFECTO (prÃƒÂ³ximas calles)
+          ▾ VALORES POR DEFECTO (próximas calles)
         </div>
         <div style={{ display: 'flex', gap: 6 }}>
           <div style={{ flex: 1 }}>
@@ -122,7 +122,7 @@ export default function StreetPanel() {
       </div>
 
       {streets.length === 0 ? (
-        <p style={{ fontSize: '0.68rem', color: 'var(--cad-text-muted)' }}>TodavÃƒÂ­a no hay calles trazadas.</p>
+        <p style={{ fontSize: '0.68rem', color: 'var(--cad-text-muted)' }}>Todavía no hay calles trazadas.</p>
       ) : (
         streets.map((s) => (
           <div key={s.id} style={{ border: '1px solid var(--cad-border)', borderLeft: '3px solid #8b5cf6', borderRadius: 4, marginBottom: 6, padding: '6px 8px' }}>
@@ -152,11 +152,11 @@ export default function StreetPanel() {
                 title="Eliminar calle"
                 aria-label={`Eliminar ${s.name}`}
               >
-                Ã¢Å“â€¢
+                ×
               </button>
             </div>
             <div style={{ color: 'var(--cad-text-muted)', fontSize: '0.65rem', marginBottom: 4 }}>
-              {formatMetricLength(streetLengthM(s))} Ã‚Â· {formatMetricArea(streetLengthM(s) * s.widthM)} de calzada
+              {formatMetricLength(streetLengthM(s))} · {formatMetricArea(streetLengthM(s) * s.widthM)} de calzada
             </div>
             <div style={{ display: 'flex', gap: 6 }}>
               <label style={{ flex: 1, fontSize: '0.6rem', color: 'var(--cad-text-dim)' }}>
