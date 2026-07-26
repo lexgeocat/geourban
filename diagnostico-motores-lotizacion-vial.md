@@ -345,13 +345,6 @@ Esta es la fase de mayor impacto de producto: resolver de raíz H-LOT-2/H-LOT-3,
 
 ---
 
-### **Fase 7 — QA, validación automática y observabilidad**
-
-1. Logging estructurado de errores de worker (hoy `console.error` suelto en varios `catch`) hacia un canal centralizado, con contexto suficiente para reproducir (tipo de operación, tamaño de payload, mensaje de error).
-2. Checklist de regresión manual para casos límite: calles con waypoints en zig-zag pronunciado, rotonda triangular con calzada ancha, manzano muy angosto (`NARROW_RATIO`), importación DXF con muchas entidades seguida de generación masiva de lotes.
-
----
-
 ## 7. Resumen de dependencias entre fases
 
 ```
