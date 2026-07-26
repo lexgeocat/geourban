@@ -1,16 +1,19 @@
 import { useStreetStore, type Street } from '../../../store/entities/streetStore';
-import { computeStreetPairFillets, filletArcPoints, type StreetFillet } from '../../../geo/roads/streetEngine';
+import { computeRoadNetworkNet, type RoadNetworkNet } from '../../../geo/roads/roadNetworkNet';
 import { type Pt } from '../../../geo/math/polygonEngine';
 import { measureCachedWidth } from '../../textMeasureCache';
 
 type StreetChain = Array<{ from: Pt; to: Pt; len: number }>;
 type CrossingsMap = globalThis.Map<string, Pt[]>;
-type StreetLabelSlot = { pos: Pt; angle: number; len: number };
+/** El ángulo de rotación de la etiqueta YA NO se guarda acá (ver nota en
+ *  sampleChainAt): se recalcula en paint(), en espacio de pantalla. */
+type StreetLabelSlot = { pos: Pt; segFrom: Pt; segTo: Pt };
+
 interface StreetLabelZone { lo: number; hi: number }
 
 function streetsHash(streets: Street[]): string {
   return streets
-    .map((s) => `${s.id}:${s.start[0]},${s.start[1]}-${s.end[0]},${s.end[1]}:${s.widthM}:${s.sideWidthM}`)
+    .map((s) => `${s.id}:${s.start[0]},${s.start[1]}-${s.end[0]},${s.end[1]}:${s.widthM}:${s.sideWidthM}:${(s.waypoints ?? []).map((w) => `${w[0]},${w[1]}`).join(';')}`)
     .join('|');
 }
 
@@ -73,16 +76,24 @@ function computeCrossingOffsets(chain: StreetChain, crossings: Pt[]): number[] {
   return offsets;
 }
 
-function sampleChainAt(chain: StreetChain, dist: number): { pos: Pt; angle: number } | null {
+/**
+ * Muestrea el punto (mundo) a una distancia de arco dada + el segmento al
+ * que pertenece. El ÁNGULO de rotación de la etiqueta se calcula en
+ * paint(), a partir de `toPx(segFrom)`/`toPx(segTo)` — NO acá con las
+ * coordenadas de mundo: mundo (EPSG:3857, Y arriba) y pantalla (Y abajo)
+ * difieren en la orientación del eje Y, así que un ángulo calculado en
+ * mundo y aplicado directo a ctx.rotate() (espacio de pantalla) sale
+ * girado/espejado salvo en tramos perfectamente horizontales — la causa
+ * de "las etiquetas no se ajustan al ángulo del eje".
+ */
+function sampleChainAt(chain: StreetChain, dist: number): { pos: Pt; segFrom: Pt; segTo: Pt } | null {
   let walk = 0;
   for (const seg of chain) {
     const isLast = seg === chain[chain.length - 1];
     if (dist <= walk + seg.len || isLast) {
       const t = seg.len > 1e-6 ? Math.max(0, Math.min(1, (dist - walk) / seg.len)) : 0;
       const pos: Pt = [seg.from[0] + t * (seg.to[0] - seg.from[0]), seg.from[1] + t * (seg.to[1] - seg.from[1])];
-      let ang = Math.atan2(seg.to[1] - seg.from[1], seg.to[0] - seg.from[0]);
-      if (ang > Math.PI / 2 || ang < -Math.PI / 2) ang += Math.PI;
-      return { pos, angle: ang };
+      return { pos, segFrom: seg.from, segTo: seg.to };
     }
     walk += seg.len;
   }
@@ -96,6 +107,7 @@ function pickStreetLabelSlots(
   labelText: string,
   fontPx: number,
   roadHalfWidthM: number,
+  resolution: number,
   repeatM = 140,
 ): StreetLabelSlot[] {
   const chain = buildStreetChain(coords);
@@ -104,7 +116,11 @@ function pickStreetLabelSlots(
 
   ctx.save();
   ctx.font = `bold ${fontPx}px Courier New`;
-  const textHalfW = measureCachedWidth(ctx, labelText) / 2 + 4;
+  // measureCachedWidth da PÍXELES de pantalla; roadHalfWidthM/marginM están
+  // en metros de mundo — sin este *resolution, el margen quedaba mal
+  // escalado según el zoom (a veces tapaba la calle entera y no dejaba
+  // ningún hueco libre para el rótulo: "las etiquetas no se visualizan").
+  const textHalfW = (measureCachedWidth(ctx, labelText) / 2 + 4) * resolution;
   ctx.restore();
 
   const marginM = textHalfW + roadHalfWidthM + 4;
@@ -143,7 +159,7 @@ function pickStreetLabelSlots(
     const first = count === 1 ? (lo + hi) / 2 : lo + step / 2;
     for (let k = 0; k < count; k++) {
       const sample = sampleChainAt(chain, first + k * step);
-      if (sample) slots.push({ pos: sample.pos, angle: sample.angle, len: usable });
+      if (sample) slots.push({ pos: sample.pos, segFrom: sample.segFrom, segTo: sample.segTo });
     }
   }
   return slots;
@@ -161,6 +177,7 @@ function computeAllStreetLabelSlots(
   streets: Street[],
   crossingsMap: CrossingsMap,
   zoom: number,
+  resolution: number,
 ): globalThis.Map<string, StreetLabelSlot[]> {
   const result = new globalThis.Map<string, StreetLabelSlot[]>();
   if (zoom <= 12) return result;
@@ -169,44 +186,39 @@ function computeAllStreetLabelSlots(
     const fs1 = Math.max(9, Math.min(13, (10 * zoom) / 18));
     const labelText = `--- ${s.name} (Ancho de Vía ${s.widthM.toFixed(2)}m) ---`;
     const roadHalfWidthM = s.widthM / 2 + Math.max(0, s.sideWidthM ?? 0);
-    const slots = pickStreetLabelSlots(ctx, streetAllCoords(s), crossings, labelText, fs1, roadHalfWidthM, 140);
+    const slots = pickStreetLabelSlots(ctx, streetAllCoords(s), crossings, labelText, fs1, roadHalfWidthM, resolution, 140);
     result.set(s.id, slots);
   }
   return result;
 }
 
-/** Pinta calzada/vereda/eje/fillets/labels de la red vial. Cache
- *  incremental por par de calles (ex Fase 6, punto 2 / H-VIA-10).
- *  Extraído de PostrenderPainter (Fase 5). */
+/** Pinta calzada/vereda (unidas + ochavadas, ver roadNetworkNet.ts),
+ *  eje y labels de la red vial. Reemplaza el fillet calle-por-calle +
+ *  cachés incrementales por par (frágil: ochaves invertidos en cruces no
+ *  perpendiculares, y riesgo de geometría fantasma si la poda de esas
+ *  cachés se desincroniza) por una reconstrucción completa desde el
+ *  estado actual de `streets` cada vez que cambia el fingerprint. */
 export class StreetPainter {
-  private cachedFillets: StreetFillet[] = [];
-  private cachedOuterFillets: StreetFillet[] = [];
+  private cachedNet: RoadNetworkNet = { road: [], outer: [] };
   private cachedCrossings: CrossingsMap = new globalThis.Map();
   private cachedStreetLabelSlots = new globalThis.Map<string, StreetLabelSlot[]>();
   private lastStreetHash = '';
   private lastLabelZoomBucket = -1;
-  private pairFilletCache = new globalThis.Map<string, { inner: StreetFillet[]; outer: StreetFillet[]; hashA: string; hashB: string }>();
   private pairCrossingCache = new globalThis.Map<string, { points: Pt[]; hashA: string; hashB: string }>();
 
   private streetPairHash(s: Street): string {
     return `${s.start[0]},${s.start[1]}|${s.end[0]},${s.end[1]}|${s.widthM}|${s.sideWidthM}|${(s.waypoints ?? []).map((w) => `${w[0]},${w[1]}`).join(';')}`;
   }
 
-  private updateIncrementalCaches(streets: Street[]): void {
+  private updateCrossingsCache(streets: Street[]): void {
     const currentIds = new Set(streets.map((s) => s.id));
-    for (const key of this.pairFilletCache.keys()) {
+    for (const key of this.pairCrossingCache.keys()) {
       const [idA, idB] = key.split('::');
-      if (!currentIds.has(idA) || !currentIds.has(idB)) {
-        this.pairFilletCache.delete(key);
-        this.pairCrossingCache.delete(key);
-      }
+      if (!currentIds.has(idA) || !currentIds.has(idB)) this.pairCrossingCache.delete(key);
     }
-
     const hashes = new globalThis.Map<string, string>();
     for (const s of streets) hashes.set(s.id, this.streetPairHash(s));
 
-    const inner: StreetFillet[] = [];
-    const outer: StreetFillet[] = [];
     const crossings: CrossingsMap = new globalThis.Map();
     for (const s of streets) crossings.set(s.id, []);
 
@@ -215,37 +227,24 @@ export class StreetPainter {
         const sA = streets[i], sB = streets[j];
         const key = sA.id < sB.id ? `${sA.id}::${sB.id}` : `${sB.id}::${sA.id}`;
         const hA = hashes.get(sA.id)!, hB = hashes.get(sB.id)!;
-
-        let filletEntry = this.pairFilletCache.get(key);
-        if (!filletEntry || filletEntry.hashA !== hA || filletEntry.hashB !== hB) {
-          const pair = computeStreetPairFillets(sA, sB);
-          filletEntry = { inner: pair.inner, outer: pair.outer, hashA: hA, hashB: hB };
-          this.pairFilletCache.set(key, filletEntry);
+        let entry = this.pairCrossingCache.get(key);
+        if (!entry || entry.hashA !== hA || entry.hashB !== hB) {
+          entry = { points: computeStreetPairCrossings(sA, sB), hashA: hA, hashB: hB };
+          this.pairCrossingCache.set(key, entry);
         }
-        inner.push(...filletEntry.inner);
-        outer.push(...filletEntry.outer);
-
-        let crossEntry = this.pairCrossingCache.get(key);
-        if (!crossEntry || crossEntry.hashA !== hA || crossEntry.hashB !== hB) {
-          const points = computeStreetPairCrossings(sA, sB);
-          crossEntry = { points, hashA: hA, hashB: hB };
-          this.pairCrossingCache.set(key, crossEntry);
-        }
-        if (crossEntry.points.length > 0) {
-          crossings.get(sA.id)!.push(...crossEntry.points);
-          crossings.get(sB.id)!.push(...crossEntry.points);
+        if (entry.points.length > 0) {
+          crossings.get(sA.id)!.push(...entry.points);
+          crossings.get(sB.id)!.push(...entry.points);
         }
       }
     }
-
-    this.cachedFillets = inner;
-    this.cachedOuterFillets = outer;
     this.cachedCrossings = crossings;
   }
 
-  /** `forceDirty`: invalidación externa (drawSource cambió) — la pasa
-   *  PostrenderPainter.updateCaches(). */
-  update(ctx: CanvasRenderingContext2D, zoom: number, forceDirty: boolean): void {
+  /** `forceDirty`: invalidación externa (drawSource cambió). `resolution`
+   *  hace falta acá para convertir el ancho de texto (px) a metros al
+   *  calcular los huecos libres de etiqueta. */
+  update(ctx: CanvasRenderingContext2D, zoom: number, forceDirty: boolean, resolution: number): void {
     const streets = useStreetStore.getState().streets;
     const currentHash = streetsHash(streets);
     const streetsChanged = currentHash !== this.lastStreetHash;
@@ -253,11 +252,12 @@ export class StreetPainter {
     const zoomBucketChanged = zoomBucket !== this.lastLabelZoomBucket;
 
     if (streetsChanged || forceDirty) {
-      this.updateIncrementalCaches(streets);
+      this.cachedNet = computeRoadNetworkNet(streets);
+      this.updateCrossingsCache(streets);
       this.lastStreetHash = currentHash;
     }
     if (streetsChanged || forceDirty || zoomBucketChanged) {
-      this.cachedStreetLabelSlots = computeAllStreetLabelSlots(ctx, streets, this.cachedCrossings, zoom);
+      this.cachedStreetLabelSlots = computeAllStreetLabelSlots(ctx, streets, this.cachedCrossings, zoom, resolution);
       this.lastLabelZoomBucket = zoomBucket;
     }
   }
@@ -272,100 +272,43 @@ export class StreetPainter {
     const streets = useStreetStore.getState().streets;
     const streetVisible = useStreetStore.getState().visible;
     if (!streetVisible || streets.length === 0) return;
-    const fillets = this.cachedFillets;
-    const outerFillets = this.cachedOuterFillets;
 
-    for (let si = 0; si < streets.length; si++) {
-      const s = streets[si];
-      const allCoords: Array<[number, number]> = [s.start];
-      if (s.waypoints) for (const wp of s.waypoints) allCoords.push(wp);
-      allCoords.push(s.end);
+    this.paintRings(ctx, this.cachedNet.outer, toPx, { fill: null, stroke: 'rgba(200, 200, 200, 0.55)', lineWidth: 1 });
+    this.paintRings(ctx, this.cachedNet.road, toPx, { fill: 'rgba(247, 129, 102, 0.08)', stroke: 'rgba(247, 129, 102, 0.75)', lineWidth: 1.5 });
 
-      const allPx = allCoords.map((c) => toPx(c));
-      const halfPx = (s.widthM / 2) / resolution;
-      const sideWidthM = Math.max(0, s.sideWidthM ?? 0);
-      const outerHalfPx = (s.widthM / 2 + sideWidthM) / resolution;
-
-      const normals: Array<[number, number]> = [];
-      for (let i = 0; i < allPx.length; i++) {
-        const prev = allPx[Math.max(0, i - 1)];
-        const next = allPx[Math.min(allPx.length - 1, i + 1)];
-        const dx = next[0] - prev[0], dy = next[1] - prev[1];
-        const len = Math.hypot(dx, dy);
-        if (len < 0.1) normals.push(normals[i - 1] ?? [0, 1]);
-        else normals.push([-dy / len, dx / len]);
-      }
-
-      if (sideWidthM > 0) {
-        ctx.save();
-        ctx.strokeStyle = 'rgba(200, 200, 200, 0.55)';
-        ctx.lineWidth = 1;
-        for (const side of [1, -1]) {
-          ctx.beginPath();
-          for (let i = 0; i < allPx.length; i++) {
-            const nx = normals[i][0] * outerHalfPx * side, ny = normals[i][1] * outerHalfPx * side;
-            if (i === 0) ctx.moveTo(allPx[i][0] + nx, allPx[i][1] + ny);
-            else ctx.lineTo(allPx[i][0] + nx, allPx[i][1] + ny);
-          }
-          ctx.stroke();
-        }
-        ctx.restore();
-      }
-
-      ctx.save();
-      ctx.fillStyle = 'rgba(247, 129, 102, 0.08)';
+    // Eje central (línea discontinua) — una polilínea por calle, ajena a
+    // la unión de calzada/vereda.
+    ctx.save();
+    ctx.strokeStyle = 'rgba(247, 129, 102, 0.75)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([7, 5]);
+    for (const s of streets) {
+      const coords = streetAllCoords(s);
       ctx.beginPath();
-      for (let i = 0; i < allPx.length; i++) {
-        const nx = normals[i][0] * halfPx, ny = normals[i][1] * halfPx;
-        if (i === 0) ctx.moveTo(allPx[i][0] + nx, allPx[i][1] + ny);
-        else ctx.lineTo(allPx[i][0] + nx, allPx[i][1] + ny);
-      }
-      for (let i = allPx.length - 1; i >= 0; i--) {
-        const nx = normals[i][0] * halfPx, ny = normals[i][1] * halfPx;
-        ctx.lineTo(allPx[i][0] - nx, allPx[i][1] - ny);
-      }
-      ctx.closePath();
-      ctx.fill();
-      ctx.restore();
-
-      ctx.save();
-      ctx.strokeStyle = 'rgba(247, 129, 102, 0.55)';
-      ctx.lineWidth = 1.5;
-      ctx.lineCap = 'round';
-      for (const side of [1, -1]) {
-        ctx.beginPath();
-        for (let i = 0; i < allPx.length; i++) {
-          const nx = normals[i][0] * halfPx * side, ny = normals[i][1] * halfPx * side;
-          if (i === 0) ctx.moveTo(allPx[i][0] + nx, allPx[i][1] + ny);
-          else ctx.lineTo(allPx[i][0] + nx, allPx[i][1] + ny);
-        }
-        ctx.stroke();
-      }
-      ctx.restore();
-
-      ctx.save();
-      ctx.strokeStyle = 'rgba(247, 129, 102, 0.75)';
-      ctx.lineWidth = 1;
-      ctx.setLineDash([7, 5]);
-      ctx.beginPath();
-      for (let i = 0; i < allPx.length; i++) {
-        if (i === 0) ctx.moveTo(allPx[i][0], allPx[i][1]);
-        else ctx.lineTo(allPx[i][0], allPx[i][1]);
-      }
+      coords.forEach((c, i) => {
+        const p = toPx(c);
+        if (i === 0) ctx.moveTo(p[0], p[1]); else ctx.lineTo(p[0], p[1]);
+      });
       ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.restore();
+    }
+    ctx.setLineDash([]);
+    ctx.restore();
 
-      if (!interacting && zoom > 12) {
+    if (!interacting && zoom > 12) {
+      const fs1 = Math.max(9, Math.min(13, (10 * zoom) / 18));
+      const fs2 = Math.max(8, Math.min(11, (9 * zoom) / 18));
+      for (const s of streets) {
         const slots = this.cachedStreetLabelSlots.get(s.id) ?? [];
-        const fs1 = Math.max(9, Math.min(13, 10 * zoom / 18));
-        const fs2 = Math.max(8, Math.min(11, 9 * zoom / 18));
         const labelText = `--- ${s.name} (Ancho de Vía ${s.widthM.toFixed(2)}m) ---`;
         for (const slot of slots) {
           const px = toPx(slot.pos);
+          // Ángulo en espacio de PANTALLA — ver nota en sampleChainAt.
+          const a = toPx(slot.segFrom), b = toPx(slot.segTo);
+          let angle = Math.atan2(b[1] - a[1], b[0] - a[0]);
+          if (angle > Math.PI / 2 || angle < -Math.PI / 2) angle += Math.PI;
           ctx.save();
           ctx.translate(px[0], px[1]);
-          ctx.rotate(slot.angle);
+          ctx.rotate(angle);
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
           ctx.font = `bold ${fs1}px Courier New`;
@@ -378,38 +321,30 @@ export class StreetPainter {
         }
       }
     }
+  }
 
+  private paintRings(
+    ctx: CanvasRenderingContext2D,
+    rings: Pt[][],
+    toPx: (c: number[]) => [number, number],
+    style: { fill: string | null; stroke: string; lineWidth: number },
+  ): void {
+    if (rings.length === 0) return;
     ctx.save();
-    ctx.strokeStyle = 'rgba(247, 129, 102, 0.65)';
-    ctx.lineWidth = 2;
-    ctx.lineCap = 'round';
-    for (const fillet of fillets) {
-      const arcPts = filletArcPoints(fillet, 16);
-      if (arcPts.length < 2) continue;
-      const firstPx = toPx(arcPts[0]);
+    ctx.lineWidth = style.lineWidth;
+    ctx.strokeStyle = style.stroke;
+    if (style.fill) ctx.fillStyle = style.fill;
+    for (const ring of rings) {
+      if (ring.length < 3) continue;
       ctx.beginPath();
-      ctx.moveTo(firstPx[0], firstPx[1]);
-      for (let i = 1; i < arcPts.length; i++) {
-        const px = toPx(arcPts[i]);
-        ctx.lineTo(px[0], px[1]);
+      const first = toPx(ring[0]);
+      ctx.moveTo(first[0], first[1]);
+      for (let i = 1; i < ring.length; i++) {
+        const p = toPx(ring[i]);
+        ctx.lineTo(p[0], p[1]);
       }
-      ctx.stroke();
-    }
-    ctx.restore();
-
-    ctx.save();
-    ctx.strokeStyle = 'rgba(200, 200, 200, 0.55)';
-    ctx.lineWidth = 1;
-    for (const fillet of outerFillets) {
-      const arcPts = filletArcPoints(fillet, 16);
-      if (arcPts.length < 2) continue;
-      const firstPx = toPx(arcPts[0]);
-      ctx.beginPath();
-      ctx.moveTo(firstPx[0], firstPx[1]);
-      for (let i = 1; i < arcPts.length; i++) {
-        const px = toPx(arcPts[i]);
-        ctx.lineTo(px[0], px[1]);
-      }
+      ctx.closePath();
+      if (style.fill) ctx.fill();
       ctx.stroke();
     }
     ctx.restore();

@@ -61,13 +61,18 @@ function cornerFilletArc(prev: Pt, cur: Pt, next: Pt, r: number): Pt[] | null {
 
 /**
  * Redondea los vértices REFLEX (cóncavos) de un anillo — que en un manzano
- * resultante de "parcela − unión(red vial)" son exactamente las esquinas
- * donde una o más calles cortaron la parcela. A diferencia de
- * computeStreetFillets/subtractFilletWedge, esto no necesita saber qué
- * calles se tocan entre sí: opera sobre la geometría final, así que 2, 3
- * o N vías confluyendo en un mismo punto se resuelven igual.
+ * o en la red vial unida son exactamente las esquinas donde una o más
+ * calles se cruzan. A diferencia de un fillet calle-por-calle, esto no
+ * necesita saber qué calles se tocan entre sí: opera sobre la geometría
+ * final ya unida, así que 2, 3 o N vías confluyendo en un mismo punto se
+ * resuelven igual, sin ambigüedad de signo ni arcos espurios.
+ *
+ * `extraM`: extra de radio (p.ej. ancho de vereda para engrosar el ochave
+ * de calzada). Puede ser un número fijo o una función `(pt) => number`
+ * para dar un extra distinto por vértice (igual criterio que el
+ * `sideExtraAt` de index_modelo.html).
  */
-export function roundRingReflex(ringIn: Pt[], extraM = 0): Pt[] {
+export function roundRingReflex(ringIn: Pt[], extraM: number | ((pt: Pt) => number) = 0): Pt[] {
   const pts = ringIn.slice();
   if (pts.length > 1) {
     const f = pts[0], l = pts[pts.length - 1];
@@ -96,7 +101,8 @@ export function roundRingReflex(ringIn: Pt[], extraM = 0): Pt[] {
     const b = normalize(next[0] - cur[0], next[1] - cur[1]);
     const dot = Math.max(-1, Math.min(1, a[0] * b[0] + a[1] * b[1]));
     const angleDeg = (Math.acos(dot) * 180) / Math.PI;
-    const r = getFilletRadiusForAngle(angleDeg) + extraM;
+    const extra = typeof extraM === 'function' ? extraM(cur) : extraM;
+    const r = getFilletRadiusForAngle(angleDeg) + extra;
 
     const arc = cornerFilletArc(prev, cur, next, r);
     if (!arc) { out.push(cur); continue; }

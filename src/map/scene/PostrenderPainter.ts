@@ -94,7 +94,7 @@ export class PostrenderPainter {
     const zoom = getZoomFromResolution(resolution);
     const features = (this.drawSource.getFeatures() ?? []) as Array<Feature<Geometry>>;
 
-    this.updateCaches(ctx, features, zoom);
+    this.updateCaches(ctx, features, zoom, resolution);
 
     const toPx = (coord: number[]): [number, number] => {
       const px = this.map.getPixelFromCoordinate(coord as [number, number]);
@@ -122,9 +122,9 @@ export class PostrenderPainter {
     return index.search(minX - marginX, minY - marginY, maxX + marginX, maxY + marginY) as unknown as Array<Feature<Geometry>>;
   }
 
-  private updateCaches(ctx: CanvasRenderingContext2D, features: Array<Feature<Geometry>>, zoom: number): void {
+  private updateCaches(ctx: CanvasRenderingContext2D, features: Array<Feature<Geometry>>, zoom: number, resolution: number): void {
     const featuresChanged = features.length !== this.lastFeatureCount;
-    this.streetPainter.update(ctx, zoom, this.dirty);
+    this.streetPainter.update(ctx, zoom, this.dirty, resolution);
     this.labelPainter.update(features, featuresChanged || this.dirty);
     this.lastFeatureCount = features.length;
     this.dirty = false;

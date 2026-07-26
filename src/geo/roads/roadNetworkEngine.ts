@@ -22,7 +22,7 @@ function streetPolyline(street: Street): Pt[] {
  *  exacta. Ver H-VIA-1 del diagnóstico. */
 const MITER_LIMIT = 4;
 
-function offsetPolylineMiter(pts: Pt[], d: number): Pt[] {
+export function offsetPolylineMiter(pts: Pt[], d: number): Pt[] {
   const n = pts.length;
   if (n < 2) return pts.map((p) => [p[0], p[1]] as Pt);
 
@@ -54,8 +54,6 @@ function offsetPolylineMiter(pts: Pt[], d: number): Pt[] {
     const miterDist = Math.hypot(miter[0] - pts[i + 1][0], miter[1] - pts[i + 1][1]);
 
     if (miterDist > absD * MITER_LIMIT) {
-      // Bisel: la "espiga" del miter excede el límite — se insertan los
-      // dos offsets del vértice sin unirlos en un único punto puntiagudo.
       out.push(p0, p1);
     } else {
       out.push(miter);
@@ -67,25 +65,40 @@ function offsetPolylineMiter(pts: Pt[], d: number): Pt[] {
   return out;
 }
 
-/** Anillo cerrado (no filleteado aún) del borde exterior de una calle
- *  (calzada/2 + vereda a cada lado). */
-function buildStreetOuterRing(street: Street): Pt[] {
-  const pts = streetPolyline(street);
-  const half = street.widthM / 2 + Math.max(0, street.sideWidthM ?? 0);
+function buildRing(pts: Pt[], half: number): Pt[] {
   const left = offsetPolylineMiter(pts, half);
   const right = offsetPolylineMiter(pts, -half);
   return [...left, ...right.reverse()];
+}
+
+/** Anillo cerrado (no filleteado aún) del borde exterior de una calle
+ *  (calzada/2 + vereda a cada lado). */
+function buildStreetOuterRing(street: Street): Pt[] {
+  const half = street.widthM / 2 + Math.max(0, street.sideWidthM ?? 0);
+  return buildRing(streetPolyline(street), half);
+}
+
+/** Anillo cerrado del borde de SOLO calzada (sin vereda) — segundo insumo
+ *  que necesita la red vial unida (ver roadNetworkNet.ts) para poder
+ *  pintar calzada y vereda como dos anillos independientes. */
+function buildStreetRoadRing(street: Street): Pt[] {
+  return buildRing(streetPolyline(street), street.widthM / 2);
 }
 
 function buildRoundaboutOuterRing(rb: RoundaboutParams): Pt[] {
   return roundaboutGeometry(rb).sideOuter;
 }
 
+function buildRoundaboutRoadRing(rb: RoundaboutParams): Pt[] {
+  return roundaboutGeometry(rb).roadOuter;
+}
+
 /**
  * Devuelve, sin unir, todos los anillos "outer" (calzada+vereda) de la red
  * vial actual — el llamador los une en una sola operación booleana
- * (ver computeManzanosInWorker), lo que hace el resultado independiente del
- * orden de trazado y correcto en cruces de 3+ vías.
+ * (ver computeManzanosInWorker / roadNetworkNet.ts), lo que hace el
+ * resultado independiente del orden de trazado y correcto en cruces de
+ * 3+ vías.
  */
 export function buildRoadNetworkRings(
   streets: Street[],
@@ -99,6 +112,25 @@ export function buildRoadNetworkRings(
   }
   for (const rb of roundabouts) {
     const ring = buildRoundaboutOuterRing(rb);
+    if (ring.length >= 3) rings.push(ring);
+  }
+  return rings;
+}
+
+/** Igual que `buildRoadNetworkRings`, pero solo el borde de CALZADA (sin
+ *  vereda) — ver roadNetworkNet.ts::computeRoadNetworkNet. */
+export function buildRoadOnlyRings(
+  streets: Street[],
+  roundabouts: RoundaboutParams[] = [],
+): Pt[][] {
+  const rings: Pt[][] = [];
+  for (const s of streets) {
+    if (s.widthM <= 0) continue;
+    const ring = buildStreetRoadRing(s);
+    if (ring.length >= 3) rings.push(ring);
+  }
+  for (const rb of roundabouts) {
+    const ring = buildRoundaboutRoadRing(rb);
     if (ring.length >= 3) rings.push(ring);
   }
   return rings;
