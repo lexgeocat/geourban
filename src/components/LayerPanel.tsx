@@ -1,7 +1,6 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef } from 'react';
 import { useLayersStore } from '../store/layersRegistryStore';
 import type { Layer } from '../core/objectModel';
-import { useLayerStore } from '../store/layerStore';
 import { useIncrementalRender } from '../hooks/useIncrementalRender';
 
 /* ─────────── Icons ─────────── */
@@ -144,18 +143,11 @@ export default function LayerPanel() {
   const panelRef = useRef<HTMLDivElement>(null);
   const { visibleCount, sentinelRef } = useIncrementalRender(layers.length, 60, panelRef);
 
-  // Sync layerStore.workVisibility ↔ registry visibility
-  const setWorkVisibility = useLayerStore((s) => s.setWorkVisibility);
-
-  const syncLegacyVisibility = useCallback((layer: Layer) => {
-    if (layer.kind === 'lote') setWorkVisibility('lots', layer.visible);
-    else if (layer.kind === 'calle') setWorkVisibility('streets', layer.visible);
-    else if (layer.kind === 'manzana') setWorkVisibility('lots', layer.visible);
-  }, [setWorkVisibility]);
-
+  // layersRegistryStore es ahora la ÚNICA fuente de verdad para
+  // visibilidad de capas (ver plan-optimizacion-geourban.md, Fase 1) — ya
+  // no hace falta espejar el cambio en ningún store legado.
   const handleToggleVisibility = (layer: Layer) => {
     toggleVisibility(layer.id);
-    syncLegacyVisibility({ ...layer, visible: !layer.visible });
   };
 
   const handleAddLayer = () => {

@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useRef, useCallback, useEffect } from 'react';
 import { useMapStore } from '../store/mapStore';
 import { useStreetStore } from '../store/streetStore';
-import { useLayerStore } from '../store/layerStore';
+import { useUiShellStore } from '../store/uiShellStore';
 import { polyArea, type Pt } from '../geo/polygonEngine';
 import { formatMetricArea } from '../geo/metrics';
 import Feature from 'ol/Feature.js';
@@ -104,8 +104,8 @@ function computeStats(drawSource: any, streets: any[]): StatsData {
 export default function StatsPanel() {
   const drawSource = useMapStore((s) => s.drawSource);
   const streets = useStreetStore((s) => s.streets);
-  const visible = useLayerStore((s) => s.statsPanelVisible);
-  const setStatsPanelVisible = useLayerStore((s) => s.setStatsPanelVisible);
+  const visible = useUiShellStore((s) => s.statsPanelVisible);
+  const setStatsPanelVisible = useUiShellStore((s) => s.setStatsPanelVisible);
 
   const [pos, setPos] = useState({ x: window.innerWidth - 250, y: window.innerHeight - 350 });
   const dragRef = useRef<{ startX: number; startY: number; posX: number; posY: number } | null>(null);

@@ -20,15 +20,6 @@ export * from './dxf';
 export * from './persistence';
 
 export { getProjectStore, isTauri, type ProjectStore, type ProjectSummary } from './projectStore';
-export {
-  autosaveProjectDesktop,
-  startAutosaveDesktop,
-  listProjectsDesktop,
-  loadProjectDesktop,
-  deleteProjectDesktop,
-  duplicateProjectDesktop,
-  updateProjectThumbnail,
-} from './persistenceDesktop';
 
 export async function importFile(file: File, format?: ImportFormat): Promise<ImportResult> {
   const ext = format ?? inferFormat(file.name);

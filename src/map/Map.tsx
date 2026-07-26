@@ -16,14 +16,14 @@ import Point from 'ol/geom/Point.js';
 import LineString from 'ol/geom/LineString.js';
 import Polygon from 'ol/geom/Polygon.js';
 import type Geometry from 'ol/geom/Geometry.js';
-import { useLayerStore } from '../store/layerStore';
+import { useUiShellStore } from '../store/uiShellStore';
 import { useLayersStore } from '../store/layersRegistryStore';
 import { useMapStore } from '../store/mapStore';
 import { useDrawStore } from '../store/drawStore';
 import { useSelectionStore } from '../store/selectionStore';
 import { useProjectCrsStore } from '../store/projectCrsStore';
 import { BaseLayerManager } from './scene/BaseLayerManager';
-import { buildDrawLayers, buildLayerFilter, buildWebglStyle } from './scene/DrawLayerRenderer';
+import { buildDrawLayers, buildLayerFilter, buildWebglStyle, type WorkVisibility } from './scene/DrawLayerRenderer';
 import { PostrenderPainter } from './scene/PostrenderPainter';
 import { InteractionModeController } from './scene/InteractionModeController';
 import { SNAP_COLORS, type SnapGuideVisual } from './advancedSnap';
@@ -56,8 +56,7 @@ export default function MapView() {
 const interactionCtrlRef = useRef<InteractionModeController | null>(null);
 const rotateLotsInteractionRef = useRef<RotateLotsInteraction | null>(null);
 const rotateLotsCleanupRef = useRef<(() => void) | null>(null);
-const baseMapId = useLayerStore((s) => s.baseMap);
-  const workVisibility = useLayerStore((s) => s.workVisibility);
+const baseMapId = useUiShellStore((s) => s.baseMap);
   const viewConfig = useMapStore((s) => s.viewConfig);
   const drawMode = useDrawStore().mode;
 
@@ -66,7 +65,17 @@ const baseMapId = useLayerStore((s) => s.baseMap);
     if (!mapDivRef.current) return;
 
     const initialLayers = useLayersStore.getState().layers;
-    const drawLayers = buildDrawLayers(workVisibility, initialLayers);
+    // Visibilidad inicial derivada del registro de capas — reemplaza al
+    // extinto layerStore.workVisibility (ver plan Fase 1).
+    const initialWorkVisibility: WorkVisibility = {
+      lots:
+        useLayersStore.getState().hasKindVisible('lote') ||
+        useLayersStore.getState().hasKindVisible('manzana'),
+      streets: useLayersStore.getState().hasKindVisible('calle'),
+      // Ya no controla ninguna capa de render — ver DrawLayerRenderer.ts.
+      measurements: true,
+    };
+    const drawLayers = buildDrawLayers(initialWorkVisibility, initialLayers);
     // Aplicar filter inicial (visibilidad por layerId).
     const initialWebgl = drawLayers.webglLayer as any;
     if (typeof initialWebgl.setFilter === 'function') {
@@ -426,24 +435,13 @@ postrenderPainter.dispose();
     baseLayerRef.current = newLayer;
   }, [baseMapId]);
 
-  // --- Visibilidad de calles/viales ---
-  useEffect(() => {
-    if (streetLayerRef.current) {
-      streetLayerRef.current.setVisible(workVisibility.streets);
-    }
-  }, [workVisibility.streets]);
-
-  // --- Visibilidad de lotes/manzanos (WebGL layer) ---
-  useEffect(() => {
-    if (drawLayerRef.current) {
-      drawLayerRef.current.setVisible(workVisibility.lots);
-    }
-  }, [workVisibility.lots]);
 
 useEffect(() => {
   const unsub = useLayersStore.subscribe((state) => {
-    // Visibilidad legacy por tipo (mantener compat con layerStore.workVisibility
-    // y los toggles de "Lotes/Calles/Cotas" del ribbon de Vista).
+    // Fuente única de verdad para "¿hay algún lote/calle visible?" — ya no
+    // existe layerStore.workVisibility (ver plan-optimizacion-geourban.md,
+    // Fase 1). Este listener sincroniza el layer WebGL y el de calles con
+    // el registro, incluidos los toggles "Lotes/Calles" del ribbon de Vista.
     const anyLoteVisible = state.layers.some((l) => (l.kind === 'lote' || l.kind === 'manzana') && l.visible);
     const anyCalleVisible = state.layers.some((l) => l.kind === 'calle' && l.visible);
 

@@ -9,7 +9,7 @@ import StatsPanel from './components/StatsPanel';
 import { startAutosave } from './io/persistence';
 import { writeProjectFromOlFeatures } from './io/geojson';
 import { useMapStore } from './store/mapStore';
-import { useLayerStore } from './store/layerStore';
+import { useUiShellStore } from './store/uiShellStore';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import ProjectSetupModal from './components/ProjectSetupModal';
 import ManzanoPanel from './components/ManzanoPanel';
@@ -23,7 +23,7 @@ function App() {
     return startAutosave(() => {
       const drawSource = useMapStore.getState().drawSource;
       const viewConfig = useMapStore.getState().viewConfig;
-      const baseMap = useLayerStore.getState().baseMap;
+      const baseMap = useUiShellStore.getState().baseMap;
       const features = drawSource?.getFeatures() ?? [];
       const project = writeProjectFromOlFeatures(features);
       project.baseMap = baseMap;

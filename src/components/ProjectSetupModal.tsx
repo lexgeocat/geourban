@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useProjectCrsStore } from '../store/projectCrsStore';
 import { useMapStore } from '../store/mapStore';
-import { useLayerStore } from '../store/layerStore';
+import { useUiShellStore } from '../store/uiShellStore';
 import { refreshSourceMetrics } from '../geo/metrics';
 import { utmZoneFromLonLat, type UtmHemisphere, type ProjectCrsMode } from '../geo/utmZones';
 export default function ProjectSetupModal() {
@@ -14,7 +14,7 @@ export default function ProjectSetupModal() {
   const confirm = useProjectCrsStore((s) => s.confirm);
   const viewConfig = useMapStore((s) => s.viewConfig);
   const drawSource = useMapStore((s) => s.drawSource);
-  const setBaseMap = useLayerStore((s) => s.setBaseMap);
+  const setBaseMap = useUiShellStore((s) => s.setBaseMap);
 
   const [localMode, setLocalMode] = useState<ProjectCrsMode>(mode);
   const [localZone, setLocalZone] = useState(utmZone);

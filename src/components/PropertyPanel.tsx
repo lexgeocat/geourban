@@ -3,7 +3,7 @@ import { useSelectionStore } from '../store/selectionStore';
 import { useMapStore } from '../store/mapStore';
 import { useSubdivisionStore } from '../store/subdivisionStore';
 import { useDrawStore } from '../store/drawStore';
-import { useLayerStore } from '../store/layerStore';
+import { useUiShellStore } from '../store/uiShellStore';
 import { formatMetricArea, formatMetricLength, type SegmentMetric } from '../geo/metrics';
 import { useManzanoStore } from '../store/manzanoStore';
 import { getFeatureKind } from '../core/objectModel';
@@ -54,7 +54,7 @@ const valueStyle: React.CSSProperties = {
 
 export default function PropertyPanel() {
   const drawMode = useDrawStore((s) => s.mode);
-  const propertiesVisible = useLayerStore((s) => s.panelVisibility.properties);
+  const propertiesVisible = useUiShellStore((s) => s.panelVisibility.properties);
   const primaryId = useSelectionStore((s) => s.primaryId);
   const selectedCount = useSelectionStore((s) => s.selectedIds.size);
   const drawSource = useMapStore((s) => s.drawSource);

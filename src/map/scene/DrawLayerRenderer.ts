@@ -110,6 +110,12 @@ export function buildDrawLayers(
     disableHitDetection: true,
     style: buildWebglStyle(layers),
   });
+  // Visibilidad inicial de lotes/manzanos — antes solo se aplicaba desde un
+  // useEffect en Map.tsx atado a layerStore.workVisibility (fuente de
+  // verdad duplicada, ver plan-optimizacion-geourban.md Fase 1). Ahora el
+  // caller (Map.tsx) calcula `visibility.lots` desde el registro de capas
+  // y la pasamos acá, igual que ya se hacía con `streetLayer` más abajo.
+  webglLayer.setVisible(visibility.lots);
 
   // La antigua `measurementLayer` (VectorLayer Canvas2D invisible, mismo
   // source que webglLayer, con `declutter: true`) existía SOLO para que

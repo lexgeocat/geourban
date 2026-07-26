@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { ZoomIn, ZoomOut, Maximize2, Undo2, Redo2 } from 'lucide-react';
 import { useMapStore } from '../store/mapStore';
-import { useLayerStore } from '../store/layerStore';
+import { useUiShellStore } from '../store/uiShellStore';
 import { undo, redo, useCommandStack } from '../commands/CommandStack';
 
 import { useProjectCrsStore, type ProjectCrsMode } from '../store/projectCrsStore';
@@ -88,10 +88,10 @@ export default function StatusBar() {
   const zoom = useMapStore((s) => s.zoom);
   const viewConfig = useMapStore((s) => s.viewConfig);
   const drawSource = useMapStore((s) => s.drawSource);
-  const baseMap = useLayerStore((s) => s.baseMap);
-  const setBaseMap = useLayerStore((s) => s.setBaseMap);
-  const panelVisibility = useLayerStore((s) => s.panelVisibility);
-  const setPanelVisibility = useLayerStore((s) => s.setPanelVisibility);
+  const baseMap = useUiShellStore((s) => s.baseMap);
+  const setBaseMap = useUiShellStore((s) => s.setBaseMap);
+  const panelVisibility = useUiShellStore((s) => s.panelVisibility);
+  const setPanelVisibility = useUiShellStore((s) => s.setPanelVisibility);
 
   const crsMode = useProjectCrsStore((s) => s.mode);
   const utmZone = useProjectCrsStore((s) => s.utmZone);

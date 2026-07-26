@@ -20,9 +20,10 @@ import { useGenerateLotsProgressStore } from '../store/generateLotsProgressStore
 import { useCurrentProjectStore } from '../store/currentProjectStore';
 import { useDrawStore, type DrawMode } from '../store/drawStore';
 import {
-  useLayerStore,
+  useUiShellStore,
   type RibbonTabId,
-} from '../store/layerStore';
+} from '../store/uiShellStore';
+import { useLayersStore } from '../store/layersRegistryStore';
 import { useCommandStack } from '../commands/CommandStack';
 import { ClearFeaturesCommand } from '../commands/ClearFeaturesCommand';
 import { AddFeaturesCommand } from '../commands/AddFeaturesCommand';
@@ -37,9 +38,6 @@ import {
   readOlFeaturesFromProject,
   type ExportFormat,
   autosaveProject,
-  listProjectsDesktop,
-  loadProjectDesktop,
-  deleteProjectDesktop,
   isTauri,
 } from '../io';
 import { refreshSourceMetrics } from '../geo/metrics';
@@ -312,23 +310,26 @@ const setManzanoPanelVisible = useManzanoStore((s) => s.setPanelVisible);
   const setMode = useDrawStore((s) => s.setMode);
   const setAreaKind = useDrawStore((s) => s.setAreaKind);
 
-  const baseMap = useLayerStore((s) => s.baseMap);
-  const setBaseMap = useLayerStore((s) => s.setBaseMap);
-  const workVisibility = useLayerStore((s) => s.workVisibility);
-  const setWorkVisibility = useLayerStore((s) => s.setWorkVisibility);
-const statsPanelVisible = useLayerStore((s) => s.statsPanelVisible);
-const setStatsPanelVisible = useLayerStore((s) => s.setStatsPanelVisible);
-const activeTab = useLayerStore((s) => s.activeTab);
+  const baseMap = useUiShellStore((s) => s.baseMap);
+  const setBaseMap = useUiShellStore((s) => s.setBaseMap);
+  const lotsVisible = useLayersStore((s) => s.hasKindVisible('lote') || s.hasKindVisible('manzana'));
+  const streetsVisible = useLayersStore((s) => s.hasKindVisible('calle'));
+  const toggleKindsVisibility = useLayersStore((s) => s.toggleKindsVisibility);
+  const measurementsVisible = useUiShellStore((s) => s.measurementsVisible);
+  const setMeasurementsVisible = useUiShellStore((s) => s.setMeasurementsVisible);
+const statsPanelVisible = useUiShellStore((s) => s.statsPanelVisible);
+const setStatsPanelVisible = useUiShellStore((s) => s.setStatsPanelVisible);
+const activeTab = useUiShellStore((s) => s.activeTab);
   const rbDefaultRadiusM = useRoundaboutStore((s) => s.defaultRadiusM);
 const setRbDefaultRadius = useRoundaboutStore((s) => s.setDefaultRadius);
 const roundaboutPanelVisible = useRoundaboutStore((s) => s.panelVisible);
 const setRoundaboutPanelVisible = useRoundaboutStore((s) => s.setPanelVisible);
 const streetPanelVisible = useStreetStore((s) => s.panelVisible);
 const setStreetPanelVisible = useStreetStore((s) => s.setPanelVisible);
-  const setActiveTab = useLayerStore((s) => s.setActiveTab);
-  const ribbonCollapsed = useLayerStore((s) => s.ribbonCollapsed);
-  const setRibbonCollapsed = useLayerStore((s) => s.setRibbonCollapsed);
-  const propsPanelVisible = useLayerStore((s) => s.panelVisibility.properties);
+  const setActiveTab = useUiShellStore((s) => s.setActiveTab);
+  const ribbonCollapsed = useUiShellStore((s) => s.ribbonCollapsed);
+  const setRibbonCollapsed = useUiShellStore((s) => s.setRibbonCollapsed);
+  const propsPanelVisible = useUiShellStore((s) => s.panelVisibility.properties);
 
   const selectedCount = useSelectionStore((s) => s.selectedIds.size);
   const primarySelected = useSelectionStore((s) => s.primaryId !== null);
@@ -1029,20 +1030,20 @@ src.forEachFeature((f) => {
                 <RibbonTool
                   icon={<LayersIcon />}
                   label="Lotes"
-                  active={workVisibility.lots}
-                  onClick={() => setWorkVisibility('lots', !workVisibility.lots)}
+                  active={lotsVisible}
+                  onClick={() => toggleKindsVisibility(['lote', 'manzana'])}
                 />
                 <RibbonTool
                   icon={<IconStreet />}
                   label="Calles"
-                  active={workVisibility.streets}
-                  onClick={() => setWorkVisibility('streets', !workVisibility.streets)}
+                  active={streetsVisible}
+                  onClick={() => toggleKindsVisibility(['calle'])}
                 />
                 <RibbonTool
                   icon={<Settings2 />}
                   label="Cotas"
-                  active={workVisibility.measurements}
-                  onClick={() => setWorkVisibility('measurements', !workVisibility.measurements)}
+                  active={measurementsVisible}
+                  onClick={() => setMeasurementsVisible(!measurementsVisible)}
                 />
               </RibbonGroup>
               <RibbonGroup label="Paneles">
@@ -1080,7 +1081,7 @@ src.forEachFeature((f) => {
                   icon={<IconCursor />}
                   label="Propiedades"
                   active={propsPanelVisible}
-                  onClick={() => useLayerStore.getState().setPanelVisibility('properties', !propsPanelVisible)}
+                  onClick={() => useUiShellStore.getState().setPanelVisibility('properties', !propsPanelVisible)}
                 />
               </RibbonGroup>
             </>

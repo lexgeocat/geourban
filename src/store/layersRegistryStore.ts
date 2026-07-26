@@ -23,6 +23,11 @@ type LayerState = {
   toggleLock: (id: string) => void;
   /** Alterna el estado de visibilidad de una capa */
   toggleVisibility: (id: string) => void;
+  /** Alterna la visibilidad de TODAS las capas cuyo `kind` esté incluido en
+   *  `kinds` — reemplaza el antiguo `layerStore.workVisibility` (ver
+   *  plan-optimizacion-geourban.md, Fase 1). Usado por los toggles
+   *  "Lotes"/"Calles" del ribbon de Vista (TopBar.tsx). */
+  toggleKindsVisibility: (kinds: string[]) => void;
   /** Selecciona la capa activa (las features nuevas se asignan a esta) */
   setActiveLayer: (id: string | null) => void;
 
@@ -164,6 +169,16 @@ export const useLayersStore = create<LayerState>()(
         const index = state.index.get(id);
         if (index === undefined) return;
         state.layers[index].visible = !state.layers[index].visible;
+      }),
+
+    toggleKindsVisibility: (kinds) =>
+      set((state) => {
+        const kindSet = new Set(kinds);
+        const anyVisible = state.layers.some((l) => kindSet.has(l.kind) && l.visible);
+        const next = !anyVisible;
+        state.layers.forEach((l) => {
+          if (kindSet.has(l.kind)) l.visible = next;
+        });
       }),
 
     setActiveLayer: (id) =>
