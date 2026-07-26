@@ -1,15 +1,15 @@
-import React, { useState, useRef, useEffect } from 'react';
+﻿import React, { useState, useRef, useEffect } from 'react';
 import { ZoomIn, ZoomOut, Maximize2, Undo2, Redo2 } from 'lucide-react';
-import { useMapStore } from '../store/mapStore';
-import { useUiShellStore } from '../store/uiShellStore';
-import { undo, redo, useCommandStack } from '../commands/CommandStack';
+import { useMapStore } from '../../store/map/mapStore';
+import { useUiShellStore } from '../../store/ui/uiShellStore';
+import { undo, redo, useCommandStack } from '../../commands/core/CommandStack';
 
-import { useProjectCrsStore, type ProjectCrsMode } from '../store/projectCrsStore';
-import { BASE_MAP_DEFS, type BaseMapId } from '../map/baseMaps';
-import { refreshSourceMetrics } from '../geo/metrics';
-import SnapPanel from './SnapPanel';
-import { useTopologyWarningsStore } from '../store/topologyWarningsStore';
-import { useRecomputeStatusStore } from '../store/recomputeStatusStore';
+import { useProjectCrsStore, type ProjectCrsMode } from '../../store/project/projectCrsStore';
+import { BASE_MAP_DEFS, type BaseMapId } from '../../map/baseMaps';
+import { refreshSourceMetrics } from '../../geo/metrics';
+import SnapPanel from '../panels/SnapPanel';
+import { useTopologyWarningsStore } from '../../store/topologyWarningsStore';
+import { useRecomputeStatusStore } from '../../store/ui/recomputeStatusStore';
 
 /* ─── Icons ─── */
 

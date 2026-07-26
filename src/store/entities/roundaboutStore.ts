@@ -1,7 +1,7 @@
-// src/store/roundaboutStore.ts
+﻿// src/store/roundaboutStore.ts
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
-import type { RoundaboutParams } from '../geo/roundaboutEngine';
+import type { RoundaboutParams } from '../../geo/roundabout/roundaboutEngine';
 
 export interface Roundabout extends RoundaboutParams {
   id: string;

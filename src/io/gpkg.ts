@@ -1,10 +1,10 @@
-import type { Database } from 'sql.js';
+﻿import type { Database } from 'sql.js';
 import proj4 from 'proj4';
 import { register } from 'ol/proj/proj4.js';
 import type { Feature as GeoJSONFeature, FeatureCollection, Geometry as GeoJSONGeometry } from 'geojson';
 import { createEmptyProject, type GeoUrbanProject, type ImportResult } from './types';
-import { ensureUtmZoneRegistered } from '../geo/utmZones';
-import { reprojectFeatureCollection } from '../geo/crsTransform';
+import { ensureUtmZoneRegistered } from '../geo/crs/utmZones';
+import { reprojectFeatureCollection } from '../geo/crs/crsTransform';
 import { getSql } from './sqlLoader';
 /**
  * sql.js se usa ACÁ de forma legítima: un GeoPackage (.gpkg) es, por

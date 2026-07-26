@@ -1,6 +1,6 @@
-import type { Pt } from './polygonEngine';
-import type { Street } from '../store/streetStore';
-import { roundaboutGeometry, type RoundaboutParams } from './roundaboutEngine';
+﻿import type { Pt } from '../math/polygonEngine';
+import type { Street } from '../../store/entities/streetStore';
+import { roundaboutGeometry, type RoundaboutParams } from '../roundabout/roundaboutEngine';
 
 function normalize(dx: number, dy: number): Pt {
   const len = Math.hypot(dx, dy) || 1;

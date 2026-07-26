@@ -1,4 +1,4 @@
-import Interaction from 'ol/interaction/Interaction.js';
+﻿import Interaction from 'ol/interaction/Interaction.js';
 import type MapBrowserEvent from 'ol/MapBrowserEvent.js';
 import type VectorSource from 'ol/source/Vector.js';
 import type Feature from 'ol/Feature.js';
@@ -9,8 +9,8 @@ import {
   type SnapGuideVisual,
   type SpatialIndexLike,
 } from './advancedSnap';
-import { getEffectiveSnapSettings } from '../store/snapSettingsStore';
-import { useSnapLiveStore } from '../store/snapLiveStore';
+import { getEffectiveSnapSettings } from '../store/map/snapSettingsStore';
+import { useSnapLiveStore } from '../store/map/snapLiveStore';
 import { rafThrottle } from '../utils/rafThrottle';
 
 const SNAP_COORD_EVENT_TYPES = new Set([

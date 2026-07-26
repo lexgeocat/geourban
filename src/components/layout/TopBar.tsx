@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+﻿import React, { useRef, useState } from 'react';
 import {
   ChevronUp,
   Trash2,
@@ -15,22 +15,22 @@ import {
   BarChart3,
   ChevronRight,
 } from 'lucide-react';
-import { useMapStore, resetIncrementalRoadTracking } from '../store/mapStore';
-import { useGenerateLotsProgressStore } from '../store/generateLotsProgressStore';
-import { useCurrentProjectStore } from '../store/currentProjectStore';
-import { useDrawStore, type DrawMode } from '../store/drawStore';
+import { useMapStore, resetIncrementalRoadTracking } from '../../store/map/mapStore';
+import { useGenerateLotsProgressStore } from '../../store/ui/generateLotsProgressStore';
+import { useCurrentProjectStore } from '../../store/project/currentProjectStore';
+import { useDrawStore, type DrawMode } from '../../store/map/drawStore';
 import {
   useUiShellStore,
   type RibbonTabId,
-} from '../store/uiShellStore';
-import { useLayersStore } from '../store/layersRegistryStore';
-import { useCommandStack } from '../commands/CommandStack';
-import { ClearFeaturesCommand } from '../commands/ClearFeaturesCommand';
-import { AddFeaturesCommand } from '../commands/AddFeaturesCommand';
-import { useSelectionStore } from '../store/selectionStore';
-import { useSubdivisionStore } from '../store/subdivisionStore';
-import { useStreetStore } from '../store/streetStore';
-import { GenerateLotsCommand } from '../commands/GenerateLotsCommand';
+} from '../../store/ui/uiShellStore';
+import { useLayersStore } from '../../store/entities/layersRegistryStore';
+import { useCommandStack } from '../../commands/core/CommandStack';
+import { ClearFeaturesCommand } from '../../commands/features/ClearFeaturesCommand';
+import { AddFeaturesCommand } from '../../commands/features/AddFeaturesCommand';
+import { useSelectionStore } from '../../store/map/selectionStore';
+import { useSubdivisionStore } from '../../store/ui/subdivisionStore';
+import { useStreetStore } from '../../store/entities/streetStore';
+import { GenerateLotsCommand } from '../../commands/lots/GenerateLotsCommand';
 import {
   importFile,
   exportProject,
@@ -39,18 +39,18 @@ import {
   type ExportFormat,
   autosaveProject,
   isTauri,
-} from '../io';
-import { refreshSourceMetrics } from '../geo/metrics';
+} from '../../io';
+import { refreshSourceMetrics } from '../../geo/metrics';
 import {
   useProjectCrsStore,
   getProjectCrsConfig,
-} from '../store/projectCrsStore';
-import { BASE_MAP_DEFS, type BaseMapId } from '../map/baseMaps';
-import { ProjectBrowserModal } from './ProjectBrowserModal';
-import { useManzanoStore } from '../store/manzanoStore';
-import { useRoundaboutStore } from '../store/roundaboutStore';
-import type { GeoUrbanProject } from '../io/types';
-import { getFeatureKind } from '../core/objectModel';
+} from '../../store/project/projectCrsStore';
+import { BASE_MAP_DEFS, type BaseMapId } from '../../map/baseMaps';
+import { ProjectBrowserModal } from '../modals/ProjectBrowserModal';
+import { useManzanoStore } from '../../store/entities/manzanoStore';
+import { useRoundaboutStore } from '../../store/entities/roundaboutStore';
+import type { GeoUrbanProject } from '../../io/types';
+import { getFeatureKind } from '../../core/objectModel';
 
 /* ================================================================
    Import accept list (formats supported by io/importers)
@@ -519,7 +519,7 @@ const setStreetPanelVisible = useStreetStore((s) => s.setPanelVisible);
           dataProjection: 'EPSG:3857',
         });
       });
-      const { findOverlapsInWorker } = await import('../workers/geoWorkerClient');
+      const { findOverlapsInWorker } = await import('../../workers/geoWorkerClient');
       const overlaps = await findOverlapsInWorker({ type: 'FeatureCollection', features });
       if (overlaps.length > 0) {
         alert(`Se detectaron ${overlaps.length} superposiciones:\n${overlaps.map((o: any) => `Lote ${o.indexA} ↔ Lote ${o.indexB}: ${o.area.toFixed(2)} m²`).join('\n')}`);
@@ -543,7 +543,7 @@ const setStreetPanelVisible = useStreetStore((s) => s.setPanelVisible);
           dataProjection: 'EPSG:3857',
         });
       });
-      const { findGapsInWorker } = await import('../workers/geoWorkerClient');
+      const { findGapsInWorker } = await import('../../workers/geoWorkerClient');
       const gaps = await findGapsInWorker({ type: 'FeatureCollection', features });
       if (gaps.features.length > 0) {
         alert(`Se detectaron ${gaps.features.length} huecos.`);

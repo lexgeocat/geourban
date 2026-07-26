@@ -1,8 +1,8 @@
-import type VectorSource from 'ol/source/Vector.js';
+﻿import type VectorSource from 'ol/source/Vector.js';
 import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
 import type Map from 'ol/Map.js';
-import { useMapStore } from '../store/mapStore';
+import { useMapStore } from '../../store/map/mapStore';
 
 export interface CommandContext {
   drawSource: VectorSource;

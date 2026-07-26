@@ -1,6 +1,6 @@
-// src/io/persistence.ts
+﻿// src/io/persistence.ts
 import { getProjectStore } from './projectStore';
-import { useCurrentProjectStore } from '../store/currentProjectStore';
+import { useCurrentProjectStore } from '../store/project/currentProjectStore';
 import type { GeoUrbanProject } from './types';
 
 /**

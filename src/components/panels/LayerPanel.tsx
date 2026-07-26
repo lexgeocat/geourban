@@ -1,7 +1,7 @@
-import React, { useState, useRef } from 'react';
-import { useLayersStore } from '../store/layersRegistryStore';
-import type { Layer } from '../core/objectModel';
-import { useIncrementalRender } from '../hooks/useIncrementalRender';
+﻿import React, { useState, useRef } from 'react';
+import { useLayersStore } from '../../store/entities/layersRegistryStore';
+import type { Layer } from '../../core/objectModel';
+import { useIncrementalRender } from '../../hooks/useIncrementalRender';
 
 /* ─────────── Icons ─────────── */
 

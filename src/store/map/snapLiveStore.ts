@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { SnapResult } from '../map/advancedSnap';
+import type { SnapResult } from '../../map/advancedSnap';
 
 type SnapLiveState = {
   /** Último resultado de snap evaluado (indicador circular sobre el mapa). */

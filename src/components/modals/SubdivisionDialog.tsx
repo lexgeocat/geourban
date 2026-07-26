@@ -1,18 +1,18 @@
-import React, { useMemo, useEffect } from 'react';
-import { useSubdivisionStore } from '../store/subdivisionStore';
-import { useMapStore } from '../store/mapStore';
-import { useCommandStack } from '../commands/CommandStack';
-import { SubdivideCommand } from '../commands/SubdivideCommand';
-import { useDrawStore } from '../store/drawStore';
-import { subdivideInWorker } from '../workers/geoWorkerClient';
-import { polyArea, centroid, type Pt } from '../geo/polygonEngine';
+﻿import React, { useMemo, useEffect } from 'react';
+import { useSubdivisionStore } from '../../store/ui/subdivisionStore';
+import { useMapStore } from '../../store/map/mapStore';
+import { useCommandStack } from '../../commands/core/CommandStack';
+import { SubdivideCommand } from '../../commands/lots/SubdivideCommand';
+import { useDrawStore } from '../../store/map/drawStore';
+import { subdivideInWorker } from '../../workers/geoWorkerClient';
+import { polyArea, centroid, type Pt } from '../../geo/math/polygonEngine';
 import type { Polygon as GeoJsonPolygon, LineString as GeoJsonLineString } from 'geojson';
 import GeoJSON from 'ol/format/GeoJSON.js';
 import Feature from 'ol/Feature';
 import type Geometry from 'ol/geom/Geometry';
-import { formatMetricArea } from '../geo/metrics';
-import { useSubdivisionPreviewStore } from '../store/subdivisionPreviewStore';
-import { SUBDIVISION_METHOD_INFO } from '../geo/subdivisionMethodLabels';
+import { formatMetricArea } from '../../geo/metrics';
+import { useSubdivisionPreviewStore } from '../../store/ui/subdivisionPreviewStore';
+import { SUBDIVISION_METHOD_INFO } from '../../geo/subdivision/subdivisionMethodLabels';
 
 
 

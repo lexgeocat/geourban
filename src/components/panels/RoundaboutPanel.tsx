@@ -1,10 +1,10 @@
-// src/components/RoundaboutPanel.tsx
+﻿// src/components/RoundaboutPanel.tsx
 import React from 'react';
-import { useRoundaboutStore } from '../store/roundaboutStore';
-import { useDrawStore } from '../store/drawStore';
-import { roundaboutRoadAreaM2 } from '../geo/roundaboutEngine';
-import { formatMetricArea } from '../geo/metrics';
-import { useViewportWidth } from '../hooks/useViewportWidth';
+import { useRoundaboutStore } from '../../store/entities/roundaboutStore';
+import { useDrawStore } from '../../store/map/drawStore';
+import { roundaboutRoadAreaM2 } from '../../geo/roundabout/roundaboutEngine';
+import { formatMetricArea } from '../../geo/metrics';
+import { useViewportWidth } from '../../hooks/useViewportWidth';
 
 const SIDES_OPTIONS: Array<{ value: number; label: string }> = [
   { value: 0, label: 'Círculo' },

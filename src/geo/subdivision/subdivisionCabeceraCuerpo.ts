@@ -1,4 +1,4 @@
-import { type Pt, type LotResult, polyArea, centroid, convexHull } from './polygonEngine';
+﻿import { type Pt, type LotResult, polyArea, centroid, convexHull } from '../math/polygonEngine';
 
 const lerp = (a: Pt, b: Pt, t: number): Pt => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
 const dist = (a: Pt, b: Pt): number => Math.hypot(b[0] - a[0], b[1] - a[1]);

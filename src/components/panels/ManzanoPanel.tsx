@@ -1,27 +1,27 @@
-import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
+﻿import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
 import Polygon from 'ol/geom/Polygon.js';
-import { useMapStore } from '../store/mapStore';
-import { useManzanoStore, type ManzanoLoteMethod } from '../store/manzanoStore';
-import { useCommandStack } from '../commands/CommandStack';
-import { RecomputeManzanoLotsCommand } from '../commands/RecomputeManzanoLotsCommand';
-import { GenerateLotsCommand } from '../commands/GenerateLotsCommand';
-import { polyArea, centroid, ringPerimeter, type Pt } from '../geo/polygonEngine';
-import { useDrawStore } from '../store/drawStore';
-import { useStreetStore } from '../store/streetStore';
-import { useRoundaboutStore } from '../store/roundaboutStore';
-import { getFeatureKind, ensureKind, getLotStatus, setLotStatus, type LotStatus } from '../core/objectModel';
-import { useIncrementalRender } from '../hooks/useIncrementalRender';
-import { useDrawSourceTick } from '../hooks/useDrawSourceTick';
-import { useViewportWidth } from '../hooks/useViewportWidth';
-import { setMaxFilletRadius, getMaxFilletRadius } from '../geo/streetEngine';
-import { SUBDIVISION_METHOD_INFO } from '../geo/subdivisionMethodLabels';
-import { useTopologyWarningsStore } from '../store/topologyWarningsStore';
-import { useSubdivisionPreviewStore } from '../store/subdivisionPreviewStore';
-import { formatMetricArea } from '../geo/metrics';
-import { subdivideManzanoInWorker } from '../workers/geoWorkerClient';
-import { useGenerateLotsProgressStore } from '../store/generateLotsProgressStore';
+import { useMapStore } from '../../store/map/mapStore';
+import { useManzanoStore, type ManzanoLoteMethod } from '../../store/entities/manzanoStore';
+import { useCommandStack } from '../../commands/core/CommandStack';
+import { RecomputeManzanoLotsCommand } from '../../commands/lots/RecomputeManzanoLotsCommand';
+import { GenerateLotsCommand } from '../../commands/lots/GenerateLotsCommand';
+import { polyArea, centroid, ringPerimeter, type Pt } from '../../geo/math/polygonEngine';
+import { useDrawStore } from '../../store/map/drawStore';
+import { useStreetStore } from '../../store/entities/streetStore';
+import { useRoundaboutStore } from '../../store/entities/roundaboutStore';
+import { getFeatureKind, ensureKind, getLotStatus, setLotStatus, type LotStatus } from '../../core/objectModel';
+import { useIncrementalRender } from '../../hooks/useIncrementalRender';
+import { useDrawSourceTick } from '../../hooks/useDrawSourceTick';
+import { useViewportWidth } from '../../hooks/useViewportWidth';
+import { setMaxFilletRadius, getMaxFilletRadius } from '../../geo/roads/streetEngine';
+import { SUBDIVISION_METHOD_INFO } from '../../geo/subdivision/subdivisionMethodLabels';
+import { useTopologyWarningsStore } from '../../store/topologyWarningsStore';
+import { useSubdivisionPreviewStore } from '../../store/ui/subdivisionPreviewStore';
+import { formatMetricArea } from '../../geo/metrics';
+import { subdivideManzanoInWorker } from '../../workers/geoWorkerClient';
+import { useGenerateLotsProgressStore } from '../../store/ui/generateLotsProgressStore';
 
 const MZN_COLORS = [
   '#58a6ff',

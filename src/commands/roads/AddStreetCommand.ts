@@ -1,12 +1,12 @@
-import { Command, type CommandContext } from './Command';
-import { useStreetStore } from '../store/streetStore';
-import { recomputeManzanos } from '../store/mapStore';
-import { refreshSourceMetrics } from '../geo/metrics';
+﻿import { Command, type CommandContext } from '../core/Command';
+import { useStreetStore } from '../../store/entities/streetStore';
+import { recomputeManzanos } from '../../store/map/mapStore';
+import { refreshSourceMetrics } from '../../geo/metrics';
 import {
   snapshotDrawSource,
   restoreDrawSourceSnapshot,
   type DrawSourceSnapshot,
-} from './drawSourceSnapshot';
+} from '../core/drawSourceSnapshot';
 
 interface StreetEntry {
   id: string | null;

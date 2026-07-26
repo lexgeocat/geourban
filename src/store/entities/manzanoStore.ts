@@ -1,6 +1,6 @@
-import { create } from 'zustand';
-export type { ManzanoLoteMethod } from '../geo/subdivisionAlgorithms';
-import type { ManzanoLoteMethod } from '../geo/subdivisionAlgorithms';
+﻿import { create } from 'zustand';
+export type { ManzanoLoteMethod } from '../../geo/subdivision/subdivisionAlgorithms';
+import type { ManzanoLoteMethod } from '../../geo/subdivision/subdivisionAlgorithms';
 
 export interface RotateDir {
   ax: number;

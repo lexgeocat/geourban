@@ -1,8 +1,8 @@
-import type Feature from 'ol/Feature.js';
+﻿import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
-import { Command, type CommandContext } from './Command';
-import { useSelectionStore } from '../store/selectionStore';
-import { useLayersStore } from '../store/layersRegistryStore';
+import { Command, type CommandContext } from '../core/Command';
+import { useSelectionStore } from '../../store/map/selectionStore';
+import { useLayersStore } from '../../store/entities/layersRegistryStore';
 
 /** Borra features por id. Si no se pasan ids, borra la selección actual.
  *  Respeta el candado (`locked`) del registro de capas: los ids que

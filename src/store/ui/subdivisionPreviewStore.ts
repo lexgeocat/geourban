@@ -1,5 +1,5 @@
-import { create } from 'zustand';
-import type { Pt } from '../geo/polygonEngine';
+﻿import { create } from 'zustand';
+import type { Pt } from '../../geo/math/polygonEngine';
 
 type SubdivisionPreviewState = {
   /** Anillos (EPSG:3857 / unidades de mapa) a pintar como overlay

@@ -1,15 +1,15 @@
-import Feature from 'ol/Feature.js';
+﻿import Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
 import GeoJSON from 'ol/format/GeoJSON.js';
-import { Command, type CommandContext } from './Command';
-import { updateFeatureMetrics } from '../geo/metrics';
-import { subdivideInWorker } from '../workers/geoWorkerClient';
-import { ensureKind } from '../core/objectModel';
-import { resolveLayerId } from './AddFeatureCommand';
-import type { SubdivisionOptions } from '../geo/subdivisionAlgorithms';
+import { Command, type CommandContext } from '../core/Command';
+import { updateFeatureMetrics } from '../../geo/metrics';
+import { subdivideInWorker } from '../../workers/geoWorkerClient';
+import { ensureKind } from '../../core/objectModel';
+import { resolveLayerId } from '../features/AddFeatureCommand';
+import type { SubdivisionOptions } from '../../geo/subdivision/subdivisionAlgorithms';
 import type { Polygon as GeoJsonPolygon } from 'geojson';
-import { checkTopologyInBackground } from '../store/mapStore';
-import { estimateGeometryBytes } from './memoryEstimate';
+import { checkTopologyInBackground } from '../../store/map/mapStore';
+import { estimateGeometryBytes } from '../core/memoryEstimate';
 
 const geoJsonFormat = new GeoJSON();
 

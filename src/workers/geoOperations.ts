@@ -1,4 +1,4 @@
-import GeoJSONReader from 'jsts/org/locationtech/jts/io/GeoJSONReader.js';
+﻿import GeoJSONReader from 'jsts/org/locationtech/jts/io/GeoJSONReader.js';
 import GeoJSONWriter from 'jsts/org/locationtech/jts/io/GeoJSONWriter.js';
 import GeometryFactory from 'jsts/org/locationtech/jts/geom/GeometryFactory.js';
 import OverlayOp from 'jsts/org/locationtech/jts/operation/overlay/OverlayOp.js';
@@ -10,8 +10,8 @@ import {
   type SubdivisionOptions,
   type SubdivisionResult,
   type ManzanoLoteMethod,
-} from '../geo/subdivisionAlgorithms';
-import type { LotResult } from '../geo/polygonEngine';
+} from '../geo/subdivision/subdivisionAlgorithms';
+import type { LotResult } from '../geo/math/polygonEngine';
 
 const geometryFactory = new GeometryFactory();
 const reader = new GeoJSONReader(geometryFactory);

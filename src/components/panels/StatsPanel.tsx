@@ -1,14 +1,14 @@
-import React, { useMemo, useState, useRef, useCallback, useEffect } from 'react';
-import { useMapStore } from '../store/mapStore';
-import { useStreetStore } from '../store/streetStore';
-import { useUiShellStore } from '../store/uiShellStore';
-import { useDrawSourceTick } from '../hooks/useDrawSourceTick';
-import { polyArea, type Pt } from '../geo/polygonEngine';
-import { formatMetricArea } from '../geo/metrics';
+﻿import React, { useMemo, useState, useRef, useCallback, useEffect } from 'react';
+import { useMapStore } from '../../store/map/mapStore';
+import { useStreetStore } from '../../store/entities/streetStore';
+import { useUiShellStore } from '../../store/ui/uiShellStore';
+import { useDrawSourceTick } from '../../hooks/useDrawSourceTick';
+import { polyArea, type Pt } from '../../geo/math/polygonEngine';
+import { formatMetricArea } from '../../geo/metrics';
 import Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
 import Polygon from 'ol/geom/Polygon.js';
-import { getFeatureKind } from '../core/objectModel';
+import { getFeatureKind } from '../../core/objectModel';
 
 const MZN_COLORS = [
   '#58a6ff', '#3fb950', '#f59e0b', '#ef4444', '#8b5cf6',

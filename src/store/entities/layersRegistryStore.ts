@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
-import type { Layer } from '../core/objectModel';
+import type { Layer } from '../../core/objectModel';
 
 type LayerState = {
   /** Lista de capas ordenadas por z-index (índice en array = z-index) */

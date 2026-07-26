@@ -1,7 +1,7 @@
-import type { FeatureCollection, Polygon as GeoJsonPolygon } from 'geojson';
+﻿import type { FeatureCollection, Polygon as GeoJsonPolygon } from 'geojson';
 import type { GeoWorkerRequest, GeoWorkerResponse } from './geoOperations';
-import type { SubdivisionOptions, SubdivisionResult, ManzanoLoteMethod } from '../geo/subdivisionAlgorithms';
-import type { LotResult } from '../geo/polygonEngine';
+import type { SubdivisionOptions, SubdivisionResult, ManzanoLoteMethod } from '../geo/subdivision/subdivisionAlgorithms';
+import type { LotResult } from '../geo/math/polygonEngine';
 
 let interactiveWorker: Worker | null = null;
 let batchWorker: Worker | null = null;

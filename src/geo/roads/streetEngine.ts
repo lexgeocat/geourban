@@ -1,4 +1,4 @@
-import type { Street } from '../store/streetStore';
+﻿import type { Street } from '../../store/entities/streetStore';
 
 export interface StreetFillet {
   corner: [number, number];

@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react';
+﻿import React, { useEffect, useState } from 'react';
 import { ChevronLeft, Plus, Trash2, Copy, FolderOpen, Search } from 'lucide-react';
-import type { GeoUrbanProject } from '../io/types';
-import { getProjectStore, type ProjectSummary } from '../io/projectStore';
+import type { GeoUrbanProject } from '../../io/types';
+import { getProjectStore, type ProjectSummary } from '../../io/projectStore';
 
 interface ProjectBrowserModalProps {
   isOpen: boolean;

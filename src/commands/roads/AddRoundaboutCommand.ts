@@ -1,13 +1,13 @@
-import { Command, type CommandContext } from './Command';
-import { useRoundaboutStore } from '../store/roundaboutStore';
-import { recomputeManzanos } from '../store/mapStore';
-import { refreshSourceMetrics } from '../geo/metrics';
+﻿import { Command, type CommandContext } from '../core/Command';
+import { useRoundaboutStore } from '../../store/entities/roundaboutStore';
+import { recomputeManzanos } from '../../store/map/mapStore';
+import { refreshSourceMetrics } from '../../geo/metrics';
 import {
   snapshotDrawSource,
   restoreDrawSourceSnapshot,
   type DrawSourceSnapshot,
-} from './drawSourceSnapshot';
-import type { RoundaboutParams } from '../geo/roundaboutEngine';
+} from '../core/drawSourceSnapshot';
+import type { RoundaboutParams } from '../../geo/roundabout/roundaboutEngine';
 
 interface RoundaboutEntry {
   id: string | null;

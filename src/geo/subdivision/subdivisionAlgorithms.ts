@@ -1,4 +1,4 @@
-import { subdivideManzanoCabeceraCuerpo } from './subdivisionCabeceraCuerpo';
+﻿import { subdivideManzanoCabeceraCuerpo } from './subdivisionCabeceraCuerpo';
 import type { Polygon as GeoJsonPolygon, MultiPolygon, Feature as GeoJsonFeature } from 'geojson';
 import {
   type Pt,
@@ -12,7 +12,7 @@ import {
   projectExtents,
   pointInPoly,
   buildCutPolys,
-} from './polygonEngine';
+} from '../math/polygonEngine';
 
 // ─── Tipos públicos ─────────────────────────────────────────────────
 

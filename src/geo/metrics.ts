@@ -1,13 +1,13 @@
-import Feature from 'ol/Feature.js';
+﻿import Feature from 'ol/Feature.js';
 import LineString from 'ol/geom/LineString.js';
 import Polygon from 'ol/geom/Polygon.js';
 import type Geometry from 'ol/geom/Geometry.js';
 import VectorSource from 'ol/source/Vector.js';
 import { transform } from 'ol/proj.js';
-import { DISPLAY_PROJECTION, GEOGRAPHIC_PROJECTION } from './projections';
-import { useProjectCrsStore } from '../store/projectCrsStore';
-import { ensureUtmZoneRegistered } from './utmZones';
-import { pathLength } from './polygonEngine';
+import { DISPLAY_PROJECTION, GEOGRAPHIC_PROJECTION } from './crs/projections';
+import { useProjectCrsStore } from '../store/project/projectCrsStore';
+import { ensureUtmZoneRegistered } from './crs/utmZones';
+import { pathLength } from './math/polygonEngine';
 
 export type SegmentMetric = {
   midpoint: [number, number];

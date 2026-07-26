@@ -1,4 +1,4 @@
-import { create } from 'zustand';
+﻿import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import {
   ensureUtmZoneRegistered,
@@ -6,7 +6,7 @@ import {
   type UtmHemisphere,
   type ProjectCrsMode,
   type ProjectCrsConfig,
-} from '../geo/utmZones';
+} from '../../geo/crs/utmZones';
 
 export type { ProjectCrsMode };
 

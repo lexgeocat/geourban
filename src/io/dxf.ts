@@ -1,12 +1,12 @@
-import DxfParser, { type IEntity } from 'dxf-parser';
+﻿import DxfParser, { type IEntity } from 'dxf-parser';
 import Drawing from 'dxf-writer';
 import { createEmptyProject, type GeoUrbanProject, type ImportResult } from './types';
 import type { Feature, FeatureCollection, LineString, Point, Polygon } from 'geojson';
-import { useMapStore } from '../store/mapStore';
-import { useProjectCrsStore } from '../store/projectCrsStore';
-import { ensureUtmZoneRegistered, utmZoneLabel } from '../geo/utmZones';
-import { reprojectFeatureCollection, mapFeatureCollectionCoords, utmWkt } from '../geo/crsTransform';
-import { sampleArc } from '../geo/arcMath';
+import { useMapStore } from '../store/map/mapStore';
+import { useProjectCrsStore } from '../store/project/projectCrsStore';
+import { ensureUtmZoneRegistered, utmZoneLabel } from '../geo/crs/utmZones';
+import { reprojectFeatureCollection, mapFeatureCollectionCoords, utmWkt } from '../geo/crs/crsTransform';
+import { sampleArc } from '../geo/math/arcMath';
 const GEOGRAPHIC = 'EPSG:4326';
 
 export async function importDxf(file: File): Promise<ImportResult> {

@@ -1,4 +1,4 @@
-import Interaction from 'ol/interaction/Interaction.js';
+﻿import Interaction from 'ol/interaction/Interaction.js';
 import type MapBrowserEvent from 'ol/MapBrowserEvent.js';
 import type Map from 'ol/Map.js';
 import VectorSource from 'ol/source/Vector.js';
@@ -7,7 +7,7 @@ import Feature from 'ol/Feature.js';
 import Point from 'ol/geom/Point.js';
 import LineString from 'ol/geom/LineString.js';
 import { Style, Stroke, Fill, Circle as CircleStyle, Text } from 'ol/style.js';
-import { useManzanoStore } from '../../store/manzanoStore';
+import { useManzanoStore } from '../../store/entities/manzanoStore';
 
 const HIT_TOLERANCE_PX = 14;
 

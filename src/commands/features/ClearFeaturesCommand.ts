@@ -1,7 +1,7 @@
-import type VectorSource from 'ol/source/Vector.js';
+﻿import type VectorSource from 'ol/source/Vector.js';
 import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
-import { Command, type CommandContext } from './Command';
+import { Command, type CommandContext } from '../core/Command';
 
 /**
  * Clears all features from the drawSource.

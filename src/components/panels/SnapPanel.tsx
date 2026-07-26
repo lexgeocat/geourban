@@ -1,7 +1,7 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { useSnapSettingsStore } from '../store/snapSettingsStore';
-import { useSnapLiveStore } from '../store/snapLiveStore';
-import { SNAP_COLORS, SNAP_LABELS, SNAP_GROUPS, type SnapType } from '../map/advancedSnap';
+﻿import React, { useEffect, useRef, useState } from 'react';
+import { useSnapSettingsStore } from '../../store/map/snapSettingsStore';
+import { useSnapLiveStore } from '../../store/map/snapLiveStore';
+import { SNAP_COLORS, SNAP_LABELS, SNAP_GROUPS, type SnapType } from '../../map/advancedSnap';
 
 const IconSnap = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: 13, height: 13 }}>

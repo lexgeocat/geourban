@@ -1,12 +1,12 @@
-import { useEffect } from 'react';
-import { useDrawStore, type DrawMode } from '../store/drawStore';
-import { undo, redo, useCommandStack } from '../commands/CommandStack';
-import { useMapStore } from '../store/mapStore';
-import { useSelectionStore } from '../store/selectionStore';
-import { useSnapSettingsStore } from '../store/snapSettingsStore';
-import { useLayersStore } from '../store/layersRegistryStore';
-import { DeleteFeaturesCommand } from '../commands/DeleteFeaturesCommand';
-import { runCommand } from '../commands/CommandStack';
+﻿import { useEffect } from 'react';
+import { useDrawStore, type DrawMode } from '../store/map/drawStore';
+import { undo, redo, useCommandStack } from '../commands/core/CommandStack';
+import { useMapStore } from '../store/map/mapStore';
+import { useSelectionStore } from '../store/map/selectionStore';
+import { useSnapSettingsStore } from '../store/map/snapSettingsStore';
+import { useLayersStore } from '../store/entities/layersRegistryStore';
+import { DeleteFeaturesCommand } from '../commands/features/DeleteFeaturesCommand';
+import { runCommand } from '../commands/core/CommandStack';
 
 // No se disparan si el foco esta en un input/textarea/contentEditable
 

@@ -1,20 +1,20 @@
-import React, { useEffect } from 'react';
+﻿import React, { useEffect } from 'react';
 import MapView from './map/Map';
-import TopBar from './components/TopBar';
-import StatusBar from './components/StatusBar';
-import LayerPanel from './components/LayerPanel';
-import SubdivisionDialog from './components/SubdivisionDialog';
-import PropertyPanel from './components/PropertyPanel';
-import StatsPanel from './components/StatsPanel';
+import TopBar from './components/layout/TopBar';
+import StatusBar from './components/layout/StatusBar';
+import LayerPanel from './components/panels/LayerPanel';
+import SubdivisionDialog from './components/modals/SubdivisionDialog';
+import PropertyPanel from './components/panels/PropertyPanel';
+import StatsPanel from './components/panels/StatsPanel';
 import { startAutosave } from './io/persistence';
 import { writeProjectFromOlFeatures } from './io/geojson';
-import { useMapStore } from './store/mapStore';
-import { useUiShellStore } from './store/uiShellStore';
+import { useMapStore } from './store/map/mapStore';
+import { useUiShellStore } from './store/ui/uiShellStore';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
-import ProjectSetupModal from './components/ProjectSetupModal';
-import ManzanoPanel from './components/ManzanoPanel';
-import RoundaboutPanel from './components/RoundaboutPanel';
-import StreetPanel from './components/StreetPanel';
+import ProjectSetupModal from './components/modals/ProjectSetupModal';
+import ManzanoPanel from './components/panels/ManzanoPanel';
+import RoundaboutPanel from './components/panels/RoundaboutPanel';
+import StreetPanel from './components/panels/StreetPanel';
 
 function App() {
   useKeyboardShortcuts();

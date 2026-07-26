@@ -1,6 +1,6 @@
-import type Feature from 'ol/Feature.js';
+﻿import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
-import { Command, type CommandContext } from './Command';
+import { Command, type CommandContext } from '../core/Command';
 import { AddFeatureCommand } from './AddFeatureCommand';
 
 /**

@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
-import { useProjectCrsStore } from '../store/projectCrsStore';
-import { useMapStore } from '../store/mapStore';
-import { useUiShellStore } from '../store/uiShellStore';
-import { refreshSourceMetrics } from '../geo/metrics';
-import { utmZoneFromLonLat, type UtmHemisphere, type ProjectCrsMode } from '../geo/utmZones';
+﻿import React, { useState } from 'react';
+import { useProjectCrsStore } from '../../store/project/projectCrsStore';
+import { useMapStore } from '../../store/map/mapStore';
+import { useUiShellStore } from '../../store/ui/uiShellStore';
+import { refreshSourceMetrics } from '../../geo/metrics';
+import { utmZoneFromLonLat, type UtmHemisphere, type ProjectCrsMode } from '../../geo/crs/utmZones';
 export default function ProjectSetupModal() {
   const confirmed = useProjectCrsStore((s) => s.confirmed);
   const mode = useProjectCrsStore((s) => s.mode);

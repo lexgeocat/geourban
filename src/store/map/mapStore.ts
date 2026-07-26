@@ -1,35 +1,35 @@
-import { create } from 'zustand';
+﻿import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import Map from 'ol/Map.js';
 import VectorSource from 'ol/source/Vector.js';
 import GeoJSON from 'ol/format/GeoJSON.js';
 import { extend as extendExtent, intersects as extentIntersects, Extent } from 'ol/extent.js';
-import { refreshSourceMetrics, updateFeatureMetrics } from '../geo/metrics';
-import { clipHalfPlane, pointInPoly, polyArea, type Pt } from '../geo/polygonEngine';
+import { refreshSourceMetrics, updateFeatureMetrics } from '../../geo/metrics';
+import { clipHalfPlane, pointInPoly, polyArea, type Pt } from '../../geo/math/polygonEngine';
 import { useSelectionStore } from './selectionStore';
-import { useStreetStore, type Street } from './streetStore';
-import { useRoundaboutStore, type Roundabout } from './roundaboutStore';
-import { useManzanoStore } from './manzanoStore';
-import { useLayersStore } from './layersRegistryStore';
-import { useRecomputeStatusStore } from './recomputeStatusStore';
+import { useStreetStore, type Street } from '../entities/streetStore';
+import { useRoundaboutStore, type Roundabout } from '../entities/roundaboutStore';
+import { useManzanoStore } from '../entities/manzanoStore';
+import { useLayersStore } from '../entities/layersRegistryStore';
+import { useRecomputeStatusStore } from '../ui/recomputeStatusStore';
 import {
   validateTopologyInWorker,
   computeManzanosInWorker,
   subdivideManzanoInWorker,
   findOverlapsInWorker,
   findGapsInWorker,
-} from '../workers/geoWorkerClient';
-import { useTopologyWarningsStore } from './topologyWarningsStore';
+} from '../../workers/geoWorkerClient';
+import { useTopologyWarningsStore } from '../topologyWarningsStore';
 import type { FeatureCollection, Feature as GeoJSONFeature } from 'geojson';
 import Feature from 'ol/Feature.js';
 import PolygonGeom from 'ol/geom/Polygon.js';
 import type Geometry from 'ol/geom/Geometry.js';
-import { runCommand } from '../commands/CommandStack';
-import { DeleteFeaturesCommand } from '../commands/DeleteFeaturesCommand';
-import { ensureKind, getFeatureKind, getLotStatus, setLotStatus } from '../core/objectModel';
-import type { ManzanoLoteMethod } from '../geo/subdivisionAlgorithms';
-import { buildRoadNetworkRings } from '../geo/roadNetworkEngine';
-import { roundRingReflex } from '../geo/ringFillet';
+import { runCommand } from '../../commands/core/CommandStack';
+import { DeleteFeaturesCommand } from '../../commands/features/DeleteFeaturesCommand';
+import { ensureKind, getFeatureKind, getLotStatus, setLotStatus } from '../../core/objectModel';
+import type { ManzanoLoteMethod } from '../../geo/subdivision/subdivisionAlgorithms';
+import { buildRoadNetworkRings } from '../../geo/roads/roadNetworkEngine';
+import { roundRingReflex } from '../../geo/roads/ringFillet';
 
 const geoJsonFormat = new GeoJSON();
 

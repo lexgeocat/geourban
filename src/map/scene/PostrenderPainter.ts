@@ -1,4 +1,4 @@
-import { getOrCreateSpatialIndex } from '../spatialIndex';
+﻿import { getOrCreateSpatialIndex } from '../spatialIndex';
 import type Map from 'ol/Map.js';
 import type VectorSource from 'ol/source/Vector.js';
 import type VectorLayer from 'ol/layer/Vector.js';
@@ -6,12 +6,12 @@ import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
 import Polygon from 'ol/geom/Polygon.js';
 import LineString from 'ol/geom/LineString.js';
-import { useStreetStore, type Street } from '../../store/streetStore';
-import { useSelectionStore } from '../../store/selectionStore';
-import { computeStreetFilletsBoth, computeStreetPairFillets, filletArcPoints, type StreetFillet } from '../../geo/streetEngine';
-import { type Pt } from '../../geo/polygonEngine';
-import { useRoundaboutStore } from '../../store/roundaboutStore';
-import { roundaboutGeometry } from '../../geo/roundaboutEngine';
+import { useStreetStore, type Street } from '../../store/entities/streetStore';
+import { useSelectionStore } from '../../store/map/selectionStore';
+import { computeStreetFilletsBoth, computeStreetPairFillets, filletArcPoints, type StreetFillet } from '../../geo/roads/streetEngine';
+import { type Pt } from '../../geo/math/polygonEngine';
+import { useRoundaboutStore } from '../../store/entities/roundaboutStore';
+import { roundaboutGeometry } from '../../geo/roundabout/roundaboutEngine';
 import type { RoundaboutDrawPreview } from './RoundaboutDrawInteraction';
 import {
   drawSegmentLabels,
@@ -1000,9 +1000,9 @@ private paintLassoPreview(
     ctx.restore();
   }
 
-  private currentSubdivisionPreview: import('../../geo/polygonEngine').Pt[][] | null = null;
+  private currentSubdivisionPreview: import('../../geo/math/polygonEngine').Pt[][] | null = null;
 
-  setSubdivisionPreview(rings: import('../../geo/polygonEngine').Pt[][] | null): void {
+  setSubdivisionPreview(rings: import('../../geo/math/polygonEngine').Pt[][] | null): void {
     this.currentSubdivisionPreview = rings;
     this.postrenderLayer.changed();
   }

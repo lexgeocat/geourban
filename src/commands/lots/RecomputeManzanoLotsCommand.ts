@@ -1,24 +1,24 @@
-import type Feature from 'ol/Feature.js';
+﻿import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
 import GeoJSON from 'ol/format/GeoJSON.js';
 import PolygonGeom from 'ol/geom/Polygon.js';
 import FeatureOL from 'ol/Feature.js';
-import { Command, type CommandContext } from './Command';
-import type { ManzanoLoteMethod } from '../geo/subdivisionAlgorithms';
-import { updateFeatureMetrics } from '../geo/metrics';
+import { Command, type CommandContext } from '../core/Command';
+import type { ManzanoLoteMethod } from '../../geo/subdivision/subdivisionAlgorithms';
+import { updateFeatureMetrics } from '../../geo/metrics';
 import {
   ensureKind,
   getFeatureKind,
   getLotStatus,
   setLotStatus,
   type LotStatus,
-} from '../core/objectModel';
-import { resolveLayerId } from './AddFeatureCommand';
-import { subdivideManzanoInWorker } from '../workers/geoWorkerClient';
-import { useManzanoStore } from '../store/manzanoStore';
-import { polyArea, ringPerimeter, centroid } from '../geo/polygonEngine';
-import { checkTopologyInBackground } from '../store/mapStore';
-import { estimateGeometryBytes } from './memoryEstimate';
+} from '../../core/objectModel';
+import { resolveLayerId } from '../features/AddFeatureCommand';
+import { subdivideManzanoInWorker } from '../../workers/geoWorkerClient';
+import { useManzanoStore } from '../../store/entities/manzanoStore';
+import { polyArea, ringPerimeter, centroid } from '../../geo/math/polygonEngine';
+import { checkTopologyInBackground } from '../../store/map/mapStore';
+import { estimateGeometryBytes } from '../core/memoryEstimate';
 
 const geoJsonFormat = new GeoJSON();
 

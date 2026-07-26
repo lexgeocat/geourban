@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
-import { useStreetStore } from '../store/streetStore';
-import { recomputeManzanos } from '../store/mapStore';
-import { formatMetricLength, formatMetricArea } from '../geo/metrics';
-import { pathLength } from '../geo/polygonEngine';
-import { useViewportWidth } from '../hooks/useViewportWidth';
+﻿import React, { useState } from 'react';
+import { useStreetStore } from '../../store/entities/streetStore';
+import { recomputeManzanos } from '../../store/map/mapStore';
+import { formatMetricLength, formatMetricArea } from '../../geo/metrics';
+import { pathLength } from '../../geo/math/polygonEngine';
+import { useViewportWidth } from '../../hooks/useViewportWidth';
 
 function streetLengthM(street: { start: [number, number]; end: [number, number]; waypoints?: Array<[number, number]> }): number {
   return pathLength([street.start, ...(street.waypoints ?? []), street.end]);

@@ -1,7 +1,7 @@
-// src/commands/CommandStack.ts
+﻿// src/commands/CommandStack.ts
 import { create } from 'zustand';
 import { Command, type CommandContext, getCommandContext } from './Command';
-import { useSelectionStore } from '../store/selectionStore';
+import { useSelectionStore } from '../../store/map/selectionStore';
 
 type RunResult =
   | { ok: true; command: Command }

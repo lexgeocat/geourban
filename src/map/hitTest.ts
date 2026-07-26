@@ -1,4 +1,4 @@
-import type Feature from 'ol/Feature.js';
+﻿import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
 import Polygon from 'ol/geom/Polygon.js';
 import MultiPolygon from 'ol/geom/MultiPolygon.js';
@@ -6,7 +6,7 @@ import LineString from 'ol/geom/LineString.js';
 import Point from 'ol/geom/Point.js';
 import type VectorSource from 'ol/source/Vector.js';
 import type { SpatialIndex } from './spatialIndex';
-import { pointInPoly } from '../geo/polygonEngine';
+import { pointInPoly } from '../geo/math/polygonEngine';
 
 /**
  * Hit-testing propio (RBush broad-phase + test exacto de geometría) —

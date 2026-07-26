@@ -1,12 +1,12 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { useSelectionStore } from '../store/selectionStore';
-import { useMapStore } from '../store/mapStore';
-import { useSubdivisionStore } from '../store/subdivisionStore';
-import { useDrawStore } from '../store/drawStore';
-import { useUiShellStore } from '../store/uiShellStore';
-import { formatMetricArea, formatMetricLength, type SegmentMetric } from '../geo/metrics';
-import { useManzanoStore } from '../store/manzanoStore';
-import { getFeatureKind } from '../core/objectModel';
+﻿import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { useSelectionStore } from '../../store/map/selectionStore';
+import { useMapStore } from '../../store/map/mapStore';
+import { useSubdivisionStore } from '../../store/ui/subdivisionStore';
+import { useDrawStore } from '../../store/map/drawStore';
+import { useUiShellStore } from '../../store/ui/uiShellStore';
+import { formatMetricArea, formatMetricLength, type SegmentMetric } from '../../geo/metrics';
+import { useManzanoStore } from '../../store/entities/manzanoStore';
+import { getFeatureKind } from '../../core/objectModel';
 
 const panelStyle: React.CSSProperties = {
   position: 'absolute',

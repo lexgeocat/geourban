@@ -1,6 +1,6 @@
-import type { FeatureCollection } from 'geojson';
+﻿import type { FeatureCollection } from 'geojson';
 import type { BaseMapId } from '../map/baseMaps';
-import type { ProjectCrsConfig } from '../geo/utmZones';
+import type { ProjectCrsConfig } from '../geo/crs/utmZones';
 
 export type GeoUrbanLayerMeta = {
   id: string;
