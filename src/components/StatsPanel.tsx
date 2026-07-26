@@ -3,6 +3,7 @@ import { useMapStore } from '../store/mapStore';
 import { useStreetStore } from '../store/streetStore';
 import { useLayerStore } from '../store/layerStore';
 import { polyArea, type Pt } from '../geo/polygonEngine';
+import { formatMetricArea } from '../geo/metrics';
 import Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
 import Polygon from 'ol/geom/Polygon.js';
@@ -12,11 +13,6 @@ const MZN_COLORS = [
   '#58a6ff', '#3fb950', '#f59e0b', '#ef4444', '#8b5cf6',
   '#ec4899', '#14b8a6', '#f97316', '#06b6d4', '#84cc16',
 ];
-
-function formatArea(m2: number): string {
-  if (m2 >= 10000) return `${(m2 / 10000).toFixed(2)} ha`;
-  return `${m2.toFixed(1)} m²`;
-}
 
 interface ManzanoInfo {
   index: number;
@@ -229,14 +225,14 @@ export default function StatsPanel() {
       {/* Tabla de estadísticas */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: '3px 10px', marginBottom: 8 }}>
         <span style={{ color: 'var(--cad-text-dim)' }}>Área total:</span>
-        <span style={{ color: '#3fb950', fontFamily: 'JetBrains Mono, monospace', textAlign: 'right' }}>{formatArea(stats.totalAreaM2)}</span>
+        <span style={{ color: '#3fb950', fontFamily: 'JetBrains Mono, monospace', textAlign: 'right' }}>{formatMetricArea(stats.totalAreaM2)}</span>
         <span />
 
         {stats.manzanoCount > 0 && (
           <>
             <span style={{ color: 'var(--cad-text-dim)' }}>Manzanos:</span>
             <span style={{ color: '#58a6ff', fontFamily: 'JetBrains Mono, monospace', textAlign: 'right' }}>{stats.manzanoCount}</span>
-            <span style={{ color: 'var(--cad-text-muted)', fontSize: '0.65rem' }}>{formatArea(stats.manzanoAreaM2)}</span>
+            <span style={{ color: 'var(--cad-text-muted)', fontSize: '0.65rem' }}>{formatMetricArea(stats.manzanoAreaM2)}</span>
           </>
         )}
 
@@ -244,7 +240,7 @@ export default function StatsPanel() {
           <>
             <span style={{ color: 'var(--cad-text-dim)' }}>Lotes:</span>
             <span style={{ color: '#10b981', fontFamily: 'JetBrains Mono, monospace', textAlign: 'right' }}>{stats.lotCount}</span>
-            <span style={{ color: 'var(--cad-text-muted)', fontSize: '0.65rem' }}>{formatArea(stats.lotAreaM2)}</span>
+            <span style={{ color: 'var(--cad-text-muted)', fontSize: '0.65rem' }}>{formatMetricArea(stats.lotAreaM2)}</span>
           </>
         )}
 
@@ -252,7 +248,7 @@ export default function StatsPanel() {
           <>
             <span style={{ color: 'var(--cad-text-dim)' }}>Calles:</span>
             <span style={{ color: '#ffa657', fontFamily: 'JetBrains Mono, monospace', textAlign: 'right' }}>{stats.streetCount}</span>
-            <span style={{ color: 'var(--cad-text-muted)', fontSize: '0.65rem' }}>{formatArea(stats.streetAreaM2)}</span>
+            <span style={{ color: 'var(--cad-text-muted)', fontSize: '0.65rem' }}>{formatMetricArea(stats.streetAreaM2)}</span>
           </>
         )}
 
@@ -260,7 +256,7 @@ export default function StatsPanel() {
           <>
             <span style={{ color: 'var(--cad-text-dim)' }}>Equipamiento:</span>
             <span style={{ color: '#e3b341', fontFamily: 'JetBrains Mono, monospace', textAlign: 'right' }}>{stats.equipCount}</span>
-            <span style={{ color: 'var(--cad-text-muted)', fontSize: '0.65rem' }}>{formatArea(stats.equipAreaM2)}</span>
+            <span style={{ color: 'var(--cad-text-muted)', fontSize: '0.65rem' }}>{formatMetricArea(stats.equipAreaM2)}</span>
           </>
         )}
       </div>
@@ -313,7 +309,7 @@ export default function StatsPanel() {
               }} />
               <span style={{ color: 'var(--cad-text-dim)' }}>Mzo. {m.index + 1}</span>
               <span style={{ color: 'var(--cad-text-muted)', marginLeft: 'auto', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.62rem' }}>
-                {formatArea(m.areaM2)}
+                {formatMetricArea(m.areaM2)}
               </span>
               <span style={{ color: 'var(--cad-text-muted)', fontSize: '0.58rem' }}>
                 {m.vertexCount} vért.

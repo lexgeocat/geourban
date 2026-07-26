@@ -365,38 +365,8 @@ body,
   }
 }
 
-@keyframes cadSpin {
-  to { transform: rotate(360deg); }
-}
-.cad-spinner {
-  display: inline-block;
-  width: 10px;
-  height: 10px;
-  border: 2px solid rgba(0, 212, 255, 0.25);
-  border-top-color: var(--cad-accent);
-  border-radius: 50%;
-  animation: cadSpin 0.6s linear infinite;
-  vertical-align: middle;
-  margin-right: 5px;
-}
-
 .animate-fade-in {
   animation: fadeSlideIn 0.25s ease-out;
-}
-
-@keyframes cadSpin {
-  to { transform: rotate(360deg); }
-}
-.cad-spinner {
-  display: inline-block;
-  width: 10px;
-  height: 10px;
-  border: 2px solid rgba(0, 212, 255, 0.25);
-  border-top-color: var(--cad-accent);
-  border-radius: 50%;
-  animation: cadSpin 0.6s linear infinite;
-  vertical-align: middle;
-  margin-right: 5px;
 }
 
 /* ============================================================
@@ -823,21 +793,6 @@ body,
   .ribbon-group-label {
     display: none;
   }
-}
-
-@keyframes cadSpin {
-  to { transform: rotate(360deg); }
-}
-.cad-spinner {
-  display: inline-block;
-  width: 10px;
-  height: 10px;
-  border: 2px solid rgba(0, 212, 255, 0.25);
-  border-top-color: var(--cad-accent);
-  border-radius: 50%;
-  animation: cadSpin 0.6s linear infinite;
-  vertical-align: middle;
-  margin-right: 5px;
 }
 
 @media (max-width: 900px) {

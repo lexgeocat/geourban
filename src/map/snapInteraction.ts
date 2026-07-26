@@ -10,7 +10,7 @@ import {
   type SpatialIndexLike,
 } from './advancedSnap';
 import { getEffectiveSnapSettings } from '../store/snapSettingsStore';
-import { useSnapLiveStore } from '../store/snapStateStore';
+import { useSnapLiveStore } from '../store/snapLiveStore';
 import { rafThrottle } from '../utils/rafThrottle';
 
 const SNAP_COORD_EVENT_TYPES = new Set([

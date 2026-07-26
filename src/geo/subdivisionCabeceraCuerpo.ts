@@ -63,7 +63,7 @@ function minAreaBoundingQuad(pts: Pt[]): Pt[] {
 // manzano en vez de su envolvente. Si no da un cuadrilátero limpio, cae al
 // rectángulo de área mínima.
 function unfilletManzano(ringIn: Pt[]): Pt[] {
-  let pts = ringIn.slice();
+  const pts = ringIn.slice();
   if (pts.length > 1) {
     const f = pts[0], l = pts[pts.length - 1];
     if (Math.abs(f[0] - l[0]) < 1e-9 && Math.abs(f[1] - l[1]) < 1e-9) pts.pop();
@@ -377,7 +377,7 @@ function hbLotizeWithBaseline(mznPts: Pt[], cfg: HbConfig, baseline: [Pt, Pt]): 
     const dividerAt = (f: number): { nx: number; ny: number; d: number } => {
       if (!skewOk) return { nx: vx, ny: vy, d: vMinZ + f * vSpanZ };
       const pt = lerp(topLo!, topHi!, f), pb = lerp(botLo!, botHi!, f);
-      let dx = pb[0] - pt[0], dy = pb[1] - pt[1];
+      const dx = pb[0] - pt[0], dy = pb[1] - pt[1];
       const len = Math.hypot(dx, dy);
       let nx: number, ny: number;
       if (len < 1e-9) { nx = vx; ny = vy; } else { nx = dy / len; ny = -dx / len; }

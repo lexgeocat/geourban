@@ -43,8 +43,8 @@ function cornerFilletArc(prev: Pt, cur: Pt, next: Pt, r: number): Pt[] | null {
   const dCtr = reff / Math.sin(ang / 2);
   const center: Pt = [cur[0] + bis[0] * dCtr, cur[1] + bis[1] * dCtr];
 
-  let a0 = Math.atan2(ta[1] - center[1], ta[0] - center[0]);
-  let a1 = Math.atan2(tb[1] - center[1], tb[0] - center[0]);
+  const a0 = Math.atan2(ta[1] - center[1], ta[0] - center[0]);
+  const a1 = Math.atan2(tb[1] - center[1], tb[0] - center[0]);
   let da = a1 - a0;
   while (da > Math.PI) da -= 2 * Math.PI;
   while (da < -Math.PI) da += 2 * Math.PI;
@@ -68,7 +68,7 @@ function cornerFilletArc(prev: Pt, cur: Pt, next: Pt, r: number): Pt[] | null {
  * o N vías confluyendo en un mismo punto se resuelven igual.
  */
 export function roundRingReflex(ringIn: Pt[], extraM = 0): Pt[] {
-  let pts = ringIn.slice();
+  const pts = ringIn.slice();
   if (pts.length > 1) {
     const f = pts[0], l = pts[pts.length - 1];
     if (Math.abs(f[0] - l[0]) < 1e-9 && Math.abs(f[1] - l[1]) < 1e-9) pts.pop();

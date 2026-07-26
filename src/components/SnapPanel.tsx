@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useSnapSettingsStore } from '../store/snapSettingsStore';
-import { useSnapLiveStore } from '../store/snapStateStore';
+import { useSnapLiveStore } from '../store/snapLiveStore';
 import { SNAP_COLORS, SNAP_LABELS, SNAP_GROUPS, type SnapType } from '../map/advancedSnap';
 
 const IconSnap = () => (

@@ -1,5 +1,5 @@
 import type { ImportFormat, ExportFormat, ImportResult, GeoUrbanProject } from './types';
-import type { Feature as GeoJSONFeature, FeatureCollection, Geometry as GeoJSONGeometry, LineString, Point, Polygon } from 'geojson';
+import type { FeatureCollection } from 'geojson';
 import {
   parseGeoUrbanJson,
   parseGeoJson,
