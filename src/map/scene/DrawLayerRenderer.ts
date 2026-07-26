@@ -131,7 +131,13 @@ export function buildDrawLayers(
   const streetLayer = new VectorLayer({
     source: streetSource,
     visible: visibility.streets,
-    style: undefined, // el postrender de PostrenderPainter pinta las calles
+    // null (NO undefined): `undefined` hace que OL aplique su estilo por
+    // DEFECTO (visible) a cualquier feature que quede en streetSource —
+    // que se supone vacío entre trazados, ya que quien realmente dibuja
+    // las calles es el postrender de PostrenderPainter. Con `undefined`,
+    // cualquier feature huérfana ahí (ver fix en StreetMode.ts) se veía
+    // como una línea fantasma con el estilo azul por defecto de OL.
+    style: null,
   });
 
   const postrenderLayer = new VectorLayer({

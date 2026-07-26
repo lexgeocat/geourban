@@ -14,13 +14,7 @@ const reader = new GeoJSONReader(geometryFactory);
 const writer = new GeoJSONWriter();
 
 export interface RoadNetworkNet {
-  /** Anillos (posiblemente disjuntos) del borde de CALZADA, ya unidos y
-   *  con ochave real en cada esquina cóncava. Reemplaza el fillet
-   *  calle-por-calle de `streetEngine.ts::computeStreetPairFillets`
-   *  (ambiguo en cruces no perpendiculares o de 3+ vías — la causa de los
-   *  "ochaves al revés"). */
   road: Pt[][];
-  /** Igual, borde de VEREDA (calzada + ancho de vereda). */
   outer: Pt[][];
 }
 
@@ -33,19 +27,49 @@ function closeRing(ring: Pt[]): Pt[] {
 function orientRingCcw(ring: Pt[]): Pt[] {
   let area = 0;
   for (let i = 0; i < ring.length; i++) {
-    const [x1, y1] = ring[i];
-    const [x2, y2] = ring[(i + 1) % ring.length];
-    area += x1 * y2 - x2 * y1;
+    const p = ring[i], q = ring[(i + 1) % ring.length];
+    area += p[0] * q[1] - q[0] * p[1];
   }
   return area >= 0 ? ring : ring.slice().reverse();
 }
 
+/**
+ * Redondea a una grilla fija ANTES de la unión booleana — mismo criterio
+ * que `roundStripForUnion` en index_modelo.html. El overlay clásico de
+ * JTS/JSTS (`OverlayOp`, no el `OverlayNG` moderno) es sensible a bordes
+ * casi paralelos / casi colineales muy cercanos AUNQUE no se toquen: dos
+ * vías paralelas offseteadas (típicamente varias trazadas en la misma
+ * dirección, p.ej. dos verticales) generan justo ese patrón de bordes, y
+ * sin este redondeo el ruido de punto flotante puede hacer que el motor
+ * las trate como si se tocaran, fusionando en un solo polígono dos vías
+ * que en realidad están separadas — el bug de "se une el trazado" al
+ * trazar la segunda vía paralela.
+ */
+const UNION_PRECISION = 1e6; // grilla de ~1e-6 unidades de mapa
+function roundRingForUnion(ring: Pt[]): Pt[] {
+  return ring.map(
+    ([x, y]) =>
+      [Math.round(x * UNION_PRECISION) / UNION_PRECISION, Math.round(y * UNION_PRECISION) / UNION_PRECISION] as Pt,
+  );
+}
+
 function ringToJstsGeom(ring: Pt[]) {
-  const gj: GeoJsonPolygon = { type: 'Polygon', coordinates: [closeRing(ring)] };
+  const gj: GeoJsonPolygon = { type: 'Polygon', coordinates: [closeRing(roundRingForUnion(ring))] };
   return reader.read(gj);
 }
 
-/** Extrae los anillos EXTERIORES (ignora huecos) de un Polygon/MultiPolygon JTS. */
+/** buffer(0) es el truco estándar en JTS/Shapely para normalizar
+ *  auto-intersecciones y vértices duplicados antes de operar — reduce
+ *  todavía más el riesgo de una unión con topología ambigua. */
+function cleanGeom(geom: any): any {
+  try {
+    if (geom && geom.isValid && !geom.isValid()) return geom.buffer(0);
+  } catch {
+    /* si buffer(0) falla, se sigue con el geom original */
+  }
+  return geom;
+}
+
 function extractExteriorRings(geom: any): Pt[][] {
   if (!geom || geom.isEmpty?.()) return [];
   const gj: any = writer.write(geom);
@@ -62,25 +86,40 @@ function extractExteriorRings(geom: any): Pt[][] {
 }
 
 /**
- * Une una lista de anillos (calzada u outer) en una sola geometría —
- * puede resultar en 1+ polígonos disjuntos si la red vial tiene tramos
- * separados. Corre síncrono en el hilo principal (sin worker) porque el
- * resultado hace falta disponible ANTES de pintar el frame; se cachea en
- * StreetPainter y solo se recalcula cuando cambia el fingerprint de calles.
+ * Une una lista de anillos (calzada u outer). Cada anillo se redondea a
+ * una grilla fija ANTES de entrar a JTS (ver roundRingForUnion) para
+ * evitar fusiones espurias entre vías paralelas cercanas. Un anillo que
+ * falle al unirse (excepción de JTS) ya NO se pierde en silencio como
+ * antes: se conserva como polígono aparte, igual que el fallback de
+ * index_modelo.html — así una vía con geometría problemática no
+ * desaparece del dibujo, solo queda sin fusionar con el resto.
  */
 function unionRings(rings: Pt[][]): Pt[][] {
   if (rings.length === 0) return [];
-  let merged: any = null;
+
+  const geoms: any[] = [];
   for (const ring of rings) {
     try {
-      const geom = ringToJstsGeom(ring);
-      merged = merged ? OverlayOp.union(merged, geom) : geom;
+      geoms.push(cleanGeom(ringToJstsGeom(ring)));
     } catch {
-      // Anillo degenerado/autointersectante (p.ej. un tramo de calle con
-      // ángulo extremo): se descarta en vez de tirar abajo toda la unión.
+      // Anillo degenerado/autointersectante: no hay geometría válida que conservar.
     }
   }
-  return merged ? extractExteriorRings(merged) : [];
+  if (geoms.length === 0) return [];
+
+  let merged: any = geoms[0];
+  const leftover: any[] = [];
+  for (let i = 1; i < geoms.length; i++) {
+    try {
+      merged = cleanGeom(OverlayOp.union(merged, geoms[i]));
+    } catch {
+      leftover.push(geoms[i]);
+    }
+  }
+
+  const out = extractExteriorRings(merged);
+  for (const g of leftover) out.push(...extractExteriorRings(g));
+  return out;
 }
 
 function distToSegment(p: Pt, a: Pt, b: Pt): number {

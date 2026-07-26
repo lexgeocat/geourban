@@ -8,8 +8,6 @@ import { runCommand } from '../../../commands/core/CommandStack';
 import { AddStreetCommand } from '../../../commands/roads/AddStreetCommand';
 import type { ModeContext } from './ModeContext';
 
-/** H-VIA-2: no hay snapping obligatorio en el trazado — avisa (no
- *  bloquea) cuando un extremo queda "casi" tocando otra calle. */
 function findNearbyStreetEndpointWarning(
   point: [number, number],
   streets: Street[],
@@ -38,31 +36,42 @@ export function activateStreet(ctx: ModeContext): void {
 
   draw.on('drawend', (event) => {
     const feature = event.feature as Feature<Geometry>;
-    const geom = feature.getGeometry();
-    if (!geom || !(geom instanceof LineString)) return;
-    const coords = geom.getCoordinates();
-    if (coords.length < 2) return;
+    // ol/interaction/Draw agrega el sketch a `streetSource` SIEMPRE, antes
+    // de disparar este evento. Si cualquiera de las validaciones de abajo
+    // corta el flujo temprano (geometría degenerada, confirmación
+    // cancelada), el feature tiene que salir igual — si no, queda una
+    // feature "fantasma" en streetSource que OL sigue dibujando con su
+    // estilo por defecto (streetLayer confía en que streetSource esté
+    // siempre vacío entre trazos, ver DrawLayerRenderer.ts). Esa era la
+    // "línea de más" que aparecía al trazar, y ni "Limpiar vías" ni
+    // Deshacer la sacaban porque ninguno de los dos toca streetSource
+    // (solo tocan streetStore, que es un store aparte).
+    try {
+      const geom = feature.getGeometry();
+      if (!geom || !(geom instanceof LineString)) return;
+      const coords = geom.getCoordinates();
+      if (coords.length < 2) return;
 
-    const streetStore = useStreetStore.getState();
-    const start = coords[0] as [number, number];
-    const end = coords[coords.length - 1] as [number, number];
-    const waypoints = coords.length > 2 ? (coords.slice(1, -1) as Array<[number, number]>) : undefined;
+      const streetStore = useStreetStore.getState();
+      const start = coords[0] as [number, number];
+      const end = coords[coords.length - 1] as [number, number];
+      const waypoints = coords.length > 2 ? (coords.slice(1, -1) as Array<[number, number]>) : undefined;
 
-    const TOL_M = 2;
-    const warning =
-      findNearbyStreetEndpointWarning(start, streetStore.streets, TOL_M) ??
-      findNearbyStreetEndpointWarning(end, streetStore.streets, TOL_M);
-    if (warning && !window.confirm(`${warning}\n\n¿Trazar de todos modos?`)) {
+      const TOL_M = 2;
+      const warning =
+        findNearbyStreetEndpointWarning(start, streetStore.streets, TOL_M) ??
+        findNearbyStreetEndpointWarning(end, streetStore.streets, TOL_M);
+      if (warning && !window.confirm(`${warning}\n\n¿Trazar de todos modos?`)) {
+        return;
+      }
+
+      void runCommand(
+        new AddStreetCommand(start, end, streetStore.defaultWidthM, waypoints, streetStore.defaultSideWidthM),
+      );
+    } finally {
       streetSource.removeFeature(feature);
       streetSource.changed();
-      return;
     }
-
-    void runCommand(
-      new AddStreetCommand(start, end, streetStore.defaultWidthM, waypoints, streetStore.defaultSideWidthM),
-    );
-    streetSource.removeFeature(feature);
-    streetSource.changed();
   });
 
   ctx.activeDrawRef.current = draw;
