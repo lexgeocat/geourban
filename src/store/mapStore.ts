@@ -184,6 +184,58 @@ function ringsExtent(rings: Pt[][]): Extent | null {
   return result;
 }
 
+/** Extent del grupo basado en la geometría VIVA actual de sus miembros —
+ *  no en `origPts` (el polígono original sin cortar). Fase 4, punto 4:
+ *  usar el extent original sobreestima el área de broad-phase para
+ *  cualquier origen que ya fue cortado antes, incluyéndolo en recomputes
+ *  que en realidad no lo afectan. Cae a `ringsExtent([fallbackPts])` solo
+ *  si el grupo todavía no tiene ninguna geometría viva (primera pasada). */
+function currentOrOriginalExtent(
+  members: Array<Feature<Geometry>>,
+  fallbackPts: Pt[],
+): Extent | null {
+  let ext: Extent | null = null;
+  for (const m of members) {
+    const geom = m.getGeometry();
+    if (!geom) continue;
+    const e = geom.getExtent();
+    if (!ext) ext = [...e] as Extent;
+    else extendExtent(ext, e);
+  }
+  return ext ?? ringsExtent([fallbackPts]);
+}
+
+/** Diffing incremental (Fase 4, punto 4 / causa raíz de H-VIA-11):
+ *  ¿el fragmento recién calculado es geométricamente el mismo conjunto
+ *  que ya está vivo en drawSource para este origen? Compara áreas
+ *  ordenadas con tolerancia relativa (mismo criterio que
+ *  `manzanoStore.hasGeomChanged` tras Fase 3) — no hace falta exactitud
+ *  vértice a vértice, alcanza con "no cambió nada real que valga la pena
+ *  destruir y recrear". */
+function fragmentsMatchCurrentMembers(
+  members: Array<Feature<Geometry>>,
+  fragments: Pt[][],
+): boolean {
+  if (members.length === 0 || members.length !== fragments.length) return false;
+  const currentAreas: number[] = [];
+  for (const m of members) {
+    const g = m.getGeometry();
+    if (!(g instanceof PolygonGeom)) return false;
+    const ring = ((g.getCoordinates()[0] ?? []) as number[][]).map((c) => [c[0], c[1]] as Pt);
+    if (ring.length < 3) return false;
+    currentAreas.push(polyArea(ring));
+  }
+  const fragAreas = fragments.map((f) => polyArea(f));
+  currentAreas.sort((a, b) => a - b);
+  fragAreas.sort((a, b) => a - b);
+  for (let i = 0; i < currentAreas.length; i++) {
+    const c = currentAreas[i], f = fragAreas[i];
+    const tol = Math.max(0.5, Math.max(c, f) * 2e-3); // 0.2% — mismo criterio que hasGeomChanged
+    if (Math.abs(c - f) > tol) return false;
+  }
+  return true;
+}
+
 interface RoadElementFingerprint {
   hash: string;
   extent: Extent;
@@ -326,18 +378,24 @@ export function checkTopologyInBackground(): void {
  *     ambiguo) o la re-lotización automática no generó lotes, marca el/los
  *     fragmento(s) como lotStatus 'pending' — el usuario los regenera a
  *     mano desde ManzanoPanel (badge "⏳ pendiente de re-lotizar").
+ *  4. Si el recorte va a regenerar automáticamente los lotes de un
+ *     manzano ya lotizado, pide confirmación previa al usuario antes de
+ *     hacerlo (Fase 4, punto 3) — si cancela, el corte geométrico se
+ *     aplica igual (no es opcional) pero el fragmento queda 'pending'
+ *     en vez de re-lotizarse solo.
  *
- * NOTA (hallazgo colateral, no resuelto acá): la clasificación "untouched"
- * compara el fragmento nuevo contra `origPts` (el polígono ORIGINAL sin
- * cortar), no contra la geometría actual del manzano. Esto significa que
- * un manzano que ya fue cortado alguna vez por una calle SIEMPRE se
- * re-clasifica como "no tocado" en cualquier recompute posterior (aunque
- * la calle nueva esté en la otra punta del proyecto y su extent no
- * intersecte), y se regenera con id nuevo cada vez — es la causa raíz de
- * H-VIA-11. El acotamiento espacial de este pase ayuda para orígenes
- * genuinamente lejos de TODA la red vial, pero no resuelve esto: requiere
- * diffing incremental contra lo que cambió (no contra el estado completo),
- * que queda fuera del alcance de esta fase.
+ * RESUELTO (ex-NOTA, causa raíz de H-VIA-11): antes, la clasificación
+ * "untouched" comparaba el fragmento nuevo contra `origPts` (el polígono
+ * ORIGINAL sin cortar nunca), lo que hacía que CUALQUIER manzano que ya
+ * hubiera sido cortado antes se reprocesara — destruir + recrear lotes
+ * con ids nuevos — en cada recompute posterior, aunque nada relevante
+ * hubiera cambiado para ese manzano puntual. Se agrega un diffing
+ * incremental real: `fragmentsMatchCurrentMembers()` compara el
+ * resultado nuevo contra la geometría VIVA actual (no contra el origen
+ * congelado); si coinciden, el grupo se salta por completo (sin tocar
+ * features, lotes, ids ni estado). El acotamiento espacial también pasa
+ * a usar el extent VIVO de cada grupo en vez del extent de `origPts`,
+ * reduciendo procesamiento innecesario en el broad-phase.
  */
 async function recomputeManzanosImmediate(): Promise<void> {
   const src = useMapStore.getState().drawSource;
@@ -464,12 +522,12 @@ async function recomputeManzanosImmediate(): Promise<void> {
     }
   }
 
-  // Fase 4, punto 4: acotamiento espacial — ver nota de cabecera sobre
-  // sus límites reales.
   const allGroups = Array.from(groups.values());
   const parcelIndexToGroup: OriginGroup[] = roadExtentForOrphans
     ? allGroups.filter((g) => {
-        const ext = ringsExtent([g.origPts]);
+        // Fase 4, punto 4: extent VIVO del grupo, no el de origPts —
+        // ver currentOrOriginalExtent().
+        const ext = currentOrOriginalExtent(g.members, g.origPts);
         if (ext == null) return false;
         if (changedExtent && !extentIntersects(ext, changedExtent)) return false;
         return extentIntersects(ext, roadExtentForOrphans);
@@ -517,12 +575,48 @@ async function recomputeManzanosImmediate(): Promise<void> {
   const targetAreaM2 = useManzanoStore.getState().targetAreaM2;
   const frontMinM = useManzanoStore.getState().frontMinM;
 
+  // Fase 4, punto 3: antes de tocar nada, detectamos qué manzanos ya
+  // lotizados van a re-lotizarse automáticamente por este recompute, y
+  // pedimos UNA confirmación agrupada — no una por manzano, para no
+  // bombardear al usuario si el trazado afecta varios a la vez.
+  const groupsNeedingRelotConfirm: OriginGroup[] = [];
+  for (let idx = 0; idx < parcelIndexToGroup.length; idx++) {
+    const group = parcelIndexToGroup[idx];
+    const fragments = fragmentsByGroup.get(idx) ?? [];
+    const untouched =
+      fragments.length === 1 && polyArea(fragments[0]) >= polyArea(group.origPts) * 0.999;
+    if (untouched) continue;
+    if (fragmentsMatchCurrentMembers(group.members, fragments)) continue;
+    if (group.wasSubdivided && group.savedMethod && fragments.length === 1) {
+      groupsNeedingRelotConfirm.push(group);
+    }
+  }
+
+  let allowAutoRelot = true;
+  if (groupsNeedingRelotConfirm.length > 0) {
+    const plural = groupsNeedingRelotConfirm.length > 1;
+    const names = groupsNeedingRelotConfirm.map((g) => `Manzano ${g.origId}`).join(', ');
+    allowAutoRelot = window.confirm(
+      `El trazado nuevo va a recortar y regenerar automáticamente los lotes de ` +
+      `${plural ? 'estos manzanos' : 'este manzano'}: ${names}.\n\n¿Continuar?\n\n` +
+      'Si cancelás, el corte igual se aplica pero los lotes quedan pendientes de regenerar a mano.'
+    );
+  }
+
   for (let idx = 0; idx < parcelIndexToGroup.length; idx++) {
     const group = parcelIndexToGroup[idx];
     const fragments = fragmentsByGroup.get(idx) ?? [];
 
     const untouched =
       fragments.length === 1 && polyArea(fragments[0]) >= polyArea(group.origPts) * 0.999;
+
+    // Fase 4, punto 4: si el resultado nuevo es geométricamente igual al
+    // que ya está vivo, no hay nada que actualizar — saltamos el grupo
+    // entero (features, lotes, ids y lotStatus quedan exactamente como
+    // estaban). Esto es lo que rompe el ciclo de H-VIA-11.
+    if (!untouched && fragmentsMatchCurrentMembers(group.members, fragments)) {
+      continue;
+    }
 
     if (!untouched) {
       for (const m of group.members) {
@@ -580,7 +674,7 @@ async function recomputeManzanosImmediate(): Promise<void> {
     // Fase 4, puntos 1-2: qué hacer con el/los fragmento(s) de un origen
     // que SÍ tenía lotes vivos antes del corte.
     if (group.wasSubdivided && group.savedMethod) {
-      if (newFragmentIds.length === 1) {
+      if (newFragmentIds.length === 1 && allowAutoRelot) {
         const fragId = newFragmentIds[0];
         const fragFeat = src.getFeatureById(fragId) as Feature<Geometry> | null;
         const fragGeom = fragFeat?.getGeometry();
@@ -640,6 +734,15 @@ async function recomputeManzanosImmediate(): Promise<void> {
         } else if (fragFeat) {
           setLotStatus(fragFeat, 'pending');
         }
+      } else if (newFragmentIds.length === 1 && !allowAutoRelot) {
+        // Fase 4, punto 3: el usuario canceló la confirmación. El corte
+        // geométrico ya se aplicó (no es reversible por separado), pero
+        // no se re-lotiza solo — queda 'pending' para regenerar a mano
+        // desde ManzanoPanel cuando el usuario quiera.
+        const fragId = newFragmentIds[0];
+        const fragFeat = src.getFeatureById(fragId) as Feature<Geometry> | null;
+        setLotStatus(fragFeat, 'pending');
+        useManzanoStore.getState().setMethod(fragId, group.savedMethod);
       } else if (newFragmentIds.length > 1) {
         // Corte ambiguo: el manzano se partió en 2+ piezas. No hay forma
         // confiable de repartir el área objetivo original entre ellas —
