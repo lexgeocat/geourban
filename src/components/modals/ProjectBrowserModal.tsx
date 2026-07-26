@@ -2,6 +2,7 @@
 import { ChevronLeft, Plus, Trash2, Copy, FolderOpen, Search } from 'lucide-react';
 import type { GeoUrbanProject } from '../../io/types';
 import { getProjectStore, type ProjectSummary } from '../../io/projectStore';
+import { Modal } from '../ui/Modal';
 
 interface ProjectBrowserModalProps {
   isOpen: boolean;
@@ -67,77 +68,132 @@ export const ProjectBrowserModal: React.FC<ProjectBrowserModalProps> = ({
 
   const filtered = projects.filter((p) => p.name.toLowerCase().includes(search.toLowerCase()));
 
-  if (!isOpen) return null;
-
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal modal-lg" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <h2>Gestor de Proyectos</h2>
-          <button className="modal-close" onClick={onClose}>
-            <ChevronLeft />
+    <Modal
+      open={isOpen}
+      onOpenChange={(o) => { if (!o) onClose(); }}
+      title="Gestor de Proyectos"
+      visuallyHiddenTitle
+      width="min(720px, 92vw)"
+    >
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: 16,
+          paddingBottom: 12,
+          borderBottom: '1px solid var(--cad-border)',
+        }}
+      >
+        <h2 style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--cad-text)', letterSpacing: '0.02em' }}>
+          Gestor de Proyectos
+        </h2>
+        <button onClick={onClose} className="cad-icon-btn" aria-label="Cerrar" style={{ width: 28, height: 28 }}>
+          <ChevronLeft size={16} />
+        </button>
+      </div>
+
+      <div style={{ display: 'flex', gap: 8, marginBottom: 14, alignItems: 'center' }}>
+        <div style={{ position: 'relative', flex: 1 }}>
+          <Search size={13} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--cad-text-muted)' }} />
+          <input
+            type="text"
+            placeholder="Buscar proyectos..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="cad-input"
+            style={{ paddingLeft: 26 }}
+          />
+        </div>
+        <button
+          onClick={onNewProject}
+          className="cad-icon-btn"
+          style={{
+            width: 'auto', height: 'auto', padding: '8px 12px', fontSize: '0.75rem', fontWeight: 600,
+            display: 'flex', alignItems: 'center', gap: 6,
+            background: 'var(--cad-accent)', color: '#0d1117', border: '1px solid var(--cad-accent)', borderRadius: 6,
+          }}
+        >
+          <Plus size={14} /> Nuevo
+        </button>
+      </div>
+
+      {loading ? (
+        <div style={{ padding: '24px 0', textAlign: 'center', fontSize: '0.75rem', color: 'var(--cad-text-muted)' }}>
+          Cargando proyectos...
+        </div>
+      ) : filtered.length === 0 ? (
+        <div style={{ padding: '32px 0', textAlign: 'center' }}>
+          <FolderOpen size={32} style={{ color: 'var(--cad-text-muted)', marginBottom: 10 }} />
+          <p style={{ fontSize: '0.78rem', color: 'var(--cad-text-dim)', marginBottom: 12 }}>
+            No hay proyectos guardados.
+          </p>
+          <button
+            onClick={onNewProject}
+            className="cad-icon-btn"
+            style={{
+              width: 'auto', height: 'auto', padding: '8px 14px', fontSize: '0.75rem', fontWeight: 600,
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              background: 'var(--cad-accent)', color: '#0d1117', border: '1px solid var(--cad-accent)', borderRadius: 6,
+            }}
+          >
+            <Plus size={14} /> Crear el primero
           </button>
         </div>
-
-        <div className="modal-body">
-          <div className="project-browser-toolbar">
-            <input
-              type="text"
-              placeholder="Buscar proyectos..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="search-input"
-            />
-            <Search className="search-icon" />
-            <button className="btn btn-primary" onClick={onNewProject}>
-              <Plus /> Nuevo
-            </button>
-          </div>
-
-          {loading ? (
-            <div className="project-browser-loading">Cargando proyectos...</div>
-          ) : filtered.length === 0 ? (
-            <div className="project-browser-empty">
-              <FolderOpen className="empty-icon" />
-              <p>No hay proyectos guardados.</p>
-              <button className="btn btn-primary" onClick={onNewProject}>
-                <Plus /> Crear el primero
-              </button>
-            </div>
-          ) : (
-            <div className="project-list">
-              {filtered.map((p) => (
-                <div key={p.id} className="project-card">
-                  {p.thumbnail && <img src={p.thumbnail} alt="" className="project-thumbnail" />}
-                  <div className="project-info">
-                    <h3>{p.name}</h3>
-                    <span className="project-date">{new Date(p.updatedAt).toLocaleString()}</span>
-                    {currentProjectId != null && p.id === currentProjectId && (
-                      <span className="current-badge">Actual</span>
-                    )}
-                  </div>
-                  <div className="project-actions">
-                    <button className="action-btn" onClick={() => handleOpen(p)} title="Abrir">
-                      <FolderOpen />
-                    </button>
-                    <button className="action-btn" onClick={() => handleDuplicate(p.id, p.name)} title="Duplicar">
-                      <Copy />
-                    </button>
-                    <button
-                      className="action-btn danger"
-                      onClick={() => handleDelete(p.id, p.name)}
-                      disabled={deletingId === p.id}
-                      title="Eliminar"
-                    >
-                      <Trash2 />
-                    </button>
-                  </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: '55vh', overflowY: 'auto' }}>
+          {filtered.map((p) => (
+            <div
+              key={p.id}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px',
+                background: 'var(--cad-bg-surface)', border: '1px solid var(--cad-border)', borderRadius: 6,
+              }}
+            >
+              {p.thumbnail ? (
+                <img src={p.thumbnail} alt="" style={{ width: 48, height: 36, objectFit: 'cover', borderRadius: 4, flexShrink: 0 }} />
+              ) : (
+                <div style={{ width: 48, height: 36, borderRadius: 4, background: 'var(--cad-bg-deepest)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <FolderOpen size={16} style={{ color: 'var(--cad-text-muted)' }} />
                 </div>
-              ))}
+              )}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--cad-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {p.name}
+                  </span>
+                  {currentProjectId != null && p.id === currentProjectId && (
+                    <span style={{ fontSize: '0.6rem', color: 'var(--cad-accent)', border: '1px solid var(--cad-accent)', borderRadius: 3, padding: '0 5px' }}>
+                      Actual
+                    </span>
+                  )}
+                </div>
+                <span style={{ fontSize: '0.65rem', color: 'var(--cad-text-muted)' }}>
+                  {new Date(p.updatedAt).toLocaleString()}
+                </span>
+              </div>
+              <div style={{ display: 'flex', gap: 2 }}>
+                <button className="cad-icon-btn" onClick={() => handleOpen(p)} title="Abrir" style={{ width: 30, height: 30 }}>
+                  <FolderOpen size={14} />
+                </button>
+                <button className="cad-icon-btn" onClick={() => handleDuplicate(p.id, p.name)} title="Duplicar" style={{ width: 30, height: 30 }}>
+                  <Copy size={14} />
+                </button>
+                <button
+                  className="cad-icon-btn"
+                  onClick={() => handleDelete(p.id, p.name)}
+                  disabled={deletingId === p.id}
+                  title="Eliminar"
+                  style={{ width: 30, height: 30, color: 'var(--cad-accent-red)', opacity: deletingId === p.id ? 0.5 : 1 }}
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
             </div>
-          )}
+          ))}
         </div>
-      </div>
-    </div>
+      )}
+    </Modal>
   );
 };

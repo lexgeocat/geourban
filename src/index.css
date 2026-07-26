@@ -288,7 +288,6 @@ body,
   margin-top: 2px;
 }
 
-
 .cad-panel-header {
   display: flex;
   justify-content: space-between;
@@ -307,7 +306,6 @@ body,
   padding: 0 2px;
 }
 
-
 .cad-section-title {
   font-size: 0.6rem;
   font-weight: 500;
@@ -317,7 +315,6 @@ body,
   margin-bottom: 6px;
   display: block;
 }
-
 
 .cad-row {
   display: flex;
@@ -401,7 +398,9 @@ body,
    Animations
    ============================================================ */
 @keyframes cadSpin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 .cad-spinner {
   display: inline-block;
@@ -439,6 +438,35 @@ body,
   animation: fadeSlideIn 0.25s ease-out;
 }
 
+/* ============================================================
+   Radix Dialog (modales) — solo transición; el look sale de
+   .cad-panel-glass y el resto de clases cad-* ya existentes.
+   ============================================================ */
+.cad-modal-overlay[data-state='open'] {
+  animation: cadOverlayIn 150ms ease-out;
+}
+.cad-modal-overlay[data-state='closed'] {
+  animation: cadOverlayOut 120ms ease-in;
+}
+@keyframes cadOverlayIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes cadOverlayOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+.cad-modal-content[data-state='open'] {
+  animation: fadeSlideIn 0.2s ease-out;
+}
 /* ============================================================
    Monospace utility
    ============================================================ */

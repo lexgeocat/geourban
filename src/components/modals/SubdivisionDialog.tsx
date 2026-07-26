@@ -13,8 +13,7 @@ import type Geometry from 'ol/geom/Geometry';
 import { formatMetricArea } from '../../geo/metrics';
 import { useSubdivisionPreviewStore } from '../../store/ui/subdivisionPreviewStore';
 import { SUBDIVISION_METHOD_INFO } from '../../geo/subdivision/subdivisionMethodLabels';
-
-
+import { Modal } from '../ui/Modal';
 
 const geoJsonFormat = new GeoJSON();
 
@@ -55,7 +54,7 @@ export default function SubdivisionDialog() {
   }, [isOpen]);
 
   const loadError: string | null = useMemo(() => {
-  if (!isOpen) return null;
+    if (!isOpen) return null;
     if (targetId == null) return 'No hay feature seleccionada';
     if (!drawSource) return 'Source no inicializado';
     if (drawSource.getFeatureById(targetId) == null) return 'Feature no encontrada';
@@ -75,11 +74,6 @@ export default function SubdivisionDialog() {
     return gj.type === 'LineString' ? (gj as GeoJsonLineString) : null;
   }, [isOpen, method, drawSource, lastDrawnLineId]);
 
-  useEffect(() => {
-    if (!isOpen) useSubdivisionPreviewStore.getState().clear();
-  }, [isOpen]);
-
-  if (!isOpen) return null;
   const combinedError = errorMessage ?? loadError;
 
   const runPreview = async () => {
@@ -99,8 +93,6 @@ export default function SubdivisionDialog() {
 
     setLoading(true);
     try {
-      // La subdivisión corre en el Web Worker — ver diagnóstico H8 — así
-      // que la vista previa ya no bloquea el hilo de UI mientras calcula.
       const r = await subdivideInWorker(targetGeom, effectiveOptions);
       if (!r.ok) {
         setError(r.error ?? 'No se pudo generar el preview');
@@ -151,222 +143,175 @@ export default function SubdivisionDialog() {
   };
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="subdivision-title"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) close();
-      }}
-      style={{
-        position: 'fixed',
-        inset: 0,
-        background: 'rgba(0, 0, 0, 0.55)',
-        backdropFilter: 'blur(4px)',
-        zIndex: 1000,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        animation: 'fadeSlideIn 0.2s ease-out',
-      }}
+    <Modal
+      open={isOpen}
+      onOpenChange={(o) => { if (!o) close(); }}
+      title="Subdividir manzano"
+      visuallyHiddenTitle
+      width="min(560px, 92vw)"
     >
+      {/* Header */}
       <div
-        className="cad-panel-glass"
         style={{
-          width: 'min(560px, 92vw)',
-          maxHeight: '90vh',
-          overflow: 'auto',
-          padding: '20px 22px',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: 16,
+          paddingBottom: 12,
+          borderBottom: '1px solid var(--cad-border)',
         }}
       >
-        {/* Header */}
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginBottom: 16,
-            paddingBottom: 12,
-            borderBottom: '1px solid var(--cad-border)',
-          }}
+        <h2 style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--cad-text)', letterSpacing: '0.02em' }}>
+          Subdividir manzano
+        </h2>
+        <button
+          onClick={close}
+          className="cad-icon-btn"
+          aria-label="Cerrar"
+          style={{ width: 28, height: 28 }}
         >
-          <h2
-            id="subdivision-title"
-            style={{
-              fontSize: '0.95rem',
-              fontWeight: 700,
-              color: 'var(--cad-text)',
-              letterSpacing: '0.02em',
-            }}
-          >
-            Subdividir manzano
-          </h2>
-          <button
-            onClick={close}
-            className="cad-icon-btn"
-            aria-label="Cerrar"
-            style={{ width: 28, height: 28 }}
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 14, height: 14 }}>
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
-          </button>
-        </div>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 14, height: 14 }}>
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+      </div>
 
-        {/* Method selector */}
-        <div style={{ marginBottom: 14 }}>
-          <label style={labelStyle}>Método</label>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-            {Object.entries(SUBDIVISION_METHOD_INFO).map(([key, info]) => (
-              <button
-                key={key}
-                onClick={() => setMethod(key as never)}
-                className="cad-icon-btn"
-                style={{
-                  ...methodBtnStyle,
-                  ...(method === key ? methodBtnActiveStyle : {}),
-                }}
-              >
-                {info.label}
-              </button>
-            ))}
-          </div>
-          <p style={helpStyle}>{SUBDIVISION_METHOD_INFO[method]?.description}</p>
-        </div>
-
-        {/* Parámetros comunes */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
-          <NumberField
-            label="Área objetivo"
-            value={options.targetAreaM2}
-            onChange={(v) => setOption('targetAreaM2', v)}
-            step={10}
-            unit="m²"
-          />
-          <NumberField
-            label="Frente mínimo"
-            value={options.frontMinM}
-            onChange={(v) => setOption('frontMinM', v)}
-            step={1}
-            unit="m"
-          />
-        </div>
-
-        {/* Manual slice instructions */}
-        {method === 'manual-slice' && (
-          <div
-            style={{
-              padding: 10,
-              background: 'var(--cad-bg-surface)',
-              borderRadius: 6,
-              fontSize: '0.75rem',
-              color: 'var(--cad-text-dim)',
-              marginBottom: 10,
-            }}
-          >
-            <p style={{ marginBottom: 6 }}>
-              <strong>Cómo usarlo:</strong> activá el modo <em>Dibujo de línea</em> (tecla
-              <kbd style={kbdStyle}>L</kbd>) y trazá una línea que cruce el polígono. La línea define la dirección de corte del sub-manzano.
-            </p>
-            <p>
-              El sistema bisectará el polígono para generar un fragmento con el área objetivo indicada, manteniendo el frente seleccionado.
-            </p>
-          </div>
-        )}
-
-        {/* Info del polígono target */}
-        {targetGeom && (
-          <TargetInfo geom={targetGeom} />
-        )}
-
-        {/* Error */}
-        {combinedError && (
-          <div
-            role="alert"
-            style={{
-              marginTop: 12,
-              padding: '8px 10px',
-              borderRadius: 6,
-              background: 'rgba(239, 68, 68, 0.15)',
-              border: '1px solid var(--cad-accent-red)',
-              color: 'var(--cad-accent-red)',
-              fontSize: '0.75rem',
-            }}
-          >
-            {combinedError}
-          </div>
-        )}
-
-        {/* Preview */}
-        {preview && (
-          <div
-            style={{
-              marginTop: 12,
-              padding: '8px 10px',
-              borderRadius: 6,
-              background: 'rgba(16, 185, 129, 0.10)',
-              border: '1px solid var(--cad-accent-green)',
-              color: 'var(--cad-accent-green)',
-              fontSize: '0.75rem',
-            }}
-          >
-            <strong>{preview.count} lotes</strong> se generarán
-            {preview.warnings.length > 0 && (
-              <ul style={{ marginTop: 4, paddingLeft: 18 }}>
-                {preview.warnings.map((w, i) => (
-                  <li key={i} style={{ color: 'var(--cad-accent-amber)' }}>{w}</li>
-                ))}
-              </ul>
-            )}
-          </div>
-        )}
-
-        {/* Actions */}
-        <div
-          style={{
-            marginTop: 18,
-            display: 'flex',
-            justifyContent: 'space-between',
-            gap: 8,
-          }}
-        >
-          <button
-            onClick={() => void runPreview()}
-            disabled={loading}
-            className="cad-icon-btn"
-            style={{
-              ...secondaryBtnStyle,
-              opacity: loading ? 0.5 : 1,
-              cursor: loading ? 'wait' : 'pointer',
-            }}
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 14, height: 14 }}>
-              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-              <circle cx="12" cy="12" r="3" />
-            </svg>
-            {loading ? 'Calculando…' : 'Vista previa'}
-          </button>
-          <div style={{ display: 'flex', gap: 6 }}>
-            <button onClick={close} className="cad-icon-btn" style={secondaryBtnStyle}>
-              Cancelar
-            </button>
+      {/* Method selector */}
+      <div style={{ marginBottom: 14 }}>
+        <label style={labelStyle}>Método</label>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+          {Object.entries(SUBDIVISION_METHOD_INFO).map(([key, info]) => (
             <button
-              onClick={() => void applySubdivision()}
-              disabled={loading}
+              key={key}
+              onClick={() => setMethod(key as never)}
               className="cad-icon-btn"
               style={{
-                ...primaryBtnStyle,
-                opacity: loading ? 0.5 : 1,
-                cursor: loading ? 'wait' : 'pointer',
+                ...methodBtnStyle,
+                ...(method === key ? methodBtnActiveStyle : {}),
               }}
             >
-              {loading ? 'Aplicando...' : 'Aplicar'}
+              {info.label}
             </button>
-          </div>
+          ))}
+        </div>
+        <p style={helpStyle}>{SUBDIVISION_METHOD_INFO[method]?.description}</p>
+      </div>
+
+      {/* Parámetros comunes */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
+        <NumberField
+          label="Área objetivo"
+          value={options.targetAreaM2}
+          onChange={(v) => setOption('targetAreaM2', v)}
+          step={10}
+          unit="m²"
+        />
+        <NumberField
+          label="Frente mínimo"
+          value={options.frontMinM}
+          onChange={(v) => setOption('frontMinM', v)}
+          step={1}
+          unit="m"
+        />
+      </div>
+
+      {/* Manual slice instructions */}
+      {method === 'manual-slice' && (
+        <div
+          style={{
+            padding: 10,
+            background: 'var(--cad-bg-surface)',
+            borderRadius: 6,
+            fontSize: '0.75rem',
+            color: 'var(--cad-text-dim)',
+            marginBottom: 10,
+          }}
+        >
+          <p style={{ marginBottom: 6 }}>
+            <strong>Cómo usarlo:</strong> activá el modo <em>Dibujo de línea</em> (tecla
+            <kbd style={kbdStyle}>L</kbd>) y trazá una línea que cruce el polígono. La línea define la dirección de corte del sub-manzano.
+          </p>
+          <p>
+            El sistema bisectará el polígono para generar un fragmento con el área objetivo indicada, manteniendo el frente seleccionado.
+          </p>
+        </div>
+      )}
+
+      {/* Info del polígono target */}
+      {targetGeom && <TargetInfo geom={targetGeom} />}
+
+      {/* Error */}
+      {combinedError && (
+        <div
+          role="alert"
+          style={{
+            marginTop: 12,
+            padding: '8px 10px',
+            borderRadius: 6,
+            background: 'rgba(239, 68, 68, 0.15)',
+            border: '1px solid var(--cad-accent-red)',
+            color: 'var(--cad-accent-red)',
+            fontSize: '0.75rem',
+          }}
+        >
+          {combinedError}
+        </div>
+      )}
+
+      {/* Preview */}
+      {preview && (
+        <div
+          style={{
+            marginTop: 12,
+            padding: '8px 10px',
+            borderRadius: 6,
+            background: 'rgba(16, 185, 129, 0.10)',
+            border: '1px solid var(--cad-accent-green)',
+            color: 'var(--cad-accent-green)',
+            fontSize: '0.75rem',
+          }}
+        >
+          <strong>{preview.count} lotes</strong> se generarán
+          {preview.warnings.length > 0 && (
+            <ul style={{ marginTop: 4, paddingLeft: 18 }}>
+              {preview.warnings.map((w, i) => (
+                <li key={i} style={{ color: 'var(--cad-accent-amber)' }}>{w}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
+      {/* Actions */}
+      <div style={{ marginTop: 18, display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+        <button
+          onClick={() => void runPreview()}
+          disabled={loading}
+          className="cad-icon-btn"
+          style={{ ...secondaryBtnStyle, opacity: loading ? 0.5 : 1, cursor: loading ? 'wait' : 'pointer' }}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 14, height: 14 }}>
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+            <circle cx="12" cy="12" r="3" />
+          </svg>
+          {loading ? 'Calculando…' : 'Vista previa'}
+        </button>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button onClick={close} className="cad-icon-btn" style={secondaryBtnStyle}>
+            Cancelar
+          </button>
+          <button
+            onClick={() => void applySubdivision()}
+            disabled={loading}
+            className="cad-icon-btn"
+            style={{ ...primaryBtnStyle, opacity: loading ? 0.5 : 1, cursor: loading ? 'wait' : 'pointer' }}
+          >
+            {loading ? 'Aplicando...' : 'Aplicar'}
+          </button>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -375,7 +320,7 @@ export default function SubdivisionDialog() {
 function TargetInfo({ geom }: { geom: GeoJsonPolygon }) {
   const ring = geom.coordinates[0] as [number, number][];
   if (!ring || ring.length < 3) return null;
-  const pts: Pt[] = ring.map(c => [c[0], c[1]]);
+  const pts: Pt[] = ring.map((c) => [c[0], c[1]]);
   const areaM2 = polyArea(pts);
   const cen = centroid(pts);
 
