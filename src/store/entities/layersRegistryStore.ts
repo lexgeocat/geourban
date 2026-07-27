@@ -32,6 +32,11 @@ type LayerState = {
   toggleLock: (id: string) => void;
   /** Alterna el estado de visibilidad de una capa */
   toggleVisibility: (id: string) => void;
+  /** Fase 7: "Aislar capa" — oculta todas las demás capas del registro y
+   *  muestra solo `id`. Llamar de nuevo con el mismo id restaura la
+   *  visibilidad previa a aislar. */
+  isolatedLayerId: string | null;
+  toggleIsolate: (id: string) => void;
   /** Alterna la visibilidad de TODAS las capas cuyo `kind` esté incluido en
    *  `kinds` — reemplaza el antiguo `layerStore.workVisibility` (ver
    *  plan-optimizacion-geourban.md, Fase 1). Usado por los toggles
@@ -174,6 +179,29 @@ export const useLayersStore = create<LayerState>()(
         const index = state.index.get(id);
         if (index === undefined) return;
         state.layers[index].visible = !state.layers[index].visible;
+      }),
+
+    isolatedLayerId: null,
+    isolatePrevVisibility: null as Record<string, boolean> | null,
+
+    toggleIsolate: (id) =>
+      set((state) => {
+        if (state.isolatedLayerId === id) {
+          const prev = (state as any).isolatePrevVisibility as Record<string, boolean> | null;
+          if (prev) {
+            for (const layer of state.layers) {
+              if (prev[layer.id] !== undefined) layer.visible = prev[layer.id];
+            }
+          }
+          state.isolatedLayerId = null;
+          (state as any).isolatePrevVisibility = null;
+          return;
+        }
+        const existing = (state as any).isolatePrevVisibility as Record<string, boolean> | null;
+        const snapshot = existing ?? Object.fromEntries(state.layers.map((l) => [l.id, l.visible]));
+        for (const layer of state.layers) layer.visible = layer.id === id;
+        state.isolatedLayerId = id;
+        (state as any).isolatePrevVisibility = snapshot;
       }),
 
     toggleKindsVisibility: (kinds) =>
