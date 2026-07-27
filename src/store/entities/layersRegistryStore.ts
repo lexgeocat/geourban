@@ -47,52 +47,33 @@ type LayerState = {
 export const useLayersStore = create<LayerState>()(
   immer((set, get) => ({
     layers: [
-      /* Capas por defecto para migración de proyectos existentes */
-      {
-        id: 'lots',
-        name: 'Lotes',
-        kind: 'lote',
-        zIndex: 0,
-        color: '#58a6ff',
-        visible: true,
-        locked: false,
-        opacity: 1,
-      },
-      {
-        id: 'manzanas',
-        name: 'Manzanos',
-        kind: 'manzana',
-        zIndex: 1,
-        color: '#f59e0b',
-        visible: true,
-        locked: false,
-        opacity: 1,
-      },
-      {
-        id: 'streets',
-        name: 'Viales',
-        kind: 'calle',
-        zIndex: 2,
-        color: '#8b5cf6',
-        visible: true,
-        locked: false,
-        opacity: 1,
-      },
+      { id: 'lots', name: 'Lotes', kind: 'lote', zIndex: 0, color: '#58a6ff', fillColor: '#58a6ff', visible: true, locked: false, opacity: 1, showLabel: true, showCota: true },
+      { id: 'manzanas', name: 'Manzanos', kind: 'manzana', zIndex: 1, color: '#f59e0b', fillColor: '#f59e0b', visible: true, locked: false, opacity: 1, showLabel: true, showCota: true },
+      { id: 'streets', name: 'Viales', kind: 'calle', zIndex: 2, color: '#8b5cf6', fillColor: '#8b5cf6', visible: true, locked: false, opacity: 1, showLabel: true, showCota: true },
+      { id: 'equipment', name: 'Equipamientos', kind: 'equipamiento', zIndex: 3, color: '#4dd0c4', fillColor: '#4dd0c4', visible: true, locked: false, opacity: 1, showLabel: true, showCota: true },
+      { id: 'greenareas', name: 'Áreas verdes', kind: 'area_verde', zIndex: 4, color: '#3fb950', fillColor: '#3fb950', visible: true, locked: false, opacity: 1, showLabel: true, showCota: true },
     ],
     index: new Map([
       ['lots', 0],
       ['manzanas', 1],
       ['streets', 2],
+      ['equipment', 3],
+      ['greenareas', 4],
     ]),
     activeLayerId: null,
 
     /* ---------- Mutations ---------- */
     add: (layer) =>
       set((state) => {
-        const newZIndex = state.layers.length; // Próximo índice disponible
-        const newLayer = { ...layer, zIndex: newZIndex };
-        state.layers.push(newLayer);
-        // Actualizar el mapa de índices
+        const newZIndex = state.layers.length;
+        const withDefaults: Layer = {
+          ...layer,
+          fillColor: layer.fillColor ?? layer.color,
+          showLabel: layer.showLabel ?? true,
+          showCota: layer.showCota ?? true,
+          zIndex: newZIndex,
+        };
+        state.layers.push(withDefaults);
         state.index = new Map(state.layers.map((l, idx) => [l.id, idx]));
       }),
 

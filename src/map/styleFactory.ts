@@ -236,11 +236,14 @@ export function drawLotNumberBadge(
   toPixel: (coord: number[]) => [number, number],
   numberText: string,
   isRemnant: boolean,
+  opacity: number = 1,
 ): void {
+  if (opacity <= 0.002) return;
   const px = toPixel(labelPointWorld);
   const color = isRemnant ? LOT_BADGE_COLOR_REMNANT : LOT_BADGE_COLOR;
 
   ctx.save();
+  ctx.globalAlpha *= opacity;
   ctx.beginPath();
   ctx.arc(px[0], px[1], LOT_BADGE_RADIUS_PX, 0, Math.PI * 2);
   ctx.fillStyle = LOT_BADGE_FILL;
@@ -289,41 +292,44 @@ export function drawMainMetricLabel(
   toPixel: (coord: number[]) => [number, number],
   text: string,
   isManzana: boolean,
-  options?: { extraLine?: string; color?: string; opacity?: number; extraLineOpacity?: number },
+  options?: { extraLine?: string; color?: string; mainOpacity?: number; extraLineOpacity?: number },
 ): void {
-  const opacity = options?.opacity ?? 1;
-  if (opacity <= 0.002) return;
+  const mainOpacity = options?.mainOpacity ?? 1;
+  const extraLineOpacity = options?.extraLineOpacity ?? 1;
+  const hasExtra = !!options?.extraLine && extraLineOpacity > 0.002;
+  if (mainOpacity <= 0.002 && !hasExtra) return;
 
   const px = toPixel(labelPointWorld);
   const fs = isManzana ? 13 : 11.5;
   const mainColor = options?.color ?? (isManzana ? GEOURBAN_MANZANA_COLOR : '#dffcff');
 
-  ctx.save();
-  ctx.globalAlpha *= opacity;
-  ctx.font = `700 ${fs}px Courier New`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  const tw = measureCachedWidth(ctx, text);
-  ctx.fillStyle = GEOURBAN_TEXT_BG;
-  ctx.fillRect(px[0] - tw / 2 - 4, px[1] - fs / 2 - 2, tw + 8, fs + 4);
-  ctx.fillStyle = mainColor + 'ee';
-  ctx.fillText(text, px[0], px[1]);
+  if (mainOpacity > 0.002) {
+    ctx.save();
+    ctx.globalAlpha *= mainOpacity;
+    ctx.font = `700 ${fs}px Courier New`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const tw = measureCachedWidth(ctx, text);
+    ctx.fillStyle = GEOURBAN_TEXT_BG;
+    ctx.fillRect(px[0] - tw / 2 - 4, px[1] - fs / 2 - 2, tw + 8, fs + 4);
+    ctx.fillStyle = mainColor + 'ee';
+    ctx.fillText(text, px[0], px[1]);
+    ctx.restore();
+  }
 
-  const extraLineOpacity = options?.extraLineOpacity ?? 1;
-  if (options?.extraLine && extraLineOpacity > 0.002) {
+  if (hasExtra) {
     ctx.save();
     ctx.globalAlpha *= extraLineOpacity;
     const fs2 = fs * 0.8;
     ctx.font = `500 ${fs2}px Courier New`;
-    const tw2 = measureCachedWidth(ctx, options.extraLine);
+    const tw2 = measureCachedWidth(ctx, options!.extraLine!);
     const y2 = px[1] + fs * 0.5 + fs2 * 0.6 + 2;
     ctx.fillStyle = GEOURBAN_TEXT_BG;
     ctx.fillRect(px[0] - tw2 / 2 - 3, y2 - fs2 / 2 - 1.5, tw2 + 6, fs2 + 3);
     ctx.fillStyle = 'rgba(148, 163, 184, 0.85)';
-    ctx.fillText(options.extraLine, px[0], y2);
+    ctx.fillText(options!.extraLine!, px[0], y2);
     ctx.restore();
   }
-  ctx.restore();
 }
 
 export function createMeasurementStyle(): StyleFunction {

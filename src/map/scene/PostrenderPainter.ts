@@ -13,6 +13,8 @@ import { RoundaboutPainter } from './painters/RoundaboutPainter';
 import { LabelPainter } from './painters/LabelPainter';
 import { SnapGuidePainter } from './painters/SnapGuidePainter';
 import { OverlayPainter } from './painters/OverlayPainter';
+import { BoundaryPainter } from './painters/BoundaryPainter';
+import { VertexPainter } from './painters/VertexPainter';
 
 function getZoomFromResolution(resolution: number): number {
   return Math.log2(156543.03392804097 / resolution);
@@ -36,6 +38,8 @@ export class PostrenderPainter {
   private readonly labelPainter = new LabelPainter();
   private readonly snapGuidePainter: SnapGuidePainter;
   private readonly overlayPainter = new OverlayPainter();
+  private readonly boundaryPainter = new BoundaryPainter();
+  private readonly vertexPainter = new VertexPainter();
 
   private dirty = true;
   private lastFeatureCount = -1;
@@ -106,6 +110,8 @@ export class PostrenderPainter {
     this.labelPainter.paint(ctx, visibleFeatures, zoom, resolution, toPx, this.interacting);
     this.streetPainter.paint(ctx, zoom, resolution, toPx, this.interacting);
     this.roundaboutPainter.paint(ctx, toPx, resolution);
+    this.boundaryPainter.paint(ctx, toPx);
+    this.vertexPainter.paint(ctx, visibleFeatures, toPx);
     this.snapGuidePainter.paint(ctx, resolution);
     this.overlayPainter.paint(ctx, toPx);
   }
@@ -125,6 +131,7 @@ export class PostrenderPainter {
   private updateCaches(ctx: CanvasRenderingContext2D, features: Array<Feature<Geometry>>, zoom: number, resolution: number): void {
     const featuresChanged = features.length !== this.lastFeatureCount;
     this.streetPainter.update(ctx, zoom, this.dirty, resolution);
+    this.boundaryPainter.update(features, featuresChanged || this.dirty);
     this.labelPainter.update(features, featuresChanged || this.dirty);
     this.lastFeatureCount = features.length;
     this.dirty = false;

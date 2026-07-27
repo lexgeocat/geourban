@@ -4,6 +4,9 @@ import { computeRoadNetworkNet, type RoadNetworkNet } from '../../../geo/roads/r
 import { type Pt } from '../../../geo/math/polygonEngine';
 import { type CornerMode } from '../../../geo/roads/ringFillet';
 import { measureCachedWidth } from '../../textMeasureCache';
+import { useLayersStore } from '../../../store/entities/layersRegistryStore';
+import { useDisplayLayersStore } from '../../../store/ui/displayLayersStore';
+import { withAlpha } from '../DrawLayerRenderer';
 
 type StreetChain = Array<{ from: Pt; to: Pt; len: number }>;
 type CrossingsMap = globalThis.Map<string, Pt[]>;
@@ -279,13 +282,20 @@ export class StreetPainter {
     const streetVisible = useStreetStore.getState().visible;
     if (!streetVisible || streets.length === 0) return;
 
-    this.paintRings(ctx, this.cachedNet.outer, toPx, { fill: null, stroke: 'rgba(200, 200, 200, 0.55)', lineWidth: 1 });
-    this.paintRings(ctx, this.cachedNet.road, toPx, { fill: 'rgba(247, 129, 102, 0.08)', stroke: 'rgba(247, 129, 102, 0.75)', lineWidth: 1.5 });
+    const vialesLayer = useLayersStore.getState().getLayerForKind('calle');
+    const strokeColor = vialesLayer?.color ?? '#f78166';
+    const fillColor = vialesLayer?.fillColor ?? strokeColor;
+    const layerOp = vialesLayer?.opacity ?? 1;
 
-    // Eje central (línea discontinua) — una polilínea por calle, ajena a
-    // la unión de calzada/vereda.
+    this.paintRings(ctx, this.cachedNet.outer, toPx, { fill: null, stroke: withAlpha('#c8c8c8', 0.55 * layerOp), lineWidth: 1 });
+    this.paintRings(ctx, this.cachedNet.road, toPx, {
+      fill: withAlpha(fillColor, 0.08 * layerOp),
+      stroke: withAlpha(strokeColor, 0.75 * layerOp),
+      lineWidth: 1.5,
+    });
+
     ctx.save();
-    ctx.strokeStyle = 'rgba(247, 129, 102, 0.75)';
+    ctx.strokeStyle = withAlpha(strokeColor, 0.75 * layerOp);
     ctx.lineWidth = 1;
     ctx.setLineDash([7, 5]);
     for (const s of streets) {
@@ -300,7 +310,9 @@ export class StreetPainter {
     ctx.setLineDash([]);
     ctx.restore();
 
-    if (!interacting && zoom > 12) {
+    const display = useDisplayLayersStore.getState();
+    const labelOp = display.labelOpacity(vialesLayer?.showLabel ?? true);
+    if (!interacting && zoom > 12 && labelOp > 0.002) {
       const fs1 = Math.max(9, Math.min(13, (10 * zoom) / 18));
       const fs2 = Math.max(8, Math.min(11, (9 * zoom) / 18));
       for (const s of streets) {
@@ -308,20 +320,20 @@ export class StreetPainter {
         const labelText = `--- ${s.name} (Ancho de Vía ${s.widthM.toFixed(2)}m) ---`;
         for (const slot of slots) {
           const px = toPx(slot.pos);
-          // Ángulo en espacio de PANTALLA — ver nota en sampleChainAt.
           const a = toPx(slot.segFrom), b = toPx(slot.segTo);
           let angle = Math.atan2(b[1] - a[1], b[0] - a[0]);
           if (angle > Math.PI / 2 || angle < -Math.PI / 2) angle += Math.PI;
           ctx.save();
+          ctx.globalAlpha *= labelOp;
           ctx.translate(px[0], px[1]);
           ctx.rotate(angle);
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
           ctx.font = `bold ${fs1}px Courier New`;
-          ctx.fillStyle = 'rgba(247, 129, 102, 0.85)';
+          ctx.fillStyle = strokeColor;
           ctx.fillText(labelText, 0, -fs1 * 0.8);
           ctx.font = `${fs2}px Courier New`;
-          ctx.fillStyle = 'rgba(247, 129, 102, 0.55)';
+          ctx.fillStyle = withAlpha(strokeColor, 0.7);
           ctx.fillText('E   J   E    D   E     V   Í   A', 0, fs2 * 0.8);
           ctx.restore();
         }

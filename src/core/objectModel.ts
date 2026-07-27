@@ -46,10 +46,19 @@ export interface Layer {
   name: string;
   kind: string;
   zIndex: number;
+  /** Color de contorno (trazo). */
   color: string;
+  /** Color de relleno. */
+  fillColor: string;
   visible: boolean;
   locked: boolean;
   opacity: number;
+  /** Engranaje: ¿esta capa dibuja su etiqueta (nombre/número)? Solo se ve
+   *  si el master global "Etiquetas" también está activo. */
+  showLabel: boolean;
+  /** Engranaje: ¿esta capa dibuja su acotación (longitudes/superficies)?
+   *  Solo se ve si el master global "Acotaciones" también está activo. */
+  showCota: boolean;
 }
 
 export interface BaseFeatureProps {

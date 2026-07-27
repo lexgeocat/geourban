@@ -51,32 +51,30 @@ function buildLayerColorMatch(
 ): any[] {
   const result: any[] = ['match', ['get', 'layerId']];
   for (const l of layers) {
-    const color = l.color ?? '#10b981';
     const a = l.opacity ?? 1;
     result.push(l.id);
-    result.push(property === 'fill' ? withAlpha(color, 0.30 * a) : color);
+    if (property === 'fill') {
+      result.push(withAlpha(l.fillColor ?? l.color ?? '#10b981', 0.30 * a));
+    } else {
+      result.push(withAlpha(l.color ?? '#10b981', a));
+    }
   }
-  // Fase 0 (§4): las expresiones de estilo WebGL no pueden invocar
-  // getFeatureKind() (son un DSL evaluado, no JS arbitrario), pero como
-  // `kind` ya es una propiedad plana del feature (seteada por ensureKind),
-  // se puede leer igual que antes se leía `type` — que ya no se escribe.
   result.push(['case', ['==', ['get', 'kind'], 'manzana'], fallbackManzanaExpr, fallbackOther]);
   return result;
 }
 
 export function buildWebglStyle(layers: Layer[]): Record<string, any> {
-  const mznFillExpr: any[] = ['match', ['get', 'colorIdx'],
-    0, MZN_COLORS_22[0], 1, MZN_COLORS_22[1], 2, MZN_COLORS_22[2],
-    3, MZN_COLORS_22[3], 4, MZN_COLORS_22[4], 5, MZN_COLORS_22[5],
-    6, MZN_COLORS_22[6], 7, MZN_COLORS_22[7], 8, MZN_COLORS_22[8],
-    9, MZN_COLORS_22[9], 'rgba(16,185,129,0.30)',
-  ];
-  const mznStrokeExpr: any[] = ['match', ['get', 'colorIdx'],
-    0, MZN_COLORS_STR[0], 1, MZN_COLORS_STR[1], 2, MZN_COLORS_STR[2],
-    3, MZN_COLORS_STR[3], 4, MZN_COLORS_STR[4], 5, MZN_COLORS_STR[5],
-    6, MZN_COLORS_STR[6], 7, MZN_COLORS_STR[7], 8, MZN_COLORS_STR[8],
-    9, MZN_COLORS_STR[9], '#10b981',
-  ];
+  const manzanaLayer = layers.find((l) => l.kind === 'manzana');
+  const mznOpacity = manzanaLayer?.opacity ?? 1;
+
+  const indexedMatch = (alpha: number): any[] => {
+    const expr: any[] = ['match', ['get', 'colorIdx']];
+    MZN_COLORS_STR.forEach((c, i) => expr.push(i, withAlpha(c, alpha * mznOpacity)));
+    expr.push(withAlpha(MZN_COLORS_STR[0], alpha * mznOpacity));
+    return expr;
+  };
+  const mznFillExpr = indexedMatch(0.30);
+  const mznStrokeExpr = indexedMatch(1);
 
   return {
     'fill-color': buildLayerColorMatch(layers, 'fill', mznFillExpr, 'rgba(16,185,129,0.30)'),
