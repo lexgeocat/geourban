@@ -4,6 +4,7 @@ import type { Layer } from '../../core/objectModel';
 import { useDisplayLayersStore, type OverlayLayerId } from '../../store/ui/displayLayersStore';
 import { useLayerPickerStore } from '../../store/ui/layerPickerStore';
 import { useIncrementalRender } from '../../hooks/useIncrementalRender';
+import LayerDeleteModal, { type LayerDeleteRequest } from '../modals/LayerDeleteModal';
 
 /* ─────────── Icons ─────────── */
 
@@ -236,12 +237,11 @@ function LayerRow({ data }: { data: LayerRowData }) {
 
 const NON_REMOVABLE = new Set(['lots', 'manzanas', 'streets', 'equipment', 'greenareas']);
 
-function useRegistryRows(): LayerRowData[] {
+function useRegistryRows(onRequestRemove: (request: LayerDeleteRequest) => void): LayerRowData[] {
   const layers = useLayersStore((s) => s.layers);
   const updateLayer = useLayersStore((s) => s.update);
   const toggleVisibility = useLayersStore((s) => s.toggleVisibility);
   const toggleLock = useLayersStore((s) => s.toggleLock);
-  const removeLayer = useLayersStore((s) => s.remove);
 
   return layers.map((l): LayerRowData => ({
     id: l.id,
@@ -264,7 +264,9 @@ function useRegistryRows(): LayerRowData[] {
     onShowCota: (v) => updateLayer({ id: l.id, showCota: v }),
     onRename: (name) => updateLayer({ id: l.id, name }),
     onToggleLock: () => toggleLock(l.id),
-    onRemove: () => removeLayer(l.id),
+    // Fase 2 (persistencia/integridad): ya no borra directo — abre el
+    // modal de confirmación con conteo de features afectadas.
+    onRemove: () => onRequestRemove({ id: l.id, name: l.name }),
   }));
 }
 
@@ -312,6 +314,7 @@ function useOverlayRows(): LayerRowData[] {
 export default function LayerPanel() {
   const [open, setOpen] = useState(true);
   const [expanded, setExpanded] = useState(true);
+  const [deleteRequest, setDeleteRequest] = useState<LayerDeleteRequest | null>(null);
 
   const layers = useLayersStore((s) => s.layers);
   const addLayer = useLayersStore((s) => s.add);
@@ -321,7 +324,7 @@ export default function LayerPanel() {
   const askOnCreate = useLayerPickerStore((s) => s.askEnabled);
   const setAskOnCreate = useLayerPickerStore((s) => s.setAskEnabled);
 
-  const registryRows = useRegistryRows();
+  const registryRows = useRegistryRows(setDeleteRequest);
   const overlayRows = useOverlayRows();
   const allRows = [...registryRows, ...overlayRows];
 
@@ -338,6 +341,7 @@ export default function LayerPanel() {
   };
 
   return (
+    <>
     <div style={{ position: 'absolute', top: 'calc(var(--cad-topbar-height) + 12px)', right: 12, zIndex: 90, minWidth: open ? 250 : 'auto' }}>
       <button
         onClick={() => setOpen((v) => !v)}
@@ -407,5 +411,7 @@ export default function LayerPanel() {
         </div>
       )}
     </div>
+    <LayerDeleteModal request={deleteRequest} onClose={() => setDeleteRequest(null)} />
+    </>
   );
 }

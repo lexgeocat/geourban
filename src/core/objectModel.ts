@@ -61,6 +61,44 @@ export interface Layer {
   showCota: boolean;
 }
 
+
+/** Fase 2 (persistencia de capas): única fuente de verdad para el
+ *  registro "de fábrica" — la usan tanto `layersRegistryStore` (estado
+ *  inicial / "Nuevo proyecto") como `io/types.ts::createEmptyProject`
+ *  (semilla al importar un proyecto sin `layers` propio), para que
+ *  ambos coincidan siempre. */
+export const DEFAULT_LAYERS: Layer[] = [
+  { id: 'lots', name: 'Lotes', kind: 'lote', zIndex: 0, color: '#58a6ff', fillColor: '#58a6ff', visible: true, locked: false, opacity: 1, showLabel: true, showCota: true },
+  { id: 'manzanas', name: 'Manzanos', kind: 'manzana', zIndex: 1, color: '#f59e0b', fillColor: '#f59e0b', visible: true, locked: false, opacity: 1, showLabel: true, showCota: true },
+  { id: 'streets', name: 'Viales', kind: 'calle', zIndex: 2, color: '#8b5cf6', fillColor: '#8b5cf6', visible: true, locked: false, opacity: 1, showLabel: true, showCota: true },
+  { id: 'equipment', name: 'Equipamientos', kind: 'equipamiento', zIndex: 3, color: '#4dd0c4', fillColor: '#4dd0c4', visible: true, locked: false, opacity: 1, showLabel: true, showCota: true },
+  { id: 'greenareas', name: 'Áreas verdes', kind: 'area_verde', zIndex: 4, color: '#3fb950', fillColor: '#3fb950', visible: true, locked: false, opacity: 1, showLabel: true, showCota: true },
+];
+
+
+/** Capa de fallback creada on-demand al reconciliar features cuyo
+ *  `layerId` no resuelve a ninguna capa del registro (proyecto importado
+ *  con capas custom que ya no existen) — ver
+ *  `layersRegistryStore.reconcileOrphanFeatures`. */
+export const UNASSIGNED_LAYER_ID = 'unassigned';
+
+
+export function createUnassignedLayer(zIndex: number): Layer {
+  return {
+    id: UNASSIGNED_LAYER_ID,
+    name: 'Sin capa',
+    kind: 'lote',
+    zIndex,
+    color: '#94a3b8',
+    fillColor: '#94a3b8',
+    visible: true,
+    locked: false,
+    opacity: 1,
+    showLabel: true,
+    showCota: true,
+  };
+}
+
 export interface BaseFeatureProps {
   kind: GeoUrbanFeatureKind;
   createdAt: string;

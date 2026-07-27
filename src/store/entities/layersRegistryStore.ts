@@ -1,6 +1,13 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
-import type { Layer } from '../../core/objectModel';
+import type Feature from 'ol/Feature.js';
+import type Geometry from 'ol/geom/Geometry.js';
+import {
+  DEFAULT_LAYERS,
+  UNASSIGNED_LAYER_ID,
+  createUnassignedLayer,
+  type Layer,
+} from '../../core/objectModel';
 
 type LayerState = {
   /** Lista de capas ordenadas por z-index (índice en array = z-index) */
@@ -31,6 +38,22 @@ type LayerState = {
   /** Selecciona la capa activa (las features nuevas se asignan a esta) */
   setActiveLayer: (id: string | null) => void;
 
+  /** Fase 2 (persistencia): reemplaza TODO el registro — usado al abrir
+   *  un proyecto guardado o al importar un `.geourban`. Si `layers` viene
+   *  vacío (proyecto guardado antes de esta fase, o import de un formato
+   *  sin capas propias como .geojson/.kml/.dxf), siembra los 5 defaults
+   *  de fábrica — mismo criterio que la migración Dexie v1→v2 de
+   *  `io/projectStore.ts`. */
+  loadLayers: (layers: Layer[], activeLayerId?: string | null) => void;
+  /** Vuelve el registro a los 5 defaults de fábrica ("Nuevo proyecto"). */
+  resetToDefaults: () => void;
+  /** Reconcilia features cuyo `layerId` no resuelve a ninguna capa del
+   *  registro actual (capa borrada/inexistente tras cargar un proyecto)
+   *  reasignándolas a una capa "Sin capa" visible, creada on-demand, en
+   *  vez de dejarlas huérfanas con estilos genéricos silenciosos.
+   *  Devuelve cuántas features se corrigieron. */
+  reconcileOrphanFeatures: (features: Feature<Geometry>[]) => number;
+
   /* ---------- Queries ---------- */
   /** Obtiene una capa por id (undefined si no existe) */
   getById: (id: string) => Layer | undefined;
@@ -46,20 +69,8 @@ type LayerState = {
 
 export const useLayersStore = create<LayerState>()(
   immer((set, get) => ({
-    layers: [
-      { id: 'lots', name: 'Lotes', kind: 'lote', zIndex: 0, color: '#58a6ff', fillColor: '#58a6ff', visible: true, locked: false, opacity: 1, showLabel: true, showCota: true },
-      { id: 'manzanas', name: 'Manzanos', kind: 'manzana', zIndex: 1, color: '#f59e0b', fillColor: '#f59e0b', visible: true, locked: false, opacity: 1, showLabel: true, showCota: true },
-      { id: 'streets', name: 'Viales', kind: 'calle', zIndex: 2, color: '#8b5cf6', fillColor: '#8b5cf6', visible: true, locked: false, opacity: 1, showLabel: true, showCota: true },
-      { id: 'equipment', name: 'Equipamientos', kind: 'equipamiento', zIndex: 3, color: '#4dd0c4', fillColor: '#4dd0c4', visible: true, locked: false, opacity: 1, showLabel: true, showCota: true },
-      { id: 'greenareas', name: 'Áreas verdes', kind: 'area_verde', zIndex: 4, color: '#3fb950', fillColor: '#3fb950', visible: true, locked: false, opacity: 1, showLabel: true, showCota: true },
-    ],
-    index: new Map([
-      ['lots', 0],
-      ['manzanas', 1],
-      ['streets', 2],
-      ['equipment', 3],
-      ['greenareas', 4],
-    ]),
+    layers: DEFAULT_LAYERS.map((l) => ({ ...l })),
+    index: new Map(DEFAULT_LAYERS.map((l, idx) => [l.id, idx])),
     activeLayerId: null,
 
     /* ---------- Mutations ---------- */
@@ -81,9 +92,7 @@ export const useLayersStore = create<LayerState>()(
       set((state) => {
         const index = state.index.get(id);
         if (index === undefined) return;
-        // Eliminar del array
         state.layers.splice(index, 1);
-        // Reconstruir el índice
         state.index = new Map(
           state.layers.map((layer, idx) => [layer.id, idx])
         );
@@ -93,13 +102,9 @@ export const useLayersStore = create<LayerState>()(
       set((state) => {
         const index = state.index.get(patch.id);
         if (index === undefined) return;
-        // Actualizar las propiedades
         Object.assign(state.layers[index], patch);
-        // Si cambió zIndex, necesitamos reordenar
         if ('zIndex' in patch) {
-          // Ordenar por zIndex
           state.layers.sort((a, b) => a.zIndex - b.zIndex);
-          // Actualizar índices
           state.index = new Map(
             state.layers.map((layer, idx) => [layer.id, idx])
           );
@@ -108,31 +113,25 @@ export const useLayersStore = create<LayerState>()(
 
     reorder: (ids, position) =>
       set((state) => {
-        // Filtrar los IDs que realmente existen
         const existingIds = ids.filter((id) => state.index.has(id));
         if (existingIds.length === 0) return;
 
-        // Sacar esas capas del array
         const layersToMove = existingIds
           .map((id) => state.layers[state.index.get(id)!])
           .filter((layer): layer is Layer => layer !== undefined);
 
-        // Eliminar del array original
         state.layers = state.layers.filter(
           (layer) => !existingIds.includes(layer.id)
         );
 
-        // Insertar en la posición especificada
         const before = state.layers.slice(0, position);
         const after = state.layers.slice(position);
         state.layers = [...before, ...layersToMove, ...after];
 
-        // Actualizar z-index basado en nueva posición
         state.layers.forEach((layer, idx) => {
           layer.zIndex = idx;
         });
 
-        // Actualizar el mapa de índices
         state.index = new Map(
           state.layers.map((layer, idx) => [layer.id, idx])
         );
@@ -167,6 +166,44 @@ export const useLayersStore = create<LayerState>()(
         state.activeLayerId = id;
       }),
 
+    loadLayers: (layers, activeLayerId = null) =>
+      set((state) => {
+        const next = layers.length > 0
+          ? layers.map((l) => ({ ...l }))
+          : DEFAULT_LAYERS.map((l) => ({ ...l }));
+        state.layers = next;
+        state.index = new Map(next.map((l, idx) => [l.id, idx]));
+        state.activeLayerId = activeLayerId && next.some((l) => l.id === activeLayerId)
+          ? activeLayerId
+          : null;
+      }),
+
+    resetToDefaults: () =>
+      set((state) => {
+        const next = DEFAULT_LAYERS.map((l) => ({ ...l }));
+        state.layers = next;
+        state.index = new Map(next.map((l, idx) => [l.id, idx]));
+        state.activeLayerId = null;
+      }),
+
+    reconcileOrphanFeatures: (features) => {
+      const validIds = new Set(get().layers.map((l) => l.id));
+      const orphans = features.filter((f) => {
+        const layerId = f.get('layerId') as string | undefined;
+        return !!layerId && !validIds.has(layerId);
+      });
+      if (orphans.length === 0) return 0;
+
+      if (!validIds.has(UNASSIGNED_LAYER_ID)) {
+        set((state) => {
+          state.layers.push(createUnassignedLayer(state.layers.length));
+          state.index = new Map(state.layers.map((l, idx) => [l.id, idx]));
+        });
+      }
+      for (const f of orphans) f.set('layerId', UNASSIGNED_LAYER_ID, true);
+      return orphans.length;
+    },
+
     /* ---------- Queries ---------- */
     getById: (id) => {
       const index = get().index.get(id);
@@ -176,7 +213,7 @@ export const useLayersStore = create<LayerState>()(
     getVisible: () => {
       return get().layers
         .filter((layer) => layer.visible)
-        .sort((a, b) => a.zIndex - b.zIndex); // Ya deberían estar ordenados
+        .sort((a, b) => a.zIndex - b.zIndex);
     },
 
     count: () => {

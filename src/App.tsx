@@ -11,6 +11,7 @@ import { writeProjectFromOlFeatures } from './io/geojson';
 import { useMapStore } from './store/map/mapStore';
 import { useUiShellStore } from './store/ui/uiShellStore';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
+import { useLayersStore } from './store/entities/layersRegistryStore';
 import ProjectSetupModal from './components/modals/ProjectSetupModal';
 import ManzanoPanel from './components/panels/ManzanoPanel';
 import RoundaboutPanel from './components/panels/RoundaboutPanel';
@@ -29,6 +30,11 @@ function App() {
       const project = writeProjectFromOlFeatures(features);
       project.baseMap = baseMap;
       project.view = { center: viewConfig.center, zoom: viewConfig.zoom };
+      // Fase 2 (persistencia): sin esto, cada autosave periódico volvía a
+      // pisar `layers` con los defaults de createEmptyProject(), aunque
+      // el usuario nunca tocara "Guardar" a mano.
+      project.layers = useLayersStore.getState().layers;
+      project.activeLayerId = useLayersStore.getState().activeLayerId;
       return project;
     });
   }, []);

@@ -10,11 +10,19 @@ export function parseGeoUrbanJson(raw: string): GeoUrbanProject {
     throw new Error('Archivo .geourban inválido: falta FeatureCollection en data');
   }
   const base = createEmptyProject(parsed.name ?? 'Proyecto importado');
+  // Fase 2 (persistencia): migración — un .geourban guardado antes de
+  // esta fase (o con `layers` vacío/corrupto) no trae registro de capas;
+  // en ese caso sembramos los defaults de `base` en vez de heredar un
+  // array vacío del archivo (mismo criterio que la migración Dexie
+  // v1→v2 de io/projectStore.ts).
+  const layers = Array.isArray(parsed.layers) && parsed.layers.length > 0 ? parsed.layers : base.layers;
   return {
     ...base,
     ...parsed,
     version: '1.0',
     data: parsed.data,
+    layers,
+    activeLayerId: parsed.activeLayerId ?? null,
     updatedAt: new Date().toISOString(),
   };
 }
