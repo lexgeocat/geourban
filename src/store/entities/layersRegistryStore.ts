@@ -6,7 +6,9 @@ import {
   DEFAULT_LAYERS,
   UNASSIGNED_LAYER_ID,
   createUnassignedLayer,
+  isLayerKind,
   type Layer,
+  type LayerKind,
 } from '../../core/objectModel';
 
 type LayerState = {
@@ -65,6 +67,14 @@ type LayerState = {
   hasKindVisible: (kind: string) => boolean;
   /** Obtiene la primera capa que coincida con el kind dado */
   getLayerForKind: (kind: string) => Layer | undefined;
+
+  /* ---------- LayerKind queries (Fase 4) ---------- */
+  /** Obtiene el LayerKind de una capa por id (null si no existe o es inválido) */
+  getKind: (id: string) => LayerKind | null;
+  /** Verifica si alguna capa tiene el kind dado */
+  hasKind: (kind: LayerKind) => boolean;
+  /** Obtiene el colorMode de una capa por id */
+  getColorMode: (id: string) => 'solid' | 'colorIdx';
 };
 
 export const useLayersStore = create<LayerState>()(
@@ -77,11 +87,14 @@ export const useLayersStore = create<LayerState>()(
     add: (layer) =>
       set((state) => {
         const newZIndex = state.layers.length;
+        const safeKind: LayerKind = isLayerKind(layer.kind) ? layer.kind : 'lote';
         const withDefaults: Layer = {
           ...layer,
+          kind: safeKind,
           fillColor: layer.fillColor ?? layer.color,
           showLabel: layer.showLabel ?? true,
           showCota: layer.showCota ?? true,
+          colorMode: (layer as any).colorMode ?? (safeKind === 'manzana' ? 'colorIdx' : 'solid'),
           zIndex: newZIndex,
         };
         state.layers.push(withDefaults);
@@ -103,6 +116,11 @@ export const useLayersStore = create<LayerState>()(
         const index = state.index.get(patch.id);
         if (index === undefined) return;
         Object.assign(state.layers[index], patch);
+        if ('kind' in patch) {
+          const safeKind: LayerKind = isLayerKind(patch.kind) ? patch.kind : 'lote';
+          state.layers[index].kind = safeKind;
+          state.layers[index].colorMode = safeKind === 'manzana' ? 'colorIdx' : 'solid';
+        }
         if ('zIndex' in patch) {
           state.layers.sort((a, b) => a.zIndex - b.zIndex);
           state.index = new Map(
@@ -169,7 +187,13 @@ export const useLayersStore = create<LayerState>()(
     loadLayers: (layers, activeLayerId = null) =>
       set((state) => {
         const next = layers.length > 0
-          ? layers.map((l) => ({ ...l }))
+          ? layers.map((l) => ({
+              ...l,
+              kind: isLayerKind(l.kind) ? l.kind : 'lote',
+              colorMode: ((l as any).colorMode as string) === 'colorIdx'
+                ? 'colorIdx' as const
+                : (isLayerKind(l.kind) && l.kind === 'manzana' ? 'colorIdx' as const : 'solid' as const),
+            }))
           : DEFAULT_LAYERS.map((l) => ({ ...l }));
         state.layers = next;
         state.index = new Map(next.map((l, idx) => [l.id, idx]));
@@ -228,6 +252,22 @@ export const useLayersStore = create<LayerState>()(
 
     getLayerForKind: (kind) => {
       return get().layers.find((layer) => layer.kind === kind);
+    },
+
+    /* ---------- LayerKind queries (Fase 4) ---------- */
+    getKind: (id) => {
+      const index = get().index.get(id);
+      if (index === undefined) return null;
+      const k = get().layers[index].kind;
+      return isLayerKind(k) ? k : null;
+    },
+    hasKind: (kind) => {
+      return get().layers.some((l) => l.kind === kind);
+    },
+    getColorMode: (id) => {
+      const index = get().index.get(id);
+      if (index === undefined) return 'solid';
+      return get().layers[index].colorMode;
     },
   }))
 );

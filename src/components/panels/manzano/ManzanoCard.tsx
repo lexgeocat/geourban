@@ -3,7 +3,8 @@ import { useManzanoStore, type ManzanoLoteMethod } from '../../../store/entities
 import { useTopologyWarningsStore } from '../../../store/topologyWarningsStore';
 import { formatMetricArea } from '../../../geo/metrics';
 import { SUBDIVISION_METHOD_INFO } from '../../../geo/subdivision/subdivisionMethodLabels';
-import { MZN_COLORS, type ManzanoRow } from '../../../geo/selectors/manzanoRows';
+import { manzanoDisplayColor } from '../../../geo/manzanoColor';
+import type { ManzanoRow } from '../../../geo/selectors/manzanoRows';
 
 const METHOD_BTNS = (['auto', 'exact', 'modo2'] as ManzanoLoteMethod[]).map((key) => ({
   key,
@@ -43,7 +44,7 @@ export default function ManzanoCard({
   const [manualAngleValue, setManualAngleValue] = useState('');
 
   const isOpen = !!openCards[String(row.id)];
-  const color = MZN_COLORS[row.colorIdx];
+  const color = manzanoDisplayColor(row.colorIdx);
   const method = getMethod(row.id);
   const rotateDir = getRotateDir(row.id);
   const isRotatingThis = rotatingId === row.id;

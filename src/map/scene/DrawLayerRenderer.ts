@@ -2,6 +2,7 @@ import WebGLVectorLayer from 'ol/layer/WebGLVector.js';
 import VectorLayer from 'ol/layer/Vector.js';
 import VectorSource from 'ol/source/Vector.js';
 import type { Layer } from '../../core/objectModel';
+import { MZN_COLORS, MZN_COLOR_COUNT } from '../../geo/manzanoColor';
 
 export type WorkVisibility = {
   lots: boolean;
@@ -11,17 +12,9 @@ export type WorkVisibility = {
   measurements: boolean;
 };
 
-export const MZN_COLORS_22 = [
-  'rgba(88,166,255,0.13)', 'rgba(63,185,80,0.13)', 'rgba(245,158,11,0.13)',
-  'rgba(239,68,68,0.13)', 'rgba(139,92,246,0.13)', 'rgba(236,72,153,0.13)',
-  'rgba(20,184,166,0.13)', 'rgba(249,115,22,0.13)', 'rgba(6,182,212,0.13)',
-  'rgba(132,204,22,0.13)',
-];
+export const MZN_COLORS_22 = MZN_COLORS.map((c) => withAlpha(c, 0.13));
 
-export const MZN_COLORS_STR = [
-  '#58a6ff', '#3fb950', '#f59e0b', '#ef4444', '#8b5cf6',
-  '#ec4899', '#14b8a6', '#f97316', '#06b6d4', '#84cc16',
-];
+export const MZN_COLORS_STR: readonly string[] = MZN_COLORS;
 
 export interface DrawLayers {
   webglLayer: WebGLVectorLayer;
@@ -43,42 +36,39 @@ export function withAlpha(color: string, alpha: number): string {
   return `rgba(${r},${g},${b},${alpha})`;
 }
 
-function buildLayerColorMatch(
-  layers: Layer[],
-  property: 'fill' | 'stroke',
-  fallbackManzanaExpr: any[],
-  fallbackOther: string,
-): any[] {
-  const result: any[] = ['match', ['get', 'layerId']];
-  for (const l of layers) {
-    const a = l.opacity ?? 1;
-    result.push(l.id);
-    if (property === 'fill') {
-      result.push(withAlpha(l.fillColor ?? l.color ?? '#10b981', 0.30 * a));
-    } else {
-      result.push(withAlpha(l.color ?? '#10b981', a));
-    }
-  }
-  result.push(['case', ['==', ['get', 'kind'], 'manzana'], fallbackManzanaExpr, fallbackOther]);
-  return result;
-}
-
 export function buildWebglStyle(layers: Layer[]): Record<string, any> {
-  const manzanaLayer = layers.find((l) => l.kind === 'manzana');
-  const mznOpacity = manzanaLayer?.opacity ?? 1;
+  const layerMap = new Map<string, Layer>();
+  for (const l of layers) layerMap.set(l.id, l);
 
-  const indexedMatch = (alpha: number): any[] => {
+  const colorForLayer = (layerId: string, property: 'fill' | 'stroke'): any => {
+    const layer = layerMap.get(layerId);
+    if (!layer || layer.colorMode !== 'colorIdx') {
+      const a = layer?.opacity ?? 1;
+      return property === 'fill'
+        ? withAlpha(layer?.fillColor ?? layer?.color ?? '#10b981', 0.30 * a)
+        : withAlpha(layer?.color ?? '#10b981', a);
+    }
+    const a = property === 'fill' ? 0.30 : 1;
+    const lo = layer?.opacity ?? 1;
     const expr: any[] = ['match', ['get', 'colorIdx']];
-    MZN_COLORS_STR.forEach((c, i) => expr.push(i, withAlpha(c, alpha * mznOpacity)));
-    expr.push(withAlpha(MZN_COLORS_STR[0], alpha * mznOpacity));
+    for (let i = 0; i < MZN_COLOR_COUNT; i++) expr.push(i, withAlpha(MZN_COLORS[i], a * lo));
+    expr.push(withAlpha(MZN_COLORS[0], a * lo));
     return expr;
   };
-  const mznFillExpr = indexedMatch(0.30);
-  const mznStrokeExpr = indexedMatch(1);
+
+  const fillMatch: any[] = ['match', ['get', 'layerId']];
+  const strokeMatch: any[] = ['match', ['get', 'layerId']];
+
+  for (const l of layers) {
+    fillMatch.push(l.id, colorForLayer(l.id, 'fill'));
+    strokeMatch.push(l.id, colorForLayer(l.id, 'stroke'));
+  }
+  fillMatch.push('rgba(16,185,129,0.30)');
+  strokeMatch.push('#10b981');
 
   return {
-    'fill-color': buildLayerColorMatch(layers, 'fill', mznFillExpr, 'rgba(16,185,129,0.30)'),
-    'stroke-color': buildLayerColorMatch(layers, 'stroke', mznStrokeExpr, '#10b981'),
+    'fill-color': fillMatch,
+    'stroke-color': strokeMatch,
     'stroke-width': 2,
   };
 }

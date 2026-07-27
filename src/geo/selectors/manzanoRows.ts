@@ -4,11 +4,7 @@ import Polygon from 'ol/geom/Polygon.js';
 import type VectorSource from 'ol/source/Vector.js';
 import { polyArea, centroid, ringPerimeter, type Pt } from '../math/polygonEngine';
 import { getFeatureKind, getLotStatus, type LotStatus } from '../../core/objectModel';
-
-export const MZN_COLORS = [
-  '#58a6ff', '#3fb950', '#f59e0b', '#ef4444', '#8b5cf6',
-  '#ec4899', '#14b8a6', '#f97316', '#06b6d4', '#84cc16',
-];
+import { MZN_COLORS } from '../manzanoColor';
 
 export interface LotInfo {
   label: string;

@@ -3,7 +3,7 @@ import { Modal } from '../ui/Modal';
 import { useMapStore } from '../../store/map/mapStore';
 import { useLayersStore } from '../../store/entities/layersRegistryStore';
 import { runCommand } from '../../commands/core/CommandStack';
-import { DeleteFeaturesCommand } from '../../commands/features/DeleteFeaturesCommand';
+import { RemoveLayerCommand } from '../../commands/layers/RemoveLayerCommand';
 
 export interface LayerDeleteRequest {
   id: string;
@@ -25,7 +25,6 @@ interface LayerDeleteModalProps {
 export default function LayerDeleteModal({ request, onClose }: LayerDeleteModalProps) {
   const drawSource = useMapStore((s) => s.drawSource);
   const layers = useLayersStore((s) => s.layers);
-  const removeLayer = useLayersStore((s) => s.remove);
 
   const affectedIds = useMemo(() => {
     if (!request || !drawSource) return [];
@@ -47,20 +46,14 @@ export default function LayerDeleteModal({ request, onClose }: LayerDeleteModalP
 
   if (!request) return null;
 
-  const handleConfirm = () => {
-    if (affectedIds.length > 0) {
-      if (action === 'move' && effectiveTarget && drawSource) {
-        drawSource.forEachFeature((f) => {
-          if (f.get('layerId') === request.id) f.set('layerId', effectiveTarget);
-        });
-        drawSource.changed();
-      } else if (action === 'delete') {
-        void runCommand(new DeleteFeaturesCommand(affectedIds));
-      }
-    }
-    removeLayer(request.id);
-    onClose();
-  };
+ const handleConfirm = () => {
+  void runCommand(new RemoveLayerCommand({
+    layerId: request.id,
+    action,
+    targetLayerId: action === 'move' ? effectiveTarget : undefined,
+  }));
+  onClose();
+};
 
   return (
     <Modal

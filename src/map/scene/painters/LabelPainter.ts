@@ -14,7 +14,7 @@ import {
   computeCotaOpacity,
 } from '../../styleFactory';
 import { formatMetricLength, formatMetricArea, type SegmentMetric } from '../../../geo/metrics';
-import { MZN_COLORS_STR } from '../DrawLayerRenderer';
+import { manzanoDisplayColor } from '../../../geo/manzanoColor';
 import { measureCached, measureCachedWidth } from '../../textMeasureCache';
 import { getFeatureKind } from '../../../core/objectModel';
 import { useDisplayLayersStore } from '../../../store/ui/displayLayersStore';
@@ -129,7 +129,7 @@ export class LabelPainter {
           if ((showTitle || showArea) && labelPoint) {
             const text = `Mzo. ${colorIdx + 1}`;
             if (!isColliding(ctx, labelPoint, text, placedBoxes, toPx)) {
-              const mznColor = MZN_COLORS_STR[colorIdx % MZN_COLORS_STR.length];
+              const mznColor = manzanoDisplayColor(colorIdx);
               drawMainMetricLabel(ctx, labelPoint, toPx, text, true, {
                 extraLine: areaText ?? undefined,
                 color: mznColor,

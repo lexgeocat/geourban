@@ -1,10 +1,14 @@
 ﻿import React, { useState, useRef, useEffect } from 'react';
 import { useLayersStore } from '../../store/entities/layersRegistryStore';
-import type { Layer } from '../../core/objectModel';
+import type { LayerKind } from '../../core/objectModel';
 import { useDisplayLayersStore, type OverlayLayerId } from '../../store/ui/displayLayersStore';
 import { useLayerPickerStore } from '../../store/ui/layerPickerStore';
 import { useIncrementalRender } from '../../hooks/useIncrementalRender';
+import { manzanoDisplayColor } from '../../geo/manzanoColor';
 import LayerDeleteModal, { type LayerDeleteRequest } from '../modals/LayerDeleteModal';
+import AddLayerModal from '../modals/AddLayerModal';
+import { runCommand } from '../../commands/core/CommandStack';
+import { UpdateLayerCommand } from '../../commands/layers/UpdateLayerCommand';
 
 /* ─────────── Icons ─────────── */
 
@@ -66,17 +70,6 @@ const IconGear = () => (
 
 /* ─────────── Predefined colors ─────────── */
 
-const LAYER_COLORS = [
-  '#58a6ff', '#3fb950', '#f59e0b', '#ef4444', '#8b5cf6',
-  '#ec4899', '#14b8a6', '#f97316', '#06b6d4', '#84cc16',
-  '#a78bfa', '#fb7185',
-];
-
-function nextColor(existing: Layer[]): string {
-  const used = new Set(existing.map((l) => l.color));
-  return LAYER_COLORS.find((c) => !used.has(c)) ?? LAYER_COLORS[existing.length % LAYER_COLORS.length];
-}
-
 /* ─────────── Color Picker ─────────── */
 
 function ColorDot({ color, onChange, title }: { color: string; onChange: (c: string) => void; title?: string }) {
@@ -132,12 +125,15 @@ interface LayerRowData {
   locked?: boolean;
   /** Oculta el toggle "Mostrar acotación" del menú engranaje (ej: Vértices). */
   hideCota?: boolean;
+  kind: LayerKind;
+  colorMode: 'solid' | 'colorIdx';
   onToggleVisible: () => void;
   onOpacity: (v: number) => void;
   onStrokeColor: (c: string) => void;
   onFillColor: (c: string) => void;
   onShowLabel: (v: boolean) => void;
   onShowCota: (v: boolean) => void;
+  onSetColorMode: (mode: 'solid' | 'colorIdx') => void;
   onRename?: (name: string) => void;
   onToggleLock?: () => void;
   onRemove?: () => void;
@@ -215,6 +211,21 @@ function LayerRow({ data }: { data: LayerRowData }) {
                 Mostrar acotación
               </label>
             )}
+            {data.kind === 'manzana' && (
+              <div style={{ borderTop: '1px solid var(--cad-border)', marginTop: 6, paddingTop: 6 }}>
+                <div style={{ fontSize: '0.62rem', color: 'var(--cad-text-muted)', marginBottom: 4 }}>Color de manzanos</div>
+                <label style={{ ...gearLabelStyle, padding: '2px 0' }}>
+                  <input type="radio" name={`cm-${data.id}`} className="cad-toggle" checked={data.colorMode === 'solid'} onChange={() => data.onSetColorMode('solid')} />
+                  <span style={{ width: 8, height: 8, borderRadius: 2, background: data.strokeColor, flexShrink: 0 }} />
+                  Sólido (capa)
+                </label>
+                <label style={{ ...gearLabelStyle, padding: '2px 0' }}>
+                  <input type="radio" name={`cm-${data.id}`} className="cad-toggle" checked={data.colorMode === 'colorIdx'} onChange={() => data.onSetColorMode('colorIdx')} />
+                  <span style={{ width: 8, height: 8, borderRadius: 2, background: manzanoDisplayColor(0), flexShrink: 0 }} />
+                  Por manzano
+                </label>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -239,9 +250,6 @@ const NON_REMOVABLE = new Set(['lots', 'manzanas', 'streets', 'equipment', 'gree
 
 function useRegistryRows(onRequestRemove: (request: LayerDeleteRequest) => void): LayerRowData[] {
   const layers = useLayersStore((s) => s.layers);
-  const updateLayer = useLayersStore((s) => s.update);
-  const toggleVisibility = useLayersStore((s) => s.toggleVisibility);
-  const toggleLock = useLayersStore((s) => s.toggleLock);
 
   return layers.map((l): LayerRowData => ({
     id: l.id,
@@ -256,16 +264,17 @@ function useRegistryRows(onRequestRemove: (request: LayerDeleteRequest) => void)
     removable: !NON_REMOVABLE.has(l.id),
     lockable: true,
     locked: l.locked,
-    onToggleVisible: () => toggleVisibility(l.id),
-    onOpacity: (v) => updateLayer({ id: l.id, opacity: v }),
-    onStrokeColor: (c) => updateLayer({ id: l.id, color: c }),
-    onFillColor: (c) => updateLayer({ id: l.id, fillColor: c }),
-    onShowLabel: (v) => updateLayer({ id: l.id, showLabel: v }),
-    onShowCota: (v) => updateLayer({ id: l.id, showCota: v }),
-    onRename: (name) => updateLayer({ id: l.id, name }),
-    onToggleLock: () => toggleLock(l.id),
-    // Fase 2 (persistencia/integridad): ya no borra directo — abre el
-    // modal de confirmación con conteo de features afectadas.
+    kind: l.kind,
+    colorMode: l.colorMode,
+    onToggleVisible: () => void runCommand(new UpdateLayerCommand(l.id, { visible: !l.visible }, 'Visibilidad de capa')),
+    onOpacity: (v) => void runCommand(new UpdateLayerCommand(l.id, { opacity: v }, 'Opacidad de capa')),
+    onStrokeColor: (c) => void runCommand(new UpdateLayerCommand(l.id, { color: c }, 'Color de capa')),
+    onFillColor: (c) => void runCommand(new UpdateLayerCommand(l.id, { fillColor: c }, 'Color de relleno de capa')),
+    onShowLabel: (v) => void runCommand(new UpdateLayerCommand(l.id, { showLabel: v }, 'Mostrar etiqueta de capa')),
+    onShowCota: (v) => void runCommand(new UpdateLayerCommand(l.id, { showCota: v }, 'Mostrar acotación de capa')),
+    onSetColorMode: (mode) => void runCommand(new UpdateLayerCommand(l.id, { colorMode: mode }, 'Modo de color de capa')),
+    onRename: (name) => void runCommand(new UpdateLayerCommand(l.id, { name }, 'Renombrar capa')),
+    onToggleLock: () => void runCommand(new UpdateLayerCommand(l.id, { locked: !l.locked }, 'Bloqueo de capa')),
     onRemove: () => onRequestRemove({ id: l.id, name: l.name }),
   }));
 }
@@ -299,12 +308,15 @@ function useOverlayRows(): LayerRowData[] {
       removable: false,
       lockable: false,
       hideCota: id === 'vertices',
+      kind: 'linea' as LayerKind,
+      colorMode: 'solid' as const,
       onToggleVisible: () => setVisible(id, !o.visible),
       onOpacity: (v) => setOpacity(id, v),
       onStrokeColor: (c) => setStroke(id, c),
       onFillColor: (c) => setFill(id, c),
       onShowLabel: (v) => setOption(id, 'showLabel', v),
       onShowCota: (v) => setOption(id, 'showCota', v),
+      onSetColorMode: () => {},
     };
   });
 }
@@ -316,8 +328,6 @@ export default function LayerPanel() {
   const [expanded, setExpanded] = useState(true);
   const [deleteRequest, setDeleteRequest] = useState<LayerDeleteRequest | null>(null);
 
-  const layers = useLayersStore((s) => s.layers);
-  const addLayer = useLayersStore((s) => s.add);
   const setActiveLayer = useLayersStore((s) => s.setActiveLayer);
   const activeLayerId = useLayersStore((s) => s.activeLayerId);
 
@@ -331,14 +341,7 @@ export default function LayerPanel() {
   const panelRef = useRef<HTMLDivElement>(null);
   const { visibleCount, sentinelRef } = useIncrementalRender(allRows.length, 60, panelRef);
 
-  const handleAddLayer = () => {
-    const id = `layer-${Date.now().toString(36)}`;
-    const color = nextColor(layers);
-    addLayer({
-      id, name: `Capa ${layers.length + 1}`, kind: 'lote', color, fillColor: color,
-      visible: true, locked: false, opacity: 1, showLabel: true, showCota: true,
-    });
-  };
+  const [addLayerOpen, setAddLayerOpen] = useState(false);
 
   return (
     <>
@@ -363,7 +366,7 @@ export default function LayerPanel() {
             <span style={{ fontSize: '0.6rem', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--cad-text-dim)' }}>
               Capas
             </span>
-            <button onClick={handleAddLayer} className="cad-icon-btn cad-tooltip" data-tooltip="Nueva capa" style={{ width: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <button onClick={() => setAddLayerOpen(true)} className="cad-icon-btn cad-tooltip" data-tooltip="Nueva capa" style={{ width: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <IconPlus />
             </button>
           </div>
@@ -412,6 +415,7 @@ export default function LayerPanel() {
       )}
     </div>
     <LayerDeleteModal request={deleteRequest} onClose={() => setDeleteRequest(null)} />
+    <AddLayerModal open={addLayerOpen} onOpenChange={setAddLayerOpen} />
     </>
   );
 }

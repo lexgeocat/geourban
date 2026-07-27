@@ -9,11 +9,7 @@ import Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
 import Polygon from 'ol/geom/Polygon.js';
 import { getFeatureKind } from '../../core/objectModel';
-
-const MZN_COLORS = [
-  '#58a6ff', '#3fb950', '#f59e0b', '#ef4444', '#8b5cf6',
-  '#ec4899', '#14b8a6', '#f97316', '#06b6d4', '#84cc16',
-];
+import { manzanoDisplayColor } from '../../geo/manzanoColor';
 
 interface ManzanoInfo {
   index: number;
@@ -77,7 +73,7 @@ function computeStats(drawSource: any, streets: any[]): StatsData {
       result.manzanos.push({
         index: mznIdx,
         areaM2: area,
-        color: MZN_COLORS[mznIdx % MZN_COLORS.length],
+        color: manzanoDisplayColor(mznIdx),
         isManzana: true,
         vertexCount: coords[0].length - 1,
       });

@@ -41,10 +41,12 @@ export type GeoUrbanFeatureKind =
   | 'texto'
   | 'cota';
 
+export type LayerKind = GeoUrbanFeatureKind;
+
 export interface Layer {
   id: string;
   name: string;
-  kind: string;
+  kind: LayerKind;
   zIndex: number;
   /** Color de contorno (trazo). */
   color: string;
@@ -59,6 +61,10 @@ export interface Layer {
   /** Engranaje: ¿esta capa dibuja su acotación (longitudes/superficies)?
    *  Solo se ve si el master global "Acotaciones" también está activo. */
   showCota: boolean;
+  /** Cómo se pinta el color de los features dentro de esta capa:
+   *  - 'solid': todos usan el `fillColor`/`color` de la capa (uniforme).
+   *  - 'colorIdx': cada feature usa su `colorIdx` propio (manzanos). */
+  colorMode: 'solid' | 'colorIdx';
 }
 
 
@@ -68,11 +74,11 @@ export interface Layer {
  *  (semilla al importar un proyecto sin `layers` propio), para que
  *  ambos coincidan siempre. */
 export const DEFAULT_LAYERS: Layer[] = [
-  { id: 'lots', name: 'Lotes', kind: 'lote', zIndex: 0, color: '#58a6ff', fillColor: '#58a6ff', visible: true, locked: false, opacity: 1, showLabel: true, showCota: true },
-  { id: 'manzanas', name: 'Manzanos', kind: 'manzana', zIndex: 1, color: '#f59e0b', fillColor: '#f59e0b', visible: true, locked: false, opacity: 1, showLabel: true, showCota: true },
-  { id: 'streets', name: 'Viales', kind: 'calle', zIndex: 2, color: '#8b5cf6', fillColor: '#8b5cf6', visible: true, locked: false, opacity: 1, showLabel: true, showCota: true },
-  { id: 'equipment', name: 'Equipamientos', kind: 'equipamiento', zIndex: 3, color: '#4dd0c4', fillColor: '#4dd0c4', visible: true, locked: false, opacity: 1, showLabel: true, showCota: true },
-  { id: 'greenareas', name: 'Áreas verdes', kind: 'area_verde', zIndex: 4, color: '#3fb950', fillColor: '#3fb950', visible: true, locked: false, opacity: 1, showLabel: true, showCota: true },
+  { id: 'lots', name: 'Lotes', kind: 'lote', zIndex: 0, color: '#58a6ff', fillColor: '#58a6ff', visible: true, locked: false, opacity: 1, showLabel: true, showCota: true, colorMode: 'solid' },
+  { id: 'manzanas', name: 'Manzanos', kind: 'manzana', zIndex: 1, color: '#f59e0b', fillColor: '#f59e0b', visible: true, locked: false, opacity: 1, showLabel: true, showCota: true, colorMode: 'colorIdx' },
+  { id: 'streets', name: 'Viales', kind: 'calle', zIndex: 2, color: '#8b5cf6', fillColor: '#8b5cf6', visible: true, locked: false, opacity: 1, showLabel: true, showCota: true, colorMode: 'solid' },
+  { id: 'equipment', name: 'Equipamientos', kind: 'equipamiento', zIndex: 3, color: '#4dd0c4', fillColor: '#4dd0c4', visible: true, locked: false, opacity: 1, showLabel: true, showCota: true, colorMode: 'solid' },
+  { id: 'greenareas', name: 'Áreas verdes', kind: 'area_verde', zIndex: 4, color: '#3fb950', fillColor: '#3fb950', visible: true, locked: false, opacity: 1, showLabel: true, showCota: true, colorMode: 'solid' },
 ];
 
 
@@ -96,6 +102,7 @@ export function createUnassignedLayer(zIndex: number): Layer {
     opacity: 1,
     showLabel: true,
     showCota: true,
+    colorMode: 'solid',
   };
 }
 
@@ -174,6 +181,11 @@ const KNOWN_KINDS: ReadonlySet<GeoUrbanFeatureKind> = new Set<GeoUrbanFeatureKin
 
 export function isGeoUrbanFeatureKind(value: unknown): value is GeoUrbanFeatureKind {
   return typeof value === 'string' && (KNOWN_KINDS as Set<string>).has(value);
+}
+
+/** Guard para LayerKind (alias de GeoUrbanFeatureKind). */
+export function isLayerKind(value: unknown): value is LayerKind {
+  return isGeoUrbanFeatureKind(value);
 }
 
 const VALID_LOT_STATUSES: ReadonlySet<LotStatus> = new Set<LotStatus>(['none', 'subdivided', 'pending']);
