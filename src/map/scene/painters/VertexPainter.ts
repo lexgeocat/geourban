@@ -4,9 +4,9 @@ import Polygon from 'ol/geom/Polygon.js';
 import { useDisplayLayersStore } from '../../../store/ui/displayLayersStore';
 import { getFeatureKind } from '../../../core/objectModel';
 
-/** Vértices de lotes/manzanos. Gateo via displayLayersStore v2:
+/** Vértices de lotes/manzanos. Gateo via displayLayersStore:
  *   - dots   → overlay 'vertices' (visible + opacity)
- *   - labels → master labels ∩ vertices.showLabel
+ *   - labels → vertices.showLabel
  */
 export class VertexPainter {
   paint(

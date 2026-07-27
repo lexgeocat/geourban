@@ -2,8 +2,6 @@ import { useRoundaboutStore } from '../../../store/entities/roundaboutStore';
 import { roundaboutGeometry } from '../../../geo/roundabout/roundaboutEngine';
 import { formatMetricLength } from '../../../geo/metrics';
 import type { RoundaboutDrawPreview } from '../RoundaboutDrawInteraction';
-import { useDisplayLayersStore } from '../../../store/ui/displayLayersStore';
-
 /** Rotondas confirmadas + preview en vivo del trazado de 2 clics.
  *  Extraído de PostrenderPainter (Fase 5). */
 export class RoundaboutPainter {
@@ -30,7 +28,7 @@ export class RoundaboutPainter {
         this.strokeRing(ctx, geom.centerAxis, toPx, 'rgba(247, 129, 102, 0.45)', 1);
         ctx.restore();
 
-        if (useDisplayLayersStore.getState().labels.enabled) {
+        {
           const [lx, ly] = toPx(rb.center);
           ctx.save();
           ctx.font = 'bold 11px Courier New';

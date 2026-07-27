@@ -115,13 +115,6 @@ function OpacitySlider({ value, onChange }: { value: number; onChange: (v: numbe
 
 /* ─────────── Fila genérica de capa ─────────── */
 
-interface GearExtra {
-  key: string;
-  label: string;
-  value: boolean;
-  onChange: (v: boolean) => void;
-}
-
 interface LayerRowData {
   id: string;
   name: string;
@@ -135,8 +128,8 @@ interface LayerRowData {
   removable: boolean;
   lockable: boolean;
   locked?: boolean;
-  isMaster?: boolean;
-  gearExtra?: GearExtra[];
+  /** Oculta el toggle "Mostrar acotación" del menú engranaje (ej: Vértices). */
+  hideCota?: boolean;
   onToggleVisible: () => void;
   onOpacity: (v: number) => void;
   onStrokeColor: (c: string) => void;
@@ -210,24 +203,16 @@ function LayerRow({ data }: { data: LayerRowData }) {
             className="cad-panel-glass animate-fade-in"
             style={{ position: 'absolute', top: '100%', right: 0, marginTop: 4, minWidth: 190, padding: 8, borderRadius: 6, zIndex: 300 }}
           >
-            {!data.isMaster && (
-              <>
-                <label style={gearLabelStyle}>
-                  <input type="checkbox" className="cad-toggle" checked={data.showLabel} onChange={(e) => data.onShowLabel(e.target.checked)} />
-                  Mostrar etiqueta
-                </label>
-                <label style={gearLabelStyle}>
-                  <input type="checkbox" className="cad-toggle" checked={data.showCota} onChange={(e) => data.onShowCota(e.target.checked)} />
-                  Mostrar acotación
-                </label>
-              </>
-            )}
-            {data.gearExtra?.map((g) => (
-              <label key={g.key} style={gearLabelStyle}>
-                <input type="checkbox" className="cad-toggle" checked={g.value} onChange={(e) => g.onChange(e.target.checked)} />
-                {g.label}
+            <label style={gearLabelStyle}>
+              <input type="checkbox" className="cad-toggle" checked={data.showLabel} onChange={(e) => data.onShowLabel(e.target.checked)} />
+              Mostrar etiqueta
+            </label>
+            {!data.hideCota && (
+              <label style={gearLabelStyle}>
+                <input type="checkbox" className="cad-toggle" checked={data.showCota} onChange={(e) => data.onShowCota(e.target.checked)} />
+                Mostrar acotación
               </label>
-            ))}
+            )}
           </div>
         )}
       </div>
@@ -310,6 +295,7 @@ function useOverlayRows(): LayerRowData[] {
       editableName: false,
       removable: false,
       lockable: false,
+      hideCota: id === 'vertices',
       onToggleVisible: () => setVisible(id, !o.visible),
       onOpacity: (v) => setOpacity(id, v),
       onStrokeColor: (c) => setStroke(id, c),
@@ -318,49 +304,6 @@ function useOverlayRows(): LayerRowData[] {
       onShowCota: (v) => setOption(id, 'showCota', v),
     };
   });
-}
-
-function useMasterRows(): LayerRowData[] {
-  const labels = useDisplayLayersStore((s) => s.labels);
-  const cotas = useDisplayLayersStore((s) => s.cotas);
-  const setMasterEnabled = useDisplayLayersStore((s) => s.setMasterEnabled);
-  const setMasterOpacity = useDisplayLayersStore((s) => s.setMasterOpacity);
-  const setMasterStroke = useDisplayLayersStore((s) => s.setMasterStrokeColor);
-  const setMasterFill = useDisplayLayersStore((s) => s.setMasterFillColor);
-  const setMasterOption = useDisplayLayersStore((s) => s.setMasterOption);
-
-  return [
-    {
-      id: 'master-etiquetas', name: 'Etiquetas', visible: labels.enabled, opacity: labels.opacity,
-      strokeColor: labels.strokeColor, fillColor: labels.fillColor, showLabel: true, showCota: true,
-      editableName: false, removable: false, lockable: false, isMaster: true,
-      onToggleVisible: () => setMasterEnabled('labels', !labels.enabled),
-      onOpacity: (v) => setMasterOpacity('labels', v),
-      onStrokeColor: (c) => setMasterStroke('labels', c),
-      onFillColor: (c) => setMasterFill('labels', c),
-      onShowLabel: () => {}, onShowCota: () => {},
-      gearExtra: [{
-        key: 'interact', label: 'Mostrar durante pan/zoom',
-        value: labels.showWhileInteracting,
-        onChange: (v) => setMasterOption('labels', 'showWhileInteracting', v),
-      }],
-    },
-    {
-      id: 'master-acotaciones', name: 'Acotaciones', visible: cotas.enabled, opacity: cotas.opacity,
-      strokeColor: cotas.strokeColor, fillColor: cotas.fillColor, showLabel: true, showCota: true,
-      editableName: false, removable: false, lockable: false, isMaster: true,
-      onToggleVisible: () => setMasterEnabled('cotas', !cotas.enabled),
-      onOpacity: (v) => setMasterOpacity('cotas', v),
-      onStrokeColor: (c) => setMasterStroke('cotas', c),
-      onFillColor: (c) => setMasterFill('cotas', c),
-      onShowLabel: () => {}, onShowCota: () => {},
-      gearExtra: [{
-        key: 'bg', label: 'Fondo detrás del texto',
-        value: cotas.showBackground,
-        onChange: (v) => setMasterOption('cotas', 'showBackground', v),
-      }],
-    },
-  ];
 }
 
 /* ─────────── Panel principal ─────────── */
@@ -376,8 +319,7 @@ export default function LayerPanel() {
 
   const registryRows = useRegistryRows();
   const overlayRows = useOverlayRows();
-  const masterRows = useMasterRows();
-  const allRows = [...registryRows, ...overlayRows, ...masterRows];
+  const allRows = [...registryRows, ...overlayRows];
 
   const panelRef = useRef<HTMLDivElement>(null);
   const { visibleCount, sentinelRef } = useIncrementalRender(allRows.length, 60, panelRef);
@@ -430,7 +372,7 @@ export default function LayerPanel() {
                 {allRows.slice(0, visibleCount).map((row) => (
                   <div
                     key={row.id}
-                    onClick={() => { if (!row.isMaster && registryRows.some((r) => r.id === row.id)) setActiveLayer(activeLayerId === row.id ? null : row.id); }}
+                    onClick={() => { if (registryRows.some((r) => r.id === row.id)) setActiveLayer(activeLayerId === row.id ? null : row.id); }}
                     style={{
                       borderRadius: 4,
                       background: activeLayerId === row.id ? 'rgba(0,212,255,0.08)' : 'transparent',

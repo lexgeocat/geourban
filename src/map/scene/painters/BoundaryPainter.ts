@@ -20,13 +20,13 @@ import { getFeatureKind } from '../../../core/objectModel';
  * contorno real (eso requeriría un viaje al worker, no vale la pena en
  * un callback de postrender que corre por frame).
  *
- * Las distintas "capas" se gatean con el displayLayersStore v2:
+ * Las distintas "capas" se gatean con el displayLayersStore:
  *   - perimUrb          → overlay 'urbanizacion' (visible + opacity)
  *   - perimGeo          → overlay 'georreferenciado'
- *   - cotasUrb          → master cotas ∩ urbanizacion.showCota
- *   - cotasGeo          → master cotas ∩ georreferenciado.showCota
- *   - etiquetasUrbNombre → master labels ∩ urbanizacion.showLabel
- *   - etiquetasUrbSup   → master labels ∩ urbanizacion.showLabel * master cotas ∩ showCota
+ *   - cotasUrb          → urbanizacion.showCota
+ *   - cotasGeo          → georreferenciado.showCota
+ *   - etiquetasUrbNombre → urbanizacion.showLabel
+ *   - etiquetasUrbSup   → urbanizacion.showLabel * showCota
  */
 export class BoundaryPainter {
   private cachedHull: Pt[] = [];

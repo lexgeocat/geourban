@@ -66,8 +66,7 @@ export class LabelPainter {
     toPx: (c: number[]) => [number, number],
     interacting: boolean,
   ): void {
-    const display = useDisplayLayersStore.getState();
-    const shouldPaintLabels = !interacting || display.labels.showWhileInteracting;
+    const shouldPaintLabels = !interacting;
     if (shouldPaintLabels) this.paintFeatureLabels(ctx, features, zoom, resolution, toPx);
     this.paintManualCotaz(ctx, features, zoom, toPx);
   }
