@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { Modal } from '../ui/Modal';
 import type { LayerKind } from '../../core/objectModel';
-import { useLayersStore } from '../../store/entities/layersRegistryStore';
+import { runCommand } from '../../commands/core/CommandStack';
+import { AddLayerCommand } from '../../commands/layers/AddLayerCommand';
 
 const KIND_OPTIONS: { value: LayerKind; label: string }[] = [
   { value: 'lote', label: 'Lotes / parcelas' },
@@ -29,13 +30,13 @@ export default function AddLayerModal({ open, onOpenChange }: AddLayerModalProps
     e.preventDefault();
     if (!name.trim()) return;
     const id = `layer-${Date.now().toString(36)}`;
-    useLayersStore.getState().add({
+    void runCommand(new AddLayerCommand({
       id, name: name.trim(), kind,
       color, fillColor,
       visible: true, locked: false, opacity: 1,
       showLabel: true, showCota: true,
       colorMode: kind === 'manzana' ? 'colorIdx' : 'solid',
-    });
+    }));
     setName('');
     setKind('lote');
     onOpenChange(false);

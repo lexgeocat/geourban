@@ -9,6 +9,7 @@ import LayerDeleteModal, { type LayerDeleteRequest } from '../modals/LayerDelete
 import AddLayerModal from '../modals/AddLayerModal';
 import { runCommand } from '../../commands/core/CommandStack';
 import { UpdateLayerCommand } from '../../commands/layers/UpdateLayerCommand';
+import { ReorderLayersCommand } from '../../commands/layers/ReorderLayersCommand';
 
 /* ─────────── Icons ─────────── */
 
@@ -68,7 +69,19 @@ const IconGear = () => (
   </svg>
 );
 
-/* ─────────── Predefined colors ─────────── */
+const IconGrip = () => (
+  <svg viewBox="0 0 24 24" fill="currentColor" style={{ width: 10, height: 10 }}>
+    <circle cx="9" cy="6" r="1.4" /><circle cx="15" cy="6" r="1.4" />
+    <circle cx="9" cy="12" r="1.4" /><circle cx="15" cy="12" r="1.4" />
+    <circle cx="9" cy="18" r="1.4" /><circle cx="15" cy="18" r="1.4" />
+  </svg>
+);
+
+const IconChevronSmall = ({ dir }: { dir: 'up' | 'down' }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ width: 9, height: 9 }}>
+    {dir === 'up' ? <polyline points="18 15 12 9 6 15" /> : <polyline points="6 9 12 15 18 9" />}
+  </svg>
+);
 
 /* ─────────── Color Picker ─────────── */
 
@@ -127,6 +140,10 @@ interface LayerRowData {
   hideCota?: boolean;
   kind: LayerKind;
   colorMode: 'solid' | 'colorIdx';
+  /** Fase 5: solo las filas del registro participan del orden de dibujo
+   *  real (drag&drop + botones subir/bajar). Los overlays computados
+   *  (Urbanización/Georreferenciado/Vértices) no tienen zIndex propio. */
+  reorderable: boolean;
   onToggleVisible: () => void;
   onOpacity: (v: number) => void;
   onStrokeColor: (c: string) => void;
@@ -144,7 +161,17 @@ const gearLabelStyle: React.CSSProperties = {
   fontSize: '0.68rem', color: 'var(--cad-text-dim)', cursor: 'pointer', whiteSpace: 'nowrap',
 };
 
-function LayerRow({ data }: { data: LayerRowData }) {
+function LayerRow({
+  data, onMoveUp, onMoveDown, canMoveUp, canMoveDown, onDragHandleStart, onDragHandleEnd,
+}: {
+  data: LayerRowData;
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
+  canMoveUp?: boolean;
+  canMoveDown?: boolean;
+  onDragHandleStart?: () => void;
+  onDragHandleEnd?: () => void;
+}) {
   const [gearOpen, setGearOpen] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState(data.name);
@@ -161,6 +188,43 @@ function LayerRow({ data }: { data: LayerRowData }) {
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '4px 6px', borderRadius: 4 }}>
+      {data.reorderable && (
+        <>
+          <span
+            draggable
+            onDragStart={(e) => { e.stopPropagation(); onDragHandleStart?.(); e.dataTransfer.effectAllowed = 'move'; }}
+            onDragEnd={onDragHandleEnd}
+            title="Arrastrar para reordenar"
+            aria-label={`Reordenar capa ${data.name}`}
+            style={{ display: 'flex', color: 'var(--cad-text-muted)', cursor: 'grab', touchAction: 'none' }}
+          >
+            <IconGrip />
+          </span>
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onMoveUp?.(); }}
+              disabled={!canMoveUp}
+              aria-label={`Subir capa ${data.name} (dibujar encima)`}
+              title="Subir (dibujar encima)"
+              style={{ background: 'none', border: 'none', padding: 0, height: 9, display: 'flex', alignItems: 'center', cursor: canMoveUp ? 'pointer' : 'default', opacity: canMoveUp ? 0.75 : 0.2, color: 'var(--cad-text-dim)' }}
+            >
+              <IconChevronSmall dir="up" />
+            </button>
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onMoveDown?.(); }}
+              disabled={!canMoveDown}
+              aria-label={`Bajar capa ${data.name} (dibujar debajo)`}
+              title="Bajar (dibujar debajo)"
+              style={{ background: 'none', border: 'none', padding: 0, height: 9, display: 'flex', alignItems: 'center', cursor: canMoveDown ? 'pointer' : 'default', opacity: canMoveDown ? 0.75 : 0.2, color: 'var(--cad-text-dim)' }}
+            >
+              <IconChevronSmall dir="down" />
+            </button>
+          </div>
+        </>
+      )}
+
       <span onClick={data.onToggleVisible} style={{ display: 'flex', cursor: 'pointer' }}>
         <IconEye visible={data.visible} />
       </span>
@@ -248,10 +312,10 @@ function LayerRow({ data }: { data: LayerRowData }) {
 
 const NON_REMOVABLE = new Set(['lots', 'manzanas', 'streets', 'equipment', 'greenareas']);
 
-function useRegistryRows(onRequestRemove: (request: LayerDeleteRequest) => void): LayerRowData[] {
+function useRegistryRows(onRequestRemove: (request: LayerDeleteRequest) => void): Array<LayerRowData & { zIndex: number }> {
   const layers = useLayersStore((s) => s.layers);
 
-  return layers.map((l): LayerRowData => ({
+  return layers.map((l): LayerRowData & { zIndex: number } => ({
     id: l.id,
     name: l.name,
     visible: l.visible,
@@ -266,6 +330,8 @@ function useRegistryRows(onRequestRemove: (request: LayerDeleteRequest) => void)
     locked: l.locked,
     kind: l.kind,
     colorMode: l.colorMode,
+    reorderable: true,
+    zIndex: l.zIndex,
     onToggleVisible: () => void runCommand(new UpdateLayerCommand(l.id, { visible: !l.visible }, 'Visibilidad de capa')),
     onOpacity: (v) => void runCommand(new UpdateLayerCommand(l.id, { opacity: v }, 'Opacidad de capa')),
     onStrokeColor: (c) => void runCommand(new UpdateLayerCommand(l.id, { color: c }, 'Color de capa')),
@@ -310,6 +376,7 @@ function useOverlayRows(): LayerRowData[] {
       hideCota: id === 'vertices',
       kind: 'linea' as LayerKind,
       colorMode: 'solid' as const,
+      reorderable: false,
       onToggleVisible: () => setVisible(id, !o.visible),
       onOpacity: (v) => setOpacity(id, v),
       onStrokeColor: (c) => setStroke(id, c),
@@ -327,6 +394,9 @@ export default function LayerPanel() {
   const [open, setOpen] = useState(true);
   const [expanded, setExpanded] = useState(true);
   const [deleteRequest, setDeleteRequest] = useState<LayerDeleteRequest | null>(null);
+  // Fase 5: estado de drag&drop de filas del registro.
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<{ id: string; position: 'before' | 'after' } | null>(null);
 
   const setActiveLayer = useLayersStore((s) => s.setActiveLayer);
   const activeLayerId = useLayersStore((s) => s.activeLayerId);
@@ -336,12 +406,50 @@ export default function LayerPanel() {
 
   const registryRows = useRegistryRows(setDeleteRequest);
   const overlayRows = useOverlayRows();
-  const allRows = [...registryRows, ...overlayRows];
+
+  // Fase 5: la fila de ARRIBA del panel es la que se dibuja ENCIMA en el
+  // mapa (zIndex más alto) — mismo criterio que QGIS/Photoshop. El store
+  // guarda zIndex ASCENDENTE (índice del array = zIndex); acá solo se
+  // invierte para MOSTRAR. Antes el orden de la lista no tenía ningún
+  // efecto visual, así que esto no rompe ninguna convención previa real.
+  const registryRowsDisplay = [...registryRows].sort((a, b) => b.zIndex - a.zIndex);
+  const allRows: LayerRowData[] = [...registryRowsDisplay, ...overlayRows];
 
   const panelRef = useRef<HTMLDivElement>(null);
   const { visibleCount, sentinelRef } = useIncrementalRender(allRows.length, 60, panelRef);
 
   const [addLayerOpen, setAddLayerOpen] = useState(false);
+
+  // Mover una capa un paso. El store guarda zIndex ASCENDENTE (índice 0
+  // = fondo del mapa); "subir" en el panel (dibujar encima) = mover
+  // hacia el FINAL del array del store.
+  const moveLayer = (id: string, direction: 'up' | 'down') => {
+    const layers = useLayersStore.getState().layers;
+    const idx = layers.findIndex((l) => l.id === id);
+    if (idx === -1) return;
+    const targetIdx = direction === 'up' ? idx + 1 : idx - 1;
+    if (targetIdx < 0 || targetIdx >= layers.length) return;
+    void runCommand(new ReorderLayersCommand([id], targetIdx));
+  };
+
+  // Soltar `dragId` sobre `targetId`: arma el nuevo orden completo a
+  // partir del orden DESCENDENTE que se ve en pantalla (más simple y
+  // robusto que calcular un índice parcial), lo pasa a ASCENDENTE y lo
+  // aplica con un solo comando.
+  const handleDrop = (targetId: string, position: 'before' | 'after') => {
+    if (dragId && dragId !== targetId) {
+      const displayIds = registryRowsDisplay.map((r) => r.id);
+      const withoutDragged = displayIds.filter((id) => id !== dragId);
+      const targetIdx = withoutDragged.indexOf(targetId);
+      const insertAt = position === 'before' ? targetIdx : targetIdx + 1;
+      const newDisplayOrder = [...withoutDragged];
+      newDisplayOrder.splice(insertAt, 0, dragId);
+      const newAscendingOrder = [...newDisplayOrder].reverse();
+      void runCommand(new ReorderLayersCommand(newAscendingOrder, 0));
+    }
+    setDragId(null);
+    setDropTarget(null);
+  };
 
   return (
     <>
@@ -384,19 +492,46 @@ export default function LayerPanel() {
 
             {expanded && (
               <div style={{ marginTop: 2 }}>
-                {allRows.slice(0, visibleCount).map((row) => (
-                  <div
-                    key={row.id}
-                    onClick={() => { if (registryRows.some((r) => r.id === row.id)) setActiveLayer(activeLayerId === row.id ? null : row.id); }}
-                    style={{
-                      borderRadius: 4,
-                      background: activeLayerId === row.id ? 'rgba(0,212,255,0.08)' : 'transparent',
-                      border: activeLayerId === row.id ? '1px solid rgba(0,212,255,0.25)' : '1px solid transparent',
-                    }}
-                  >
-                    <LayerRow data={row} />
-                  </div>
-                ))}
+                {allRows.slice(0, visibleCount).map((row) => {
+                  const displayIndex = registryRowsDisplay.findIndex((r) => r.id === row.id);
+                  const canMoveUp = row.reorderable && displayIndex > 0;
+                  const canMoveDown = row.reorderable && displayIndex !== -1 && displayIndex < registryRowsDisplay.length - 1;
+                  const isDropBefore = dropTarget?.id === row.id && dropTarget.position === 'before';
+                  const isDropAfter = dropTarget?.id === row.id && dropTarget.position === 'after';
+
+                  return (
+                    <div
+                      key={row.id}
+                      onDragOver={row.reorderable ? (e) => {
+                        e.preventDefault();
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        const position = e.clientY - rect.top < rect.height / 2 ? 'before' : 'after';
+                        setDropTarget({ id: row.id, position });
+                      } : undefined}
+                      onDragLeave={row.reorderable ? () => setDropTarget((dt) => (dt?.id === row.id ? null : dt)) : undefined}
+                      onDrop={row.reorderable ? (e) => { e.preventDefault(); handleDrop(row.id, dropTarget?.position ?? 'before'); } : undefined}
+                      onClick={() => { if (registryRows.some((r) => r.id === row.id)) setActiveLayer(activeLayerId === row.id ? null : row.id); }}
+                      style={{
+                        borderRadius: 4,
+                        background: activeLayerId === row.id ? 'rgba(0,212,255,0.08)' : 'transparent',
+                        border: activeLayerId === row.id ? '1px solid rgba(0,212,255,0.25)' : '1px solid transparent',
+                        borderTop: isDropBefore ? '2px solid var(--cad-accent)' : undefined,
+                        borderBottom: isDropAfter ? '2px solid var(--cad-accent)' : undefined,
+                        opacity: dragId === row.id ? 0.4 : 1,
+                      }}
+                    >
+                      <LayerRow
+                        data={row}
+                        onMoveUp={canMoveUp ? () => moveLayer(row.id, 'up') : undefined}
+                        onMoveDown={canMoveDown ? () => moveLayer(row.id, 'down') : undefined}
+                        canMoveUp={canMoveUp}
+                        canMoveDown={canMoveDown}
+                        onDragHandleStart={() => setDragId(row.id)}
+                        onDragHandleEnd={() => { setDragId(null); setDropTarget(null); }}
+                      />
+                    </div>
+                  );
+                })}
                 {allRows.length > visibleCount && <div ref={sentinelRef} style={{ height: 1 }} />}
               </div>
             )}

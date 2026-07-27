@@ -1,5 +1,4 @@
-﻿import WebGLVectorLayer from 'ol/layer/WebGLVector.js';
-import React, { useEffect, useRef } from 'react';
+﻿import React, { useEffect, useRef } from 'react';
 import Map from 'ol/Map.js';
 import View from 'ol/View.js';
 import type BaseLayer from 'ol/layer/Base.js';
@@ -23,7 +22,7 @@ import { useDrawStore } from '../store/map/drawStore';
 import { useSelectionStore } from '../store/map/selectionStore';
 import { useProjectCrsStore } from '../store/project/projectCrsStore';
 import { BaseLayerManager } from './scene/BaseLayerManager';
-import { buildDrawLayers, buildLayerFilter, buildWebglStyle, type WorkVisibility } from './scene/DrawLayerRenderer';
+import { buildDrawLayers, LayeredWebglRenderer, type WorkVisibility } from './scene/DrawLayerRenderer';
 import { PostrenderPainter } from './scene/PostrenderPainter';
 import { InteractionModeController } from './scene/InteractionModeController';
 import { SNAP_COLORS, type SnapGuideVisual } from './advancedSnap';
@@ -49,7 +48,7 @@ export default function MapView() {
   const baseLayerMgrRef = useRef<BaseLayerManager | null>(null);
   const baseMapInitializedRef = useRef(false);
   const baseMapEffectPrimedRef = useRef(false);
-  const drawLayerRef = useRef<WebGLVectorLayer | null>(null);
+  const webglRendererRef = useRef<LayeredWebglRenderer | null>(null);
   const streetLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
   const drawSrcRef = useRef<VectorSource | null>(null);
   const streetLayerSrcRef = useRef<VectorSource | null>(null);
@@ -79,17 +78,15 @@ const baseMapId = useUiShellStore((s) => s.baseMap);
       measurements: true,
     };
     const drawLayers = buildDrawLayers(initialWorkVisibility, initialLayers);
-    // Aplicar filter inicial (visibilidad por layerId).
-    const initialWebgl = drawLayers.webglLayer as any;
-    if (typeof initialWebgl.setFilter === 'function') {
-      initialWebgl.setFilter(buildLayerFilter(initialLayers));
-    }
     const drawSrc = drawLayers.source;
     drawSrcRef.current = drawSrc;
     useMapStore.getState().setDrawSource(drawSrc);
 
-    const drawLayer = drawLayers.webglLayer;
-    drawLayerRef.current = drawLayer;
+    // Fase 5 (sistema de capas): ya no hay un único WebGLVectorLayer —
+    // cada capa del registro tiene su propio layer/zIndex real de OL
+    // (ver DrawLayerRenderer.ts::LayeredWebglRenderer).
+    const webglRenderer = drawLayers.webglRenderer;
+    webglRendererRef.current = webglRenderer;
     const streetLayerSrc = drawLayers.streetSource;
     streetLayerSrcRef.current = streetLayerSrc;
     const streetLayer = drawLayers.streetLayer;
@@ -101,7 +98,12 @@ const baseMapId = useUiShellStore((s) => s.baseMap);
 
     const map = new Map({
       target: mapDivRef.current!,
-      layers: [drawLayer, streetLayer, postrenderLayer],
+      // Fase 5: N capas espejo del registro (una por capa, con su
+      // propio zIndex real) + street sketch + postrender. Estos dos
+      // últimos tienen zIndex fijo muy alto (ver DrawLayerRenderer.ts)
+      // para quedar SIEMPRE por encima de cualquier capa de polígonos,
+      // sin importar su zIndex en el panel — decisión documentada.
+      layers: [...webglRenderer.getLayers(), streetLayer, postrenderLayer],
       view: new View({
         center: fromLonLat(viewConfig.center),
         zoom: viewConfig.zoom,
@@ -113,6 +115,10 @@ const baseMapId = useUiShellStore((s) => s.baseMap);
         }),
       ]),
     });
+    // Engancha el renderer de capas al Map recién creado — a partir de
+    // acá, altas/bajas de capas custom agregan/quitan sus propios
+    // WebGLVectorLayer en vivo.
+    const detachWebglRenderer = webglRenderer.attach(map);
 
     // Instalar mapa base (siempre en índice 0) vía BaseLayerManager.
     const baseLayer = baseLayerMgr.install(map, baseMapId);
@@ -291,7 +297,7 @@ const baseMapId = useUiShellStore((s) => s.baseMap);
     const interactionCtrl = new InteractionModeController({
   map,
   drawSource: drawSrc,
-  drawLayer,
+  drawLayer: webglRenderer,
   streetLayer,
   streetSource: streetLayerSrc,
   postrenderPainter,
@@ -396,6 +402,8 @@ useMapStore.getState().setMap(map);
       baseLayerMgrRef.current = null;
       interactionCtrlRef.current?.dispose();
       interactionCtrlRef.current = null;
+detachWebglRenderer();
+webglRendererRef.current = null;
 map.removeInteraction(snapEngine);
 snapEngineRef.current = null;
 rotateLotsCleanupRef.current?.();
@@ -436,28 +444,14 @@ postrenderPainter.dispose();
 
 useEffect(() => {
   const unsub = useLayersStore.subscribe((state) => {
-    // Fuente única de verdad para "¿hay algún lote/calle visible?" — ya no
-    // existe layerStore.workVisibility (ver plan-optimizacion-geourban.md,
-    // Fase 1). Este listener sincroniza el layer WebGL y el de calles con
-    // el registro, incluidos los toggles "Lotes/Calles" del ribbon de Vista.
-    const anyLoteVisible = state.layers.some((l) => (l.kind === 'lote' || l.kind === 'manzana') && l.visible);
+    // Fase 5: cada capa WebGL administra su propia visibilidad/estilo/
+    // zIndex de forma independiente — ver
+    // DrawLayerRenderer.ts::LayeredWebglRenderer (se auto-suscribe al
+    // registro dentro de su propio `attach()`). Acá solo queda lo que
+    // sigue siendo responsabilidad de Map.tsx: la capa de sketch de
+    // calles (vestigial, ver comentario en buildDrawLayers).
     const anyCalleVisible = state.layers.some((l) => l.kind === 'calle' && l.visible);
-
-    if (drawLayerRef.current) drawLayerRef.current.setVisible(anyLoteVisible);
     if (streetLayerRef.current) streetLayerRef.current.setVisible(anyCalleVisible);
-    // Reconstruir el style del WebGL para que los cambios de color/opacity
-    // por capa se apliquen. El filter (visibility por layerId) también se
-    // reconstruye acá.
-    const layer = drawLayerRef.current as any;
-    if (layer) {
-      layer.setStyle(buildWebglStyle(state.layers));
-      if (typeof layer.setFilter === 'function') {
-        layer.setFilter(buildLayerFilter(state.layers));
-      } else {
-        // Fallback: forzar re-render del layer.
-        layer.changed();
-      }
-    }
   });
   return unsub;
 }, []);

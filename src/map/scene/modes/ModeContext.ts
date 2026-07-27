@@ -1,7 +1,6 @@
 import type Map from 'ol/Map.js';
 import type VectorSource from 'ol/source/Vector.js';
 import type VectorLayer from 'ol/layer/Vector.js';
-import type WebGLVectorLayer from 'ol/layer/WebGLVector.js';
 import type Draw from 'ol/interaction/Draw.js';
 import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
@@ -9,16 +8,19 @@ import type { PostrenderPainter } from '../PostrenderPainter';
 import type { SpatialIndex } from '../../spatialIndex';
 import type { HitTestSelect } from '../HitTestSelect';
 
-/**
- * Contexto compartido entre módulos de modo (Fase 5, punto 2). Cada
- * módulo `modes/*Mode.ts` recibe esto en vez de acoplarse directo al
- * controller — mismo principio que separó `painters/*` de
- * PostrenderPainter.
- */
+/** Fase 5 (sistema de capas): ya no es necesariamente un único
+ *  WebGLVectorLayer — puede ser un `LayeredWebglRenderer` (N capas
+ *  espejo, una por capa del registro) capaz de refrescarse entero. Los
+ *  módulos de modo solo necesitan poder pedir un repaint, nunca tocan
+ *  la(s) capa(s) directamente. */
+export interface RefreshableDrawLayer {
+  changed(): void;
+}
+
 export interface ModeContext {
   map: Map;
   drawSource: VectorSource;
-  drawLayer: WebGLVectorLayer;
+  drawLayer: RefreshableDrawLayer;
   streetLayer: VectorLayer<VectorSource>;
   streetSource: VectorSource;
   postrenderPainter?: PostrenderPainter;

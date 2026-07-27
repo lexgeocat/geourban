@@ -224,7 +224,7 @@ export const useLayersStore = create<LayerState>()(
           state.index = new Map(state.layers.map((l, idx) => [l.id, idx]));
         });
       }
-      for (const f of orphans) f.set('layerId', UNASSIGNED_LAYER_ID, true);
+      for (const f of orphans) f.set('layerId', UNASSIGNED_LAYER_ID);
       return orphans.length;
     },
 

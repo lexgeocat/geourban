@@ -1,7 +1,6 @@
 ﻿import type Map from 'ol/Map.js';
 import VectorSource from 'ol/source/Vector.js';
 import VectorLayer from 'ol/layer/Vector.js';
-import type WebGLVectorLayer from 'ol/layer/WebGLVector.js';
 import type Draw from 'ol/interaction/Draw.js';
 import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
@@ -10,7 +9,7 @@ import { useLayersStore } from '../../store/entities/layersRegistryStore';
 import type { PostrenderPainter } from './PostrenderPainter';
 import type { HitTestSelect } from './HitTestSelect';
 import { getOrCreateSpatialIndex, type SpatialIndex } from '../spatialIndex';
-import type { ModeContext } from './modes/ModeContext';
+import type { ModeContext, RefreshableDrawLayer } from './modes/ModeContext';
 import { activateSelect } from './modes/SelectEditMode';
 import { activateEdit } from './modes/EditMode';
 import { activatePolygon } from './modes/PolygonMode';
@@ -23,7 +22,7 @@ import { activateErase } from './modes/EraseMode';
 export interface InteractionContext {
   map: Map;
   drawSource: VectorSource;
-  drawLayer: WebGLVectorLayer;
+  drawLayer: RefreshableDrawLayer;
   streetLayer: VectorLayer<VectorSource>;
   streetSource: VectorSource;
   postrenderPainter?: PostrenderPainter;

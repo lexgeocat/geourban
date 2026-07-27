@@ -52,7 +52,7 @@ export class RemoveLayerCommand extends Command {
         const id = f.getId();
         if (id == null) continue;
         this.reassigned.push({ id });
-        f.set('layerId', target, true);
+        f.set('layerId', target);
       }
     } else if (this.opts.action === 'delete') {
       for (const f of affected) {
@@ -79,7 +79,7 @@ export class RemoveLayerCommand extends Command {
     }
     for (const r of this.reassigned) {
       const f = ctx.drawSource.getFeatureById(r.id);
-      if (f && this.removedLayer) f.set('layerId', this.removedLayer.id, true);
+      if (f && this.removedLayer) f.set('layerId', this.removedLayer.id);
     }
     ctx.drawSource.changed();
   }
