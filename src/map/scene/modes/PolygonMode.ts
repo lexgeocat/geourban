@@ -11,7 +11,7 @@ import { runCommand } from '../../../commands/core/CommandStack';
 import { AddFeatureCommand } from '../../../commands/features/AddFeatureCommand';
 import { updateFeatureMetrics } from '../../../geo/metrics';
 import { createLiveDrawingLabelStyle } from '../../styleFactory';
-import { pickLayerForKind } from '../../../store/ui/layerPickerStore';
+import { requireLayerForKind } from '../../../store/ui/layerPickerStore';
 import type { ModeContext } from './ModeContext';
 
 export function activatePolygon(ctx: ModeContext): void {
@@ -96,7 +96,13 @@ export function activatePolygon(ctx: ModeContext): void {
     const feature = event.feature as Feature<Geometry>;
     const areaKind = useDrawStore.getState().areaKind;
     void (async () => {
-      const layerId = await pickLayerForKind(areaKind);
+      const layerId = await requireLayerForKind(areaKind);
+      if (!layerId) {
+        // Canceló: no puede quedar geometría sin capa asignada.
+        src.removeFeature(feature);
+        src.changed();
+        return;
+      }
       await runCommand(new AddFeatureCommand(feature, { mode: 'claim', label: 'Dibujar polígono', kind: areaKind, layerId }));
       updateFeatureMetrics(feature);
       ctx.refreshLayers();

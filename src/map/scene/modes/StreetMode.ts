@@ -6,7 +6,7 @@ import type Geometry from 'ol/geom/Geometry.js';
 import { useStreetStore, type Street } from '../../../store/entities/streetStore';
 import { runCommand } from '../../../commands/core/CommandStack';
 import { AddStreetCommand } from '../../../commands/roads/AddStreetCommand';
-import { pickLayerForKind } from '../../../store/ui/layerPickerStore';
+import { requireLayerForKind } from '../../../store/ui/layerPickerStore';
 import type { ModeContext } from './ModeContext';
 
 function findNearbyStreetEndpointWarning(
@@ -67,9 +67,10 @@ export function activateStreet(ctx: ModeContext): void {
       }
 
       void (async () => {
-        const layerId = await pickLayerForKind('calle');
-        await runCommand(new AddStreetCommand(start, end, streetStore.defaultWidthM, waypoints, streetStore.defaultSideWidthM, layerId));
-      })();
+        const layerId = await requireLayerForKind('calle');
+        if (!layerId) return; // cancelado — no se traza la calle sin capa
+         await runCommand(new AddStreetCommand(start, end, streetStore.defaultWidthM, waypoints, streetStore.defaultSideWidthM, layerId));
+       })();
     } finally {
       streetSource.removeFeature(feature);
       streetSource.changed();

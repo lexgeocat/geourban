@@ -2,7 +2,6 @@
 import { useLayersStore } from '../../store/entities/layersRegistryStore';
 import type { LayerKind } from '../../core/objectModel';
 import { useDisplayLayersStore, type OverlayLayerId } from '../../store/ui/displayLayersStore';
-import { useLayerPickerStore } from '../../store/ui/layerPickerStore';
 import { useLayerPanelUiStore } from '../../store/ui/layerPanelUiStore';
 import { useIncrementalRender } from '../../hooks/useIncrementalRender';
 import { useViewportWidth } from '../../hooks/useViewportWidth';
@@ -714,9 +713,6 @@ export default function LayerPanel() {
   const activeLayerId = useLayersStore((s) => s.activeLayerId);
   const isolatedLayerId = useLayersStore((s) => s.isolatedLayerId);
 
-  const askOnCreate = useLayerPickerStore((s) => s.askEnabled);
-  const setAskOnCreate = useLayerPickerStore((s) => s.setAskEnabled);
-
   const drawSource = useMapStore((s) => s.drawSource);
   const tick = useDrawSourceTick(drawSource);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -861,10 +857,6 @@ export default function LayerPanel() {
               <IconPlus />
             </button>
           </div>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.6rem', color: 'var(--cad-text-dim)', cursor: 'pointer', marginBottom: 6 }}>
-            <input type="checkbox" className="cad-toggle" checked={askOnCreate} onChange={(e) => setAskOnCreate(e.target.checked)} />
-            Preguntar capa al crear geometría
-          </label>
 
           {isolatedLayerId && (
             <div role="status" style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 8px', marginBottom: 6, borderRadius: 6, background: 'rgba(0,212,255,0.08)', border: '1px dashed var(--cad-accent)', fontSize: '0.62rem', color: 'var(--cad-accent)' }}>
@@ -909,11 +901,17 @@ export default function LayerPanel() {
             <SectionHeader panelId="layerpanel-data-section" label="Capas de datos" count={registryRowsDisplay.length} expanded={expandedData} onToggle={() => setExpandedData(!expandedData)} />
             {expandedData && (
               <div id="layerpanel-data-section" style={{ marginTop: 2 }}>
-                {registryRowsDisplay.map((row) => {
-                  if (renderedSoFar >= visibleCount) return null;
-                  renderedSoFar++;
-                  return renderRow(row, true);
-                })}
+                {registryRowsDisplay.length === 0 ? (
+                  <p style={{ fontSize: '0.65rem', color: 'var(--cad-text-muted)', padding: '6px 2px', fontStyle: 'italic' }}>
+                    Todavía no hay capas. Se crean automáticamente al dibujar o generar tu primera entidad — o con el botón "+" de arriba.
+                 </p>
+                ) : (
+                  registryRowsDisplay.map((row) => {
+                   if (renderedSoFar >= visibleCount) return null;
+                    renderedSoFar++;
+                    return renderRow(row, true);
+                  })
+                )}
               </div>
             )}
           </div>

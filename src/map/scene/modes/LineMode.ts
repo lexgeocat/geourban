@@ -6,7 +6,7 @@ import { useDrawStore } from '../../../store/map/drawStore';
 import { runCommand } from '../../../commands/core/CommandStack';
 import { AddFeatureCommand } from '../../../commands/features/AddFeatureCommand';
 import { updateFeatureMetrics } from '../../../geo/metrics';
-import { pickLayerForKind } from '../../../store/ui/layerPickerStore';
+import { requireLayerForKind } from '../../../store/ui/layerPickerStore';
 import type { ModeContext } from './ModeContext';
 
 export function activateLine(ctx: ModeContext): void {
@@ -18,16 +18,21 @@ export function activateLine(ctx: ModeContext): void {
       stroke: new Stroke({ color: 'rgba(0, 212, 255, 0.95)', width: 2, lineDash: [6, 4], lineCap: 'round' }),
     }),
   });
-  draw.on('drawend', (event) => {
-    const feature = event.feature as Feature<Geometry>;
-    void (async () => {
-      const layerId = await pickLayerForKind('linea');
-      await runCommand(new AddFeatureCommand(feature, { mode: 'claim', label: 'Dibujar línea', kind: 'linea', layerId }));
-      useDrawStore.getState().setLastDrawnLineId(feature.getId() as string);
-      updateFeatureMetrics(feature);
-      ctx.refreshLayers();
-    })();
-  });
+     draw.on('drawend', (event) => {
+     const feature = event.feature as Feature<Geometry>;
+     void (async () => {
+      const layerId = await requireLayerForKind('linea');
+      if (!layerId) {
+        src.removeFeature(feature);
+        src.changed();
+        return;
+      }
+       await runCommand(new AddFeatureCommand(feature, { mode: 'claim', label: 'Dibujar línea', kind: 'linea', layerId }));
+       useDrawStore.getState().setLastDrawnLineId(feature.getId() as string);
+       updateFeatureMetrics(feature);
+       ctx.refreshLayers();
+     })();
+   });
   ctx.activeDrawRef.current = draw;
   map.addInteraction(draw);
   ctx.addCleanup(() => {

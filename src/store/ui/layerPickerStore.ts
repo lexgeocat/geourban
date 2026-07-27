@@ -1,67 +1,93 @@
 import { create } from 'zustand';
-import type { GeoUrbanFeatureKind } from '../../core/objectModel';
-import { useLayersStore } from '../entities/layersRegistryStore';
+import { getLayerSuggestion, type GeoUrbanFeatureKind, type LayerSuggestion } from '../../core/objectModel';
+import { runCommand } from '../../commands/core/CommandStack';
+import { AddLayerCommand } from '../../commands/layers/AddLayerCommand';
 
-type PendingRequest = {
+export interface LayerResolverRequest {
   kind: GeoUrbanFeatureKind;
-  resolve: (layerId: string | undefined) => void;
-};
+  suggestion?: LayerSuggestion;
+  resolve: (layerId: string | null) => void;
+}
 
 type LayerPickerState = {
-  pending: PendingRequest | null;
-  rememberedByKind: Record<string, string | undefined>;
-  askEnabled: boolean;
-  setAskEnabled: (v: boolean) => void;
-  request: (kind: GeoUrbanFeatureKind) => Promise<string | undefined>;
-  resolvePending: (layerId: string | undefined, remember?: boolean) => void;
+  /** Pedido de resolución de capa actualmente abierto — lo consume
+   *  `LayerResolverModal`. `null` = ningún modal pendiente. */
+  pending: LayerResolverRequest | null;
+
+  /** Fase 2: punto de entrada único. SIEMPRE resuelve a un layerId real
+   *  o a `null` si el usuario cancela — no hay bypass silencioso (no hay
+   *  `askEnabled`, no hay "recordar para este kind", no hay "cancelar =
+   *  capa activa"). El llamador es responsable de abortar la creación de
+   *  la entidad si recibe `null`. */
+  request: (kind: GeoUrbanFeatureKind) => Promise<string | null>;
+  /** El usuario eligió una capa ya existente. */
+  resolveWithExisting: (layerId: string) => void;
+  /** El usuario creó una capa nueva desde la pestaña "Crear nueva". */
+  resolveWithNewLayer: (input: { name: string; color: string; fillColor: string }) => void;
+  /** El usuario canceló — no se asigna ninguna capa. */
   cancelPending: () => void;
 };
 
 export const useLayerPickerStore = create<LayerPickerState>()((set, get) => ({
   pending: null,
-  rememberedByKind: {},
-  askEnabled: true,
-
-  setAskEnabled: (v) => set({ askEnabled: v }),
 
   request: (kind) => {
-    if (!get().askEnabled) return Promise.resolve(undefined);
-    const remembered = get().rememberedByKind[kind];
-    if (remembered !== undefined) {
-      const rememberedLayer = useLayersStore.getState().getById(remembered);
-      // Fase 6: la capa "recordada" pudo bloquearse DESPUÉS de que el
-      // usuario tildó "no preguntar de nuevo" — sin este chequeo, el
-      // próximo trazo caía ahí en silencio, sin poder seleccionarse/
-      // editarse/borrarse después. Se descarta el recuerdo (no se borra,
-      // por si se desbloquea más tarde) y se vuelve a preguntar.
-      if (!rememberedLayer || !rememberedLayer.locked) {
-        return Promise.resolve(remembered);
-      }
-    }
-
-    return new Promise<string | undefined>((resolve) => {
-      set({ pending: { kind, resolve } });
+    return new Promise<string | null>((resolve) => {
+      set({
+        pending: {
+          kind,
+          suggestion: getLayerSuggestion(kind),
+          resolve,
+        },
+      });
     });
   },
 
-  resolvePending: (layerId, remember) => {
+  resolveWithExisting: (layerId) => {
     const pending = get().pending;
     if (!pending) return;
-    if (remember) {
-      set((s) => ({ rememberedByKind: { ...s.rememberedByKind, [pending.kind]: layerId } }));
-    }
     set({ pending: null });
     pending.resolve(layerId);
+  },
+
+  resolveWithNewLayer: ({ name, color, fillColor }) => {
+    const pending = get().pending;
+    if (!pending) return;
+    const id = `layer-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+    void runCommand(
+      new AddLayerCommand({
+        id,
+        name,
+        kind: pending.kind,
+        color,
+        fillColor,
+        visible: true,
+        locked: false,
+        opacity: 1,
+        showLabel: true,
+        showCota: true,
+        colorMode: pending.kind === 'manzana' ? 'colorIdx' : 'solid',
+      }),
+    );
+    set({ pending: null });
+    pending.resolve(id);
   },
 
   cancelPending: () => {
     const pending = get().pending;
     if (!pending) return;
     set({ pending: null });
-    pending.resolve(undefined);
+    pending.resolve(null);
   },
 }));
 
-export function pickLayerForKind(kind: GeoUrbanFeatureKind): Promise<string | undefined> {
+/**
+ * Resuelve la capa destino para una entidad de tipo `kind`. Reemplaza el
+ * viejo `pickLayerForKind` (que se podía saltar vía `askEnabled` /
+ * "no preguntar de nuevo" / "Cancelar = capa activa" — ver H4 del
+ * diagnóstico). Ahora es obligatorio: el usuario elige o crea una capa,
+ * o cancela — y cancelar es `null`, nunca una asignación silenciosa.
+ */
+export function requireLayerForKind(kind: GeoUrbanFeatureKind): Promise<string | null> {
   return useLayerPickerStore.getState().request(kind);
 }
