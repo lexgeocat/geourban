@@ -1,6 +1,8 @@
 import { useStreetStore, type Street } from '../../../store/entities/streetStore';
+import { useRoadCornerStore } from '../../../store/map/roadCornerStore';
 import { computeRoadNetworkNet, type RoadNetworkNet } from '../../../geo/roads/roadNetworkNet';
 import { type Pt } from '../../../geo/math/polygonEngine';
+import { type CornerMode } from '../../../geo/roads/ringFillet';
 import { measureCachedWidth } from '../../textMeasureCache';
 
 type StreetChain = Array<{ from: Pt; to: Pt; len: number }>;
@@ -203,6 +205,7 @@ export class StreetPainter {
   private cachedCrossings: CrossingsMap = new globalThis.Map();
   private cachedStreetLabelSlots = new globalThis.Map<string, StreetLabelSlot[]>();
   private lastStreetHash = '';
+  private lastCornerMode: CornerMode = 'fillet';
   private lastLabelZoomBucket = -1;
   private pairCrossingCache = new globalThis.Map<string, { points: Pt[]; hashA: string; hashB: string }>();
 
@@ -247,14 +250,17 @@ export class StreetPainter {
   update(ctx: CanvasRenderingContext2D, zoom: number, forceDirty: boolean, resolution: number): void {
     const streets = useStreetStore.getState().streets;
     const currentHash = streetsHash(streets);
+    const cornerMode = useRoadCornerStore.getState().mode;
     const streetsChanged = currentHash !== this.lastStreetHash;
+    const cornerModeChanged = cornerMode !== this.lastCornerMode;
     const zoomBucket = Math.round(zoom * 4);
     const zoomBucketChanged = zoomBucket !== this.lastLabelZoomBucket;
 
-    if (streetsChanged || forceDirty) {
+    if (streetsChanged || cornerModeChanged || forceDirty) {
       this.cachedNet = computeRoadNetworkNet(streets);
       this.updateCrossingsCache(streets);
       this.lastStreetHash = currentHash;
+      this.lastCornerMode = cornerMode;
     }
     if (streetsChanged || forceDirty || zoomBucketChanged) {
       this.cachedStreetLabelSlots = computeAllStreetLabelSlots(ctx, streets, this.cachedCrossings, zoom, resolution);
@@ -325,27 +331,53 @@ export class StreetPainter {
 
   private paintRings(
     ctx: CanvasRenderingContext2D,
-    rings: Pt[][],
+    polygons: Pt[][][],
     toPx: (c: number[]) => [number, number],
     style: { fill: string | null; stroke: string; lineWidth: number },
   ): void {
-    if (rings.length === 0) return;
+    if (polygons.length === 0) return;
     ctx.save();
     ctx.lineWidth = style.lineWidth;
     ctx.strokeStyle = style.stroke;
-    if (style.fill) ctx.fillStyle = style.fill;
-    for (const ring of rings) {
-      if (ring.length < 3) continue;
-      ctx.beginPath();
-      const first = toPx(ring[0]);
-      ctx.moveTo(first[0], first[1]);
-      for (let i = 1; i < ring.length; i++) {
-        const p = toPx(ring[i]);
-        ctx.lineTo(p[0], p[1]);
+
+    for (const rings of polygons) {
+      if (rings.length === 0) continue;
+
+      // Relleno: TODOS los anillos del polígono (exterior + holes) van en
+      // un solo path como subpaths, y se rellena con 'evenodd'. Esto es lo
+      // que faltaba: antes cada anillo se rellenaba por separado como si
+      // fuera un polígono sólido independiente, así que un hueco (p.ej. la
+      // manzana central en un cruce en "#") se pintaba como si fuera vía.
+      if (style.fill) {
+        ctx.beginPath();
+        for (const ring of rings) {
+          if (ring.length < 3) continue;
+          const first = toPx(ring[0]);
+          ctx.moveTo(first[0], first[1]);
+          for (let i = 1; i < ring.length; i++) {
+            const p = toPx(ring[i]);
+            ctx.lineTo(p[0], p[1]);
+          }
+          ctx.closePath();
+        }
+        ctx.fillStyle = style.fill;
+        ctx.fill('evenodd');
       }
-      ctx.closePath();
-      if (style.fill) ctx.fill();
-      ctx.stroke();
+
+      // Contorno: cada anillo (exterior y huecos) se traza aparte, para
+      // que el borde del hueco también se dibuje.
+      for (const ring of rings) {
+        if (ring.length < 3) continue;
+        ctx.beginPath();
+        const first = toPx(ring[0]);
+        ctx.moveTo(first[0], first[1]);
+        for (let i = 1; i < ring.length; i++) {
+          const p = toPx(ring[i]);
+          ctx.lineTo(p[0], p[1]);
+        }
+        ctx.closePath();
+        ctx.stroke();
+      }
     }
     ctx.restore();
   }

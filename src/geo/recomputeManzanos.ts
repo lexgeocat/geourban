@@ -22,6 +22,7 @@ import { useRoundaboutStore, type Roundabout } from '../store/entities/roundabou
 import { useManzanoStore } from '../store/entities/manzanoStore';
 import { useLayersStore } from '../store/entities/layersRegistryStore';
 import { useRecomputeStatusStore } from '../store/ui/recomputeStatusStore';
+import { useRoadCornerStore } from '../store/map/roadCornerStore';
 import {
   computeManzanosInWorker,
   subdivideManzanoInWorker,
@@ -146,6 +147,77 @@ function roundaboutApproxExtent(r: Roundabout): Extent {
   return [r.center[0] - half, r.center[1] - half, r.center[0] + half, r.center[1] + half];
 }
 
+interface OriginGroup {
+  origId: string;
+  origPts: Pt[];
+  members: Array<Feature<Geometry>>;
+  savedMethod: ManzanoLoteMethod | null;
+  savedDirPref: { ax: number; ay: number } | undefined;
+  wasSubdivided: boolean;
+}
+
+/** Agrupa los features del drawSource por parcela de origen
+ *  (`origParcelId`/`origPts`). Extraído para que tanto
+ *  `recomputeManzanosImmediate` (recorte incremental al trazar vías)
+ *  como `reapplyRoadCornerMode` (re-fileteo al cambiar el modo de
+ *  esquina) usen el mismo agrupamiento sin duplicar el loop. */
+function collectOriginGroups(src: VectorSource): {
+  groups: globalThis.Map<string, OriginGroup>;
+  lotsByGroupId: globalThis.Map<string, Array<Feature<Geometry>>>;
+} {
+  const groups = new globalThis.Map<string, OriginGroup>();
+  const lotsByGroupId = new globalThis.Map<string, Array<Feature<Geometry>>>();
+
+  src.forEachFeature((f) => {
+    const feature = f as Feature<Geometry>;
+    const geom = feature.getGeometry();
+    if (!geom || geom.getType() !== 'Polygon') return;
+
+    const kind = getFeatureKind(feature);
+    if (kind !== 'lote' && kind !== 'manzana') return;
+
+    if (kind === 'lote') {
+      const gid = feature.get('lotGroupId') as string | undefined;
+      if (gid) {
+        if (!lotsByGroupId.has(gid)) lotsByGroupId.set(gid, []);
+        lotsByGroupId.get(gid)!.push(feature);
+        return;
+      }
+    }
+
+    let origId = feature.get('origParcelId') as string | undefined;
+    let origPts = feature.get('origPts') as Pt[] | undefined;
+
+    if (!origPts) {
+      const coords = (geom as PolygonGeom).getCoordinates();
+      if (!coords[0] || coords[0].length < 4) return;
+      origPts = coords[0].map((c: number[]) => [c[0], c[1]] as Pt);
+    }
+    if (!origId) {
+      const fid = feature.getId();
+      origId = fid != null ? String(fid) : `parcel-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    }
+
+    let group = groups.get(origId);
+    if (!group) {
+      group = { origId, origPts, members: [], savedMethod: null, savedDirPref: undefined, wasSubdivided: false };
+      groups.set(origId, group);
+    }
+    group.members.push(feature);
+
+    if (kind === 'manzana' && getLotStatus(feature) === 'subdivided') {
+      group.wasSubdivided = true;
+      const fid = feature.getId();
+      if (fid != null && group.savedMethod === null) {
+        group.savedMethod = useManzanoStore.getState().getMethod(fid);
+        group.savedDirPref = useManzanoStore.getState().getRotateDir(fid);
+      }
+    }
+  });
+
+  return { groups, lotsByGroupId };
+}
+
 function resolveManzanaLayerId(): string | undefined {
   const reg = useLayersStore.getState();
   if (reg.activeLayerId) {
@@ -223,64 +295,7 @@ async function recomputeManzanosImmediate(): Promise<void> {
   const roundabouts = useRoundaboutStore.getState().roundabouts;
   if (streets.length === 0 && roundabouts.length === 0) return;
 
-  type OriginGroup = {
-    origId: string;
-    origPts: Pt[];
-    members: Array<Feature<Geometry>>;
-    savedMethod: ManzanoLoteMethod | null;
-    savedDirPref: { ax: number; ay: number } | undefined;
-    wasSubdivided: boolean;
-  };
-  const groups = new globalThis.Map<string, OriginGroup>();
-  const lotsByGroupId = new globalThis.Map<string, Array<Feature<Geometry>>>();
-
-  src.forEachFeature((f) => {
-    const feature = f as Feature<Geometry>;
-    const geom = feature.getGeometry();
-    if (!geom || geom.getType() !== 'Polygon') return;
-
-    const kind = getFeatureKind(feature);
-    if (kind !== 'lote' && kind !== 'manzana') return;
-
-    if (kind === 'lote') {
-      const gid = feature.get('lotGroupId') as string | undefined;
-      if (gid) {
-        if (!lotsByGroupId.has(gid)) lotsByGroupId.set(gid, []);
-        lotsByGroupId.get(gid)!.push(feature);
-        return;
-      }
-    }
-
-    let origId = feature.get('origParcelId') as string | undefined;
-    let origPts = feature.get('origPts') as Pt[] | undefined;
-
-    if (!origPts) {
-      const coords = (geom as PolygonGeom).getCoordinates();
-      if (!coords[0] || coords[0].length < 4) return;
-      origPts = coords[0].map((c: number[]) => [c[0], c[1]] as Pt);
-    }
-    if (!origId) {
-      const fid = feature.getId();
-      origId = fid != null ? String(fid) : `parcel-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    }
-
-    let group = groups.get(origId);
-    if (!group) {
-      group = { origId, origPts, members: [], savedMethod: null, savedDirPref: undefined, wasSubdivided: false };
-      groups.set(origId, group);
-    }
-    group.members.push(feature);
-
-    if (kind === 'manzana' && getLotStatus(feature) === 'subdivided') {
-      group.wasSubdivided = true;
-      const fid = feature.getId();
-      if (fid != null && group.savedMethod === null) {
-        group.savedMethod = useManzanoStore.getState().getMethod(fid);
-        group.savedDirPref = useManzanoStore.getState().getRotateDir(fid);
-      }
-    }
-  });
-
+  const { groups, lotsByGroupId } = collectOriginGroups(src);
   if (groups.size === 0) return;
 
   const roadRings = buildRoadNetworkRings(streets, roundabouts);
@@ -446,9 +461,10 @@ async function recomputeManzanosImmediate(): Promise<void> {
       continue;
     }
 
+    const cornerMode = useRoadCornerStore.getState().mode;
     const newFragmentIds: string[] = [];
     fragments.forEach((ring, i) => {
-      const rounded = roundRingReflex(orientRingCcw(ring));
+      const rounded = roundRingReflex(orientRingCcw(ring), 0, false, cornerMode);
       if (rounded.length < 4) return;
       const newFeat = new Feature({ geometry: new PolygonGeom([rounded]) });
       const newId = `${group.origId}-mzn-${i}`;
@@ -587,4 +603,109 @@ export function recomputeManzanos(): Promise<void> {
       .finally(() => useRecomputeStatusStore.getState().setRunning(false));
   }, RECOMPUTE_DEBOUNCE_MS);
   return recomputeInFlight;
+}
+
+/**
+ * Re-filetea (ochave/chaflán/recto) TODOS los manzanos existentes según
+ * el modo actual de useRoadCornerStore — se llama cuando el usuario
+ * cambia el modo desde la UI, para que los manzanos YA trazados también
+ * se actualicen sin necesidad de re-trazar ninguna vía.
+ *
+ * A diferencia de `recomputeManzanosImmediate`, acá se fuerza el
+ * recálculo de TODOS los grupos ya cortados por alguna vía, sin el
+ * filtro incremental por fingerprint de red vial ni el chequeo de
+ * "¿la geometría nueva coincide con la actual?" — ese chequeo compara
+ * áreas con una tolerancia relativa (0.2%), y un cambio de fileteado
+ * (ochave ↔ chaflán ↔ recto) en manzanos grandes puede no superar esa
+ * tolerancia, así que hay que forzar el reemplazo de geometría igual.
+ */
+export async function reapplyRoadCornerMode(): Promise<void> {
+  const src = useMapStore.getState().drawSource;
+  if (!src) return;
+
+  const streets = useStreetStore.getState().streets;
+  const roundabouts = useRoundaboutStore.getState().roundabouts;
+  if (streets.length === 0 && roundabouts.length === 0) return;
+
+  const { groups } = collectOriginGroups(src);
+  if (groups.size === 0) return;
+
+  // Solo interesan los grupos que HOY tienen un manzano ya cortado por
+  // una vía (esquinas cóncavas para ochavar/chaflanar). Una parcela
+  // intacta (nunca tocada por ninguna calle) no tiene nada que re-filetear.
+  const touchedGroups = Array.from(groups.values()).filter((g) =>
+    g.members.some((m) => getFeatureKind(m) === 'manzana'),
+  );
+  if (touchedGroups.length === 0) return;
+
+  const roadRings = buildRoadNetworkRings(streets, roundabouts);
+  if (roadRings.length === 0) return;
+
+  useRecomputeStatusStore.getState().setRunning(true);
+  try {
+    const roadNetworkFC: FeatureCollection = {
+      type: 'FeatureCollection',
+      features: roadRings.map((ring) => ({
+        type: 'Feature',
+        properties: {},
+        geometry: { type: 'Polygon', coordinates: [closeGeoRing(ring)] },
+      })) as never[],
+    };
+
+    const parcelsFC: FeatureCollection = {
+      type: 'FeatureCollection',
+      features: touchedGroups.map((group) => ({
+        type: 'Feature',
+        properties: {},
+        geometry: { type: 'Polygon', coordinates: [closeGeoRing(group.origPts)] },
+      })) as never[],
+    };
+
+    let result: FeatureCollection;
+    try {
+      result = await computeManzanosInWorker(parcelsFC, roadNetworkFC);
+    } catch (err) {
+      console.error('reapplyRoadCornerMode: fallo la unión/diferencia de la red vial', err);
+      return;
+    }
+
+    const fragmentsByGroup = new globalThis.Map<number, Pt[][]>();
+    result.features.forEach((f: GeoJSONFeature) => {
+      const idx = f.properties?.origParcelIndex as number | undefined;
+      if (idx == null || f.geometry?.type !== 'Polygon') return;
+      const ring = (f.geometry.coordinates[0] as number[][]).map((c) => [c[0], c[1]] as Pt);
+      if (ring.length < 4) return;
+      if (!fragmentsByGroup.has(idx)) fragmentsByGroup.set(idx, []);
+      fragmentsByGroup.get(idx)!.push(ring);
+    });
+
+    const cornerMode = useRoadCornerStore.getState().mode;
+
+    for (let idx = 0; idx < touchedGroups.length; idx++) {
+      const group = touchedGroups[idx];
+      const fragments = fragmentsByGroup.get(idx) ?? [];
+      if (fragments.length === 0) continue;
+
+      const oldManzanaMembers = group.members.filter((m) => getFeatureKind(m) === 'manzana');
+      // Si la cantidad de fragmentos frescos no coincide con la cantidad
+      // de manzanos actuales (topología cambió, no solo el fileteado),
+      // dejamos que el próximo trazado real resuelva eso — acá solo
+      // re-fileteamos 1 a 1 cuando la forma general se mantiene.
+      if (fragments.length !== oldManzanaMembers.length) continue;
+
+      for (let i = 0; i < oldManzanaMembers.length; i++) {
+        const feat = oldManzanaMembers[i];
+        const ring = fragments[i];
+        const rounded = roundRingReflex(orientRingCcw(ring), 0, false, cornerMode);
+        if (rounded.length < 4) continue;
+        feat.setGeometry(new PolygonGeom([rounded]));
+        updateFeatureMetrics(feat as Feature<Geometry>);
+      }
+    }
+
+    src.changed();
+    void runBackgroundTopologyCheck(src);
+  } finally {
+    useRecomputeStatusStore.getState().setRunning(false);
+  }
 }

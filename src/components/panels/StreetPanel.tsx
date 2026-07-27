@@ -1,5 +1,7 @@
 ﻿import React, { useState } from 'react';
 import { useStreetStore } from '../../store/entities/streetStore';
+import { useRoadCornerStore } from '../../store/map/roadCornerStore';
+import { type CornerMode } from '../../geo/roads/ringFillet';
 import { recomputeManzanos } from '../../geo/recomputeManzanos';
 import { formatMetricLength, formatMetricArea } from '../../geo/metrics';
 import { pathLength } from '../../geo/math/polygonEngine';
@@ -7,6 +9,36 @@ import { useViewportWidth } from '../../hooks/useViewportWidth';
 
 function streetLengthM(street: { start: [number, number]; end: [number, number]; waypoints?: Array<[number, number]> }): number {
   return pathLength([street.start, ...(street.waypoints ?? []), street.end]);
+}
+
+const CORNER_MODE_OPTIONS: { value: CornerMode; label: string }[] = [
+  { value: 'fillet', label: 'Ochave' },
+  { value: 'chamfer', label: 'Chaflán' },
+  { value: 'none', label: 'Esquina recta' },
+];
+
+/** Selector de modo de esquina de la red vial. Solo afecta al render de
+ *  vías (StreetPainter) — el corte real de manzanos sigue en 'fillet'. */
+function CornerModeControl() {
+  const mode = useRoadCornerStore((s) => s.mode);
+  const setMode = useRoadCornerStore((s) => s.setMode);
+
+  return (
+    <div style={{ display: 'flex', gap: 4 }}>
+      {CORNER_MODE_OPTIONS.map((opt) => (
+        <button
+          key={opt.value}
+          type="button"
+          className={`ribbon-tool small ${mode === opt.value ? 'active' : ''}`}
+          onClick={() => setMode(opt.value)}
+          aria-pressed={mode === opt.value}
+          title={`Esquinas: ${opt.label}`}
+        >
+          <span className="ribbon-tool-label">{opt.label}</span>
+        </button>
+      ))}
+    </div>
+  );
 }
 
 /** H-VIA-5: antes no existía forma de editar una calle ya trazada más
@@ -119,6 +151,13 @@ export default function StreetPanel() {
             />
           </div>
         </div>
+      </div>
+
+      <div style={{ background: 'var(--cad-bg-surface)', borderRadius: 6, padding: 8, marginBottom: 8 }}>
+        <div style={{ fontSize: '0.62rem', color: 'var(--cad-accent)', fontWeight: 700, marginBottom: 6, letterSpacing: '0.05em' }}>
+          ▾ ESQUINAS DE VÍA
+        </div>
+        <CornerModeControl />
       </div>
 
       {streets.length === 0 ? (

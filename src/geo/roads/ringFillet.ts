@@ -1,6 +1,8 @@
 ﻿import type { Pt } from '../math/polygonEngine';
 import { getFilletRadiusForAngle } from './streetEngine';
 
+export type CornerMode = 'fillet' | 'chamfer' | 'none';
+
 function normalize(dx: number, dy: number): Pt {
   const len = Math.hypot(dx, dy) || 1;
   return [dx / len, dy / len];
@@ -22,7 +24,19 @@ function closeRing(pts: Pt[]): Pt[] {
   return pts;
 }
 
-function cornerFilletArc(prev: Pt, cur: Pt, next: Pt, r: number): Pt[] | null {
+interface CornerTangents {
+  ta: Pt;
+  tb: Pt;
+  center: Pt;
+  reff: number;
+  a0: number;
+  a1: number;
+}
+
+/** Geometría compartida entre ochave (arco) y chaflán (corte recto): los
+ *  2 puntos tangentes sobre cada lado de la esquina son los mismos en
+ *  ambos casos — solo cambia cómo se conectan. */
+function computeCornerTangents(prev: Pt, cur: Pt, next: Pt, r: number): CornerTangents | null {
   if (r <= 0) return null;
   const a = normalize(prev[0] - cur[0], prev[1] - cur[1]);
   const b = normalize(next[0] - cur[0], next[1] - cur[1]);
@@ -45,6 +59,15 @@ function cornerFilletArc(prev: Pt, cur: Pt, next: Pt, r: number): Pt[] | null {
 
   const a0 = Math.atan2(ta[1] - center[1], ta[0] - center[0]);
   const a1 = Math.atan2(tb[1] - center[1], tb[0] - center[0]);
+
+  return { ta, tb, center, reff, a0, a1 };
+}
+
+function cornerFilletArc(prev: Pt, cur: Pt, next: Pt, r: number): Pt[] | null {
+  const tg = computeCornerTangents(prev, cur, next, r);
+  if (!tg) return null;
+  const { ta, tb, center, reff, a0, a1 } = tg;
+
   let da = a1 - a0;
   while (da > Math.PI) da -= 2 * Math.PI;
   while (da < -Math.PI) da += 2 * Math.PI;
@@ -59,20 +82,34 @@ function cornerFilletArc(prev: Pt, cur: Pt, next: Pt, r: number): Pt[] | null {
   return pts;
 }
 
+/** Chaflán: en vez de arquear entre los 2 puntos tangentes, los une con
+ *  una línea recta (corte de esquina clásico de CAD). */
+function cornerChamferCut(prev: Pt, cur: Pt, next: Pt, r: number): Pt[] | null {
+  const tg = computeCornerTangents(prev, cur, next, r);
+  if (!tg) return null;
+  return [tg.ta, tg.tb];
+}
+
 /**
- * Redondea los vértices REFLEX (cóncavos) de un anillo — que en un manzano
- * o en la red vial unida son exactamente las esquinas donde una o más
- * calles se cruzan. A diferencia de un fillet calle-por-calle, esto no
- * necesita saber qué calles se tocan entre sí: opera sobre la geometría
- * final ya unida, así que 2, 3 o N vías confluyendo en un mismo punto se
- * resuelven igual, sin ambigüedad de signo ni arcos espurios.
+ * Redondea/chaflana/deja recta (según `mode`) los vértices REFLEX
+ * (cóncavos) de un anillo — en un manzano o en la red vial unida, son
+ * exactamente las esquinas donde una o más calles se cruzan.
  *
- * `extraM`: extra de radio (p.ej. ancho de vereda para engrosar el ochave
- * de calzada). Puede ser un número fijo o una función `(pt) => number`
- * para dar un extra distinto por vértice (igual criterio que el
- * `sideExtraAt` de index_modelo.html).
+ * `isHole`: true si `ringIn` es un HUECO dentro de un polígono (p.ej. la
+ * manzana central rodeada por 4 vías en un cruce "#"). Un hueco tiene,
+ * visto desde sí mismo, solo esquinas convexas — pero esas mismas
+ * esquinas son cóncavas vistas desde la vía real (que queda del lado de
+ * afuera del hueco), así que ahí se invierte el criterio de "reflex".
+ *
+ * `mode`: 'fillet' (ochave, arco — default), 'chamfer' (corte recto) o
+ * 'none' (esquina tal cual del miter, sin tratamiento).
  */
-export function roundRingReflex(ringIn: Pt[], extraM: number | ((pt: Pt) => number) = 0): Pt[] {
+export function roundRingReflex(
+  ringIn: Pt[],
+  extraM: number | ((pt: Pt) => number) = 0,
+  isHole = false,
+  mode: CornerMode = 'fillet',
+): Pt[] {
   const pts = ringIn.slice();
   if (pts.length > 1) {
     const f = pts[0], l = pts[pts.length - 1];
@@ -80,8 +117,10 @@ export function roundRingReflex(ringIn: Pt[], extraM: number | ((pt: Pt) => numb
   }
   const n = pts.length;
   if (n < 3) return closeRing(pts);
+  if (mode === 'none') return closeRing(pts);
 
-  const ccw = ringSignedArea(pts) >= 0;
+  const rawCcw = ringSignedArea(pts) >= 0;
+  const ccw = isHole ? !rawCcw : rawCcw;
   const out: Pt[] = [];
 
   for (let i = 0; i < n; i++) {
@@ -104,9 +143,11 @@ export function roundRingReflex(ringIn: Pt[], extraM: number | ((pt: Pt) => numb
     const extra = typeof extraM === 'function' ? extraM(cur) : extraM;
     const r = getFilletRadiusForAngle(angleDeg) + extra;
 
-    const arc = cornerFilletArc(prev, cur, next, r);
-    if (!arc) { out.push(cur); continue; }
-    out.push(...arc);
+    const corner = mode === 'chamfer'
+      ? cornerChamferCut(prev, cur, next, r)
+      : cornerFilletArc(prev, cur, next, r);
+    if (!corner) { out.push(cur); continue; }
+    out.push(...corner);
   }
 
   return closeRing(out);

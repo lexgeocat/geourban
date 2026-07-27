@@ -39,6 +39,8 @@ import { polyArea, centroid, ringPerimeter } from '../geo/math/polygonEngine';
 import { rafThrottle } from '../utils/rafThrottle';
 import { useSubdivisionPreviewStore } from '../store/ui/subdivisionPreviewStore';
 import { useStreetStore } from '../store/entities/streetStore';
+import { useRoadCornerStore } from '../store/map/roadCornerStore';
+import { reapplyRoadCornerMode } from '../geo/recomputeManzanos';
 
 export default function MapView() {
   const mapDivRef = useRef<HTMLDivElement>(null);
@@ -468,6 +470,12 @@ useEffect(() => {
 useEffect(() => {
   const unsub = useStreetStore.subscribe(() => {
     mapInstanceRef.current?.render();
+  });
+  return unsub;
+}, []);
+useEffect(() => {
+  const unsub = useRoadCornerStore.subscribe(() => {
+    void reapplyRoadCornerMode();
   });
   return unsub;
 }, []);

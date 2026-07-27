@@ -3,14 +3,20 @@ import type { Street } from '../../store/entities/streetStore';
 import type { RoundaboutParams } from '../roundabout/roundaboutEngine';
 import { buildRoadNetworkRings, buildRoadOnlyRings } from './roadNetworkEngine';
 import { roundRingReflex } from './ringFillet';
+import { useRoadCornerStore } from '../../store/map/roadCornerStore';
 import polygonClipping, {
   type Polygon as ClipPolygon,
   type MultiPolygon as ClipMultiPolygon,
 } from 'polygon-clipping';
 
 export interface RoadNetworkNet {
-  road: Pt[][];
-  outer: Pt[][];
+  /** Cada polígono es un array de anillos: [exterior, ...holes]. Antes
+   *  era Pt[][] (solo exteriores) y se perdían los huecos internos —
+   *  ver bug del "#": la manzana central rodeada por 4 vías es
+   *  topológicamente un hueco real del polígono unido, y se estaba
+   *  pintando como relleno sólido. */
+  road: Pt[][][];
+  outer: Pt[][][];
 }
 
 function closeRing(ring: Pt[]): Pt[] {
@@ -43,13 +49,21 @@ function roundRingForUnion(ring: Pt[]): Pt[] {
   );
 }
 
-function extractExteriorRingsFromMultiPolygon(mp: ClipMultiPolygon): Pt[][] {
-  const rings: Pt[][] = [];
+/** Extrae TODOS los anillos de cada polígono del resultado — exterior
+ *  (índice 0) + holes (índice 1+). Antes (`extractExteriorRingsFromMultiPolygon`)
+ *  solo tomaba el exterior y descartaba los holes, causando que una
+ *  manzana central rodeada por 4 vías ("#") se pintara rellena en vez
+ *  de hueca. */
+function extractPolygonRingsFromMultiPolygon(mp: ClipMultiPolygon): Pt[][][] {
+  const polygons: Pt[][][] = [];
   for (const poly of mp) {
-    const outer = poly[0];
-    if (outer && outer.length >= 4) rings.push(outer.map((c) => [c[0], c[1]] as Pt));
+    const rings: Pt[][] = [];
+    for (const ring of poly) {
+      if (ring && ring.length >= 4) rings.push(ring.map((c) => [c[0], c[1]] as Pt));
+    }
+    if (rings.length > 0) polygons.push(rings);
   }
-  return rings;
+  return polygons;
 }
 
 /**
@@ -69,7 +83,7 @@ function extractExteriorRingsFromMultiPolygon(mp: ClipMultiPolygon): Pt[][] {
  * acumulado incremental — mismo resultado, siempre, sin importar el
  * orden en que se trazaron las vías.
  */
-function unionRings(rings: Pt[][]): Pt[][] {
+function unionRings(rings: Pt[][]): Pt[][][] {
   if (rings.length === 0) return [];
 
   const polys: ClipPolygon[] = [];
@@ -81,7 +95,7 @@ function unionRings(rings: Pt[][]): Pt[][] {
 
   try {
     const result = polygonClipping.union(polys[0], ...polys.slice(1));
-    return extractExteriorRingsFromMultiPolygon(result);
+    return extractPolygonRingsFromMultiPolygon(result);
   } catch {
     // Reintento: autolimpia cada anillo (unión contra sí mismo) antes de
     // combinarlos — resuelve autointersecciones sueltas de un offset
@@ -94,13 +108,14 @@ function unionRings(rings: Pt[][]): Pt[][] {
       }
       if (selfCleaned.length === 0) return [];
       const result = polygonClipping.union(selfCleaned[0], ...selfCleaned.slice(1));
-      return extractExteriorRingsFromMultiPolygon(result);
+      return extractPolygonRingsFromMultiPolygon(result);
     } catch (err2) {
       console.warn(
         'roadNetworkNet: unión falló sin recuperación (revisá si alguna vía tiene una curva muy cerrada para su ancho/offset):',
         err2,
       );
-      return rings;
+      // Fallback sin unión real: cada anillo como su propio polígono sin holes.
+      return rings.map((r) => [r]);
     }
   }
 }
@@ -146,8 +161,18 @@ export function computeRoadNetworkNet(
   const roadUnion = unionRings(roadRingsRaw);
   const outerUnion = unionRings(outerRingsRaw);
 
+  const cornerMode = useRoadCornerStore.getState().mode;
+
+  const processPolygons = (
+    polygons: Pt[][][],
+    extra: number | ((pt: Pt) => number),
+  ): Pt[][][] =>
+    polygons.map((rings) =>
+      rings.map((ring, idx) => roundRingReflex(orientRingCcw(ring), extra, idx > 0, cornerMode)),
+    );
+
   return {
-    road: roadUnion.map((ring) => roundRingReflex(orientRingCcw(ring), sideExtraAt)),
-    outer: outerUnion.map((ring) => roundRingReflex(orientRingCcw(ring), 0)),
+    road: processPolygons(roadUnion, sideExtraAt),
+    outer: processPolygons(outerUnion, 0),
   };
 }
