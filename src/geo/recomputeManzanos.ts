@@ -33,7 +33,7 @@ import { useTopologyWarningsStore } from '../store/topologyWarningsStore';
 import { ensureKind, getFeatureKind, getLotStatus, setLotStatus } from '../core/objectModel';
 import type { ManzanoLoteMethod } from './subdivision/subdivisionAlgorithms';
 import { buildRoadNetworkRings } from './roads/roadNetworkEngine';
-import { roundRingReflex } from './roads/ringFillet';
+import { roundRingReflex, pointOnRing } from './roads/ringFillet';
 
 const geoJsonFormat = new GeoJSON();
 
@@ -464,7 +464,10 @@ async function recomputeManzanosImmediate(): Promise<void> {
     const cornerMode = useRoadCornerStore.getState().mode;
     const newFragmentIds: string[] = [];
     fragments.forEach((ring, i) => {
-      const rounded = roundRingReflex(orientRingCcw(ring), 0, false, cornerMode);
+      const rounded = roundRingReflex(
+        orientRingCcw(ring), 0, false, cornerMode,
+        (pt) => !pointOnRing(pt, group.origPts),
+      );
       if (rounded.length < 4) return;
       const newFeat = new Feature({ geometry: new PolygonGeom([rounded]) });
       const newId = `${group.origId}-mzn-${i}`;
@@ -696,7 +699,10 @@ export async function reapplyRoadCornerMode(): Promise<void> {
       for (let i = 0; i < oldManzanaMembers.length; i++) {
         const feat = oldManzanaMembers[i];
         const ring = fragments[i];
-        const rounded = roundRingReflex(orientRingCcw(ring), 0, false, cornerMode);
+        const rounded = roundRingReflex(
+          orientRingCcw(ring), 0, false, cornerMode,
+          (pt) => !pointOnRing(pt, group.origPts),
+        );
         if (rounded.length < 4) continue;
         feat.setGeometry(new PolygonGeom([rounded]));
         updateFeatureMetrics(feat as Feature<Geometry>);

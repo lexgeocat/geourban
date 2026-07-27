@@ -24,6 +24,25 @@ function closeRing(pts: Pt[]): Pt[] {
   return pts;
 }
 
+function distToSegment(p: Pt, a: Pt, b: Pt): number {
+  const dx = b[0] - a[0], dy = b[1] - a[1];
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq < 1e-12) return Math.hypot(p[0] - a[0], p[1] - a[1]);
+  const t = Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / lenSq));
+  return Math.hypot(p[0] - (a[0] + t * dx), p[1] - (a[1] + t * dy));
+}
+
+/** ¿El punto cae (con tolerancia) sobre algún segmento del anillo? Sirve
+ *  para distinguir un vértice ORIGINAL de la parcela (sobre `ring`) de uno
+ *  NUEVO introducido por el corte de una calle — ver `roundRingReflex`. */
+export function pointOnRing(p: Pt, ring: Pt[], tol = 0.05): boolean {
+  const n = ring.length;
+  for (let i = 0; i < n; i++) {
+    if (distToSegment(p, ring[i], ring[(i + 1) % n]) < tol) return true;
+  }
+  return false;
+}
+
 interface CornerTangents {
   ta: Pt;
   tb: Pt;
@@ -91,24 +110,28 @@ function cornerChamferCut(prev: Pt, cur: Pt, next: Pt, r: number): Pt[] | null {
 }
 
 /**
- * Redondea/chaflana/deja recta (según `mode`) los vértices REFLEX
- * (cóncavos) de un anillo — en un manzano o en la red vial unida, son
- * exactamente las esquinas donde una o más calles se cruzan.
+ * Redondea/chaflana/deja recta (según `mode`) los vértices de un anillo.
  *
- * `isHole`: true si `ringIn` es un HUECO dentro de un polígono (p.ej. la
- * manzana central rodeada por 4 vías en un cruce "#"). Un hueco tiene,
- * visto desde sí mismo, solo esquinas convexas — pero esas mismas
- * esquinas son cóncavas vistas desde la vía real (que queda del lado de
- * afuera del hueco), así que ahí se invierte el criterio de "reflex".
+ * Por defecto solo trata vértices REFLEX (cóncavos) — correcto para un
+ * corte parcial (T-intersection) donde la parcela queda como UN solo
+ * anillo con una muesca. Pero cuando una calle atraviesa la manzana de
+ * punta a punta, el resultado son fragmentos DESCONECTADOS y la esquina
+ * que da al cruce es CONVEXA en ese fragmento (ángulo recto normal de un
+ * rectángulo chico) — ahí "reflex" nunca la agarra, aunque sea
+ * exactamente la esquina que necesita ochave.
  *
- * `mode`: 'fillet' (ochave, arco — default), 'chamfer' (corte recto) o
- * 'none' (esquina tal cual del miter, sin tratamiento).
+ * `forceTreat`: `true` trata TODOS los vértices (usado al dibujar una
+ * entidad suelta, sin calles todavía). Una función `(pt) => boolean`
+ * permite tratar selectivamente — p.ej. "todo vértice que no esté sobre
+ * el borde original de la parcela", que es exactamente el corte nuevo
+ * contra la calle, sea convexo o reflex.
  */
 export function roundRingReflex(
   ringIn: Pt[],
   extraM: number | ((pt: Pt) => number) = 0,
   isHole = false,
   mode: CornerMode = 'fillet',
+  forceTreat: boolean | ((pt: Pt) => boolean) = false,
 ): Pt[] {
   const pts = ringIn.slice();
   if (pts.length > 1) {
@@ -134,7 +157,8 @@ export function roundRingReflex(
 
     const cross = (d1x / l1) * (d2y / l2) - (d1y / l1) * (d2x / l2);
     const reflex = ccw ? cross < -1e-6 : cross > 1e-6;
-    if (!reflex) { out.push(cur); continue; }
+    const forced = typeof forceTreat === 'function' ? forceTreat(cur) : forceTreat;
+    if (!reflex && !forced) { out.push(cur); continue; }
 
     const a = normalize(prev[0] - cur[0], prev[1] - cur[1]);
     const b = normalize(next[0] - cur[0], next[1] - cur[1]);
