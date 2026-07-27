@@ -3,15 +3,10 @@ import type { Street } from '../../store/entities/streetStore';
 import type { RoundaboutParams } from '../roundabout/roundaboutEngine';
 import { buildRoadNetworkRings, buildRoadOnlyRings } from './roadNetworkEngine';
 import { roundRingReflex } from './ringFillet';
-import GeoJSONReader from 'jsts/org/locationtech/jts/io/GeoJSONReader.js';
-import GeoJSONWriter from 'jsts/org/locationtech/jts/io/GeoJSONWriter.js';
-import GeometryFactory from 'jsts/org/locationtech/jts/geom/GeometryFactory.js';
-import OverlayOp from 'jsts/org/locationtech/jts/operation/overlay/OverlayOp.js';
-import type { Polygon as GeoJsonPolygon } from 'geojson';
-
-const geometryFactory = new GeometryFactory();
-const reader = new GeoJSONReader(geometryFactory);
-const writer = new GeoJSONWriter();
+import polygonClipping, {
+  type Polygon as ClipPolygon,
+  type MultiPolygon as ClipMultiPolygon,
+} from 'polygon-clipping';
 
 export interface RoadNetworkNet {
   road: Pt[][];
@@ -35,15 +30,10 @@ function orientRingCcw(ring: Pt[]): Pt[] {
 
 /**
  * Redondea a una grilla fija ANTES de la unión booleana — mismo criterio
- * que `roundStripForUnion` en index_modelo.html. El overlay clásico de
- * JTS/JSTS (`OverlayOp`, no el `OverlayNG` moderno) es sensible a bordes
- * casi paralelos / casi colineales muy cercanos AUNQUE no se toquen: dos
- * vías paralelas offseteadas (típicamente varias trazadas en la misma
- * dirección, p.ej. dos verticales) generan justo ese patrón de bordes, y
- * sin este redondeo el ruido de punto flotante puede hacer que el motor
- * las trate como si se tocaran, fusionando en un solo polígono dos vías
- * que en realidad están separadas — el bug de "se une el trazado" al
- * trazar la segunda vía paralela.
+ * que `roundStripForUnion` en index_modelo.html. Evita que dos bordes
+ * casi-pero-no-exactamente coincidentes (ruido de punto flotante de
+ * offsets/miters encadenados) generen una topología ambigua en el
+ * sweep-line.
  */
 const UNION_PRECISION = 1e6; // grilla de ~1e-6 unidades de mapa
 function roundRingForUnion(ring: Pt[]): Pt[] {
@@ -53,73 +43,66 @@ function roundRingForUnion(ring: Pt[]): Pt[] {
   );
 }
 
-function ringToJstsGeom(ring: Pt[]) {
-  const gj: GeoJsonPolygon = { type: 'Polygon', coordinates: [closeRing(roundRingForUnion(ring))] };
-  return reader.read(gj);
-}
-
-/** buffer(0) es el truco estándar en JTS/Shapely para normalizar
- *  auto-intersecciones y vértices duplicados antes de operar — reduce
- *  todavía más el riesgo de una unión con topología ambigua. */
-function cleanGeom(geom: any): any {
-  try {
-    if (geom && geom.isValid && !geom.isValid()) return geom.buffer(0);
-  } catch {
-    /* si buffer(0) falla, se sigue con el geom original */
-  }
-  return geom;
-}
-
-function extractExteriorRings(geom: any): Pt[][] {
-  if (!geom || geom.isEmpty?.()) return [];
-  const gj: any = writer.write(geom);
+function extractExteriorRingsFromMultiPolygon(mp: ClipMultiPolygon): Pt[][] {
   const rings: Pt[][] = [];
-  const collect = (poly: { coordinates: number[][][] }) => {
-    const outer = poly.coordinates?.[0];
+  for (const poly of mp) {
+    const outer = poly[0];
     if (outer && outer.length >= 4) rings.push(outer.map((c) => [c[0], c[1]] as Pt));
-  };
-  if (gj.type === 'Polygon') collect(gj);
-  else if (gj.type === 'MultiPolygon') {
-    for (const poly of gj.coordinates) collect({ coordinates: poly });
   }
   return rings;
 }
 
 /**
- * Une una lista de anillos (calzada u outer). Cada anillo se redondea a
- * una grilla fija ANTES de entrar a JTS (ver roundRingForUnion) para
- * evitar fusiones espurias entre vías paralelas cercanas. Un anillo que
- * falle al unirse (excepción de JTS) ya NO se pierde en silencio como
- * antes: se conserva como polígono aparte, igual que el fallback de
- * index_modelo.html — así una vía con geometría problemática no
- * desaparece del dibujo, solo queda sin fusionar con el resto.
+ * Une TODOS los anillos (calzada u outer) en UNA sola operación booleana
+ * n-aria, vía `polygon-clipping` (Martinez-Rueda) — la misma librería que
+ * usa index_modelo.html (ver su `unionAll`).
+ *
+ * Antes esto unía los anillos DE A PARES, incrementalmente, con el
+ * overlay clásico de JTS (`merged = OverlayOp.union(merged, geoms[i])` en
+ * un loop): cada paso acumula error de punto flotante sobre el resultado
+ * del paso anterior, y en patrones de grilla (vías paralelas cruzadas por
+ * perpendiculares, el "#") ese acumulado podía dejar el polígono
+ * resultante inválido — `cleanGeom()` lo "arreglaba" con `buffer(0)`, que
+ * en ese caso rellenaba la franja espuria entre dos vías separadas,
+ * fusionándolas visualmente ("se une el trazado"). Una unión n-aria
+ * evalúa TODOS los anillos a la vez con un único sweep-line, sin ese
+ * acumulado incremental — mismo resultado, siempre, sin importar el
+ * orden en que se trazaron las vías.
  */
 function unionRings(rings: Pt[][]): Pt[][] {
   if (rings.length === 0) return [];
 
-  const geoms: any[] = [];
+  const polys: ClipPolygon[] = [];
   for (const ring of rings) {
+    const rounded = roundRingForUnion(ring);
+    if (rounded.length >= 3) polys.push([closeRing(rounded)] as unknown as ClipPolygon);
+  }
+  if (polys.length === 0) return [];
+
+  try {
+    const result = polygonClipping.union(polys[0], ...polys.slice(1));
+    return extractExteriorRingsFromMultiPolygon(result);
+  } catch {
+    // Reintento: autolimpia cada anillo (unión contra sí mismo) antes de
+    // combinarlos — resuelve autointersecciones sueltas de un offset
+    // puntual sin descartar la unión completa (igual criterio que
+    // index_modelo.html::unionAll).
     try {
-      geoms.push(cleanGeom(ringToJstsGeom(ring)));
-    } catch {
-      // Anillo degenerado/autointersectante: no hay geometría válida que conservar.
+      const selfCleaned: ClipPolygon[] = [];
+      for (const p of polys) {
+        for (const poly of polygonClipping.union(p)) selfCleaned.push(poly);
+      }
+      if (selfCleaned.length === 0) return [];
+      const result = polygonClipping.union(selfCleaned[0], ...selfCleaned.slice(1));
+      return extractExteriorRingsFromMultiPolygon(result);
+    } catch (err2) {
+      console.warn(
+        'roadNetworkNet: unión falló sin recuperación (revisá si alguna vía tiene una curva muy cerrada para su ancho/offset):',
+        err2,
+      );
+      return rings;
     }
   }
-  if (geoms.length === 0) return [];
-
-  let merged: any = geoms[0];
-  const leftover: any[] = [];
-  for (let i = 1; i < geoms.length; i++) {
-    try {
-      merged = cleanGeom(OverlayOp.union(merged, geoms[i]));
-    } catch {
-      leftover.push(geoms[i]);
-    }
-  }
-
-  const out = extractExteriorRings(merged);
-  for (const g of leftover) out.push(...extractExteriorRings(g));
-  return out;
 }
 
 function distToSegment(p: Pt, a: Pt, b: Pt): number {
@@ -130,9 +113,6 @@ function distToSegment(p: Pt, a: Pt, b: Pt): number {
   return Math.hypot(p[0] - (a[0] + t * dx), p[1] - (a[1] + t * dy));
 }
 
-/** Ancho de vereda (para engrosar el ochave de la calzada — ver comentario
- *  en ringFillet.ts) del segmento de calle más cercano a un punto —
- *  aproximación de "makeSideExtraProbe" de index_modelo.html. */
 function makeSideExtraProbe(streets: Street[], roundabouts: RoundaboutParams[]) {
   return (pt: Pt): number => {
     let best = 0;
@@ -155,19 +135,6 @@ function makeSideExtraProbe(streets: Street[], roundabouts: RoundaboutParams[]) 
   };
 }
 
-/**
- * Red vial "de verdad": une TODOS los anillos de calzada/vereda en una
- * sola geometría — en vez de calcular fillets calle por calle (frágil:
- * ambiguo en cruces de 3+ vías, ángulos agudos o anchos asimétricos, y
- * es la causa de los ochaves invertidos reportados) — y luego redondea
- * EXACTAMENTE los vértices cóncavos (reflex) del resultado ya unido, que
- * son ni más ni menos que las esquinas reales de cada intersección.
- * Mismo algoritmo que usa index_modelo.html (rebuildNet + roundRingReflex).
- *
- * Nota: los cruces calle×rotonda no entran acá (la rotonda se sigue
- * dibujando aparte, en RoundaboutPainter) — este fix cubre calle×calle,
- * que es lo reportado.
- */
 export function computeRoadNetworkNet(
   streets: Street[],
   roundabouts: RoundaboutParams[] = [],

@@ -3,6 +3,10 @@ import GeoJSONWriter from 'jsts/org/locationtech/jts/io/GeoJSONWriter.js';
 import GeometryFactory from 'jsts/org/locationtech/jts/geom/GeometryFactory.js';
 import OverlayOp from 'jsts/org/locationtech/jts/operation/overlay/OverlayOp.js';
 import RBush from 'rbush';
+import polygonClipping, {
+  type Polygon as ClipPolygon,
+  type MultiPolygon as ClipMultiPolygon,
+} from 'polygon-clipping';
 import type { FeatureCollection, Polygon as GeoJsonPolygon, Feature as GeoJsonFeature } from 'geojson';
 import {
   subdivide,
@@ -133,6 +137,48 @@ function readAllGeometries(
     }
   });
   return out;
+}
+const ROAD_UNION_PRECISION = 1e6;
+
+/** Une la red vial completa en una sola operación n-aria — ver
+ *  roadNetworkNet.ts::unionRings para la explicación del bug que esto
+ *  resuelve (unión pairwise incremental con JTS clásico fusiona por
+ *  error vías paralelas separadas en patrones de grilla/"#"). */
+function robustUnionRoadNetwork(roadNetwork: FeatureCollection): any {
+  const polys: ClipPolygon[] = [];
+  for (const f of roadNetwork.features) {
+    if (!f.geometry || f.geometry.type !== 'Polygon') continue;
+    const rounded = (f.geometry as GeoJsonPolygon).coordinates.map((ring) =>
+      ring.map(([x, y]) => [
+        Math.round(x * ROAD_UNION_PRECISION) / ROAD_UNION_PRECISION,
+        Math.round(y * ROAD_UNION_PRECISION) / ROAD_UNION_PRECISION,
+      ] as [number, number]),
+    );
+    if (rounded[0] && rounded[0].length >= 4) polys.push(rounded as unknown as ClipPolygon);
+  }
+  if (polys.length === 0) return null;
+
+  let mp: ClipMultiPolygon;
+  try {
+    mp = polygonClipping.union(polys[0], ...polys.slice(1));
+  } catch {
+    try {
+      const selfCleaned: ClipPolygon[] = [];
+      for (const p of polys) for (const poly of polygonClipping.union(p)) selfCleaned.push(poly);
+      if (selfCleaned.length === 0) return null;
+      mp = polygonClipping.union(selfCleaned[0], ...selfCleaned.slice(1));
+    } catch (err2) {
+      console.warn('computeManzanos: unión de red vial falló sin recuperación:', err2);
+      return null;
+    }
+  }
+  if (!mp || mp.length === 0) return null;
+  const gj = mp.length === 1 ? { type: 'Polygon', coordinates: mp[0] } : { type: 'MultiPolygon', coordinates: mp };
+  try {
+    return reader.read(gj as any);
+  } catch {
+    return null;
+  }
 }
 
 function writeToCollection(geom: any): FeatureCollection {
@@ -326,14 +372,7 @@ export function computeManzanos(
   parcels: FeatureCollection,
   roadNetwork: FeatureCollection,
 ): FeatureCollection {
-  const roadItems = readAllGeometries(roadNetwork);
-  let roadUnion: any = null;
-  if (roadItems.length > 0) {
-    roadUnion = roadItems[0].geom;
-    for (let i = 1; i < roadItems.length; i++) {
-      roadUnion = OverlayOp.union(roadUnion, roadItems[i].geom);
-    }
-  }
+  const roadUnion = robustUnionRoadNetwork(roadNetwork);
 
   const parcelItems = readAllGeometries(parcels);
   const outFeatures: GeoJsonFeature[] = [];

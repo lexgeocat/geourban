@@ -70,3 +70,17 @@ declare module 'dxf-writer' {
     toDxfString(): string;
   }
 }
+declare module 'polygon-clipping' {
+  export type Pair = [number, number];
+  export type Ring = Pair[];
+  export type Polygon = Ring[];
+  export type MultiPolygon = Polygon[];
+  interface PolygonClipping {
+    union(...geoms: Array<Polygon | MultiPolygon>): MultiPolygon;
+    intersection(...geoms: Array<Polygon | MultiPolygon>): MultiPolygon;
+    xor(...geoms: Array<Polygon | MultiPolygon>): MultiPolygon;
+    difference(subject: Polygon | MultiPolygon, ...clips: Array<Polygon | MultiPolygon>): MultiPolygon;
+  }
+  const polygonClipping: PolygonClipping;
+  export default polygonClipping;
+}
