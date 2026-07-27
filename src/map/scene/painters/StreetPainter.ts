@@ -279,10 +279,14 @@ export class StreetPainter {
     interacting: boolean,
   ): void {
     const streets = useStreetStore.getState().streets;
-    const streetVisible = useStreetStore.getState().visible;
-    if (!streetVisible || streets.length === 0) return;
-
+    // Fase 1 (fix H-CAPAS-1): antes se leía streetStore.visible, un flag
+    // que ningún control de la UI llegaba a tocar — el ojo de "Viales"
+    // en el panel de capas (y el botón "Calles" del ribbon Vista) mutan
+    // layersRegistryStore, no streetStore. Ahora la visibilidad real del
+    // dibujo de calles depende de la MISMA capa que ya gobierna su color.
     const vialesLayer = useLayersStore.getState().getLayerForKind('calle');
+    if (!vialesLayer?.visible || streets.length === 0) return;
+
     const strokeColor = vialesLayer?.color ?? '#f78166';
     const fillColor = vialesLayer?.fillColor ?? strokeColor;
     const layerOp = vialesLayer?.opacity ?? 1;

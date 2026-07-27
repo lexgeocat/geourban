@@ -417,6 +417,7 @@ postrenderPainter.dispose();
       if (m) m.setTarget(undefined);
       mapInstanceRef.current = null;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // --- Cambiar mapa base (BaseLayerManager — Fase 11.2) ---

@@ -8,6 +8,7 @@ import { DISPLAY_PROJECTION, GEOGRAPHIC_PROJECTION } from '../../../geo/crs/proj
 import { useProjectCrsStore } from '../../../store/project/projectCrsStore';
 import { ensureUtmZoneRegistered } from '../../../geo/crs/utmZones';
 import { useDisplayLayersStore } from '../../../store/ui/displayLayersStore';
+import { useUiShellStore } from '../../../store/ui/uiShellStore'; // ← NUEVO
 import { measureCachedWidth } from '../../textMeasureCache';
 import { getFeatureKind } from '../../../core/objectModel';
 
@@ -59,13 +60,15 @@ export class BoundaryPainter {
     const display = useDisplayLayersStore.getState();
     const urb = display.overlays.urbanizacion;
     const geo = display.overlays.georreferenciado;
+    // Fase 1 (fix H-CAPAS-2): interruptor maestro "Cotas" (ribbon Vista).
+    const cotaMaster = useUiShellStore.getState().measurementsVisible ? 1 : 0;
 
     const perimUrbOpacity = urb.visible ? urb.opacity : 0;
     const perimGeoOpacity = geo.visible ? geo.opacity : 0;
-    const cotasUrbOpacity = display.cotaOpacity(urb.showCota);
-    const cotasGeoOpacity = display.cotaOpacity(geo.showCota);
+    const cotasUrbOpacity = display.cotaOpacity(urb.showCota) * cotaMaster;
+    const cotasGeoOpacity = display.cotaOpacity(geo.showCota) * cotaMaster;
     const lblUrbNombre = display.labelOpacity(urb.showLabel);
-    const lblUrbSup = lblUrbNombre * display.cotaOpacity(urb.showCota);
+    const lblUrbSup = lblUrbNombre * display.cotaOpacity(urb.showCota) * cotaMaster;
 
     if (perimUrbOpacity > 0.002) {
       this.paintRing(ctx, ring, toPx, 'rgba(0, 212, 255, 0.9)', 2.5, [], perimUrbOpacity);

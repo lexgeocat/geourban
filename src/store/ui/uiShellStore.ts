@@ -27,10 +27,15 @@ type UiShellState = {
   /** Offset de la grilla CAD, usado tanto para render (cadGridLayer) como para gridSnap.ts. */
   gridOrigin: [number, number];
   statsPanelVisible: boolean;
-  /** Toggle "Cotas" del ribbon de Vista. A diferencia de "Lotes"/"Calles"
-   *  (que ahora se derivan de layersRegistryStore.hasKindVisible), este no
-   *  está atado a ninguna capa real del registro — por eso sigue viviendo
-   *  como un flag simple de UI. */
+  /** Interruptor MAESTRO de "Cotas" del ribbon de Vista — Fase 1
+   *  (fix H-CAPAS-2): antes este flag no lo leía ningún painter (era
+   *  decorativo). Ahora multiplica, por encima del `showCota` de cada
+   *  capa/overlay individual, la opacidad de TODAS las cotas del mapa
+   *  (ver LabelPainter y BoundaryPainter). A diferencia de "Lotes"/
+   *  "Calles" (que se derivan 1:1 de layersRegistryStore.hasKindVisible),
+   *  sigue siendo un flag de UI aparte porque es un master switch
+   *  transversal a varias capas/overlays a la vez, no la visibilidad de
+   *  una capa puntual. */
   measurementsVisible: boolean;
   /** Ribbon state */
   activeTab: RibbonTabId;

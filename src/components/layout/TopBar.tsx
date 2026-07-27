@@ -6,7 +6,7 @@ import { useCurrentProjectStore } from '../../store/project/currentProjectStore'
 import { ProjectBrowserModal } from '../modals/ProjectBrowserModal';
 import { useTopBarActions } from '../../hooks/useTopBarActions';
 import AppMenu from './topbar/AppMenu';
-import { RibbonContext } from './topbar/RibbonPrimitives';
+import { RibbonContext } from './topbar/RibbonContext';
 import MapTab from './topbar/ribbon/MapTab';
 import EditTab from './topbar/ribbon/EditTab';
 import InsertTab from './topbar/ribbon/InsertTab';

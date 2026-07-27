@@ -128,6 +128,8 @@ export default function StatsPanel() {
     return () => window.removeEventListener('resize', onResize);
   }, []);
 
+  // tick es intencional: drawSource es mutable y no invalida la referencia.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const stats = useMemo(() => computeStats(drawSource, streets), [drawSource, streets, tick]);
 
   const onMouseDown = useCallback((e: React.MouseEvent) => {

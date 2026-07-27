@@ -19,6 +19,7 @@ import { measureCached, measureCachedWidth } from '../../textMeasureCache';
 import { getFeatureKind } from '../../../core/objectModel';
 import { useDisplayLayersStore } from '../../../store/ui/displayLayersStore';
 import { useLayersStore } from '../../../store/entities/layersRegistryStore';
+import { useUiShellStore } from '../../../store/ui/uiShellStore'; // ← NUEVO
 
 interface PlacedBox { x: number; y: number; w: number; h: number; }
 
@@ -81,6 +82,11 @@ export class LabelPainter {
     const selectedIds = useSelectionStore.getState().selectedIds;
     const placedBoxes: PlacedBox[] = [];
     const zoomFade = computeCotaOpacity(zoom);
+    // Fase 1 (fix H-CAPAS-2): "Cotas" del ribbon Vista (uiShellStore)
+    // era un flag que ningún painter leía. Ahora actúa como interruptor
+    // maestro que multiplica TODAS las opacidades de cota, por encima
+    // del showCota particular de cada capa.
+    const cotaMaster = useUiShellStore.getState().measurementsVisible ? 1 : 0;
 
     const display = useDisplayLayersStore.getState();
     const registry = useLayersStore.getState();
@@ -88,10 +94,10 @@ export class LabelPainter {
     const loteLayer = registry.getLayerForKind('lote');
 
     const manzanaLabelOp = display.labelOpacity(manzanaLayer?.showLabel ?? true);
-    const manzanaCotaOp = display.cotaOpacity(manzanaLayer?.showCota ?? true) * zoomFade;
+    const manzanaCotaOp = display.cotaOpacity(manzanaLayer?.showCota ?? true) * zoomFade * cotaMaster;
     const loteLabelOp = display.labelOpacity(loteLayer?.showLabel ?? true);
-    const loteCotaOp = display.cotaOpacity(loteLayer?.showCota ?? true) * zoomFade;
-    const genericCotaOp = display.cotaOpacity(true) * zoomFade;
+    const loteCotaOp = display.cotaOpacity(loteLayer?.showCota ?? true) * zoomFade * cotaMaster;
+    const genericCotaOp = display.cotaOpacity(true) * zoomFade * cotaMaster;
 
     for (let fi = 0; fi < features.length; fi++) {
       const feature = features[fi];
@@ -193,7 +199,8 @@ export class LabelPainter {
     toPx: (c: number[]) => [number, number],
   ): void {
     if (zoom < 12) return;
-    const cotaOp = useDisplayLayersStore.getState().cotaOpacity(true);
+    const cotaMaster = useUiShellStore.getState().measurementsVisible ? 1 : 0;
+    const cotaOp = useDisplayLayersStore.getState().cotaOpacity(true) * cotaMaster;
     if (cotaOp <= 0.002) return;
     const selectedIds = useSelectionStore.getState().selectedIds;
 

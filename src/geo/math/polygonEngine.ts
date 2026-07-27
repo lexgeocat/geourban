@@ -20,11 +20,6 @@ export interface CutResult {
   isRemnant: boolean;
 }
 
-/** De metros a unidades internas (no-op en EPSG:3857) */
-function mw(m: number): number {
-  return m;
-}
-
 // ─── Primitivas geométricas ─────────────────────────────────────────
 
 /** Área de un polígono en unidades internas (fórmula de Shoelace) */

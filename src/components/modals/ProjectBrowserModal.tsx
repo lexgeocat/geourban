@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState } from 'react';
+﻿import React, { useCallback, useState } from 'react';
 import { ChevronLeft, Plus, Trash2, Copy, FolderOpen, Search } from 'lucide-react';
 import type { GeoUrbanProject } from '../../io/types';
 import { getProjectStore, type ProjectSummary } from '../../io/projectStore';
@@ -24,11 +24,7 @@ export const ProjectBrowserModal: React.FC<ProjectBrowserModalProps> = ({
   const [search, setSearch] = useState('');
   const [deletingId, setDeletingId] = useState<number | null>(null);
 
-  useEffect(() => {
-    if (isOpen) void refresh();
-  }, [isOpen]);
-
-  const refresh = async () => {
+  const refresh = useCallback(async () => {
     setLoading(true);
     try {
       setProjects(await getProjectStore().list());
@@ -37,7 +33,7 @@ export const ProjectBrowserModal: React.FC<ProjectBrowserModalProps> = ({
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   const handleOpen = async (project: ProjectSummary) => {
     const full = await getProjectStore().load(project.id);
@@ -71,7 +67,7 @@ export const ProjectBrowserModal: React.FC<ProjectBrowserModalProps> = ({
   return (
     <Modal
       open={isOpen}
-      onOpenChange={(o) => { if (!o) onClose(); }}
+      onOpenChange={(o) => { if (!o) onClose(); if (o) void refresh(); }}
       title="Gestor de Proyectos"
       visuallyHiddenTitle
       width="min(720px, 92vw)"

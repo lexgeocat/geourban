@@ -23,9 +23,9 @@ export function useIncrementalRender(
 
   // Si la lista se achica (filtro/borrado) o crece de golpe (import),
   // no dejar visibleCount desalineado respecto al total actual.
-  useEffect(() => {
-    setVisibleCount((v) => Math.min(Math.max(v, batchSize), totalCount));
-  }, [totalCount, batchSize]);
+  // Se deriva en render en vez de setState en un effect para evitar
+  // re-renderizados en cascada (lint react-hooks/set-state-in-effect).
+  const effectiveVisibleCount = Math.min(Math.max(visibleCount, batchSize), totalCount);
 
   useEffect(() => {
     const sentinel = sentinelRef.current;
@@ -42,5 +42,5 @@ export function useIncrementalRender(
     return () => io.disconnect();
   }, [totalCount, batchSize, rootRef]);
 
-  return { visibleCount, sentinelRef };
+  return { visibleCount: effectiveVisibleCount, sentinelRef };
 }

@@ -116,9 +116,10 @@ function unfilletManzano(ringIn: Pt[]): Pt[] {
 }
 
 function mznQuadApprox(mznPts: Pt[]): Pt[] {
-  let V: Pt[] | null = null;
-  try { V = unfilletManzano(mznPts); } catch { V = null; }
-  if (V && V.length === 4) return V;
+  try {
+    const V = unfilletManzano(mznPts);
+    if (V.length === 4) return V;
+  } catch { /* fall through to bounding quad */ }
   return minAreaBoundingQuad(mznPts);
 }
 
@@ -553,9 +554,7 @@ function hbMergeHeadRemainders(lots: HbLot[], targetLotArea: number): HbLot[] {
   }
 
   let result = [...lots];
-  let changed = true;
-  while (changed) {
-    changed = false;
+  while (true) {
     const remIdx = result.findIndex((l) => l.zone.startsWith('head') && l.area < targetLotArea * THRESHOLD);
     if (remIdx === -1) break;
     const rem = result[remIdx];
@@ -571,7 +570,6 @@ function hbMergeHeadRemainders(lots: HbLot[], targetLotArea: number): HbLot[] {
     const mergedLot: HbLot = { pts: merged, area: polyArea(merged), zone: neighbor.zone, isRemainder: false };
     result = result.filter((_, i) => i !== remIdx && i !== bestIdx);
     result.splice(Math.min(bestIdx, remIdx), 0, mergedLot);
-    changed = true;
   }
   return result;
 }

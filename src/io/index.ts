@@ -8,7 +8,7 @@ import {
 } from './geojson';
 import { importKml, importKmz, exportKml, exportKmz } from './kml';
 import { importShp, exportShp } from './shp';
-import { importGpkg, exportGpkg } from './gpkg';
+import { importGpkg } from './gpkg';
 import { importDxf, exportDxf } from './dxf';
 
 export * from './types';

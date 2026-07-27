@@ -497,7 +497,7 @@ export function handleGeoWorkerRequest(request: GeoWorkerRequest): GeoWorkerResp
       case 'subdivideManzanoBatch':
         return { type: 'subdivideManzanoBatch', results: [], error: message };
       default:
-        throw new Error(`Unknown request type in catch: ${(request as any).type}`);
+        throw new Error(`Unknown request type in catch: ${(request as any).type}`, { cause: err });
     }
   }
 }

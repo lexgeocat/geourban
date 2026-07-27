@@ -15,7 +15,7 @@ import type VectorSource from 'ol/source/Vector.js';
 import type { FeatureCollection, Feature as GeoJSONFeature } from 'geojson';
 
 import { useMapStore } from '../store/map/mapStore';
-import { refreshSourceMetrics, updateFeatureMetrics } from './metrics';
+import { updateFeatureMetrics } from './metrics';
 import { polyArea, type Pt } from './math/polygonEngine';
 import { useStreetStore, type Street } from '../store/entities/streetStore';
 import { useRoundaboutStore, type Roundabout } from '../store/entities/roundaboutStore';

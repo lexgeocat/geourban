@@ -1,4 +1,5 @@
 import { useRoundaboutStore } from '../../../store/entities/roundaboutStore';
+import { useLayersStore } from '../../../store/entities/layersRegistryStore'; // ← NUEVO
 import { roundaboutGeometry } from '../../../geo/roundabout/roundaboutEngine';
 import { formatMetricLength } from '../../../geo/metrics';
 import type { RoundaboutDrawPreview } from '../RoundaboutDrawInteraction';
@@ -12,7 +13,13 @@ export class RoundaboutPainter {
   }
 
   paint(ctx: CanvasRenderingContext2D, toPx: (c: number[]) => [number, number], resolution: number): void {
-    const { roundabouts, visible } = useRoundaboutStore.getState();
+    const { roundabouts } = useRoundaboutStore.getState();
+    // Fase 1 (fix H-CAPAS-3): antes dependía de roundaboutStore.visible,
+    // un flag que ninguna UI llegaba a exponer (las rotondas quedaban
+    // siempre visibles pasara lo que pasara en el panel de capas).
+    // Comparten ahora la capa "Viales" (kind: 'calle') — misma decisión
+    // que agrupa toda la red vial bajo un solo control.
+    const visible = useLayersStore.getState().hasKindVisible('calle');
     if (visible) {
       for (const rb of roundabouts) {
         const geom = roundaboutGeometry(rb, resolution);
