@@ -34,6 +34,7 @@ import { ensureKind, getFeatureKind, getLotStatus, setLotStatus } from '../core/
 import type { ManzanoLoteMethod } from './subdivision/subdivisionAlgorithms';
 import { buildRoadNetworkRings } from './roads/roadNetworkEngine';
 import { roundRingReflex, pointOnRing } from './roads/ringFillet';
+import { matchFragmentsToMembers } from './roads/fragmentReconciliation';
 
 const geoJsonFormat = new GeoJSON();
 
@@ -151,9 +152,6 @@ interface OriginGroup {
   origId: string;
   origPts: Pt[];
   members: Array<Feature<Geometry>>;
-  savedMethod: ManzanoLoteMethod | null;
-  savedDirPref: { ax: number; ay: number } | undefined;
-  wasSubdivided: boolean;
 }
 
 /** Agrupa los features del drawSource por parcela de origen
@@ -200,19 +198,10 @@ function collectOriginGroups(src: VectorSource): {
 
     let group = groups.get(origId);
     if (!group) {
-      group = { origId, origPts, members: [], savedMethod: null, savedDirPref: undefined, wasSubdivided: false };
+      group = { origId, origPts, members: [] };
       groups.set(origId, group);
     }
     group.members.push(feature);
-
-    if (kind === 'manzana' && getLotStatus(feature) === 'subdivided') {
-      group.wasSubdivided = true;
-      const fid = feature.getId();
-      if (fid != null && group.savedMethod === null) {
-        group.savedMethod = useManzanoStore.getState().getMethod(fid);
-        group.savedDirPref = useManzanoStore.getState().getRotateDir(fid);
-      }
-    }
   });
 
   return { groups, lotsByGroupId };
@@ -398,61 +387,80 @@ async function recomputeManzanosImmediate(): Promise<void> {
   const targetAreaM2 = useManzanoStore.getState().targetAreaM2;
   const frontMinM = useManzanoStore.getState().frontMinM;
 
-  const groupsNeedingRelotConfirm: OriginGroup[] = [];
+  // ── Fase 1: emparejar fragmentos con features viejas + detectar qué
+  //    necesita confirmación del usuario, SIN mutar todavía nada ───────
+  const assignmentsByGroupIdx = new globalThis.Map<number, ReturnType<typeof matchFragmentsToMembers<Feature<Geometry>>>>();
+  const memberAreaByRefPerGroup = new globalThis.Map<number, globalThis.Map<Feature<Geometry>, number>>();
+  const relotCandidates: Array<{ featureId: string; method: ManzanoLoteMethod; dirPref?: { ax: number; ay: number } }> = [];
+
   for (let idx = 0; idx < parcelIndexToGroup.length; idx++) {
     const group = parcelIndexToGroup[idx];
     const fragments = fragmentsByGroup.get(idx) ?? [];
-    const untouched =
-      fragments.length === 1 && polyArea(fragments[0]) >= polyArea(group.origPts) * 0.999;
+    const untouched = fragments.length === 1 && polyArea(fragments[0]) >= polyArea(group.origPts) * 0.999;
     if (untouched) continue;
     if (fragmentsMatchCurrentMembers(group.members, fragments)) continue;
-    if (group.wasSubdivided && group.savedMethod && fragments.length === 1) {
-      groupsNeedingRelotConfirm.push(group);
+
+    const existingMembers = group.members
+      .map((m) => {
+        const g = m.getGeometry();
+        const ring = g instanceof PolygonGeom
+          ? ((g.getCoordinates()[0] ?? []) as number[][]).map((c) => [c[0], c[1]] as Pt)
+          : [];
+        return { ring, ref: m as Feature<Geometry> };
+      })
+      .filter((x) => x.ring.length >= 3);
+
+    const areaByRef = new globalThis.Map<Feature<Geometry>, number>();
+    for (const em of existingMembers) areaByRef.set(em.ref, polyArea(em.ring));
+    memberAreaByRefPerGroup.set(idx, areaByRef);
+
+    const assignments = matchFragmentsToMembers(fragments, existingMembers);
+    assignmentsByGroupIdx.set(idx, assignments);
+
+    for (const a of assignments) {
+      if (!a.member) continue;
+      const oldArea = areaByRef.get(a.member) ?? 0;
+      const fragArea = polyArea(fragments[a.fragmentIdx]);
+      const ratioOld = oldArea > 0 ? a.overlapArea / oldArea : 0;
+      const ratioFrag = fragArea > 0 ? a.overlapArea / fragArea : 0;
+      const barelyChanged = Math.min(ratioOld, ratioFrag) >= 0.92;
+      if (barelyChanged) continue;
+      if (getLotStatus(a.member) !== 'subdivided') continue;
+      const mid = a.member.getId();
+      if (mid == null) continue;
+      const hasLots = (lotsByGroupId.get(String(mid))?.length ?? 0) > 0;
+      if (!hasLots) continue;
+      relotCandidates.push({
+        featureId: String(mid),
+        method: useManzanoStore.getState().getMethod(mid),
+        dirPref: useManzanoStore.getState().getRotateDir(mid),
+      });
     }
   }
 
   let allowAutoRelot = true;
-  if (groupsNeedingRelotConfirm.length > 0) {
-    const plural = groupsNeedingRelotConfirm.length > 1;
-    const names = groupsNeedingRelotConfirm.map((g) => `Manzano ${g.origId}`).join(', ');
+  if (relotCandidates.length > 0) {
+    const plural = relotCandidates.length > 1;
     allowAutoRelot = window.confirm(
-      `El trazado nuevo va a recortar y regenerar automáticamente los lotes de ` +
-      `${plural ? 'estos manzanos' : 'este manzano'}: ${names}.\n\n¿Continuar?\n\n` +
-      'Si cancelás, el corte igual se aplica pero los lotes quedan pendientes de regenerar a mano.'
+      `El trazado nuevo modificó lo suficiente ${plural ? 'a estos manzanos ya lotizados' : 'a este manzano ya lotizado'} ` +
+      `como para necesitar regenerar sus lotes automáticamente (el resto del proyecto no se ve afectado).\n\n¿Continuar?\n\n` +
+      'Si cancelás, el corte igual se aplica pero esos lotes quedan pendientes de regenerar a mano.'
     );
   }
+
+  // ── Fase 2: aplicar — reciclar in-place lo que se pueda, crear/borrar
+  //    solo lo estrictamente necesario ────────────────────────────────
+  const relotTasks: Array<{ featureId: string; method: ManzanoLoteMethod; dirPref?: { ax: number; ay: number } }> = [];
 
   for (let idx = 0; idx < parcelIndexToGroup.length; idx++) {
     const group = parcelIndexToGroup[idx];
     const fragments = fragmentsByGroup.get(idx) ?? [];
 
-    const untouched =
-      fragments.length === 1 && polyArea(fragments[0]) >= polyArea(group.origPts) * 0.999;
-
-    if (!untouched && fragmentsMatchCurrentMembers(group.members, fragments)) {
-      continue;
-    }
-
-    if (!untouched) {
-      for (const m of group.members) {
-        const mid = m.getId();
-        if (mid == null) continue;
-        const childLots = lotsByGroupId.get(String(mid));
-        if (!childLots) continue;
-        for (const lot of childLots) {
-          if (src.getFeatureById(lot.getId() as string | number) != null) {
-            src.removeFeature(lot);
-          }
-        }
-      }
-    }
-
-    for (const m of group.members) src.removeFeature(m);
-
+    const untouched = fragments.length === 1 && polyArea(fragments[0]) >= polyArea(group.origPts) * 0.999;
     if (untouched) {
       const orig = group.members[0];
       orig.setGeometry(new PolygonGeom([closeGeoRing(fragments[0])]));
-      orig.set('kind', 'lote', true);
+      if (getFeatureKind(orig) !== 'lote') orig.set('kind', 'lote', true);
       orig.unset('lotStatus', true);
       orig.set('origParcelId', group.origId, true);
       orig.set('origPts', group.origPts, true);
@@ -461,21 +469,79 @@ async function recomputeManzanosImmediate(): Promise<void> {
       continue;
     }
 
+    if (fragmentsMatchCurrentMembers(group.members, fragments)) continue;
+
+    const assignments = assignmentsByGroupIdx.get(idx) ?? [];
+    const areaByRef = memberAreaByRefPerGroup.get(idx) ?? new globalThis.Map<Feature<Geometry>, number>();
+    const reusedRefs = new Set(assignments.filter((a) => a.member != null).map((a) => a.member as Feature<Geometry>));
+
+    for (const m of group.members) {
+      if (reusedRefs.has(m as Feature<Geometry>)) continue;
+      const mid = m.getId();
+      if (mid != null) {
+        const childLots = lotsByGroupId.get(String(mid));
+        if (childLots) {
+          for (const lot of childLots) {
+            if (src.getFeatureById(lot.getId() as string | number) != null) src.removeFeature(lot);
+          }
+        }
+      }
+      src.removeFeature(m);
+    }
+
     const cornerMode = useRoadCornerStore.getState().mode;
-    const newFragmentIds: string[] = [];
-    fragments.forEach((ring, i) => {
+
+    for (let fi = 0; fi < fragments.length; fi++) {
+      const rawRing = fragments[fi];
       const rounded = roundRingReflex(
-        orientRingCcw(ring), 0, false, cornerMode,
+        orientRingCcw(rawRing), 0, false, cornerMode,
         (pt) => !pointOnRing(pt, group.origPts),
       );
-      if (rounded.length < 4) return;
+      if (rounded.length < 4) continue;
+
+      const assignment = assignments.find((a) => a.fragmentIdx === fi);
+      const reused = assignment?.member as Feature<Geometry> | undefined;
+
+      if (reused) {
+        const reusedId = reused.getId() as string | number;
+        const oldArea = areaByRef.get(reused) ?? 0;
+        const fragArea = polyArea(rawRing);
+        const ratioOld = oldArea > 0 ? (assignment!.overlapArea / oldArea) : 0;
+        const ratioFrag = fragArea > 0 ? (assignment!.overlapArea / fragArea) : 0;
+        const barelyChanged = Math.min(ratioOld, ratioFrag) >= 0.92;
+
+        reused.setGeometry(new PolygonGeom([rounded]));
+        if (getFeatureKind(reused) !== 'manzana') reused.set('kind', 'manzana', true);
+        updateFeatureMetrics(reused as Feature<Geometry>);
+
+        if (barelyChanged) continue;
+
+        const wasSubdivided = getLotStatus(reused) === 'subdivided';
+        const oldLots = lotsByGroupId.get(String(reusedId));
+        if (oldLots && oldLots.length > 0) {
+          for (const lot of oldLots) {
+            if (src.getFeatureById(lot.getId() as string | number) != null) src.removeFeature(lot);
+          }
+          if (wasSubdivided) {
+            relotTasks.push({
+              featureId: String(reusedId),
+              method: useManzanoStore.getState().getMethod(reusedId),
+              dirPref: useManzanoStore.getState().getRotateDir(reusedId),
+            });
+          } else {
+            setLotStatus(reused, 'none');
+          }
+        }
+        continue;
+      }
+
       const newFeat = new Feature({ geometry: new PolygonGeom([rounded]) });
-      const newId = `${group.origId}-mzn-${i}`;
+      const newId = `${group.origId}-mzn-${fi}`;
       newFeat.setId(newId);
       newFeat.setProperties(
         ensureKind(
           {
-            colorIdx: i % 10,
+            colorIdx: fi % 10,
             createdAt: new Date().toISOString(),
             origParcelId: group.origId,
             origPts: group.origPts,
@@ -487,82 +553,62 @@ async function recomputeManzanosImmediate(): Promise<void> {
       if (lid) newFeat.set('layerId', lid);
       src.addFeature(newFeat);
       updateFeatureMetrics(newFeat as Feature<Geometry>);
-      newFragmentIds.push(newId);
-    });
+    }
+  }
 
-    if (group.wasSubdivided && group.savedMethod) {
-      if (newFragmentIds.length === 1 && allowAutoRelot) {
-        const fragId = newFragmentIds[0];
-        const fragFeat = src.getFeatureById(fragId) as Feature<Geometry> | null;
-        const fragGeom = fragFeat?.getGeometry();
-
-        if (fragFeat && fragGeom instanceof PolygonGeom) {
-          const ring = ((fragGeom.getCoordinates()[0] ?? []) as number[][]).map(
-            (c) => [c[0], c[1]] as Pt,
-          );
-          try {
-            const lots = await subdivideManzanoInWorker(
-              ring,
-              group.savedMethod,
-              targetAreaM2,
-              frontMinM,
-              group.savedDirPref,
-            );
-            let created = 0;
-            lots.forEach((lot, i) => {
-              if (lot.pts.length < 3) return;
-              const closedRing = [...lot.pts];
-              if (
-                closedRing[0][0] !== closedRing[closedRing.length - 1][0] ||
-                closedRing[0][1] !== closedRing[closedRing.length - 1][1]
-              ) {
-                closedRing.push([closedRing[0][0], closedRing[0][1]]);
-              }
-              const lotFeat = new Feature({ geometry: new PolygonGeom([closedRing]) });
-              const lotId = `lot-${fragId}-${Date.now()}-${i}`;
-              lotFeat.setId(lotId);
-              lotFeat.setProperties(
-                ensureKind(
-                  {
-                    subdivision: group.savedMethod,
-                    lotGroupId: fragId,
-                    label: lot.isRemnant ? `Remanente ${i + 1}` : `Lote ${i + 1}`,
-                    areaM2: lot.areaM2,
-                    frontM: lot.frontM,
-                    depthM: lot.depthM,
-                    isRemnant: lot.isRemnant,
-                  },
-                  'lote',
-                ),
-              );
-              const lotLid = resolveLoteLayerId();
-              if (lotLid) lotFeat.set('layerId', lotLid);
-              src.addFeature(lotFeat);
-              updateFeatureMetrics(lotFeat as Feature<Geometry>);
-              created++;
-            });
-            setLotStatus(fragFeat, created > 0 ? 'subdivided' : 'pending');
-            useManzanoStore.getState().setMethod(fragId, group.savedMethod);
-            if (group.savedDirPref) useManzanoStore.getState().setRotateDir(fragId, group.savedDirPref);
-          } catch (err) {
-            console.error('recomputeManzanos: fallo la re-lotización automática', err);
-            setLotStatus(fragFeat, 'pending');
-          }
-        } else if (fragFeat) {
-          setLotStatus(fragFeat, 'pending');
+  // ── Re-lotización de los manzanos que sí perdieron sus lotes ────────
+  for (const task of relotTasks) {
+    const fragFeat = src.getFeatureById(task.featureId) as Feature<Geometry> | null;
+    if (!fragFeat) continue;
+    if (!allowAutoRelot) {
+      setLotStatus(fragFeat, 'pending');
+      useManzanoStore.getState().setMethod(task.featureId, task.method);
+      continue;
+    }
+    const fragGeom = fragFeat.getGeometry();
+    if (!(fragGeom instanceof PolygonGeom)) { setLotStatus(fragFeat, 'pending'); continue; }
+    const ring = ((fragGeom.getCoordinates()[0] ?? []) as number[][]).map((c) => [c[0], c[1]] as Pt);
+    try {
+      const lots = await subdivideManzanoInWorker(ring, task.method, targetAreaM2, frontMinM, task.dirPref);
+      let created = 0;
+      lots.forEach((lot, i) => {
+        if (lot.pts.length < 3) return;
+        const closedRing = [...lot.pts];
+        if (
+          closedRing[0][0] !== closedRing[closedRing.length - 1][0] ||
+          closedRing[0][1] !== closedRing[closedRing.length - 1][1]
+        ) {
+          closedRing.push([closedRing[0][0], closedRing[0][1]]);
         }
-      } else if (newFragmentIds.length === 1 && !allowAutoRelot) {
-        const fragId = newFragmentIds[0];
-        const fragFeat = src.getFeatureById(fragId) as Feature<Geometry> | null;
-        setLotStatus(fragFeat, 'pending');
-        useManzanoStore.getState().setMethod(fragId, group.savedMethod);
-      } else if (newFragmentIds.length > 1) {
-        for (const fragId of newFragmentIds) {
-          const fragFeat = src.getFeatureById(fragId) as Feature<Geometry> | null;
-          setLotStatus(fragFeat, 'pending');
-          useManzanoStore.getState().setMethod(fragId, group.savedMethod);
-        }
-      }
+        const lotFeat = new Feature({ geometry: new PolygonGeom([closedRing]) });
+        const lotId = `lot-${task.featureId}-${Date.now()}-${i}`;
+        lotFeat.setId(lotId);
+        lotFeat.setProperties(
+          ensureKind(
+            {
+              subdivision: task.method,
+              lotGroupId: task.featureId,
+              label: lot.isRemnant ? `Remanente ${i + 1}` : `Lote ${i + 1}`,
+              areaM2: lot.areaM2,
+              frontM: lot.frontM,
+              depthM: lot.depthM,
+              isRemnant: lot.isRemnant,
+            },
+            'lote',
+          ),
+        );
+        const lotLid = resolveLoteLayerId();
+        if (lotLid) lotFeat.set('layerId', lotLid);
+        src.addFeature(lotFeat);
+        updateFeatureMetrics(lotFeat as Feature<Geometry>);
+        created++;
+      });
+      setLotStatus(fragFeat, created > 0 ? 'subdivided' : 'pending');
+      useManzanoStore.getState().setMethod(task.featureId, task.method);
+      if (task.dirPref) useManzanoStore.getState().setRotateDir(task.featureId, task.dirPref);
+    } catch (err) {
+      console.error('recomputeManzanos: fallo la re-lotización automática', err);
+      setLotStatus(fragFeat, 'pending');
     }
   }
 

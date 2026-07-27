@@ -10,6 +10,7 @@ export interface Street {
   sideWidthM: number;
   waypoints?: Array<[number, number]>;
   name: string;
+  layerId?: string;
 }
 
 interface StreetState {

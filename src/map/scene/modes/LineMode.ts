@@ -6,6 +6,7 @@ import { useDrawStore } from '../../../store/map/drawStore';
 import { runCommand } from '../../../commands/core/CommandStack';
 import { AddFeatureCommand } from '../../../commands/features/AddFeatureCommand';
 import { updateFeatureMetrics } from '../../../geo/metrics';
+import { pickLayerForKind } from '../../../store/ui/layerPickerStore';
 import type { ModeContext } from './ModeContext';
 
 export function activateLine(ctx: ModeContext): void {
@@ -19,10 +20,13 @@ export function activateLine(ctx: ModeContext): void {
   });
   draw.on('drawend', (event) => {
     const feature = event.feature as Feature<Geometry>;
-    void runCommand(new AddFeatureCommand(feature, { mode: 'claim', label: 'Dibujar línea' }));
-    useDrawStore.getState().setLastDrawnLineId(feature.getId() as string);
-    updateFeatureMetrics(feature);
-    ctx.refreshLayers();
+    void (async () => {
+      const layerId = await pickLayerForKind('linea');
+      await runCommand(new AddFeatureCommand(feature, { mode: 'claim', label: 'Dibujar línea', kind: 'linea', layerId }));
+      useDrawStore.getState().setLastDrawnLineId(feature.getId() as string);
+      updateFeatureMetrics(feature);
+      ctx.refreshLayers();
+    })();
   });
   ctx.activeDrawRef.current = draw;
   map.addInteraction(draw);

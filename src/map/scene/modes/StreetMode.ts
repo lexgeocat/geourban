@@ -6,6 +6,7 @@ import type Geometry from 'ol/geom/Geometry.js';
 import { useStreetStore, type Street } from '../../../store/entities/streetStore';
 import { runCommand } from '../../../commands/core/CommandStack';
 import { AddStreetCommand } from '../../../commands/roads/AddStreetCommand';
+import { pickLayerForKind } from '../../../store/ui/layerPickerStore';
 import type { ModeContext } from './ModeContext';
 
 function findNearbyStreetEndpointWarning(
@@ -65,9 +66,10 @@ export function activateStreet(ctx: ModeContext): void {
         return;
       }
 
-      void runCommand(
-        new AddStreetCommand(start, end, streetStore.defaultWidthM, waypoints, streetStore.defaultSideWidthM),
-      );
+      void (async () => {
+        const layerId = await pickLayerForKind('calle');
+        await runCommand(new AddStreetCommand(start, end, streetStore.defaultWidthM, waypoints, streetStore.defaultSideWidthM, layerId));
+      })();
     } finally {
       streetSource.removeFeature(feature);
       streetSource.changed();

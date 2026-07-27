@@ -2,6 +2,7 @@
 import { useLayersStore } from '../../store/entities/layersRegistryStore';
 import type { Layer } from '../../core/objectModel';
 import { useDisplayLayersStore, type OverlayLayerId } from '../../store/ui/displayLayersStore';
+import { useLayerPickerStore } from '../../store/ui/layerPickerStore';
 import { useIncrementalRender } from '../../hooks/useIncrementalRender';
 
 /* ─────────── Icons ─────────── */
@@ -317,6 +318,9 @@ export default function LayerPanel() {
   const setActiveLayer = useLayersStore((s) => s.setActiveLayer);
   const activeLayerId = useLayersStore((s) => s.activeLayerId);
 
+  const askOnCreate = useLayerPickerStore((s) => s.askEnabled);
+  const setAskOnCreate = useLayerPickerStore((s) => s.setAskEnabled);
+
   const registryRows = useRegistryRows();
   const overlayRows = useOverlayRows();
   const allRows = [...registryRows, ...overlayRows];
@@ -351,7 +355,7 @@ export default function LayerPanel() {
 
       {open && (
         <div ref={panelRef} className="cad-panel-glass animate-fade-in" style={{ padding: '10px 12px', minWidth: 250, maxHeight: '65vh', overflowY: 'auto' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, paddingBottom: 6, borderBottom: '1px solid var(--cad-border)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6, paddingBottom: 6, borderBottom: '1px solid var(--cad-border)' }}>
             <span style={{ fontSize: '0.6rem', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--cad-text-dim)' }}>
               Capas
             </span>
@@ -359,6 +363,10 @@ export default function LayerPanel() {
               <IconPlus />
             </button>
           </div>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.6rem', color: 'var(--cad-text-dim)', cursor: 'pointer', marginBottom: 6 }}>
+            <input type="checkbox" className="cad-toggle" checked={askOnCreate} onChange={(e) => setAskOnCreate(e.target.checked)} />
+            Preguntar capa al crear geometría
+          </label>
 
           <div>
             <div onClick={() => setExpanded((v) => !v)} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '3px 0', cursor: 'pointer', userSelect: 'none' }}>

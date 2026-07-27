@@ -15,6 +15,7 @@ interface StreetEntry {
   widthM: number;
   sideWidthM: number;
   waypoints?: Array<[number, number]>;
+  layerId?: string;
 }
 
 /**
@@ -52,6 +53,7 @@ export class AddStreetCommand extends Command {
     widthM: number,
     waypoints?: Array<[number, number]>,
     sideWidthM?: number,
+    layerId?: string,
   ) {
     super();
     this.entries = [{
@@ -61,6 +63,7 @@ export class AddStreetCommand extends Command {
       widthM,
       waypoints,
       sideWidthM: sideWidthM ?? useStreetStore.getState().defaultSideWidthM,
+      layerId,
     }];
   }
 
@@ -75,6 +78,7 @@ export class AddStreetCommand extends Command {
       widthM: entry.widthM,
       sideWidthM: entry.sideWidthM,
       waypoints: entry.waypoints,
+      layerId: entry.layerId,
     });
     await recomputeManzanos();
     this.after = snapshotDrawSource(ctx.drawSource);
@@ -99,6 +103,7 @@ export class AddStreetCommand extends Command {
           widthM: e.widthM,
           sideWidthM: e.sideWidthM,
           waypoints: e.waypoints,
+          layerId: e.layerId,
         });
       }
     }

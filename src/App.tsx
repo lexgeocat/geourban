@@ -15,6 +15,7 @@ import ProjectSetupModal from './components/modals/ProjectSetupModal';
 import ManzanoPanel from './components/panels/ManzanoPanel';
 import RoundaboutPanel from './components/panels/RoundaboutPanel';
 import StreetPanel from './components/panels/StreetPanel';
+import LayerPickerModal from './components/modals/LayerPickerModal';
 
 function App() {
   useKeyboardShortcuts();
@@ -72,6 +73,7 @@ function App() {
       </div>
       <ProjectSetupModal />
       <SubdivisionDialog />
+      <LayerPickerModal />
 
       <LayerPanel />
 

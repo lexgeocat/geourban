@@ -11,6 +11,7 @@ import { runCommand } from '../../../commands/core/CommandStack';
 import { AddFeatureCommand } from '../../../commands/features/AddFeatureCommand';
 import { updateFeatureMetrics } from '../../../geo/metrics';
 import { createLiveDrawingLabelStyle } from '../../styleFactory';
+import { pickLayerForKind } from '../../../store/ui/layerPickerStore';
 import type { ModeContext } from './ModeContext';
 
 export function activatePolygon(ctx: ModeContext): void {
@@ -94,9 +95,12 @@ export function activatePolygon(ctx: ModeContext): void {
   draw.on('drawend', (event) => {
     const feature = event.feature as Feature<Geometry>;
     const areaKind = useDrawStore.getState().areaKind;
-    void runCommand(new AddFeatureCommand(feature, { mode: 'claim', label: 'Dibujar polígono', kind: areaKind }));
-    updateFeatureMetrics(feature);
-    ctx.refreshLayers();
+    void (async () => {
+      const layerId = await pickLayerForKind(areaKind);
+      await runCommand(new AddFeatureCommand(feature, { mode: 'claim', label: 'Dibujar polígono', kind: areaKind, layerId }));
+      updateFeatureMetrics(feature);
+      ctx.refreshLayers();
+    })();
   });
   ctx.activeDrawRef.current = draw;
   map.addInteraction(draw);
