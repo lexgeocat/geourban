@@ -153,7 +153,7 @@ export function useTopBarActions(fileInputRef: RefObject<HTMLInputElement | null
     useStreetStore.getState().clearStreets();
     useRoundaboutStore.getState().clearRoundabouts();
     resetIncrementalRoadTracking();
-    useLayersStore.getState().resetToDefaults();
+    useLayersStore.getState().resetToEmpty();
     refreshSourceMetrics(drawSource);
     drawSource.changed();
     useSelectionStore.getState().clear();

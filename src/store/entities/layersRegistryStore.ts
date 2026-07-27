@@ -3,7 +3,6 @@ import { immer } from 'zustand/middleware/immer';
 import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
 import {
-  DEFAULT_LAYERS,
   UNASSIGNED_LAYER_ID,
   createUnassignedLayer,
   isLayerKind,
@@ -45,15 +44,19 @@ type LayerState = {
   /** Selecciona la capa activa (las features nuevas se asignan a esta) */
   setActiveLayer: (id: string | null) => void;
 
-  /** Fase 2 (persistencia): reemplaza TODO el registro — usado al abrir
-   *  un proyecto guardado o al importar un `.geourban`. Si `layers` viene
-   *  vacío (proyecto guardado antes de esta fase, o import de un formato
-   *  sin capas propias como .geojson/.kml/.dxf), siembra los 5 defaults
-   *  de fábrica — mismo criterio que la migración Dexie v1→v2 de
-   *  `io/projectStore.ts`. */
+  /** Fase 2 (persistencia) + Fase 1 (plan de mejora de capas): reemplaza
+   *  TODO el registro — usado al abrir un proyecto guardado o al
+   *  importar un `.geourban`. Si `layers` viene vacío, el registro queda
+   *  VACÍO — ya no se auto-siembran capas de fábrica (ver
+   *  `diagnostico-plan-sistema-capas.md`, Fase 1). Las features
+   *  huérfanas de un proyecto viejo se resuelven vía
+   *  `reconcileOrphanFeatures`, nunca recreando capas por adivinanza. */
   loadLayers: (layers: Layer[], activeLayerId?: string | null) => void;
-  /** Vuelve el registro a los 5 defaults de fábrica ("Nuevo proyecto"). */
-  resetToDefaults: () => void;
+  /** Vacía el registro ("Nuevo proyecto"). Antes reseteaba a 5 capas de
+   *  fábrica; ahora el estado "sin dibujar nada" es, literalmente, sin
+   *  capas. Renombrado de `resetToDefaults` para reflejar el
+   *  comportamiento real. */
+  resetToEmpty: () => void;
   /** Reconcilia features cuyo `layerId` no resuelve a ninguna capa del
    *  registro actual (capa borrada/inexistente tras cargar un proyecto)
    *  reasignándolas a una capa "Sin capa" visible, creada on-demand, en
@@ -84,8 +87,11 @@ type LayerState = {
 
 export const useLayersStore = create<LayerState>()(
   immer((set, get) => ({
-    layers: DEFAULT_LAYERS.map((l) => ({ ...l })),
-    index: new Map(DEFAULT_LAYERS.map((l, idx) => [l.id, idx])),
+    // Fase 1 (plan de mejora de capas): el registro nace VACÍO. La
+    // primera capa la crea el usuario a mano, o el resolver obligatorio
+    // de capa la crea al dibujar/generar la primera entidad (Fase 2/3).
+    layers: [],
+    index: new Map(),
     activeLayerId: null,
 
     /* ---------- Mutations ---------- */
@@ -225,26 +231,25 @@ export const useLayersStore = create<LayerState>()(
 
     loadLayers: (layers, activeLayerId = null) =>
       set((state) => {
-        const next = layers.length > 0
-          ? layers.map((l) => ({
-              ...l,
-              kind: isLayerKind(l.kind) ? l.kind : 'lote',
-              colorMode: ((l as any).colorMode as string) === 'colorIdx'
-                ? 'colorIdx' as const
-                : (isLayerKind(l.kind) && l.kind === 'manzana' ? 'colorIdx' as const : 'solid' as const),
-            }))
-          : DEFAULT_LAYERS.map((l) => ({ ...l }));
+        // Fase 1: si el proyecto no trae capas propias, el registro
+        // queda vacío — ya no se rellena con capas de fábrica.
+        const next = layers.map((l) => ({
+          ...l,
+          kind: isLayerKind(l.kind) ? l.kind : 'lote',
+          colorMode: ((l as any).colorMode as string) === 'colorIdx'
+            ? 'colorIdx' as const
+            : (isLayerKind(l.kind) && l.kind === 'manzana' ? 'colorIdx' as const : 'solid' as const),
+        }));
         state.layers = next;
         state.index = new Map(next.map((l, idx) => [l.id, idx]));
         const candidate = activeLayerId ? next.find((l) => l.id === activeLayerId) : undefined;
         state.activeLayerId = candidate && !candidate.locked ? activeLayerId : null;
       }),
 
-    resetToDefaults: () =>
+    resetToEmpty: () =>
       set((state) => {
-        const next = DEFAULT_LAYERS.map((l) => ({ ...l }));
-        state.layers = next;
-        state.index = new Map(next.map((l, idx) => [l.id, idx]));
+        state.layers = [];
+        state.index = new Map();
         state.activeLayerId = null;
       }),
 

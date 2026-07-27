@@ -1,7 +1,7 @@
 ﻿import type { FeatureCollection } from 'geojson';
 import type { BaseMapId } from '../map/baseMaps';
 import type { ProjectCrsConfig } from '../geo/crs/utmZones';
-import { DEFAULT_LAYERS, type Layer } from '../core/objectModel';
+import type { Layer } from '../core/objectModel';
 
 /** Fase 2 (persistencia/integridad de capas): antes este tipo era una
  *  forma reducida ({id,name,visible,type}) que ni remotamente coincidía
@@ -40,7 +40,9 @@ export function createEmptyProject(name = 'Sin título'): GeoUrbanProject {
     createdAt: now,
     updatedAt: now,
     baseMap: 'osm',
-    layers: DEFAULT_LAYERS.map((l) => ({ ...l })),
+    // Fase 1 (plan de mejora de capas): todo proyecto nuevo arranca sin
+    // ninguna capa — ver `diagnostico-plan-sistema-capas.md`.
+    layers: [],
     activeLayerId: null,
     view: { center: [-68.3, -16.65], zoom: 19 },
     crs: { mode: 'utm', utmZone: 19, utmHemisphere: 'S' },

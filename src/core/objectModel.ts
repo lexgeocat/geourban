@@ -39,7 +39,12 @@ export type GeoUrbanFeatureKind =
   | 'area_verde'
   | 'linea'
   | 'texto'
-  | 'cota';
+  | 'cota'
+  // Fase 1 (plan de mejora de capas) — nuevos kinds del catálogo sugerido:
+  | 'urbanizacion'
+  | 'georreferenciado'
+  | 'rotonda'
+  | 'vert_geo';
 
 export type LayerKind = GeoUrbanFeatureKind;
 
@@ -68,18 +73,68 @@ export interface Layer {
 }
 
 
-/** Fase 2 (persistencia de capas): única fuente de verdad para el
- *  registro "de fábrica" — la usan tanto `layersRegistryStore` (estado
- *  inicial / "Nuevo proyecto") como `io/types.ts::createEmptyProject`
- *  (semilla al importar un proyecto sin `layers` propio), para que
- *  ambos coincidan siempre. */
-export const DEFAULT_LAYERS: Layer[] = [
-  { id: 'lots', name: 'Lotes', kind: 'lote', zIndex: 0, color: '#58a6ff', fillColor: '#58a6ff', visible: true, locked: false, opacity: 1, showLabel: true, showCota: true, colorMode: 'solid' },
-  { id: 'manzanas', name: 'Manzanos', kind: 'manzana', zIndex: 1, color: '#f59e0b', fillColor: '#f59e0b', visible: true, locked: false, opacity: 1, showLabel: true, showCota: true, colorMode: 'colorIdx' },
-  { id: 'streets', name: 'Viales', kind: 'calle', zIndex: 2, color: '#8b5cf6', fillColor: '#8b5cf6', visible: true, locked: false, opacity: 1, showLabel: true, showCota: true, colorMode: 'solid' },
-  { id: 'equipment', name: 'Equipamientos', kind: 'equipamiento', zIndex: 3, color: '#4dd0c4', fillColor: '#4dd0c4', visible: true, locked: false, opacity: 1, showLabel: true, showCota: true, colorMode: 'solid' },
-  { id: 'greenareas', name: 'Áreas verdes', kind: 'area_verde', zIndex: 4, color: '#3fb950', fillColor: '#3fb950', visible: true, locked: false, opacity: 1, showLabel: true, showCota: true, colorMode: 'solid' },
+/**
+ * Fase 1 (plan de mejora del sistema de capas — ver
+ * `diagnostico-plan-sistema-capas.md`): el registro de capas YA NO nace
+ * con capas de fábrica. Todo proyecto nuevo, y todo `layersRegistryStore`
+ * recién inicializado, arranca en `[]` — la primera capa la crea el
+ * usuario a mano, o el resolver obligatorio de capa (Fase 2/3) al
+ * dibujar/generar la primera entidad.
+ *
+ * Se mantiene el símbolo exportado por compatibilidad con los
+ * import-sites históricos (`layersRegistryStore`, `io/types.ts`), pero
+ * su valor es intencionalmente `[]`. NO restaurar contenido acá: el
+ * catálogo "de fábrica" fue reemplazado por `LAYER_SUGGESTIONS` (abajo),
+ * que es solo un catálogo de PLANTILLAS para prellenar el formulario de
+ * "crear capa nueva" — nunca se auto-siembra.
+ */
+export const DEFAULT_LAYERS: Layer[] = [];
+
+/** Plantilla de sugerencia para el flujo "crear capa nueva" (Fase 2).
+ *  No es un `Layer` real — le faltan `id`/`zIndex`/`visible`/`locked`/
+ *  `opacity`/`showLabel`/`showCota`, que se generan recién al confirmar
+ *  la creación. `geometryHint` es solo informativo para la UI (ícono/
+ *  etiqueta de tipo de geometría en el selector de capas). */
+export interface LayerSuggestion {
+  kind: GeoUrbanFeatureKind;
+  name: string;
+  color: string;
+  fillColor: string;
+  colorMode: 'solid' | 'colorIdx';
+  geometryHint: 'polygon' | 'line' | 'point';
+}
+
+/**
+ * Catálogo sugerido de capas (6 polígono, 2 línea, 1 punto). Colores
+ * elegidos para no colisionar entre sí y, donde ya existía una
+ * convención visual en el resto de la app, para ser consistentes con
+ * ella:
+ *   - 'urbanizacion' / 'georreferenciado': mismos colores que ya usa
+ *     `BoundaryPainter` para pintar esos contornos.
+ *   - 'rotonda': mismo coral/salmón que ya usan `RoundaboutPainter` y
+ *     `RoundaboutPanel`.
+ *   - 'manzana' / 'lote' / 'calle' / 'equipamiento' / 'area_verde':
+ *     mismos colores que tenían las 5 capas de fábrica históricas.
+ */
+export const LAYER_SUGGESTIONS: LayerSuggestion[] = [
+  { kind: 'urbanizacion', name: 'Urbanización', color: '#00d4ff', fillColor: '#00d4ff', colorMode: 'solid', geometryHint: 'polygon' },
+  { kind: 'georreferenciado', name: 'Georreferenciado', color: '#10b981', fillColor: '#10b981', colorMode: 'solid', geometryHint: 'polygon' },
+  { kind: 'manzana', name: 'Manzano', color: '#f59e0b', fillColor: '#f59e0b', colorMode: 'colorIdx', geometryHint: 'polygon' },
+  { kind: 'lote', name: 'Lote', color: '#58a6ff', fillColor: '#58a6ff', colorMode: 'solid', geometryHint: 'polygon' },
+  { kind: 'area_verde', name: 'Áreas verdes', color: '#3fb950', fillColor: '#3fb950', colorMode: 'solid', geometryHint: 'polygon' },
+  { kind: 'equipamiento', name: 'Áreas de equipamientos', color: '#4dd0c4', fillColor: '#4dd0c4', colorMode: 'solid', geometryHint: 'polygon' },
+  { kind: 'calle', name: 'Vías', color: '#8b5cf6', fillColor: '#8b5cf6', colorMode: 'solid', geometryHint: 'line' },
+  { kind: 'rotonda', name: 'Rotonda', color: '#f78166', fillColor: '#f78166', colorMode: 'solid', geometryHint: 'line' },
+  { kind: 'vert_geo', name: 'Vert_Geo', color: '#eab308', fillColor: '#eab308', colorMode: 'solid', geometryHint: 'point' },
 ];
+
+/** Busca la sugerencia de catálogo para un `kind` dado — la usará el
+ *  resolver de capas (Fase 2) para prellenar nombre/color al crear una
+ *  capa nueva. `undefined` para kinds sin sugerencia predefinida (ej.
+ *  'linea', 'texto', 'cota'). */
+export function getLayerSuggestion(kind: GeoUrbanFeatureKind): LayerSuggestion | undefined {
+  return LAYER_SUGGESTIONS.find((s) => s.kind === kind);
+}
 
 
 /** Capa de fallback creada on-demand al reconciliar features cuyo
@@ -177,6 +232,7 @@ export type GeoUrbanFeatureProps =
 
 const KNOWN_KINDS: ReadonlySet<GeoUrbanFeatureKind> = new Set<GeoUrbanFeatureKind>([
   'lote', 'manzana', 'calle', 'equipamiento', 'area_verde', 'linea', 'texto', 'cota',
+  'urbanizacion', 'georreferenciado', 'rotonda', 'vert_geo',
 ]);
 
 export function isGeoUrbanFeatureKind(value: unknown): value is GeoUrbanFeatureKind {
