@@ -127,6 +127,9 @@ export const useLayersStore = create<LayerState>()(
             state.layers.map((layer, idx) => [layer.id, idx])
           );
         }
+        if (patch.locked === true && state.activeLayerId === patch.id) {
+          state.activeLayerId = null;
+        }
       }),
 
     reorder: (ids, position) =>
@@ -159,7 +162,11 @@ export const useLayersStore = create<LayerState>()(
       set((state) => {
         const index = state.index.get(id);
         if (index === undefined) return;
-        state.layers[index].locked = !state.layers[index].locked;
+        const nextLocked = !state.layers[index].locked;
+        state.layers[index].locked = nextLocked;
+        if (nextLocked && state.activeLayerId === id) {
+          state.activeLayerId = null;
+        }
       }),
 
     toggleVisibility: (id) =>
@@ -181,6 +188,10 @@ export const useLayersStore = create<LayerState>()(
 
     setActiveLayer: (id) =>
       set((state) => {
+        if (id) {
+          const idx = state.index.get(id);
+          if (idx !== undefined && state.layers[idx].locked) return;
+        }
         state.activeLayerId = id;
       }),
 
@@ -197,9 +208,8 @@ export const useLayersStore = create<LayerState>()(
           : DEFAULT_LAYERS.map((l) => ({ ...l }));
         state.layers = next;
         state.index = new Map(next.map((l, idx) => [l.id, idx]));
-        state.activeLayerId = activeLayerId && next.some((l) => l.id === activeLayerId)
-          ? activeLayerId
-          : null;
+        const candidate = activeLayerId ? next.find((l) => l.id === activeLayerId) : undefined;
+        state.activeLayerId = candidate && !candidate.locked ? activeLayerId : null;
       }),
 
     resetToDefaults: () =>

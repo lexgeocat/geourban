@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { GeoUrbanFeatureKind } from '../../core/objectModel';
+import { useLayersStore } from '../entities/layersRegistryStore';
 
 type PendingRequest = {
   kind: GeoUrbanFeatureKind;
@@ -26,7 +27,17 @@ export const useLayerPickerStore = create<LayerPickerState>()((set, get) => ({
   request: (kind) => {
     if (!get().askEnabled) return Promise.resolve(undefined);
     const remembered = get().rememberedByKind[kind];
-    if (remembered !== undefined) return Promise.resolve(remembered);
+    if (remembered !== undefined) {
+      const rememberedLayer = useLayersStore.getState().getById(remembered);
+      // Fase 6: la capa "recordada" pudo bloquearse DESPUÉS de que el
+      // usuario tildó "no preguntar de nuevo" — sin este chequeo, el
+      // próximo trazo caía ahí en silencio, sin poder seleccionarse/
+      // editarse/borrarse después. Se descarta el recuerdo (no se borra,
+      // por si se desbloquea más tarde) y se vuelve a preguntar.
+      if (!rememberedLayer || !rememberedLayer.locked) {
+        return Promise.resolve(remembered);
+      }
+    }
 
     return new Promise<string | undefined>((resolve) => {
       set({ pending: { kind, resolve } });

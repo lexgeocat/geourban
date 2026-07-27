@@ -13,11 +13,11 @@ export function resolveLayerId(override?: string, kind?: GeoUrbanFeatureKind): s
   const reg = useLayersStore.getState();
   if (reg.activeLayerId) {
     const active = reg.getById(reg.activeLayerId);
-    if (active) return active.id;
+    if (active && !active.locked) return active.id;
   }
   if (kind) {
     const match = reg.getLayerForKind(kind);
-    if (match) return match.id;
+    if (match && !match.locked) return match.id;
   }
   return undefined;
 }

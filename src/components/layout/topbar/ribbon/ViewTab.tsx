@@ -15,6 +15,9 @@ export default function ViewTab() {
   const lotsVisible = useLayersStore((s) => s.hasKindVisible('lote') || s.hasKindVisible('manzana'));
   const streetsVisible = useLayersStore((s) => s.hasKindVisible('calle'));
   const toggleKindsVisibility = useLayersStore((s) => s.toggleKindsVisibility);
+  const layers = useLayersStore((s) => s.layers);
+  const activeLayerId = useLayersStore((s) => s.activeLayerId);
+  const setActiveLayer = useLayersStore((s) => s.setActiveLayer);
   const measurementsVisible = useUiShellStore((s) => s.measurementsVisible);
   const setMeasurementsVisible = useUiShellStore((s) => s.setMeasurementsVisible);
   const statsPanelVisible = useUiShellStore((s) => s.statsPanelVisible);
@@ -48,6 +51,29 @@ export default function ViewTab() {
         <RibbonTool icon={<LayersIcon />} label="Lotes" active={lotsVisible} onClick={() => toggleKindsVisibility(['lote', 'manzana'])} />
         <RibbonTool icon={<IconStreet />} label="Calles" active={streetsVisible} onClick={() => toggleKindsVisibility(['calle'])} />
         <RibbonTool icon={<Settings2 />} label="Cotas" active={measurementsVisible} onClick={() => setMeasurementsVisible(!measurementsVisible)} />
+      </RibbonGroup>
+
+      {/* Fase 6: atajo rápido para cambiar la capa activa sin abrir el
+          panel de Capas — las bloqueadas se muestran deshabilitadas
+          (mismo guard que layersRegistryStore.setActiveLayer). */}
+      <RibbonGroup label="Capa activa">
+        <div className="ribbon-inline-control" style={{ minWidth: 150 }}>
+          <select
+            className="ribbon-inline-input"
+            value={activeLayerId ?? ''}
+            onChange={(e) => setActiveLayer(e.target.value || null)}
+            title="Capa activa — los nuevos trazos se asignan acá"
+            aria-label="Capa activa"
+          >
+            <option value="">— Sin capa activa —</option>
+            {layers.map((l) => (
+              <option key={l.id} value={l.id} disabled={l.locked}>
+                {l.name}{l.locked ? ' 🔒' : ''}
+              </option>
+            ))}
+          </select>
+          <span className="ribbon-inline-text">Capa activa</span>
+        </div>
       </RibbonGroup>
       <RibbonGroup label="Paneles">
         <RibbonTool icon={<BarChart3 />} label="Estadísticas" active={statsPanelVisible} onClick={() => setStatsPanelVisible(!statsPanelVisible)} />

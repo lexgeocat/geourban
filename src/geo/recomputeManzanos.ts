@@ -211,18 +211,20 @@ function resolveManzanaLayerId(): string | undefined {
   const reg = useLayersStore.getState();
   if (reg.activeLayerId) {
     const active = reg.getById(reg.activeLayerId);
-    if (active) return active.id;
+    if (active && !active.locked) return active.id;
   }
-  return reg.getLayerForKind('manzana')?.id;
+  const match = reg.getLayerForKind('manzana');
+  return match && !match.locked ? match.id : undefined;
 }
 
 function resolveLoteLayerId(): string | undefined {
   const reg = useLayersStore.getState();
   if (reg.activeLayerId) {
     const active = reg.getById(reg.activeLayerId);
-    if (active) return active.id;
+    if (active && !active.locked) return active.id;
   }
-  return reg.getLayerForKind('lote')?.id;
+  const match = reg.getLayerForKind('lote');
+  return match && !match.locked ? match.id : undefined;
 }
 
 async function runBackgroundTopologyCheck(src: VectorSource): Promise<void> {

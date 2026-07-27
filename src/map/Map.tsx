@@ -66,7 +66,6 @@ const baseMapId = useUiShellStore((s) => s.baseMap);
   useEffect(() => {
     if (!mapDivRef.current) return;
 
-    const initialLayers = useLayersStore.getState().layers;
     // Visibilidad inicial derivada del registro de capas — reemplaza al
     // extinto layerStore.workVisibility (ver plan Fase 1).
     const initialWorkVisibility: WorkVisibility = {
@@ -77,7 +76,7 @@ const baseMapId = useUiShellStore((s) => s.baseMap);
       // Ya no controla ninguna capa de render — ver DrawLayerRenderer.ts.
       measurements: true,
     };
-    const drawLayers = buildDrawLayers(initialWorkVisibility, initialLayers);
+    const drawLayers = buildDrawLayers(initialWorkVisibility);
     const drawSrc = drawLayers.source;
     drawSrcRef.current = drawSrc;
     useMapStore.getState().setDrawSource(drawSrc);

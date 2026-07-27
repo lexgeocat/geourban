@@ -370,7 +370,6 @@ export class LayeredWebglRenderer {
 
 export function buildDrawLayers(
   visibility: WorkVisibility,
-  layers: Layer[] = [],
 ): DrawLayers {
   const source = new VectorSource();
   const webglRenderer = new LayeredWebglRenderer(source);

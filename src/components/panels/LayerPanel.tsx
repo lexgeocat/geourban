@@ -82,6 +82,12 @@ const IconChevronSmall = ({ dir }: { dir: 'up' | 'down' }) => (
     {dir === 'up' ? <polyline points="18 15 12 9 6 15" /> : <polyline points="6 9 12 15 18 9" />}
   </svg>
 );
+const IconTarget = ({ filled }: { filled: boolean }) => (
+  <svg viewBox="0 0 24 24" fill={filled ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.75" style={{ width: 12, height: 12 }}>
+    <circle cx="12" cy="12" r="8" />
+    <circle cx="12" cy="12" r="2.5" fill="currentColor" stroke="none" />
+  </svg>
+);
 
 /* ─────────── Color Picker ─────────── */
 
@@ -162,9 +168,11 @@ const gearLabelStyle: React.CSSProperties = {
 };
 
 function LayerRow({
-  data, onMoveUp, onMoveDown, canMoveUp, canMoveDown, onDragHandleStart, onDragHandleEnd,
+  data, isActive, onToggleActive, onMoveUp, onMoveDown, canMoveUp, canMoveDown, onDragHandleStart, onDragHandleEnd,
 }: {
   data: LayerRowData;
+  isActive?: boolean;
+  onToggleActive?: () => void;
   onMoveUp?: () => void;
   onMoveDown?: () => void;
   canMoveUp?: boolean;
@@ -229,6 +237,29 @@ function LayerRow({
         <IconEye visible={data.visible} />
       </span>
 
+      {onToggleActive && (() => {
+        const activationBlocked = !isActive && !!data.locked;
+        return (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); if (!activationBlocked) onToggleActive(); }}
+            disabled={activationBlocked}
+            title={activationBlocked ? 'Capa bloqueada — desbloqueala para activarla' : (isActive ? 'Quitar como capa activa' : 'Usar como capa activa (los nuevos trazos van acá)')}
+            aria-label={isActive ? `${data.name}: capa activa` : `Activar capa ${data.name}`}
+            aria-pressed={!!isActive}
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center', width: 16, height: 16,
+              background: 'none', border: 'none', padding: 0, flexShrink: 0,
+              color: isActive ? 'var(--cad-accent)' : 'var(--cad-text-muted)',
+              cursor: activationBlocked ? 'not-allowed' : 'pointer',
+              opacity: activationBlocked ? 0.35 : 1,
+            }}
+          >
+            <IconTarget filled={!!isActive} />
+          </button>
+        );
+      })()}
+
       <ColorDot color={data.strokeColor} onChange={data.onStrokeColor} title="Color de contorno" />
       <ColorDot color={data.fillColor} onChange={data.onFillColor} title="Color de relleno" />
 
@@ -248,9 +279,14 @@ function LayerRow({
       ) : (
         <span
           onDoubleClick={() => { if (data.editableName) { setNameDraft(data.name); setEditingName(true); } }}
-          style={{ flex: 1, fontSize: '0.72rem', color: data.visible ? 'var(--cad-text)' : 'var(--cad-text-muted)', userSelect: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}
+          style={{ flex: 1, fontSize: '0.72rem', color: data.visible ? 'var(--cad-text)' : 'var(--cad-text-muted)', userSelect: 'none', display: 'flex', alignItems: 'center', gap: 5, minWidth: 0 }}
         >
-          {data.name}
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{data.name}</span>
+          {isActive && (
+            <span style={{ fontSize: '0.55rem', fontWeight: 700, letterSpacing: '0.04em', color: 'var(--cad-accent)', border: '1px solid var(--cad-accent)', borderRadius: 3, padding: '0 4px', flexShrink: 0 }}>
+              ACTIVA
+            </span>
+          )}
         </span>
       )}
 
@@ -483,6 +519,31 @@ export default function LayerPanel() {
             Preguntar capa al crear geometría
           </label>
 
+          {/* Fase 6: indicador inequívoco de capa activa (antes solo era
+              un leve resaltado de fondo en la fila). */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 8px', marginBottom: 8, borderRadius: 6, background: 'var(--cad-bg-surface)', border: '1px solid var(--cad-border)', fontSize: '0.65rem' }}>
+            <IconTarget filled={activeLayerId != null} />
+            <span style={{ color: 'var(--cad-text-muted)', flexShrink: 0 }}>Capa activa:</span>
+            {activeLayerId ? (
+              <span style={{ color: 'var(--cad-accent)', fontWeight: 700, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {registryRows.find((r) => r.id === activeLayerId)?.name ?? activeLayerId}
+              </span>
+            ) : (
+              <span style={{ color: 'var(--cad-text-muted)', fontStyle: 'italic', flex: 1 }}>
+                Ninguna (se asigna por tipo)
+              </span>
+            )}
+            {activeLayerId && (
+              <button
+                onClick={() => setActiveLayer(null)}
+                className="cad-icon-btn"
+                style={{ width: 'auto', height: 'auto', padding: '2px 6px', fontSize: '0.58rem', color: 'var(--cad-text-dim)' }}
+              >
+                Quitar
+              </button>
+            )}
+          </div>
+
           <div>
             <div onClick={() => setExpanded((v) => !v)} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '3px 0', cursor: 'pointer', userSelect: 'none' }}>
               <IconChevron open={expanded} />
@@ -499,6 +560,9 @@ export default function LayerPanel() {
                   const isDropBefore = dropTarget?.id === row.id && dropTarget.position === 'before';
                   const isDropAfter = dropTarget?.id === row.id && dropTarget.position === 'after';
 
+                  const isRegistryRow = registryRows.some((r) => r.id === row.id);
+                  const isActive = isRegistryRow && activeLayerId === row.id;
+
                   return (
                     <div
                       key={row.id}
@@ -510,11 +574,10 @@ export default function LayerPanel() {
                       } : undefined}
                       onDragLeave={row.reorderable ? () => setDropTarget((dt) => (dt?.id === row.id ? null : dt)) : undefined}
                       onDrop={row.reorderable ? (e) => { e.preventDefault(); handleDrop(row.id, dropTarget?.position ?? 'before'); } : undefined}
-                      onClick={() => { if (registryRows.some((r) => r.id === row.id)) setActiveLayer(activeLayerId === row.id ? null : row.id); }}
                       style={{
                         borderRadius: 4,
-                        background: activeLayerId === row.id ? 'rgba(0,212,255,0.08)' : 'transparent',
-                        border: activeLayerId === row.id ? '1px solid rgba(0,212,255,0.25)' : '1px solid transparent',
+                        background: isActive ? 'rgba(0,212,255,0.08)' : 'transparent',
+                        border: isActive ? '1px solid rgba(0,212,255,0.25)' : '1px solid transparent',
                         borderTop: isDropBefore ? '2px solid var(--cad-accent)' : undefined,
                         borderBottom: isDropAfter ? '2px solid var(--cad-accent)' : undefined,
                         opacity: dragId === row.id ? 0.4 : 1,
@@ -522,6 +585,13 @@ export default function LayerPanel() {
                     >
                       <LayerRow
                         data={row}
+                        isActive={isActive}
+                        // Fase 6: activar/desactivar ahora es un botón dedicado
+                        // (IconTarget), no todo el click de la fila — evita
+                        // pisarlo sin querer al tocar engranaje/color/opacidad,
+                        // y respeta el guard de "no activar capa bloqueada"
+                        // que ya vive en layersRegistryStore.setActiveLayer.
+                        onToggleActive={isRegistryRow ? () => setActiveLayer(isActive ? null : row.id) : undefined}
                         onMoveUp={canMoveUp ? () => moveLayer(row.id, 'up') : undefined}
                         onMoveDown={canMoveDown ? () => moveLayer(row.id, 'down') : undefined}
                         canMoveUp={canMoveUp}

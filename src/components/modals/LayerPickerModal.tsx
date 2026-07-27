@@ -55,30 +55,40 @@ export default function LayerPickerModal() {
       </p>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: '50vh', overflowY: 'auto' }}>
-        {sorted.map((layer) => (
-          <button
-            key={layer.id}
-            onClick={() => handlePick(layer.id)}
-            className="cad-icon-btn"
-            style={{
-              width: '100%', height: 'auto', padding: '8px 10px', display: 'flex', alignItems: 'center', gap: 8,
-              justifyContent: 'flex-start', background: 'var(--cad-bg-surface)', border: '1px solid var(--cad-border)',
-              borderRadius: 6, color: 'var(--cad-text)', textAlign: 'left', flexWrap: 'wrap',
-            }}
-          >
-            <span style={{ width: 10, height: 10, borderRadius: 2, background: layer.fillColor ?? layer.color, flexShrink: 0 }} />
-            <span style={{ flex: 1 }}>{layer.name}</span>
-            {layer.kind === pending.kind ? (
-              <span style={{ fontSize: '0.6rem', color: 'var(--cad-accent)', border: '1px solid var(--cad-accent)', borderRadius: 3, padding: '0 5px' }}>
-                sugerida
-              </span>
-            ) : (
-              <span style={{ fontSize: '0.6rem', color: 'var(--cad-accent-amber)', border: '1px solid var(--cad-accent-amber)', borderRadius: 3, padding: '0 5px' }}>
-                tipo distinto
-              </span>
-            )}
-          </button>
-        ))}
+        {sorted.map((layer) => {
+          const disabled = !!layer.locked;
+          return (
+            <button
+              key={layer.id}
+              onClick={() => { if (!disabled) handlePick(layer.id); }}
+              disabled={disabled}
+              title={disabled ? 'Capa bloqueada — desbloqueala desde el panel de Capas para poder usarla' : undefined}
+              className="cad-icon-btn"
+              style={{
+                width: '100%', height: 'auto', padding: '8px 10px', display: 'flex', alignItems: 'center', gap: 8,
+                justifyContent: 'flex-start', background: 'var(--cad-bg-surface)', border: '1px solid var(--cad-border)',
+                borderRadius: 6, color: 'var(--cad-text)', textAlign: 'left', flexWrap: 'wrap',
+                opacity: disabled ? 0.45 : 1, cursor: disabled ? 'not-allowed' : 'pointer',
+              }}
+            >
+              <span style={{ width: 10, height: 10, borderRadius: 2, background: layer.fillColor ?? layer.color, flexShrink: 0 }} />
+              <span style={{ flex: 1 }}>{layer.name}</span>
+              {disabled ? (
+                <span style={{ fontSize: '0.6rem', color: 'var(--cad-accent-red)', border: '1px solid var(--cad-accent-red)', borderRadius: 3, padding: '0 5px' }}>
+                  🔒 bloqueada
+                </span>
+              ) : layer.kind === pending.kind ? (
+                <span style={{ fontSize: '0.6rem', color: 'var(--cad-accent)', border: '1px solid var(--cad-accent)', borderRadius: 3, padding: '0 5px' }}>
+                  sugerida
+                </span>
+              ) : (
+                <span style={{ fontSize: '0.6rem', color: 'var(--cad-accent-amber)', border: '1px solid var(--cad-accent-amber)', borderRadius: 3, padding: '0 5px' }}>
+                  tipo distinto
+                </span>
+              )}
+            </button>
+          );
+        })}
       </div>
 
       <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12, fontSize: '0.68rem', color: 'var(--cad-text-dim)', cursor: 'pointer' }}>
