@@ -12,11 +12,36 @@ const GEOURBAN_MANZANA_COLOR = '#58a6ff';
 const GEOURBAN_TEXT_BG = 'rgba(13, 17, 23, 0.72)';
 const GEOURBAN_LIVE_BG = 'rgba(13, 17, 23, 0.80)';
 
-// ─── Cotas (dimension lines) — estilo CAD profesional ────────────────
-const DIM_LINE_COLOR_LOTE = 'rgba(226, 232, 240, 0.55)';
-const DIM_LINE_COLOR_MZN = 'rgba(88, 166, 255, 0.60)';
-const DIM_EXT_GAP_PX = 3;  // separación entre el vértice real y el inicio de la línea de extensión
-const DIM_TICK_PX = 5;     // tamaño de las marcas terminales (ticks a 45°, estilo CAD)
+// ─── Cotas (dimension lines) — estilo CAD profesional, suavizado ─────
+// Los LOTES ya no dibujan geometría de cota (extensión/línea/ticks) —
+// solo el número, flotando cerca del lado, con halo en vez de caja.
+// Los MANZANOS conservan la cota completa (línea + ticks + fondo).
+const DIM_EXT_COLOR_LOTE = 'rgba(56, 189, 248, 0.30)';
+const DIM_LINE_COLOR_LOTE = 'rgba(56, 189, 248, 0.92)';   // celeste suave
+const DIM_EXT_COLOR_MZN = 'rgba(255, 183, 121, 0.30)';
+const DIM_LINE_COLOR_MZN = 'rgba(255, 183, 121, 0.92)';   // ámbar suave
+const DIM_EXT_GAP_PX = 3;
+const DIM_TICK_PX = 6;
+const DIM_TEXT_HALO_COLOR = 'rgba(13, 17, 23, 0.85)';
+
+/** Zoom a partir del cual las cotas de lado empiezan a aparecer — por
+ *  debajo son 100% transparentes; fade-in corto, se apagan solas al
+ *  alejar (se recalcula en cada frame). */
+export const COTA_APPEAR_ZOOM = 19.6;
+const COTA_FULL_ZOOM = 20.1;
+
+export function computeCotaOpacity(zoom: number): number {
+  if (zoom <= COTA_APPEAR_ZOOM) return 0;
+  if (zoom >= COTA_FULL_ZOOM) return 1;
+  return (zoom - COTA_APPEAR_ZOOM) / (COTA_FULL_ZOOM - COTA_APPEAR_ZOOM);
+}
+
+// ─── Badge de número de lote (círculo en el centroide) ────────────────
+const LOT_BADGE_RADIUS_PX = 9;
+const LOT_BADGE_COLOR = 'rgba(56, 189, 248, 0.92)';         // celeste suave — lote normal
+const LOT_BADGE_COLOR_REMNANT = 'rgba(245, 187, 89, 0.92)'; // ámbar suave — remanente
+const LOT_BADGE_FILL = 'rgba(13, 17, 23, 0.45)';
+const LOT_AREA_CAPTION_COLOR = 'rgba(223, 252, 255, 0.92)';
 
 /** Área aproximada en pantalla (px²) del bbox de una geometría. */
 export function getApproxScreenArea(geometry: Geometry | null | undefined, resolution: number): number {
@@ -103,16 +128,23 @@ export function drawSegmentLabels(
   orientation: DimensionOrientation,
   toPixel: (coord: number[]) => [number, number],
   isManzana: boolean = false,
+  opacity: number = 1,
+  drawLines: boolean = true,
+  showBackground: boolean = true,
 ): void {
   if (!segmentLengths || segmentLengths.length === 0) return;
-  // Si no coincide 1 a 1 con los lados del anillo, no arriesgar cotas mal ubicadas.
   if (segmentLengths.length !== points.length - 1) return;
+  if (opacity <= 0.002) return;
 
   const MIN_SEGMENT_PX = 34;
-  const color = isManzana ? DIM_LINE_COLOR_MZN : DIM_LINE_COLOR_LOTE;
+  const extColor = isManzana ? DIM_EXT_COLOR_MZN : DIM_EXT_COLOR_LOTE;
+  const mainColor = isManzana ? DIM_LINE_COLOR_MZN : DIM_LINE_COLOR_LOTE;
   const offsetPx = isManzana ? 17 : 13;
   const fs = isManzana ? 12 : 10.5;
   const cenPx = centroidWorld ? toPixel(centroidWorld) : null;
+
+  ctx.save();
+  ctx.globalAlpha *= opacity;
 
   for (let i = 0; i < segmentLengths.length; i++) {
     const meta = segmentLengths[i];
@@ -141,23 +173,29 @@ export function drawSegmentLabels(
       }
     }
 
-    drawExtensionLine(ctx, aPx, nx, ny, offsetPx, color);
-    drawExtensionLine(ctx, bPx, nx, ny, offsetPx, color);
+    if (drawLines) {
+      drawExtensionLine(ctx, aPx, nx, ny, offsetPx, extColor);
+      drawExtensionLine(ctx, bPx, nx, ny, offsetPx, extColor);
+    }
 
+    // La posición del texto se sigue calculando con el offset perpendicular
+    // aunque no se dibuje la línea — mantiene el número separado del borde.
     const dimA: [number, number] = [aPx[0] + nx * offsetPx, aPx[1] + ny * offsetPx];
     const dimB: [number, number] = [bPx[0] + nx * offsetPx, bPx[1] + ny * offsetPx];
 
-    ctx.save();
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(dimA[0], dimA[1]);
-    ctx.lineTo(dimB[0], dimB[1]);
-    ctx.stroke();
-    ctx.restore();
+    if (drawLines) {
+      ctx.save();
+      ctx.strokeStyle = mainColor;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(dimA[0], dimA[1]);
+      ctx.lineTo(dimB[0], dimB[1]);
+      ctx.stroke();
+      ctx.restore();
 
-    drawDimTick(ctx, dimA, ang, color);
-    drawDimTick(ctx, dimB, ang, color);
+      drawDimTick(ctx, dimA, ang, mainColor);
+      drawDimTick(ctx, dimB, ang, mainColor);
+    }
 
     const txC = (dimA[0] + dimB[0]) / 2;
     const tyC = (dimA[1] + dimB[1]) / 2;
@@ -169,13 +207,80 @@ export function drawSegmentLabels(
     ctx.font = isManzana ? `600 ${fs}px Courier New` : `500 ${fs}px Courier New`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    const tw = measureCachedWidth(ctx, label);
-    ctx.fillStyle = GEOURBAN_TEXT_BG;
-    ctx.fillRect(-tw / 2 - 3, -fs / 2 - 1.5, tw + 6, fs + 3);
-    ctx.fillStyle = isManzana ? GEOURBAN_MANZANA_COLOR + 'ee' : '#e2e8f0ee';
-    ctx.fillText(label, 0, 0);
+
+    if (showBackground) {
+      const tw = measureCachedWidth(ctx, label);
+      ctx.fillStyle = GEOURBAN_TEXT_BG;
+      ctx.fillRect(-tw / 2 - 3, -fs / 2 - 1.5, tw + 6, fs + 3);
+      ctx.fillStyle = mainColor;
+      ctx.fillText(label, 0, 0);
+    } else {
+      // Halo en vez de caja — legible sobre el relleno del lote sin fondo.
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = DIM_TEXT_HALO_COLOR;
+      ctx.strokeText(label, 0, 0);
+      ctx.fillStyle = mainColor;
+      ctx.fillText(label, 0, 0);
+    }
     ctx.restore();
   }
+
+  ctx.restore();
+}
+
+/** Círculo con el número de lote en el centroide. El propio círculo
+ *  (relleno oscuro sutil) hace de fondo — no es una caja rectangular. */
+export function drawLotNumberBadge(
+  ctx: CanvasRenderingContext2D,
+  labelPointWorld: [number, number],
+  toPixel: (coord: number[]) => [number, number],
+  numberText: string,
+  isRemnant: boolean,
+): void {
+  const px = toPixel(labelPointWorld);
+  const color = isRemnant ? LOT_BADGE_COLOR_REMNANT : LOT_BADGE_COLOR;
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(px[0], px[1], LOT_BADGE_RADIUS_PX, 0, Math.PI * 2);
+  ctx.fillStyle = LOT_BADGE_FILL;
+  ctx.fill();
+  ctx.lineWidth = 1.25;
+  ctx.strokeStyle = color;
+  ctx.stroke();
+
+  ctx.font = '700 10px Courier New';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = color;
+  ctx.fillText(numberText, px[0], px[1] + 0.5);
+  ctx.restore();
+}
+
+/** Superficie del lote, debajo del badge — halo en vez de caja de fondo. */
+export function drawLotAreaCaption(
+  ctx: CanvasRenderingContext2D,
+  labelPointWorld: [number, number],
+  toPixel: (coord: number[]) => [number, number],
+  areaText: string,
+  opacity: number = 1,
+): void {
+  if (opacity <= 0.002) return;
+  const px = toPixel(labelPointWorld);
+  const fs = 10;
+  const y = px[1] + LOT_BADGE_RADIUS_PX + fs * 0.95;
+
+  ctx.save();
+  ctx.globalAlpha *= opacity;
+  ctx.font = `500 ${fs}px Courier New`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = DIM_TEXT_HALO_COLOR;
+  ctx.strokeText(areaText, px[0], y);
+  ctx.fillStyle = LOT_AREA_CAPTION_COLOR;
+  ctx.fillText(areaText, px[0], y);
+  ctx.restore();
 }
 
 export function drawMainMetricLabel(
@@ -184,13 +289,17 @@ export function drawMainMetricLabel(
   toPixel: (coord: number[]) => [number, number],
   text: string,
   isManzana: boolean,
-  options?: { extraLine?: string; color?: string },
+  options?: { extraLine?: string; color?: string; opacity?: number; extraLineOpacity?: number },
 ): void {
+  const opacity = options?.opacity ?? 1;
+  if (opacity <= 0.002) return;
+
   const px = toPixel(labelPointWorld);
   const fs = isManzana ? 13 : 11.5;
   const mainColor = options?.color ?? (isManzana ? GEOURBAN_MANZANA_COLOR : '#dffcff');
 
   ctx.save();
+  ctx.globalAlpha *= opacity;
   ctx.font = `700 ${fs}px Courier New`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
@@ -200,7 +309,10 @@ export function drawMainMetricLabel(
   ctx.fillStyle = mainColor + 'ee';
   ctx.fillText(text, px[0], px[1]);
 
-  if (options?.extraLine) {
+  const extraLineOpacity = options?.extraLineOpacity ?? 1;
+  if (options?.extraLine && extraLineOpacity > 0.002) {
+    ctx.save();
+    ctx.globalAlpha *= extraLineOpacity;
     const fs2 = fs * 0.8;
     ctx.font = `500 ${fs2}px Courier New`;
     const tw2 = measureCachedWidth(ctx, options.extraLine);
@@ -209,6 +321,7 @@ export function drawMainMetricLabel(
     ctx.fillRect(px[0] - tw2 / 2 - 3, y2 - fs2 / 2 - 1.5, tw2 + 6, fs2 + 3);
     ctx.fillStyle = 'rgba(148, 163, 184, 0.85)';
     ctx.fillText(options.extraLine, px[0], y2);
+    ctx.restore();
   }
   ctx.restore();
 }

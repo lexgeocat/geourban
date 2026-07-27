@@ -6,9 +6,12 @@ import { useSelectionStore } from '../../../store/map/selectionStore';
 import {
   drawSegmentLabels,
   drawMainMetricLabel,
+  drawLotNumberBadge,
+  drawLotAreaCaption,
   resolveDimensionOrientation,
   computeLotGroupCounts,
   getApproxScreenArea,
+  computeCotaOpacity,
 } from '../../styleFactory';
 import { formatMetricLength, formatMetricArea, type SegmentMetric } from '../../../geo/metrics';
 import { MZN_COLORS_STR } from '../DrawLayerRenderer';
@@ -16,6 +19,13 @@ import { measureCached, measureCachedWidth } from '../../textMeasureCache';
 import { getFeatureKind } from '../../../core/objectModel';
 
 interface PlacedBox { x: number; y: number; w: number; h: number; }
+
+/** "Lote 5" → "5", "Remanente 2" → "2" — número compacto para el badge. */
+function extractLotNumberText(label: string | undefined): string {
+  if (!label) return '?';
+  const match = label.match(/(\d+)/);
+  return match ? match[1] : label;
+}
 
 function isColliding(
   ctx: CanvasRenderingContext2D,
@@ -67,6 +77,8 @@ export class LabelPainter {
   ): void {
     const selectedIds = useSelectionStore.getState().selectedIds;
     const placedBoxes: PlacedBox[] = [];
+    // Cotas de lado: transparentes hasta ~zoom 19.6, se apagan solas al alejar.
+    const cotaOpacity = computeCotaOpacity(zoom);
 
     for (let fi = 0; fi < features.length; fi++) {
       const feature = features[fi];
@@ -75,7 +87,9 @@ export class LabelPainter {
       const geometry = feature.getGeometry();
       if (!geometry) continue;
 
-      const isManzana = getFeatureKind(feature) === 'manzana';
+      const featureKind = getFeatureKind(feature);
+      const isManzana = featureKind === 'manzana';
+      const isLote = featureKind === 'lote';
       const colorIdx = feature.get('colorIdx') ?? 0;
       const featureId = feature.getId();
       const isSelected = featureId != null && selectedIds.has(featureId as string | number);
@@ -85,22 +99,57 @@ export class LabelPainter {
       if (geometry instanceof Polygon) {
         const coordinates = geometry.getCoordinates()[0] ?? [];
         if (coordinates.length < 3) continue;
-        const showMainLabel = isSelected || zoom > 15.5 || getApproxScreenArea(geometry, resolution) >= 4200;
-        if (showMainLabel && labelPoint) {
-          const areaM2 = feature.get('areaM2') as number | undefined;
-          if (areaM2 !== undefined) {
-            const text = isManzana ? `Mzo. ${colorIdx + 1}` : formatMetricArea(areaM2);
+
+        const areaM2 = feature.get('areaM2') as number | undefined;
+        const areaText = areaM2 !== undefined ? formatMetricArea(areaM2) : null;
+
+        if (isManzana) {
+          const showTitle = isSelected || zoom > 15.5 || getApproxScreenArea(geometry, resolution) >= 4200;
+          if (showTitle && labelPoint) {
+            const text = `Mzo. ${colorIdx + 1}`;
             if (!isColliding(ctx, labelPoint, text, placedBoxes, toPx)) {
-              if (isManzana) {
-                const mznColor = MZN_COLORS_STR[colorIdx % MZN_COLORS_STR.length];
-                drawMainMetricLabel(ctx, labelPoint, toPx, text, true, { extraLine: formatMetricArea(areaM2), color: mznColor });
-              } else {
-                drawMainMetricLabel(ctx, labelPoint, toPx, text, false);
+              const mznColor = MZN_COLORS_STR[colorIdx % MZN_COLORS_STR.length];
+              drawMainMetricLabel(ctx, labelPoint, toPx, text, true, {
+                extraLine: areaText ?? undefined,
+                color: mznColor,
+                extraLineOpacity: cotaOpacity,
+              });
+            }
+          }
+        } else if (isLote) {
+          const showBadge = isSelected || zoom > 15.5 || getApproxScreenArea(geometry, resolution) >= 4200;
+          const showCaption = areaText != null && cotaOpacity > 0.002;
+          if ((showBadge || showCaption) && labelPoint) {
+            const collisionText = areaText ?? '?';
+            if (!isColliding(ctx, labelPoint, collisionText, placedBoxes, toPx)) {
+              if (showBadge) {
+                const numberText = extractLotNumberText(feature.get('label') as string | undefined);
+                const isRemnant = !!feature.get('isRemnant');
+                drawLotNumberBadge(ctx, labelPoint, toPx, numberText, isRemnant);
+              }
+              if (showCaption) {
+                drawLotAreaCaption(ctx, labelPoint, toPx, areaText!, cotaOpacity);
               }
             }
           }
+        } else if (labelPoint && areaText && cotaOpacity > 0.002) {
+          if (!isColliding(ctx, labelPoint, areaText, placedBoxes, toPx)) {
+            drawMainMetricLabel(ctx, labelPoint, toPx, areaText, false, { opacity: cotaOpacity });
+          }
         }
-        drawSegmentLabels(ctx, coordinates, feature.get('segmentLengths') as SegmentMetric[] | undefined, labelPoint, orientation, toPx, isManzana);
+
+        drawSegmentLabels(
+          ctx,
+          coordinates,
+          feature.get('segmentLengths') as SegmentMetric[] | undefined,
+          labelPoint,
+          orientation,
+          toPx,
+          isManzana,
+          cotaOpacity,
+          !isLote,
+          !isLote,
+        );
       } else if (geometry instanceof LineString) {
         const coordinates = geometry.getCoordinates() ?? [];
         if (coordinates.length < 2) continue;
@@ -114,7 +163,7 @@ export class LabelPainter {
             }
           }
         }
-        drawSegmentLabels(ctx, coordinates, feature.get('segmentLengths') as SegmentMetric[] | undefined, labelPoint, orientation, toPx, false);
+        drawSegmentLabels(ctx, coordinates, feature.get('segmentLengths') as SegmentMetric[] | undefined, labelPoint, orientation, toPx, false, cotaOpacity);
       }
     }
   }
