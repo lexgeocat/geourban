@@ -505,6 +505,12 @@ async function recomputeManzanosImmediate(): Promise<void> {
 
         reused.setGeometry(new PolygonGeom([rounded]));
         if (getFeatureKind(reused) !== 'manzana') reused.set('kind', 'manzana', true);
+        // Crítico: sin esto, este manzano "reusado" pierde el vínculo con la
+        // parcela madre original. En el próximo recompute, collectOriginGroups
+        // ya no lo agrupa bien con sus hermanos y usa solo SU forma actual
+        // como si fuera el perímetro completo -> borra al resto del grupo.
+        reused.set('origParcelId', group.origId, true);
+        reused.set('origPts', group.origPts, true);
         updateFeatureMetrics(reused as Feature<Geometry>);
 
         if (barelyChanged) continue;
@@ -531,7 +537,11 @@ async function recomputeManzanosImmediate(): Promise<void> {
       }
 
       const newFeat = new Feature({ geometry: new PolygonGeom([rounded]) });
-      const newId = `${group.origId}-mzn-${fi}`;
+      let newId = `${group.origId}-mzn-${fi}`;
+      let dupSuffix = 0;
+      while (src.getFeatureById(newId) != null) {
+        newId = `${group.origId}-mzn-${fi}-${++dupSuffix}`;
+      }
       newFeat.setId(newId);
       newFeat.setProperties(
         ensureKind(
@@ -714,14 +724,30 @@ export async function reapplyRoadCornerMode(): Promise<void> {
       if (fragments.length === 0) continue;
 
       const oldManzanaMembers = group.members.filter((m) => getFeatureKind(m) === 'manzana');
- 
-      if (fragments.length !== oldManzanaMembers.length) continue;
+      if (oldManzanaMembers.length === 0) continue;
 
-      for (let i = 0; i < oldManzanaMembers.length; i++) {
-        const feat = oldManzanaMembers[i];
-        const ring = fragments[i];
+      // Emparejar por SOLAPAMIENTO ESPACIAL, no por posición en el array:
+      // el orden que devuelve el worker no coincide necesariamente con el
+      // orden de group.members, y eso podía intercambiar geometrías entre
+      // dos manzanos al cambiar el modo de esquina.
+      const existingMembers = oldManzanaMembers
+        .map((m) => {
+          const g = m.getGeometry();
+          const ring = g instanceof PolygonGeom
+            ? ((g.getCoordinates()[0] ?? []) as number[][]).map((c) => [c[0], c[1]] as Pt)
+            : [];
+          return { ring, ref: m as Feature<Geometry> };
+        })
+        .filter((x) => x.ring.length >= 3);
+
+      const assignments = matchFragmentsToMembers(fragments, existingMembers);
+
+      for (let i = 0; i < fragments.length; i++) {
+        const assignment = assignments.find((a) => a.fragmentIdx === i);
+        const feat = assignment?.member;
+        if (!feat) continue;
         const rounded = roundRingReflex(
-          orientRingCcw(ring), 0, false, cornerMode,
+          orientRingCcw(fragments[i]), 0, false, cornerMode,
           (pt) => !pointOnRing(pt, group.origPts),
         );
         if (rounded.length < 4) continue;
