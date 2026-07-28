@@ -3,6 +3,7 @@ import { getLayerSuggestion, type GeoUrbanFeatureKind, type LayerSuggestion } fr
 import { runCommand } from '../../commands/core/CommandStack';
 import { AddLayerCommand } from '../../commands/layers/AddLayerCommand';
 import { useLayersStore } from '../entities/layersRegistryStore';
+import { autoCreateLayerForKind } from '../entities/layerAutoCreate';
 
 export interface LayerResolverRequest {
   kind: GeoUrbanFeatureKind;
@@ -18,6 +19,11 @@ type LayerPickerState = {
   cancelPending: () => void;
 };
 
+/**
+ * @deprecated Ya no se dispara: la creación de capas es 100% automática
+ * (ver `requireLayerForKind` más abajo). Se mantiene solo por compatibilidad;
+ * el modal asociado (`LayerResolverModal`) fue retirado de App.tsx.
+ */
 export const useLayerPickerStore = create<LayerPickerState>()((set, get) => ({
   pending: null,
 
@@ -71,21 +77,26 @@ export const useLayerPickerStore = create<LayerPickerState>()((set, get) => ({
   },
 }));
 
+/**
+ * Resuelve la capa a asignar para una nueva entidad de tipo `kind`.
+ * YA NO interrumpe con un modal: si no hay capa activa ni una capa existente
+ * de ese tipo, se crea automáticamente una nueva (silenciosa). Nunca deja
+ * la entidad sin capa ni la borra por cancelación del usuario.
+ */
 export function requireLayerForKind(kind: GeoUrbanFeatureKind): Promise<string | null> {
   const registry = useLayersStore.getState();
 
-  // Si hay capa activa utilizable, se reusa sin interrumpir con el modal
-  // (misma prioridad que resolveLayerId() en AddFeatureCommand).
+  // Capa activa: se reusa sin importar el tipo (así funciona "capa activa"
+  // — los nuevos trazos van ahí).
   if (registry.activeLayerId) {
     const active = registry.getById(registry.activeLayerId);
     if (active && !active.locked) return Promise.resolve(active.id);
   }
 
-  // Si ya existe una capa (no bloqueada) para este tipo de elemento, se reusa.
-  // No tiene sentido volver a preguntar "¿a qué capa va?" una vez creada.
+  // Ya existe una capa (no bloqueada) para este tipo: se reusa.
   const existing = registry.getLayerForKind(kind);
   if (existing && !existing.locked) return Promise.resolve(existing.id);
 
-  // Recién acá, si no hay ninguna capa candidata, se abre el modal.
-  return useLayerPickerStore.getState().request(kind);
+  // No hay ninguna capa candidata: se crea automáticamente. Nunca null.
+  return Promise.resolve(autoCreateLayerForKind(kind));
 }

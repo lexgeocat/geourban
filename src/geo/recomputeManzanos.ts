@@ -27,6 +27,7 @@ import type { ManzanoLoteMethod } from './subdivision/subdivisionAlgorithms';
 import { buildRoadNetworkRings } from './roads/roadNetworkEngine';
 import { roundRingReflex, pointOnRing } from './roads/ringFillet';
 import { matchFragmentsToMembers } from './roads/fragmentReconciliation';
+import { autoCreateLayerForKind, resolveOrCreateLayerForKind } from '../store/entities/layerAutoCreate';
 
 const geoJsonFormat = new GeoJSON();
 
@@ -194,23 +195,13 @@ function collectOriginGroups(src: VectorSource): {
   return { groups, lotsByGroupId };
 }
 
-function resolveManzanaLayerId(originMembers?: Array<Feature<Geometry>>): string | undefined {
-  const reg = useLayersStore.getState();
-  if (originMembers) {
-    for (const m of originMembers) {
-      const lid = m.get('layerId') as string | undefined;
-      const layer = lid ? reg.getById(lid) : undefined;
-      if (layer && !layer.locked) return layer.id;
-    }
-  }
-  if (reg.activeLayerId) {
-    const active = reg.getById(reg.activeLayerId);
-    if (active && !active.locked) return active.id;
-  }
-  const match = reg.getLayerForKind('manzana');
-  return match && !match.locked ? match.id : undefined;
+function resolveManzanaLayerId(): string {
+  // Los manzanos SIEMPRE van a su propia capa independiente — nunca se
+  // reutiliza la capa del perímetro/parcela de origen que los generó
+  // (antes se copiaba el layerId de `group.members`, que era el perímetro).
+  return resolveOrCreateLayerForKind('manzana');
 }
-function resolveLoteLayerId(preferredLayerId?: string): string | undefined {
+function resolveLoteLayerId(preferredLayerId?: string): string {
   const reg = useLayersStore.getState();
   if (preferredLayerId) {
     const preferred = reg.getById(preferredLayerId);
@@ -221,7 +212,8 @@ function resolveLoteLayerId(preferredLayerId?: string): string | undefined {
     if (active && !active.locked) return active.id;
   }
   const match = reg.getLayerForKind('lote');
-  return match && !match.locked ? match.id : undefined;
+  if (match && !match.locked) return match.id;
+  return autoCreateLayerForKind('lote');
 }
 
 async function runBackgroundTopologyCheck(src: VectorSource): Promise<void> {
@@ -569,8 +561,8 @@ async function recomputeManzanosImmediate(): Promise<void> {
           'manzana',
         ),
       );
-      const lid = resolveManzanaLayerId(group.members);
-      if (lid) newFeat.set('layerId', lid);
+      const lid = resolveManzanaLayerId();
+      newFeat.set('layerId', lid);
       src.addFeature(newFeat);
       updateFeatureMetrics(newFeat as Feature<Geometry>);
       manzanoCreated = true;
@@ -619,7 +611,7 @@ async function recomputeManzanosImmediate(): Promise<void> {
           ),
         );
         const lotLid = resolveLoteLayerId(task.layerId);
-        if (lotLid) lotFeat.set('layerId', lotLid);
+        lotFeat.set('layerId', lotLid);
         src.addFeature(lotFeat);
         updateFeatureMetrics(lotFeat as Feature<Geometry>);
         created++;

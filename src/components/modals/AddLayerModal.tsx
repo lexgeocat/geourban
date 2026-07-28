@@ -5,18 +5,9 @@ import { runCommand } from '../../commands/core/CommandStack';
 import { AddLayerCommand } from '../../commands/layers/AddLayerCommand';
 
 const KIND_OPTIONS: { value: LayerKind; label: string }[] = [
-  { value: 'urbanizacion', label: 'Urbanización' },
-  { value: 'georreferenciado', label: 'Georreferenciado' },
-  { value: 'manzana', label: 'Manzanos' },
-  { value: 'lote', label: 'Lotes / parcelas' },
-  { value: 'area_verde', label: 'Áreas verdes' },
-  { value: 'equipamiento', label: 'Equipamientos' },
-  { value: 'calle', label: 'Vías' },
-  { value: 'rotonda', label: 'Rotonda' },
-  { value: 'vert_geo', label: 'Vért_Geo' },
-  { value: 'linea', label: 'Líneas' },
-  { value: 'texto', label: 'Textos' },
-  { value: 'cota', label: 'Acotaciones' },
+  { value: 'lote', label: 'Polígono' },
+  { value: 'linea', label: 'Línea' },
+  { value: 'vert_geo', label: 'Punto' },
 ];
 
 export interface AddLayerModalProps {

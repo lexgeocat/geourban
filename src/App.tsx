@@ -16,7 +16,7 @@ import ProjectSetupModal from './components/modals/ProjectSetupModal';
 import ManzanoPanel from './components/panels/ManzanoPanel';
 import RoundaboutPanel from './components/panels/RoundaboutPanel';
 import StreetPanel from './components/panels/StreetPanel';
-import LayerResolverModal from './components/modals/LayerResolverModal';
+
 
 function App() {
   useKeyboardShortcuts();
@@ -76,8 +76,6 @@ function App() {
       </div>
       <ProjectSetupModal />
       <SubdivisionDialog />
-      <LayerResolverModal />
-
       <LayerPanel />
 
       <StatusBar />
