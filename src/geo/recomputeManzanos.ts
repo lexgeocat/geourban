@@ -284,6 +284,8 @@ async function recomputeManzanosImmediate(): Promise<void> {
   const { groups, lotsByGroupId } = collectOriginGroups(src);
   if (groups.size === 0) return;
 
+  let manzanoCreated = false;
+
   const roadRings = buildRoadNetworkRings(streets, roundabouts);
   if (roadRings.length === 0) return;
 
@@ -486,11 +488,21 @@ async function recomputeManzanosImmediate(): Promise<void> {
 
     for (let fi = 0; fi < fragments.length; fi++) {
       const rawRing = fragments[fi];
-      const rounded = roundRingReflex(
-        orientRingCcw(rawRing), 0, false, cornerMode,
+      const oriented = orientRingCcw(rawRing);
+      let rounded = roundRingReflex(
+        oriented, 0, false, cornerMode,
         (pt) => !pointOnRing(pt, group.origPts),
       );
-      if (rounded.length < 4) continue;
+      if (rounded.length < 4) {
+        const fallback = oriented.length >= 3 ? closeGeoRing(oriented) : [];
+        if (fallback.length < 4 || polyArea(oriented) < 0.5) {
+          console.warn(
+            `recomputeManzanos: fragmento ${fi} del grupo ${group.origId} descartado por geometría degenerada`,
+          );
+          continue;
+        }
+        rounded = fallback;
+      }
 
       const assignment = assignments.find((a) => a.fragmentIdx === fi);
       const reused = assignment?.member as Feature<Geometry> | undefined;
@@ -504,7 +516,10 @@ async function recomputeManzanosImmediate(): Promise<void> {
         const barelyChanged = Math.min(ratioOld, ratioFrag) >= 0.92;
 
         reused.setGeometry(new PolygonGeom([rounded]));
-        if (getFeatureKind(reused) !== 'manzana') reused.set('kind', 'manzana', true);
+        if (getFeatureKind(reused) !== 'manzana') {
+          reused.set('kind', 'manzana', true);
+          manzanoCreated = true;
+        }
         // Crítico: sin esto, este manzano "reusado" pierde el vínculo con la
         // parcela madre original. En el próximo recompute, collectOriginGroups
         // ya no lo agrupa bien con sus hermanos y usa solo SU forma actual
@@ -558,6 +573,7 @@ async function recomputeManzanosImmediate(): Promise<void> {
       if (lid) newFeat.set('layerId', lid);
       src.addFeature(newFeat);
       updateFeatureMetrics(newFeat as Feature<Geometry>);
+      manzanoCreated = true;
     }
   }
 
@@ -626,6 +642,10 @@ async function recomputeManzanosImmediate(): Promise<void> {
   });
   useManzanoStore.getState().pruneToIds(aliveManzanoIds);
 
+  if (manzanoCreated) {
+    useManzanoStore.getState().setPanelVisible(true);
+  }
+
   src.changed();
   void runBackgroundTopologyCheck(src);
 }
@@ -649,14 +669,21 @@ export function recomputeManzanos(): Promise<void> {
     recomputeDebounceTimer = null;
     const resolve = recomputeResolve!;
     const reject = recomputeReject!;
-    recomputeInFlight = null;
     recomputeResolve = null;
     recomputeReject = null;
-    recomputeManzanosImmediate()
+    const work = recomputeManzanosImmediate()
       .then(resolve, reject)
-      .finally(() => useRecomputeStatusStore.getState().setRunning(false));
+      .finally(() => {
+        recomputeInFlight = null;
+        useRecomputeStatusStore.getState().setRunning(false);
+      });
+    recomputeInFlight = work;
   }, RECOMPUTE_DEBOUNCE_MS);
   return recomputeInFlight;
+}
+
+export function waitForPendingRecompute(): Promise<void> {
+  return recomputeInFlight ?? Promise.resolve();
 }
 
 export async function reapplyRoadCornerMode(): Promise<void> {

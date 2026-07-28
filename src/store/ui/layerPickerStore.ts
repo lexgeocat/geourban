@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { getLayerSuggestion, type GeoUrbanFeatureKind, type LayerSuggestion } from '../../core/objectModel';
 import { runCommand } from '../../commands/core/CommandStack';
 import { AddLayerCommand } from '../../commands/layers/AddLayerCommand';
+import { useLayersStore } from '../entities/layersRegistryStore';
 
 export interface LayerResolverRequest {
   kind: GeoUrbanFeatureKind;
@@ -71,5 +72,20 @@ export const useLayerPickerStore = create<LayerPickerState>()((set, get) => ({
 }));
 
 export function requireLayerForKind(kind: GeoUrbanFeatureKind): Promise<string | null> {
+  const registry = useLayersStore.getState();
+
+  // Si hay capa activa utilizable, se reusa sin interrumpir con el modal
+  // (misma prioridad que resolveLayerId() en AddFeatureCommand).
+  if (registry.activeLayerId) {
+    const active = registry.getById(registry.activeLayerId);
+    if (active && !active.locked) return Promise.resolve(active.id);
+  }
+
+  // Si ya existe una capa (no bloqueada) para este tipo de elemento, se reusa.
+  // No tiene sentido volver a preguntar "¿a qué capa va?" una vez creada.
+  const existing = registry.getLayerForKind(kind);
+  if (existing && !existing.locked) return Promise.resolve(existing.id);
+
+  // Recién acá, si no hay ninguna capa candidata, se abre el modal.
   return useLayerPickerStore.getState().request(kind);
 }

@@ -1,6 +1,6 @@
 ﻿import { Command, type CommandContext } from '../core/Command';
 import { useStreetStore } from '../../store/entities/streetStore';
-import { recomputeManzanos } from '../../geo/recomputeManzanos';
+import { recomputeManzanos, waitForPendingRecompute } from '../../geo/recomputeManzanos';
 import { refreshSourceMetrics } from '../../geo/metrics';
 import {
   snapshotDrawSource,
@@ -48,6 +48,7 @@ export class AddStreetCommand extends Command {
 
   override async execute(ctx: CommandContext): Promise<void> {
     if (this.before == null) {
+      await waitForPendingRecompute();
       this.before = snapshotDrawSource(ctx.drawSource);
     }
     const entry = this.entries[this.entries.length - 1];
