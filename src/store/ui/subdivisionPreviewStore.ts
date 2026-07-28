@@ -2,8 +2,6 @@
 import type { Pt } from '../../geo/math/polygonEngine';
 
 type SubdivisionPreviewState = {
-  /** Anillos (EPSG:3857 / unidades de mapa) a pintar como overlay
-   *  temporal antes de aplicar una subdivisión. */
   rings: Pt[][] | null;
   setRings: (rings: Pt[][] | null) => void;
   clear: () => void;

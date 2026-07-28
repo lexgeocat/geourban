@@ -20,13 +20,6 @@ function getZoomFromResolution(resolution: number): number {
   return Math.log2(156543.03392804097 / resolution);
 }
 
-/**
- * Orquestador del postrender (Fase 5 — antes ~750 líneas mezclando el
- * pintado de vías, rotondas, labels, guías de snap y overlays en una
- * sola clase). Cada responsabilidad vive en `./painters/*`; acá solo
- * queda el enganche al evento `postrender`, el flag `dirty` general
- * (drawSource) y el culling de labels al viewport visible.
- */
 export class PostrenderPainter {
   private readonly map: Map;
   private readonly drawSource: VectorSource;

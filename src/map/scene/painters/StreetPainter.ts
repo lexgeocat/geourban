@@ -7,14 +7,16 @@ import { measureCachedWidth } from '../../textMeasureCache';
 import { useLayersStore } from '../../../store/entities/layersRegistryStore';
 import { useDisplayLayersStore } from '../../../store/ui/displayLayersStore';
 import { withAlpha } from '../DrawLayerRenderer';
+import type { Layer } from '../../../core/objectModel';
 
 type StreetChain = Array<{ from: Pt; to: Pt; len: number }>;
 type CrossingsMap = globalThis.Map<string, Pt[]>;
-/** El ángulo de rotación de la etiqueta YA NO se guarda acá (ver nota en
- *  sampleChainAt): se recalcula en paint(), en espacio de pantalla. */
 type StreetLabelSlot = { pos: Pt; segFrom: Pt; segTo: Pt };
 
 interface StreetLabelZone { lo: number; hi: number }
+
+const FALLBACK_STREET_COLOR = '#f78166';
+const NO_LAYER_KEY = '__geourban_street_no_layer__';
 
 function streetsHash(streets: Street[]): string {
   return streets
@@ -81,16 +83,6 @@ function computeCrossingOffsets(chain: StreetChain, crossings: Pt[]): number[] {
   return offsets;
 }
 
-/**
- * Muestrea el punto (mundo) a una distancia de arco dada + el segmento al
- * que pertenece. El ÁNGULO de rotación de la etiqueta se calcula en
- * paint(), a partir de `toPx(segFrom)`/`toPx(segTo)` — NO acá con las
- * coordenadas de mundo: mundo (EPSG:3857, Y arriba) y pantalla (Y abajo)
- * difieren en la orientación del eje Y, así que un ángulo calculado en
- * mundo y aplicado directo a ctx.rotate() (espacio de pantalla) sale
- * girado/espejado salvo en tramos perfectamente horizontales — la causa
- * de "las etiquetas no se ajustan al ángulo del eje".
- */
 function sampleChainAt(chain: StreetChain, dist: number): { pos: Pt; segFrom: Pt; segTo: Pt } | null {
   let walk = 0;
   for (const seg of chain) {
@@ -121,10 +113,6 @@ function pickStreetLabelSlots(
 
   ctx.save();
   ctx.font = `bold ${fontPx}px Courier New`;
-  // measureCachedWidth da PÍXELES de pantalla; roadHalfWidthM/marginM están
-  // en metros de mundo — sin este *resolution, el margen quedaba mal
-  // escalado según el zoom (a veces tapaba la calle entera y no dejaba
-  // ningún hueco libre para el rótulo: "las etiquetas no se visualizan").
   const textHalfW = (measureCachedWidth(ctx, labelText) / 2 + 4) * resolution;
   ctx.restore();
 
@@ -197,18 +185,48 @@ function computeAllStreetLabelSlots(
   return result;
 }
 
-/** Pinta calzada/vereda (unidas + ochavadas, ver roadNetworkNet.ts),
- *  eje y labels de la red vial. Reemplaza el fillet calle-por-calle +
- *  cachés incrementales por par (frágil: ochaves invertidos en cruces no
- *  perpendiculares, y riesgo de geometría fantasma si la poda de esas
- *  cachés se desincroniza) por una reconstrucción completa desde el
- *  estado actual de `streets` cada vez que cambia el fingerprint. */
+function resolveStreetLayer(street: Street, registry: ReturnType<typeof useLayersStore.getState>): Layer | undefined {
+  if (street.layerId) {
+    const layer = registry.getById(street.layerId);
+    if (layer) return layer;
+  }
+  return registry.getLayerForKind('calle');
+}
+
+interface StreetLayerGroup {
+  layerId: string;
+  layer: Layer | undefined;
+  streets: Street[];
+}
+
+function groupStreetsByLayer(streets: Street[]): StreetLayerGroup[] {
+  const registry = useLayersStore.getState();
+  const groups = new globalThis.Map<string, StreetLayerGroup>();
+  for (const s of streets) {
+    const layer = resolveStreetLayer(s, registry);
+    const key = layer?.id ?? NO_LAYER_KEY;
+    let g = groups.get(key);
+    if (!g) {
+      g = { layerId: key, layer, streets: [] };
+      groups.set(key, g);
+    }
+    g.streets.push(s);
+  }
+  return Array.from(groups.values());
+}
+
+interface StreetGroupCache {
+  net: RoadNetworkNet;
+  labelSlots: globalThis.Map<string, StreetLabelSlot[]>;
+  streetHash: string;
+  cornerMode: CornerMode;
+}
+
 export class StreetPainter {
-  private cachedNet: RoadNetworkNet = { road: [], outer: [] };
+  private currentGroups: StreetLayerGroup[] = [];
+  private groupCaches = new globalThis.Map<string, StreetGroupCache>();
   private cachedCrossings: CrossingsMap = new globalThis.Map();
-  private cachedStreetLabelSlots = new globalThis.Map<string, StreetLabelSlot[]>();
   private lastStreetHash = '';
-  private lastCornerMode: CornerMode = 'fillet';
   private lastLabelZoomBucket = -1;
   private pairCrossingCache = new globalThis.Map<string, { points: Pt[]; hashA: string; hashB: string }>();
 
@@ -247,28 +265,49 @@ export class StreetPainter {
     this.cachedCrossings = crossings;
   }
 
-  /** `forceDirty`: invalidación externa (drawSource cambió). `resolution`
-   *  hace falta acá para convertir el ancho de texto (px) a metros al
-   *  calcular los huecos libres de etiqueta. */
   update(ctx: CanvasRenderingContext2D, zoom: number, forceDirty: boolean, resolution: number): void {
     const streets = useStreetStore.getState().streets;
     const currentHash = streetsHash(streets);
     const cornerMode = useRoadCornerStore.getState().mode;
-    const streetsChanged = currentHash !== this.lastStreetHash;
-    const cornerModeChanged = cornerMode !== this.lastCornerMode;
+    const streetsChangedGlobal = currentHash !== this.lastStreetHash;
     const zoomBucket = Math.round(zoom * 4);
     const zoomBucketChanged = zoomBucket !== this.lastLabelZoomBucket;
 
-    if (streetsChanged || cornerModeChanged || forceDirty) {
-      this.cachedNet = computeRoadNetworkNet(streets);
+    if (streetsChangedGlobal || forceDirty) {
       this.updateCrossingsCache(streets);
       this.lastStreetHash = currentHash;
-      this.lastCornerMode = cornerMode;
     }
-    if (streetsChanged || forceDirty || zoomBucketChanged) {
-      this.cachedStreetLabelSlots = computeAllStreetLabelSlots(ctx, streets, this.cachedCrossings, zoom, resolution);
-      this.lastLabelZoomBucket = zoomBucket;
+
+    const groups = groupStreetsByLayer(streets);
+    this.currentGroups = groups;
+
+    const seenGroupIds = new Set(groups.map((g) => g.layerId));
+    for (const key of this.groupCaches.keys()) {
+      if (!seenGroupIds.has(key)) this.groupCaches.delete(key);
     }
+
+    for (const group of groups) {
+      const hash = streetsHash(group.streets);
+      let cache = this.groupCaches.get(group.layerId);
+      const groupStreetsChanged = !cache || cache.streetHash !== hash;
+      const groupCornerModeChanged = !cache || cache.cornerMode !== cornerMode;
+
+      if (!cache) {
+        cache = { net: { road: [], outer: [] }, labelSlots: new globalThis.Map(), streetHash: '', cornerMode };
+        this.groupCaches.set(group.layerId, cache);
+      }
+
+      if (groupStreetsChanged || groupCornerModeChanged || forceDirty) {
+        cache.net = computeRoadNetworkNet(group.streets);
+        cache.streetHash = hash;
+        cache.cornerMode = cornerMode;
+      }
+      if (groupStreetsChanged || forceDirty || zoomBucketChanged) {
+        cache.labelSlots = computeAllStreetLabelSlots(ctx, group.streets, this.cachedCrossings, zoom, resolution);
+      }
+    }
+
+    this.lastLabelZoomBucket = zoomBucket;
   }
 
   paint(
@@ -278,68 +317,68 @@ export class StreetPainter {
     toPx: (c: number[]) => [number, number],
     interacting: boolean,
   ): void {
-    const streets = useStreetStore.getState().streets;
-    // Fase 1 (fix H-CAPAS-1): antes se leía streetStore.visible, un flag
-    // que ningún control de la UI llegaba a tocar — el ojo de "Viales"
-    // en el panel de capas (y el botón "Calles" del ribbon Vista) mutan
-    // layersRegistryStore, no streetStore. Ahora la visibilidad real del
-    // dibujo de calles depende de la MISMA capa que ya gobierna su color.
-    const vialesLayer = useLayersStore.getState().getLayerForKind('calle');
-    if (!vialesLayer?.visible || streets.length === 0) return;
-
-    const strokeColor = vialesLayer?.color ?? '#f78166';
-    const fillColor = vialesLayer?.fillColor ?? strokeColor;
-    const layerOp = vialesLayer?.opacity ?? 1;
-
-    this.paintRings(ctx, this.cachedNet.outer, toPx, { fill: null, stroke: withAlpha('#c8c8c8', 0.55 * layerOp), lineWidth: 1 });
-    this.paintRings(ctx, this.cachedNet.road, toPx, {
-      fill: withAlpha(fillColor, 0.08 * layerOp),
-      stroke: withAlpha(strokeColor, 0.75 * layerOp),
-      lineWidth: 1.5,
-    });
-
-    ctx.save();
-    ctx.strokeStyle = withAlpha(strokeColor, 0.75 * layerOp);
-    ctx.lineWidth = 1;
-    ctx.setLineDash([7, 5]);
-    for (const s of streets) {
-      const coords = streetAllCoords(s);
-      ctx.beginPath();
-      coords.forEach((c, i) => {
-        const p = toPx(c);
-        if (i === 0) ctx.moveTo(p[0], p[1]); else ctx.lineTo(p[0], p[1]);
-      });
-      ctx.stroke();
-    }
-    ctx.setLineDash([]);
-    ctx.restore();
-
+    if (this.currentGroups.length === 0) return;
     const display = useDisplayLayersStore.getState();
-    const labelOp = display.labelOpacity(vialesLayer?.showLabel ?? true);
-    if (!interacting && zoom > 12 && labelOp > 0.002) {
-      const fs1 = Math.max(9, Math.min(13, (10 * zoom) / 18));
-      const fs2 = Math.max(8, Math.min(11, (9 * zoom) / 18));
-      for (const s of streets) {
-        const slots = this.cachedStreetLabelSlots.get(s.id) ?? [];
-        const labelText = `--- ${s.name} (Ancho de Vía ${s.widthM.toFixed(2)}m) ---`;
-        for (const slot of slots) {
-          const px = toPx(slot.pos);
-          const a = toPx(slot.segFrom), b = toPx(slot.segTo);
-          let angle = Math.atan2(b[1] - a[1], b[0] - a[0]);
-          if (angle > Math.PI / 2 || angle < -Math.PI / 2) angle += Math.PI;
-          ctx.save();
-          ctx.globalAlpha *= labelOp;
-          ctx.translate(px[0], px[1]);
-          ctx.rotate(angle);
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.font = `bold ${fs1}px Courier New`;
-          ctx.fillStyle = strokeColor;
-          ctx.fillText(labelText, 0, -fs1 * 0.8);
-          ctx.font = `${fs2}px Courier New`;
-          ctx.fillStyle = withAlpha(strokeColor, 0.7);
-          ctx.fillText('E   J   E    D   E     V   Í   A', 0, fs2 * 0.8);
-          ctx.restore();
+
+    for (const group of this.currentGroups) {
+      const layer = group.layer;
+      if (!layer || !layer.visible || group.streets.length === 0) continue;
+      const cache = this.groupCaches.get(group.layerId);
+      if (!cache) continue;
+
+      const strokeColor = layer.color ?? FALLBACK_STREET_COLOR;
+      const fillColor = layer.fillColor ?? strokeColor;
+      const layerOp = layer.opacity ?? 1;
+
+      this.paintRings(ctx, cache.net.outer, toPx, { fill: null, stroke: withAlpha('#c8c8c8', 0.55 * layerOp), lineWidth: 1 });
+      this.paintRings(ctx, cache.net.road, toPx, {
+        fill: withAlpha(fillColor, 0.08 * layerOp),
+        stroke: withAlpha(strokeColor, 0.75 * layerOp),
+        lineWidth: 1.5,
+      });
+
+      ctx.save();
+      ctx.strokeStyle = withAlpha(strokeColor, 0.75 * layerOp);
+      ctx.lineWidth = 1;
+      ctx.setLineDash([7, 5]);
+      for (const s of group.streets) {
+        const coords = streetAllCoords(s);
+        ctx.beginPath();
+        coords.forEach((c, i) => {
+          const p = toPx(c);
+          if (i === 0) ctx.moveTo(p[0], p[1]); else ctx.lineTo(p[0], p[1]);
+        });
+        ctx.stroke();
+      }
+      ctx.setLineDash([]);
+      ctx.restore();
+
+      const labelOp = display.labelOpacity(layer.showLabel) * layerOp;
+      if (!interacting && zoom > 12 && labelOp > 0.002) {
+        const fs1 = Math.max(9, Math.min(13, (10 * zoom) / 18));
+        const fs2 = Math.max(8, Math.min(11, (9 * zoom) / 18));
+        for (const s of group.streets) {
+          const slots = cache.labelSlots.get(s.id) ?? [];
+          const labelText = `--- ${s.name} (Ancho de Vía ${s.widthM.toFixed(2)}m) ---`;
+          for (const slot of slots) {
+            const px = toPx(slot.pos);
+            const a = toPx(slot.segFrom), b = toPx(slot.segTo);
+            let angle = Math.atan2(b[1] - a[1], b[0] - a[0]);
+            if (angle > Math.PI / 2 || angle < -Math.PI / 2) angle += Math.PI;
+            ctx.save();
+            ctx.globalAlpha *= labelOp;
+            ctx.translate(px[0], px[1]);
+            ctx.rotate(angle);
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.font = `bold ${fs1}px Courier New`;
+            ctx.fillStyle = strokeColor;
+            ctx.fillText(labelText, 0, -fs1 * 0.8);
+            ctx.font = `${fs2}px Courier New`;
+            ctx.fillStyle = withAlpha(strokeColor, 0.7);
+            ctx.fillText('E   J   E    D   E     V   Í   A', 0, fs2 * 0.8);
+            ctx.restore();
+          }
         }
       }
     }
@@ -359,11 +398,6 @@ export class StreetPainter {
     for (const rings of polygons) {
       if (rings.length === 0) continue;
 
-      // Relleno: TODOS los anillos del polígono (exterior + holes) van en
-      // un solo path como subpaths, y se rellena con 'evenodd'. Esto es lo
-      // que faltaba: antes cada anillo se rellenaba por separado como si
-      // fuera un polígono sólido independiente, así que un hueco (p.ej. la
-      // manzana central en un cruce en "#") se pintaba como si fuera vía.
       if (style.fill) {
         ctx.beginPath();
         for (const ring of rings) {
@@ -380,8 +414,6 @@ export class StreetPainter {
         ctx.fill('evenodd');
       }
 
-      // Contorno: cada anillo (exterior y huecos) se traza aparte, para
-      // que el borde del hueco también se dibuje.
       for (const ring of rings) {
         if (ring.length < 3) continue;
         ctx.beginPath();

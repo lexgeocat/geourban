@@ -38,9 +38,6 @@ export interface SnapEngineOptions {
 export default class SnapEngine extends Interaction {
   private opts: SnapEngineOptions;
   private lastResult: SnapResult | null = null;
-  /** H5: el cómputo de snap corre síncrono por evento (necesario para el
-   *  imantado real de evt.coordinate), pero el feedback visual (store +
-   *  guías) se coalesce a 1 update por frame de render. */
   private readonly emitVisualUpdate_: (result: SnapResult | null) => void;
 
   constructor(opts: SnapEngineOptions) {
@@ -103,10 +100,6 @@ export default class SnapEngine extends Interaction {
 
     this.lastResult = result;
     this.emitVisualUpdate_(result);
-
-    // 3) Imán: corrige coordinate/pixel del evento REAL (incluye pointerup,
-    //    que es el que Draw usa para fijar el vértice definitivo). Esto
-    //    sigue siendo 100% síncrono — usa `result` local, no el store.
     if (result && this.opts.shouldSnapCoordinate(type)) {
       evt.coordinate = [result.point[0], result.point[1]];
       const px = map.getPixelFromCoordinate(result.point);

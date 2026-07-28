@@ -15,9 +15,6 @@ export const SELECT_STYLE = new Style({
 });
 
 function seedFromStore(ctx: ModeContext, select: HitTestSelect) {
-  // Restaura la selección lógica (Zustand) en el Select recién creado —
-  // evita que el resaltado "parpadee" a vacío al cambiar de submodo
-  // (p.ej. select -> edit) aunque la selección siga vigente.
   useSelectionStore.getState().selectedIds.forEach((id) => {
     const f = ctx.drawSource.getFeatureById(id) as Feature<Geometry> | null;
     if (f) select.getFeatures().push(f);

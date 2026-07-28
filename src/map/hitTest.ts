@@ -8,15 +8,6 @@ import type VectorSource from 'ol/source/Vector.js';
 import type { SpatialIndex } from './spatialIndex';
 import { pointInPoly } from '../geo/math/polygonEngine';
 
-/**
- * Hit-testing propio (RBush broad-phase + test exacto de geometría) —
- * reemplaza el uso de una capa Canvas2D invisible (`measurementLayer`)
- * como único mecanismo para que `ol/interaction/Select` /
- * `map.forEachFeatureAtPixel` supieran qué feature había bajo el cursor
- * (ver diagnóstico H2). Acá no se renderiza nada: es matemática pura
- * sobre las coordenadas de cada geometría.
- */
-
 export interface HitTestOptions {
   /** Tolerancia en unidades de mapa (pixelTolerance * resolución). */
   tolerance: number;
@@ -57,9 +48,6 @@ function polygonHit(coord: number[], geom: Polygon, tolerance: number): { hit: b
     return { hit: true, area: ringArea(outer) };
   }
 
-  // Tolerancia de borde: útil para polígonos muy angostos o clics justo
-  // en el límite (mismo margen que antes daba el stroke de 6px de la
-  // measurementLayer invisible).
   for (let i = 0; i < outer.length - 1; i++) {
     if (distToSegment(coord[0], coord[1], outer[i][0], outer[i][1], outer[i + 1][0], outer[i + 1][1]) <= tolerance) {
       return { hit: true, area: ringArea(outer) };
@@ -103,23 +91,12 @@ function geometryHit(
   return { hit: false };
 }
 
-/** Test directo contra una feature conocida (sin pasar por el índice
- *  espacial) — lo usa SafeTranslate, donde el conjunto a testear ya es
- *  la selección actual (típicamente unas pocas features). */
 export function hitTestFeature(coordinate: number[], feature: Feature<Geometry>, tolerance: number): boolean {
   const geom = feature.getGeometry();
   if (!geom) return false;
   return geometryHit(coordinate, geom, tolerance).hit;
 }
 
-/**
- * Encuentra la feature "de encima" en `coordinate`. Para polígonos
- * solapados (p.ej. un lote dentro de un manzano) gana el de MENOR área
- * — heurística estándar en CAD/GIS: el elemento más específico/chico
- * suele ser el que el usuario quiere tocar. Una línea/punto muy cercano
- * al cursor gana sobre un polígono que también matchee (p.ej. una cota
- * dibujada encima de un lote).
- */
 export function hitTestAtCoordinate(
   coordinate: number[],
   spatialIndex: SpatialIndex,
@@ -128,10 +105,6 @@ export function hitTestAtCoordinate(
 ): Feature<Geometry> | null {
   const { tolerance, exclude, filter } = options;
   const candidates = spatialIndex.searchPoint(coordinate[0], coordinate[1], tolerance) as unknown as Array<Feature<Geometry>>;
-  // Fallback: si el índice no devuelve nada (vacío/desactualizado),
-  // recorremos el source completo — más lento pero correcto; no debería
-  // dispararse en uso normal porque el índice se mantiene sincronizado
-  // (ver H13, ya resuelto en Map.tsx con 'changefeature').
   const pool = candidates.length > 0 ? candidates : (source.getFeatures() as unknown as Array<Feature<Geometry>>);
 
   let bestPolygon: { feature: Feature<Geometry>; area: number } | null = null;
@@ -159,8 +132,6 @@ export function hitTestAtCoordinate(
   return null;
 }
 
-/** Candidatos por bbox — usado por selección rect/lazo para acotar el
- *  set antes del test exacto, en vez de recorrer TODO el drawSource. */
 export function hitTestCandidatesInExtent(
   extent: [number, number, number, number],
   spatialIndex: SpatialIndex,

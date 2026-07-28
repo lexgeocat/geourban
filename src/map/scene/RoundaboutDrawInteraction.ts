@@ -8,12 +8,6 @@ export interface RoundaboutDrawPreview {
   current: number[];
 }
 
-/**
- * Traza una rotonda con 2 clics: el primero fija el centro, el segundo fija
- * el radio (distancia al punto). Expone `getPreview()` para que el
- * postrender pinte el radio en vivo — mismo patrón "click, mover, click"
- * que TransformClickInteraction, con preview propio.
- */
 export class RoundaboutDrawInteraction extends Interaction {
   private readonly hostMap: Map;
   private readonly onComplete: (center: number[], radiusM: number) => void;

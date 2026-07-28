@@ -60,20 +60,12 @@ export type ComputeManzanosRequest = {
   roadNetwork: FeatureCollection;
 };
 
-/**
- * Subdivide un único polígono (todas las variantes: auto/exact/modo2/
- * manual-slice/cabecera-cuerpo) — ver diagnóstico H8. `subdivide()` es
- * matemática pura (bisecciones iterativas, hasta 200 iteraciones) sin
- * dependencias de DOM/OL, así que corre acá sin cambios.
- */
 export type SubdivideRequest = {
   type: 'subdivide';
   polygon: GeoJsonPolygon;
   options: SubdivisionOptions;
 };
 
-/** Subdivide UN manzano ya conocido por su anillo — usado por
- *  RecomputeManzanoLotsCommand (recálculo puntual, ej. al rotar). */
 export type SubdivideManzanoRequest = {
   type: 'subdivideManzano';
   ring: [number, number][];
@@ -83,9 +75,6 @@ export type SubdivideManzanoRequest = {
   dirPref?: { ax: number; ay: number };
 };
 
-/** Subdivide TODOS los manzanos de una tanda en un solo viaje al worker
- *  — usado por GenerateLotsCommand ("Generar lotes" sobre todo el
- *  proyecto). Evita N round-trips de postMessage para N manzanos. */
 export type SubdivideManzanoBatchRequest = {
   type: 'subdivideManzanoBatch';
   manzanos: Array<{
@@ -140,10 +129,6 @@ function readAllGeometries(
 }
 const ROAD_UNION_PRECISION = 1e6;
 
-/** Une la red vial completa en una sola operación n-aria — ver
- *  roadNetworkNet.ts::unionRings para la explicación del bug que esto
- *  resuelve (unión pairwise incremental con JTS clásico fusiona por
- *  error vías paralelas separadas en patrones de grilla/"#"). */
 function robustUnionRoadNetwork(roadNetwork: FeatureCollection): any {
   const polys: ClipPolygon[] = [];
   for (const f of roadNetwork.features) {
@@ -275,20 +260,6 @@ interface BboxItem {
   pos: number;
 }
 
-/**
- * Broad-phase espacial (RBush) antes de la intersección JSTS exacta —
- * ver diagnóstico H11. Antes: doble loop O(n²) evaluando una intersección
- * JSTS (la operación más cara del worker) para CADA par de features,
- * aunque ni compartieran bounding box. Ahora: se indexan los bboxes y
- * solo se testean exactamente los pares candidatos que el índice
- * devuelve como potencialmente solapados — pasa de O(n²) a ~O(n log n)
- * + pares candidatos reales.
- *
- * (`findGaps`/`validateTopology` NO tienen este mismo problema: la
- * primera hace una unión secuencial O(n), no pares; la segunda valida
- * cada geometría de forma individual, sin comparar pares en absoluto —
- * así que no aplica el mismo fix ahí.)
- */
 export function findOverlaps(collection: FeatureCollection): Array<{ indexA: number; indexB: number; area: number }> {
   const overlaps: Array<{ indexA: number; indexB: number; area: number }> = [];
   const items = readAllGeometries(collection);
@@ -360,14 +331,6 @@ export function findGaps(collection: FeatureCollection): FeatureCollection {
   return writeToCollection(gaps);
 }
 
-/**
- * Une TODA la red vial en una sola operación y luego resta esa unión de
- * cada parcela — a diferencia del recorte secuencial calle-por-calle, esto
- * es orden-independiente y resuelve correctamente cruces de 3+ vías, sin
- * necesitar ningún paso posterior de "restar la cuña del ochave".
- * Cada feature de salida lleva `origParcelIndex` para que el llamador sepa
- * de qué parcela salió cada fragmento (una parcela puede partirse en N).
- */
 export function computeManzanos(
   parcels: FeatureCollection,
   roadNetwork: FeatureCollection,

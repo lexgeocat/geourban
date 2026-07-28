@@ -4,9 +4,6 @@ type TopologyWarningsState = {
   checking: boolean;
   overlapCount: number;
   gapCount: number;
-  /** ids de manzana (o lotGroupId) involucrados en al menos una
-   *  superposición detectada — permite mostrar el aviso por tarjeta en
-   *  ManzanoPanel, no solo un badge global (Fase 3, punto 6). */
   affectedManzanoIds: Set<string>;
   lastCheckedAt: number | null;
   setChecking: (v: boolean) => void;

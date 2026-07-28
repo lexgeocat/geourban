@@ -2,9 +2,6 @@ import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
 import { Command, type CommandContext } from '../core/Command';
 
-/** Mueve un set de features (por id) a otra capa en un solo paso de
- *  historial — usado por LayerPanel ("Mover selección a esta capa") y
- *  reusable a futuro desde PropertyPanel. */
 export class MoveFeaturesToLayerCommand extends Command {
   readonly label = 'Mover a otra capa';
   private readonly ids: Array<string | number>;

@@ -14,11 +14,6 @@ export class SpatialIndex {
   private tree: RBush<RBushItem>;
   private _size = 0;
   private featureMap = new Map<string | number, Feature<Polygon>>();
-  /** bbox REALMENTE insertado en el árbol para cada feature. Necesario para
-   *  poder removerlo/reindexarlo con seguridad: rbush usa el bbox del item
-   *  pasado a `remove()` para podar la búsqueda, así que si reconstruimos
-   *  ese bbox desde la geometría ACTUAL (post-edición), puede no coincidir
-   *  con el subárbol donde el nodo fue insertado originalmente. */
   private itemMap = new Map<string | number, RBushItem>();
 
   constructor() {
@@ -46,9 +41,6 @@ export class SpatialIndex {
     this._size = items.length;
   }
 
-  /** Insert incremental (un feature). Es "insert-safe": si ya existía un
-   *  nodo para este id, lo remueve primero — así también sirve para
-   *  reindexar tras un cambio de geometría (ver `update`). */
   insert(feature: Feature<Polygon>): void {
     const geom = feature.getGeometry();
     if (!geom) return;
@@ -63,8 +55,6 @@ export class SpatialIndex {
     this._size++;
   }
 
-  /** Reindexa una feature cuya geometría cambió (drag/edit en vivo, evento
-   *  `changefeature`). Alias explícito de `insert`, que ya es insert-safe. */
   update(feature: Feature<Polygon>): void {
     this.insert(feature);
   }
@@ -79,9 +69,6 @@ export class SpatialIndex {
   private removeById(id: string | number): void {
     const item = this.itemMap.get(id);
     if (!item) return;
-    // Comparamos por featureId (no por referencia de objeto ni por bbox
-    // recalculado desde la geometría actual) — así encontramos el nodo
-    // real sin importar si la geometría cambió desde el insert original.
     this.tree.remove(item, (a, b) => a.featureId === b.featureId);
     this.itemMap.delete(id);
     this.featureMap.delete(id);

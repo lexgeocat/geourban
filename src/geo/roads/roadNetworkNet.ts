@@ -10,11 +10,6 @@ import polygonClipping, {
 } from 'polygon-clipping';
 
 export interface RoadNetworkNet {
-  /** Cada polígono es un array de anillos: [exterior, ...holes]. Antes
-   *  era Pt[][] (solo exteriores) y se perdían los huecos internos —
-   *  ver bug del "#": la manzana central rodeada por 4 vías es
-   *  topológicamente un hueco real del polígono unido, y se estaba
-   *  pintando como relleno sólido. */
   road: Pt[][][];
   outer: Pt[][][];
 }
@@ -34,13 +29,6 @@ function orientRingCcw(ring: Pt[]): Pt[] {
   return area >= 0 ? ring : ring.slice().reverse();
 }
 
-/**
- * Redondea a una grilla fija ANTES de la unión booleana — mismo criterio
- * que `roundStripForUnion` en index_modelo.html. Evita que dos bordes
- * casi-pero-no-exactamente coincidentes (ruido de punto flotante de
- * offsets/miters encadenados) generen una topología ambigua en el
- * sweep-line.
- */
 const UNION_PRECISION = 1e6; // grilla de ~1e-6 unidades de mapa
 function roundRingForUnion(ring: Pt[]): Pt[] {
   return ring.map(
@@ -49,11 +37,6 @@ function roundRingForUnion(ring: Pt[]): Pt[] {
   );
 }
 
-/** Extrae TODOS los anillos de cada polígono del resultado — exterior
- *  (índice 0) + holes (índice 1+). Antes (`extractExteriorRingsFromMultiPolygon`)
- *  solo tomaba el exterior y descartaba los holes, causando que una
- *  manzana central rodeada por 4 vías ("#") se pintara rellena en vez
- *  de hueca. */
 function extractPolygonRingsFromMultiPolygon(mp: ClipMultiPolygon): Pt[][][] {
   const polygons: Pt[][][] = [];
   for (const poly of mp) {
@@ -66,23 +49,6 @@ function extractPolygonRingsFromMultiPolygon(mp: ClipMultiPolygon): Pt[][][] {
   return polygons;
 }
 
-/**
- * Une TODOS los anillos (calzada u outer) en UNA sola operación booleana
- * n-aria, vía `polygon-clipping` (Martinez-Rueda) — la misma librería que
- * usa index_modelo.html (ver su `unionAll`).
- *
- * Antes esto unía los anillos DE A PARES, incrementalmente, con el
- * overlay clásico de JTS (`merged = OverlayOp.union(merged, geoms[i])` en
- * un loop): cada paso acumula error de punto flotante sobre el resultado
- * del paso anterior, y en patrones de grilla (vías paralelas cruzadas por
- * perpendiculares, el "#") ese acumulado podía dejar el polígono
- * resultante inválido — `cleanGeom()` lo "arreglaba" con `buffer(0)`, que
- * en ese caso rellenaba la franja espuria entre dos vías separadas,
- * fusionándolas visualmente ("se une el trazado"). Una unión n-aria
- * evalúa TODOS los anillos a la vez con un único sweep-line, sin ese
- * acumulado incremental — mismo resultado, siempre, sin importar el
- * orden en que se trazaron las vías.
- */
 function unionRings(rings: Pt[][]): Pt[][][] {
   if (rings.length === 0) return [];
 
@@ -97,10 +63,6 @@ function unionRings(rings: Pt[][]): Pt[][][] {
     const result = polygonClipping.union(polys[0], ...polys.slice(1));
     return extractPolygonRingsFromMultiPolygon(result);
   } catch {
-    // Reintento: autolimpia cada anillo (unión contra sí mismo) antes de
-    // combinarlos — resuelve autointersecciones sueltas de un offset
-    // puntual sin descartar la unión completa (igual criterio que
-    // index_modelo.html::unionAll).
     try {
       const selfCleaned: ClipPolygon[] = [];
       for (const p of polys) {

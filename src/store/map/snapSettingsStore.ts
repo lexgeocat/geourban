@@ -3,7 +3,6 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import { DEFAULT_SNAP_SETTINGS, type SnapSettings, type SnapType } from '../../map/advancedSnap';
 
 type SnapSettingsState = {
-  /** Master switch — equivalente a F3 en AutoCAD. Con esto en false, TODO snap se ignora. */
   enabled: boolean;
   settings: SnapSettings;
   toggle: (key: SnapType) => void;

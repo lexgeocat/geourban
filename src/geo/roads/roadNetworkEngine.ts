@@ -15,11 +15,6 @@ function streetPolyline(street: Street): Pt[] {
   return pts;
 }
 
-/** Multiplicador máximo de la distancia del miter respecto al offset base
- *  `d` (medio-ancho de calzada+vereda). En un ángulo muy agudo (zig-zag)
- *  el punto de miter puede alejarse arbitrariamente del vértice real —
- *  por encima de este límite se cae a un bisel en vez de la intersección
- *  exacta. Ver H-VIA-1 del diagnóstico. */
 const MITER_LIMIT = 4;
 
 export function offsetPolylineMiter(pts: Pt[], d: number): Pt[] {
@@ -71,16 +66,11 @@ function buildRing(pts: Pt[], half: number): Pt[] {
   return [...left, ...right.reverse()];
 }
 
-/** Anillo cerrado (no filleteado aún) del borde exterior de una calle
- *  (calzada/2 + vereda a cada lado). */
 function buildStreetOuterRing(street: Street): Pt[] {
   const half = street.widthM / 2 + Math.max(0, street.sideWidthM ?? 0);
   return buildRing(streetPolyline(street), half);
 }
 
-/** Anillo cerrado del borde de SOLO calzada (sin vereda) — segundo insumo
- *  que necesita la red vial unida (ver roadNetworkNet.ts) para poder
- *  pintar calzada y vereda como dos anillos independientes. */
 function buildStreetRoadRing(street: Street): Pt[] {
   return buildRing(streetPolyline(street), street.widthM / 2);
 }
@@ -93,13 +83,6 @@ function buildRoundaboutRoadRing(rb: RoundaboutParams): Pt[] {
   return roundaboutGeometry(rb).roadOuter;
 }
 
-/**
- * Devuelve, sin unir, todos los anillos "outer" (calzada+vereda) de la red
- * vial actual — el llamador los une en una sola operación booleana
- * (ver computeManzanosInWorker / roadNetworkNet.ts), lo que hace el
- * resultado independiente del orden de trazado y correcto en cruces de
- * 3+ vías.
- */
 export function buildRoadNetworkRings(
   streets: Street[],
   roundabouts: RoundaboutParams[] = [],
@@ -117,8 +100,6 @@ export function buildRoadNetworkRings(
   return rings;
 }
 
-/** Igual que `buildRoadNetworkRings`, pero solo el borde de CALZADA (sin
- *  vereda) — ver roadNetworkNet.ts::computeRoadNetworkNet. */
 export function buildRoadOnlyRings(
   streets: Street[],
   roundabouts: RoundaboutParams[] = [],

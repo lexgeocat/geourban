@@ -17,8 +17,6 @@ const CORNER_MODE_OPTIONS: { value: CornerMode; label: string }[] = [
   { value: 'none', label: 'Esquina recta' },
 ];
 
-/** Selector de modo de esquina de la red vial. Solo afecta al render de
- *  vías (StreetPainter) — el corte real de manzanos sigue en 'fillet'. */
 function CornerModeControl() {
   const mode = useRoadCornerStore((s) => s.mode);
   const setMode = useRoadCornerStore((s) => s.setMode);
@@ -41,9 +39,6 @@ function CornerModeControl() {
   );
 }
 
-/** H-VIA-5: antes no existía forma de editar una calle ya trazada más
- *  que borrarla y re-trazarla — `streetStore.updateStreet` existía pero
- *  ningún componente lo llamaba. Análogo directo de RoundaboutPanel.tsx. */
 export default function StreetPanel() {
   const panelVisible = useStreetStore((s) => s.panelVisible);
   const setPanelVisible = useStreetStore((s) => s.setPanelVisible);
@@ -58,8 +53,6 @@ export default function StreetPanel() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
 
-  // Fase 5, punto 7: clamp de viewport — el panel no se posiciona fuera
-  // de pantalla en resoluciones angostas.
   const viewportWidth = useViewportWidth();
   const panelWidth = Math.min(280, viewportWidth - 20);
   const panelLeft = Math.min(550, Math.max(6, viewportWidth - panelWidth - 10));

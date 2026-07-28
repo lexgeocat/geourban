@@ -11,11 +11,6 @@ import { getFeatureKind } from '../core/objectModel';
 const GEOURBAN_MANZANA_COLOR = '#58a6ff';
 const GEOURBAN_TEXT_BG = 'rgba(13, 17, 23, 0.72)';
 const GEOURBAN_LIVE_BG = 'rgba(13, 17, 23, 0.80)';
-
-// ─── Cotas (dimension lines) — estilo CAD profesional, suavizado ─────
-// Los LOTES ya no dibujan geometría de cota (extensión/línea/ticks) —
-// solo el número, flotando cerca del lado, con halo en vez de caja.
-// Los MANZANOS conservan la cota completa (línea + ticks + fondo).
 const DIM_EXT_COLOR_LOTE = 'rgba(56, 189, 248, 0.30)';
 const DIM_LINE_COLOR_LOTE = 'rgba(56, 189, 248, 0.92)';   // celeste suave
 const DIM_EXT_COLOR_MZN = 'rgba(255, 183, 121, 0.30)';
@@ -24,9 +19,6 @@ const DIM_EXT_GAP_PX = 3;
 const DIM_TICK_PX = 6;
 const DIM_TEXT_HALO_COLOR = 'rgba(13, 17, 23, 0.85)';
 
-/** Zoom a partir del cual las cotas de lado empiezan a aparecer — por
- *  debajo son 100% transparentes; fade-in corto, se apagan solas al
- *  alejar (se recalcula en cada frame). */
 export const COTA_APPEAR_ZOOM = 19.6;
 const COTA_FULL_ZOOM = 20.1;
 
@@ -178,8 +170,6 @@ export function drawSegmentLabels(
       drawExtensionLine(ctx, bPx, nx, ny, offsetPx, extColor);
     }
 
-    // La posición del texto se sigue calculando con el offset perpendicular
-    // aunque no se dibuje la línea — mantiene el número separado del borde.
     const dimA: [number, number] = [aPx[0] + nx * offsetPx, aPx[1] + ny * offsetPx];
     const dimB: [number, number] = [bPx[0] + nx * offsetPx, bPx[1] + ny * offsetPx];
 
@@ -228,8 +218,6 @@ export function drawSegmentLabels(
   ctx.restore();
 }
 
-/** Círculo con el número de lote en el centroide. El propio círculo
- *  (relleno oscuro sutil) hace de fondo — no es una caja rectangular. */
 export function drawLotNumberBadge(
   ctx: CanvasRenderingContext2D,
   labelPointWorld: [number, number],

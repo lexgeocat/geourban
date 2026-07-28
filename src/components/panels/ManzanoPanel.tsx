@@ -17,8 +17,6 @@ import ManzanoCard from './manzano/ManzanoCard';
 export default function ManzanoPanel() {
   const drawSource = useMapStore((s) => s.drawSource);
   const tick = useDrawSourceTick(drawSource);
-  // tick es intencional: drawSource es mutable y no invalida la referencia.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   const rows = useMemo(() => readManzanoRows(drawSource), [drawSource, tick]);
 
   const panelVisible = useManzanoStore((s) => s.panelVisible);

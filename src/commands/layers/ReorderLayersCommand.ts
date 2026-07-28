@@ -1,8 +1,6 @@
 import { Command } from '../core/Command';
 import { useLayersStore } from '../../store/entities/layersRegistryStore';
 
-/** Sin UI todavía (drag&drop de capas es Fase 5) — queda listo para
- *  cuando `LayerPanel` implemente reordenamiento. */
 export class ReorderLayersCommand extends Command {
   readonly label = 'Reordenar capas';
   private readonly ids: string[];

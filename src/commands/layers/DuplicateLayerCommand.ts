@@ -8,13 +8,9 @@ export interface DuplicateLayerOptions {
   sourceLayerId: string;
   newLayerId: string;
   newName: string;
-  /** Si es true, también clona (con ids nuevos) cada feature de la capa origen. */
   duplicateFeatures: boolean;
 }
 
-/** Duplica una capa del registro — opcionalmente clonando también sus
- *  features. Un solo paso de historial para ambas partes (consistente
- *  con Fase 3: todo CRUD de capas pasa por CommandStack). */
 export class DuplicateLayerCommand extends Command {
   readonly label = 'Duplicar capa';
   private readonly opts: DuplicateLayerOptions;

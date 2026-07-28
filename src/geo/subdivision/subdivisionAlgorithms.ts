@@ -339,11 +339,6 @@ export function subdivideManzanoAuto(
       const actualEnd = Math.min(masterCuts[ci].t, myMax);
       if (actualEnd <= prevT + 1e-6) continue;
       const stripPoly = clipToStrip(halfPoly, lx, ly, prevT, actualEnd);
-      // H-LOT-6: antes, un clip inválido o un strip < 0.5 m² avanzaba
-      // `prevT` igual, perdiendo esa área para siempre. Ahora `prevT`
-      // se mantiene sin avanzar: el próximo corte real de este mismo
-      // half arranca desde el mismo punto y absorbe ese remanente
-      // angosto en vez de descartarlo silenciosamente.
       if (!stripPoly || stripPoly.length < 3) continue;
       const areaM2 = polyAreaM2(stripPoly);
       if (areaM2 < 0.5) continue;
@@ -596,10 +591,6 @@ export function sliceBisectManzano(
   }
   return best;
 }
-
-// ─── Dispatcher directo por anillo (Pt[]), sin pasar por GeoJSON ───────
-// Lo usan GenerateLotsCommand (subdivisión masiva por manzano) y
-// RecomputeManzanoLotsCommand (recálculo puntual desde el panel).
 
 export type ManzanoLoteMethod = 'auto' | 'exact' | 'modo2';
 

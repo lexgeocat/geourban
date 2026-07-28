@@ -27,15 +27,6 @@ type UiShellState = {
   /** Offset de la grilla CAD, usado tanto para render (cadGridLayer) como para gridSnap.ts. */
   gridOrigin: [number, number];
   statsPanelVisible: boolean;
-  /** Interruptor MAESTRO de "Cotas" del ribbon de Vista — Fase 1
-   *  (fix H-CAPAS-2): antes este flag no lo leía ningún painter (era
-   *  decorativo). Ahora multiplica, por encima del `showCota` de cada
-   *  capa/overlay individual, la opacidad de TODAS las cotas del mapa
-   *  (ver LabelPainter y BoundaryPainter). A diferencia de "Lotes"/
-   *  "Calles" (que se derivan 1:1 de layersRegistryStore.hasKindVisible),
-   *  sigue siendo un flag de UI aparte porque es un master switch
-   *  transversal a varias capas/overlays a la vez, no la visibilidad de
-   *  una capa puntual. */
   measurementsVisible: boolean;
   /** Ribbon state */
   activeTab: RibbonTabId;
@@ -50,22 +41,6 @@ type UiShellState = {
   setRibbonCollapsed: (v: boolean) => void;
 };
 
-
-/**
- * Antes `layerStore.ts` (hook `useLayerStore`) — renombrado en la Fase 1
- * del plan de optimización porque su nombre difería en una sola letra de
- * `layersRegistryStore.ts` (hook `useLayersStore`), que es el registro
- * REAL de capas (Layer[], color, locked, zIndex, etc). Este store acá es
- * solo preferencias de UI/ribbon/mapa base — nunca contuvo el modelo de
- * datos de capas.
- *
- * También se eliminó `workVisibility` (booleans lots/streets/measurements):
- * duplicaba lo que ya expresa `layersRegistryStore.layers[].visible` con
- * más granularidad, y requería lógica de sincronización manual en
- * LayerPanel.tsx y Map.tsx (ver plan-optimizacion-geourban.md, §2.3).
- * "Lotes"/"Calles" ahora se derivan con `layersRegistryStore.hasKindVisible()`
- * directamente donde se necesitan (TopBar.tsx, Map.tsx).
- */
 export const useUiShellStore = create<UiShellState>()(
   immer((set) => ({
     baseMap: 'cad' as BaseMapId,

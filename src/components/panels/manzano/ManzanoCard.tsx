@@ -37,8 +37,6 @@ export default function ManzanoCard({
   const cancelRotateLots = useManzanoStore((s) => s.cancelRotateLots);
   const affectedManzanoIds = useTopologyWarningsStore((s) => s.affectedManzanoIds);
 
-  // Antes vivían como Record<id, ...> en el padre — al ser una tarjeta
-  // propia, cada instancia maneja su propio estado local sin indirección.
   const [lotsOpen, setLotsOpen] = useState(false);
   const [manualAngleOpen, setManualAngleOpen] = useState(false);
   const [manualAngleValue, setManualAngleValue] = useState('');

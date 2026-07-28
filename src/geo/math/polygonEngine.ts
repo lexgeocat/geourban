@@ -43,10 +43,6 @@ export function centroid(pts: Pt[]): Pt {
   return [cx / pts.length, cy / pts.length];
 }
 
-/** Envolvente convexa (monotone chain) — única implementación
- *  compartida; antes vivía duplicada dentro de
- *  `geo/subdivisionCabeceraCuerpo.ts` (una vez a nivel de módulo, y otra
- *  como `mergePolys()` inline dentro de `hbMergeHeadRemainders`). Fase 2. */
 export function convexHull(pts: Pt[]): Pt[] {
   const arr = pts.slice().sort((a, b) => (a[0] !== b[0] ? a[0] - b[0] : a[1] - b[1]));
   if (arr.length < 3) return arr;
@@ -65,10 +61,6 @@ export function convexHull(pts: Pt[]): Pt[] {
   return lower.concat(upper);
 }
 
-/** Perímetro de un anillo, asumiendo cierre implícito (último punto
- *  conecta con el primero). Compartido entre ManzanoPanel y los
- *  comandos de recálculo de lotes (H-LOT-9) — antes había una copia
- *  duplicada local en ManzanoPanel.tsx. */
 export function ringPerimeter(pts: Pt[]): number {
   let per = 0;
   const n = pts.length;
@@ -80,11 +72,6 @@ export function ringPerimeter(pts: Pt[]): number {
   return per;
 }
 
-/** Longitud de un camino ABIERTO (sin wraparound del último punto al
- *  primero) — complemento de `ringPerimeter` para anillos cerrados.
- *  Centraliza lo que antes se reimplementaba por separado en
- *  `geo/metrics.ts::planarPathLength` y
- *  `components/StreetPanel.tsx::streetLengthM` (Fase 2). */
 export function pathLength(pts: Pt[]): number {
   let total = 0;
   for (let i = 0; i < pts.length - 1; i++) {

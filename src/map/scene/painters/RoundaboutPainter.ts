@@ -1,10 +1,22 @@
-import { useRoundaboutStore } from '../../../store/entities/roundaboutStore';
-import { useLayersStore } from '../../../store/entities/layersRegistryStore'; // ← NUEVO
+import { useRoundaboutStore, type Roundabout } from '../../../store/entities/roundaboutStore';
+import { useLayersStore } from '../../../store/entities/layersRegistryStore';
+import { useDisplayLayersStore } from '../../../store/ui/displayLayersStore';
 import { roundaboutGeometry } from '../../../geo/roundabout/roundaboutEngine';
 import { formatMetricLength } from '../../../geo/metrics';
+import { withAlpha } from '../DrawLayerRenderer';
 import type { RoundaboutDrawPreview } from '../RoundaboutDrawInteraction';
-/** Rotondas confirmadas + preview en vivo del trazado de 2 clics.
- *  Extraído de PostrenderPainter (Fase 5). */
+import type { Layer } from '../../../core/objectModel';
+
+const FALLBACK_ROUNDABOUT_COLOR = '#f78166';
+
+function resolveRoundaboutLayer(rb: Roundabout, registry: ReturnType<typeof useLayersStore.getState>): Layer | undefined {
+  if (rb.layerId) {
+    const layer = registry.getById(rb.layerId);
+    if (layer) return layer;
+  }
+  return registry.getLayerForKind('calle');
+}
+
 export class RoundaboutPainter {
   private currentPreview: RoundaboutDrawPreview | null = null;
 
@@ -14,39 +26,44 @@ export class RoundaboutPainter {
 
   paint(ctx: CanvasRenderingContext2D, toPx: (c: number[]) => [number, number], resolution: number): void {
     const { roundabouts } = useRoundaboutStore.getState();
-    // Fase 1 (fix H-CAPAS-3): antes dependía de roundaboutStore.visible,
-    // un flag que ninguna UI llegaba a exponer (las rotondas quedaban
-    // siempre visibles pasara lo que pasara en el panel de capas).
-    // Comparten ahora la capa "Viales" (kind: 'calle') — misma decisión
-    // que agrupa toda la red vial bajo un solo control.
-    const visible = useLayersStore.getState().hasKindVisible('calle');
-    if (visible) {
-      for (const rb of roundabouts) {
-        const geom = roundaboutGeometry(rb, resolution);
-        this.fillRing(ctx, geom.roadOuter, toPx, 'rgba(247, 129, 102, 0.10)');
-        this.strokeRing(ctx, geom.sideOuter, toPx, 'rgba(247, 129, 102, 0.55)', 1.5);
-        this.strokeRing(ctx, geom.roadOuter, toPx, 'rgba(247, 129, 102, 0.75)', 2);
-        if (geom.island) {
-          this.fillRing(ctx, geom.island, toPx, 'rgba(63, 185, 80, 0.18)');
-          this.strokeRing(ctx, geom.island, toPx, 'rgba(63, 185, 80, 0.6)', 1.25);
-        }
-        ctx.save();
-        ctx.setLineDash([6, 5]);
-        this.strokeRing(ctx, geom.centerAxis, toPx, 'rgba(247, 129, 102, 0.45)', 1);
-        ctx.restore();
+    const registry = useLayersStore.getState();
+    const display = useDisplayLayersStore.getState();
 
-        {
-          const [lx, ly] = toPx(rb.center);
-          ctx.save();
-          ctx.font = 'bold 11px Courier New';
-          ctx.fillStyle = 'rgba(247, 129, 102, 0.9)';
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillText(`${rb.name} · R${rb.radiusM.toFixed(1)}m`, lx, ly);
-          ctx.restore();
-        }
+    for (const rb of roundabouts) {
+      const layer = resolveRoundaboutLayer(rb, registry);
+      if (!layer?.visible) continue;
+
+      const color = layer.color ?? FALLBACK_ROUNDABOUT_COLOR;
+      const fillColor = layer.fillColor ?? color;
+      const op = layer.opacity ?? 1;
+
+      const geom = roundaboutGeometry(rb, resolution);
+      this.fillRing(ctx, geom.roadOuter, toPx, withAlpha(fillColor, 0.10 * op));
+      this.strokeRing(ctx, geom.sideOuter, toPx, withAlpha(color, 0.55 * op), 1.5);
+      this.strokeRing(ctx, geom.roadOuter, toPx, withAlpha(color, 0.75 * op), 2);
+      if (geom.island) {
+        this.fillRing(ctx, geom.island, toPx, 'rgba(63, 185, 80, 0.18)');
+        this.strokeRing(ctx, geom.island, toPx, 'rgba(63, 185, 80, 0.6)', 1.25);
+      }
+      ctx.save();
+      ctx.setLineDash([6, 5]);
+      this.strokeRing(ctx, geom.centerAxis, toPx, withAlpha(color, 0.45 * op), 1);
+      ctx.restore();
+
+      const labelOp = display.labelOpacity(layer.showLabel) * op;
+      if (labelOp > 0.002) {
+        const [lx, ly] = toPx(rb.center);
+        ctx.save();
+        ctx.globalAlpha *= labelOp;
+        ctx.font = 'bold 11px Courier New';
+        ctx.fillStyle = withAlpha(color, 0.9);
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(`${rb.name} · R${rb.radiusM.toFixed(1)}m`, lx, ly);
+        ctx.restore();
       }
     }
+
     if (this.currentPreview) {
       const { center, current } = this.currentPreview;
       const radius = Math.hypot(current[0] - center[0], current[1] - center[1]);

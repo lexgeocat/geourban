@@ -2,11 +2,6 @@ import { Command } from '../core/Command';
 import { useLayersStore } from '../../store/entities/layersRegistryStore';
 import type { Layer } from '../../core/objectModel';
 
-/** Patchea campos de una capa (color, opacidad, nombre, kind, lock,
- *  visibilidad) vía CommandStack. Coalescea ediciones continuas del
- *  mismo set de campos (drag de opacidad, selector de color) en una
- *  sola entrada de historial — mismo criterio que
- *  ModifyGeometryCommand.coalesceInto. */
 export class UpdateLayerCommand extends Command {
   readonly label: string;
   readonly coalesceKey: string;

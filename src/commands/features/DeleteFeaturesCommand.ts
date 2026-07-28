@@ -4,9 +4,6 @@ import { Command, type CommandContext } from '../core/Command';
 import { useSelectionStore } from '../../store/map/selectionStore';
 import { useLayersStore } from '../../store/entities/layersRegistryStore';
 
-/** Borra features por id. Si no se pasan ids, borra la selección actual.
- *  Respeta el candado (`locked`) del registro de capas: los ids que
- *  pertenezcan a una capa bloqueada son ignorados silenciosamente. */
 export class DeleteFeaturesCommand extends Command {
   readonly label = 'Borrar features';
   private readonly ids: Array<string | number>;

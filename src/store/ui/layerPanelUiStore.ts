@@ -10,9 +10,6 @@ type LayerPanelUiState = {
   setExpandedRefs: (v: boolean) => void;
 };
 
-/** Fase 7 (punto "estado de apertura/expansión no persistido"): antes
- *  LayerPanel usaba useState local para open/expanded, reseteándose en
- *  cada recarga — mismo patrón que ya usan snapSettingsStore/roadCornerStore. */
 export const useLayerPanelUiStore = create<LayerPanelUiState>()(
   persist(
     (set) => ({

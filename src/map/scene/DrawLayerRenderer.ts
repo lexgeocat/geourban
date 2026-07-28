@@ -12,8 +12,6 @@ import { MZN_COLORS, MZN_COLOR_COUNT } from '../../geo/manzanoColor';
 export type WorkVisibility = {
   lots: boolean;
   streets: boolean;
-  /** Ya no controla ninguna capa de render (ver nota en DrawLayers más
-   *  abajo); se mantiene el campo para no romper el store/ribbon. */
   measurements: boolean;
 };
 
@@ -40,14 +38,6 @@ export function withAlpha(color: string, alpha: number): string {
   return `rgba(${r},${g},${b},${alpha})`;
 }
 
-/**
- * @deprecated Fase 5: el estilo combinado por `match(layerId)` sobre UN
- * único WebGLVectorLayer quedó reemplazado por `LayeredWebglRenderer`
- * (un WebGLVectorLayer real por capa, con estilo propio — ver
- * `buildSingleLayerStyle` más abajo). Se deja exportada solo por
- * compatibilidad con algún consumidor externo no auditado; nada del
- * motor de render actual la usa.
- */
 export function buildWebglStyle(layers: Layer[]): Record<string, any> {
   const layerMap = new globalThis.Map<string, Layer>();
   for (const l of layers) layerMap.set(l.id, l);
@@ -85,9 +75,6 @@ export function buildWebglStyle(layers: Layer[]): Record<string, any> {
   };
 }
 
-/** @deprecated Fase 5 — ver nota de `buildWebglStyle`. La visibilidad
- *  por capa ahora es literal: `layer.setVisible(...)` en el
- *  WebGLVectorLayer propio de cada capa, sin filtrar por expresión. */
 export function buildLayerFilter(layers: Layer[]): any[] {
   const hiddenIds = layers.filter((l) => !l.visible).map((l) => l.id);
   if (hiddenIds.length === 0) return ['==', 1, 1];
@@ -102,11 +89,6 @@ export function buildLayerFilter(layers: Layer[]): any[] {
   ];
 }
 
-/** Estilo WebGL de UNA capa del registro (Fase 5) — reemplaza el gran
- *  `match` por `layerId` combinado de `buildWebglStyle`: cada capa ya
- *  es su propio layer, así que solo necesita SU color/opacidad, o —
- *  para "colorear por manzano" — el mismo `match` por `colorIdx` de
- *  siempre, pero acotado a esta capa. */
 function buildSingleLayerStyle(layer: Layer): Record<string, unknown> {
   const op = layer.opacity ?? 1;
   if (layer.colorMode !== 'colorIdx') {
@@ -127,10 +109,6 @@ function buildSingleLayerStyle(layer: Layer): Record<string, unknown> {
   return { 'fill-color': fillExpr, 'stroke-color': strokeExpr, 'stroke-width': 2 };
 }
 
-/** Estilo de fallback (features cuyo `layerId` no resuelve a ninguna
- *  capa viva del registro — huérfanas transitorias; ver nota grande en
- *  `LayeredWebglRenderer`). Mismo verde genérico que usaba el `match`
- *  legado como último caso. */
 const FALLBACK_STYLE = {
   'fill-color': 'rgba(16,185,129,0.30)',
   'stroke-color': '#10b981',
@@ -139,14 +117,6 @@ const FALLBACK_STYLE = {
 
 const FALLBACK_KEY = '__geourban_unassigned_mirror__';
 
-/** zIndex reservados para las capas que NO son parte del registro
- *  (sketch de calles + overlay de postrender: vías, rotondas,
- *  etiquetas, guías de snap). Deben quedar SIEMPRE por encima de
- *  cualquier capa de polígonos del registro — ver la nota larga en
- *  `LayeredWebglRenderer` sobre "coexistencia con vías". Un valor fijo
- *  bien por encima de cualquier `layer.zIndex` realista evita cualquier
- *  ambigüedad de empate, sin importar cuántas capas custom cree el
- *  usuario. */
 const STREET_SKETCH_Z_INDEX = 10_000;
 const POSTRENDER_Z_INDEX = 10_001;
 
@@ -155,48 +125,6 @@ interface MirrorEntry {
   layer: WebGLVectorLayer;
 }
 
-/**
- * Fase 5 — Orden de dibujo real (diagnostico-plan-sistema-capas.md §4,
- * hallazgo 2.7 / 9).
- *
- * ANTES: lotes/manzanos/equipamiento/áreas-verdes vivían en un único
- * `WebGLVectorLayer` con un único `VectorSource` compartido — el orden
- * de dibujo real dependía del orden interno del renderer WebGL (basado
- * en un RBush espacial, no en orden de inserción ni en ningún atributo
- * de la feature), así que `layer.zIndex` y
- * `layersRegistryStore.reorder()` no tenían NINGÚN efecto visual
- * comprobable.
- *
- * AHORA: cada capa del registro tiene su PROPIO `WebGLVectorLayer` +
- * `VectorSource` "espejo", apilados en el `Map` de OpenLayers vía
- * `layer.setZIndex()` — el único mecanismo de OL con garantía real de
- * orden de dibujo entre capas.
- *
- * El `drawSource` MAESTRO (una sola fuente — la que usa el resto de la
- * app: `SpatialIndex`, snap, hit-test, métricas, comandos) NO cambia,
- * sigue siendo la única fuente de verdad de datos. Este renderer solo
- * ESPEJA cada `Feature` (por REFERENCIA, sin clonar geometría — una
- * misma instancia de OL Feature puede pertenecer a más de un
- * `VectorSource` sin problema) hacia el `VectorSource` del mirror-layer
- * que corresponde a su `layerId` vigente, y la remueve del mirror
- * anterior si su capa cambió.
- *
- * Coexistencia con vías (documentado, ver §4 Fase 5 del diagnóstico):
- * `StreetPainter`/`RoundaboutPainter`/`LabelPainter`/etc. pintan en el
- * canvas 2D de `postrenderLayer` (ver Map.tsx), que se fija a un
- * `zIndex` muy alto (`POSTRENDER_Z_INDEX`) para quedar SIEMPRE por
- * encima de TODAS las capas de polígonos del registro, sin importar el
- * `zIndex` real que tenga la capa "Viales" en el panel. Separar ese
- * canvas por zIndex de registro (para que, por ejemplo, un lote pueda
- * dibujarse ENCIMA de una calle) queda fuera de esta fase — el
- * diagnóstico permite documentar una relación fija en vez de hacerla
- * configurable, y esa es la decisión tomada acá.
- *
- * Nota de rendimiento: el pase caro (recorrer TODAS las features del
- * master para reubicarlas) solo corre cuando cambia el CONJUNTO de ids
- * de capas (alta/baja de una capa) — no en cada cambio de color/
- * opacidad/nombre/orden, que son O(capas), no O(features).
- */
 export class LayeredWebglRenderer {
   private readonly master: VectorSource;
   private readonly mirrors = new globalThis.Map<string, MirrorEntry>();
@@ -214,8 +142,6 @@ export class LayeredWebglRenderer {
   constructor(master: VectorSource) {
     this.master = master;
     this.fallback = this.createMirror(FALLBACK_STYLE, -1, true);
-    // Arma los mirrors iniciales (sin `map` todavía) para que
-    // `getLayers()` ya devuelva algo usable al construir el `Map` de OL.
     this.syncLayerSet(useLayersStore.getState().layers);
   }
 
@@ -265,10 +191,6 @@ export class LayeredWebglRenderer {
     this.placement.delete(feature);
   }
 
-  /** Reconstruye el set de mirror-layers a partir del registro actual:
-   *  crea los que faltan, destruye los que ya no existen (migrando sus
-   *  features restantes al fallback antes), y refresca estilo/zIndex/
-   *  visibilidad de los que se mantienen. */
   private syncLayerSet(layers: Layer[]): void {
     const byId = new globalThis.Map(layers.map((l) => [l.id, l] as const));
     const currentIds = new Set(byId.keys());
@@ -295,9 +217,6 @@ export class LayeredWebglRenderer {
 
     for (const [id, entry] of Array.from(this.mirrors.entries())) {
       if (byId.has(id)) continue;
-      // Capa eliminada del registro: cualquier feature que le haya
-      // quedado sin reconciliar migra al fallback en vez de perderse
-      // del render.
       for (const f of entry.source.getFeatures().slice()) {
         entry.source.removeFeature(f);
         this.fallback.source.addFeature(f);
@@ -318,9 +237,6 @@ export class LayeredWebglRenderer {
     }
   }
 
-  /** Engancha el renderer al `Map` de OL + al `drawSource` maestro + al
-   *  registro de capas. Devuelve una función de limpieza. Llamar una
-   *  sola vez, apenas exista el `Map` (ver Map.tsx). */
   attach(map: Map): () => void {
     this.map = map;
 
@@ -350,18 +266,10 @@ export class LayeredWebglRenderer {
     };
   }
 
-  /** Capas OL a insertar en el `Map` al construirlo (el orden dentro del
-   *  array es irrelevante: cada una trae su propio `zIndex`, que es lo
-   *  que realmente ordena el dibujo). Tras `attach()`, mirrors creados/
-   *  destruidos más tarde ya no pasan por acá — se agregan/quitan
-   *  directo vía `map.addLayer()`/`removeLayer()` dentro de
-   *  `syncLayerSet`. */
   getLayers(): BaseLayer[] {
     return [this.fallback.layer, ...Array.from(this.mirrors.values(), (m) => m.layer)];
   }
 
-  /** Reemplazo de `drawLayer.changed()` — fuerza repintado de TODAS las
-   *  capas espejo. */
   changed(): void {
     this.fallback.layer.changed();
     for (const entry of this.mirrors.values()) entry.layer.changed();
@@ -378,12 +286,6 @@ export function buildDrawLayers(
   const streetLayer = new VectorLayer({
     source: streetSource,
     visible: visibility.streets,
-    // null (NO undefined): `undefined` hace que OL aplique su estilo por
-    // DEFECTO (visible) a cualquier feature que quede en streetSource —
-    // que se supone vacío entre trazados, ya que quien realmente dibuja
-    // las calles es el postrender de PostrenderPainter. Con `undefined`,
-    // cualquier feature huérfana ahí se veía como una línea fantasma con
-    // el estilo azul por defecto de OL.
     style: null,
     zIndex: STREET_SKETCH_Z_INDEX,
   });

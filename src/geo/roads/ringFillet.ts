@@ -32,9 +32,6 @@ function distToSegment(p: Pt, a: Pt, b: Pt): number {
   return Math.hypot(p[0] - (a[0] + t * dx), p[1] - (a[1] + t * dy));
 }
 
-/** ¿El punto cae (con tolerancia) sobre algún segmento del anillo? Sirve
- *  para distinguir un vértice ORIGINAL de la parcela (sobre `ring`) de uno
- *  NUEVO introducido por el corte de una calle — ver `roundRingReflex`. */
 export function pointOnRing(p: Pt, ring: Pt[], tol = 0.05): boolean {
   const n = ring.length;
   for (let i = 0; i < n; i++) {
@@ -52,9 +49,6 @@ interface CornerTangents {
   a1: number;
 }
 
-/** Geometría compartida entre ochave (arco) y chaflán (corte recto): los
- *  2 puntos tangentes sobre cada lado de la esquina son los mismos en
- *  ambos casos — solo cambia cómo se conectan. */
 function computeCornerTangents(prev: Pt, cur: Pt, next: Pt, r: number): CornerTangents | null {
   if (r <= 0) return null;
   const a = normalize(prev[0] - cur[0], prev[1] - cur[1]);
@@ -101,31 +95,12 @@ function cornerFilletArc(prev: Pt, cur: Pt, next: Pt, r: number): Pt[] | null {
   return pts;
 }
 
-/** Chaflán: en vez de arquear entre los 2 puntos tangentes, los une con
- *  una línea recta (corte de esquina clásico de CAD). */
 function cornerChamferCut(prev: Pt, cur: Pt, next: Pt, r: number): Pt[] | null {
   const tg = computeCornerTangents(prev, cur, next, r);
   if (!tg) return null;
   return [tg.ta, tg.tb];
 }
 
-/**
- * Redondea/chaflana/deja recta (según `mode`) los vértices de un anillo.
- *
- * Por defecto solo trata vértices REFLEX (cóncavos) — correcto para un
- * corte parcial (T-intersection) donde la parcela queda como UN solo
- * anillo con una muesca. Pero cuando una calle atraviesa la manzana de
- * punta a punta, el resultado son fragmentos DESCONECTADOS y la esquina
- * que da al cruce es CONVEXA en ese fragmento (ángulo recto normal de un
- * rectángulo chico) — ahí "reflex" nunca la agarra, aunque sea
- * exactamente la esquina que necesita ochave.
- *
- * `forceTreat`: `true` trata TODOS los vértices (usado al dibujar una
- * entidad suelta, sin calles todavía). Una función `(pt) => boolean`
- * permite tratar selectivamente — p.ej. "todo vértice que no esté sobre
- * el borde original de la parcela", que es exactamente el corte nuevo
- * contra la calle, sea convexo o reflex.
- */
 export function roundRingReflex(
   ringIn: Pt[],
   extraM: number | ((pt: Pt) => number) = 0,

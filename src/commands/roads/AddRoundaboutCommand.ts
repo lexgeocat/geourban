@@ -14,10 +14,6 @@ interface RoundaboutEntry {
   params: RoundaboutParams;
 }
 
-/** Traza una rotonda. Ver AddStreetCommand.ts para la explicación
- *  completa de por qué fusiona instancias consecutivas vía
- *  `coalesceInto` (necesario para convivir con el debounce de
- *  `recomputeManzanos()`, H12). */
 export class AddRoundaboutCommand extends Command {
   readonly label = 'Trazar rotonda';
   readonly coalesceKey = 'AddRoundaboutCommand';

@@ -1,21 +1,14 @@
-// src/components/ui/Modal.tsx
 import * as Dialog from '@radix-ui/react-dialog';
 import React from 'react';
 
 export interface ModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** Título accesible (lo anuncia el lector de pantalla al abrir). */
   title: string;
-  /** Ocultar visualmente el título de Radix cuando el propio contenido
-   *  ya renderiza un <h2> visible con el mismo texto (caso más común
-   *  acá, para no duplicar el header). */
   visuallyHiddenTitle?: boolean;
   description?: string;
   width?: string | number;
   children: React.ReactNode;
-  /** Diálogos "bloqueantes" (ej. setup inicial de proyecto): no se
-   *  cierran con click afuera ni con Escape. */
   disableOutsideClose?: boolean;
 }
 
@@ -73,8 +66,6 @@ export function Modal({
           <Dialog.Title style={visuallyHiddenTitle ? visuallyHiddenStyle : undefined}>
             {title}
           </Dialog.Title>
-          {/* Radix exige describedBy o tira warning en dev; si no hay
-              descripción explícita, usamos el título como fallback oculto. */}
           <Dialog.Description style={visuallyHiddenStyle}>
             {description ?? title}
           </Dialog.Description>

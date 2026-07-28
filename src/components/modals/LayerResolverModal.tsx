@@ -35,8 +35,6 @@ export default function LayerResolverModal() {
 
   const kindLabel = pending ? (KIND_LABELS[pending.kind] ?? 'elemento') : '';
 
-  // Al abrir un pedido nuevo: pestaña inicial + prellenado desde el
-  // catálogo de sugerencias (Fase 1 — LAYER_SUGGESTIONS).
   useEffect(() => {
     if (!pending) return;
     const suggestion = pending.suggestion;
@@ -44,7 +42,6 @@ export default function LayerResolverModal() {
     setName(suggestion?.name ?? (KIND_LABELS[pending.kind] ?? 'Nueva capa'));
     setColor(suggestion?.color ?? '#58a6ff');
     setFillColor(suggestion?.fillColor ?? suggestion?.color ?? '#58a6ff');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pending]);
 
   const sorted = useMemo(() => {

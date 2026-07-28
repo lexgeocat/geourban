@@ -55,8 +55,6 @@ export async function importDxf(file: File): Promise<ImportResult> {
   return { project, warnings };
 }
 
-/** Samplea un arco (CIRCLE/ARC) en un LineString con N segmentos.
- *  CIRCLE/ARC en DXF vienen en grados; los pasamos a radianes para sampleArc. */
 function arcToLineString(
   cx: number,
   cy: number,

@@ -5,11 +5,8 @@ import { immer } from 'zustand/middleware/immer';
 export type SelectMode = 'click' | 'rect' | 'lasso';
 
 type SelectionState = {
-  /** Set de ids (string | number) de features seleccionadas en drawSource */
   selectedIds: Set<string | number>;
-  /** Ultimo id seleccionado (para que la UI resalte el "primario") */
   primaryId: string | number | null;
-  /** Sub-modo de selección: click (default) | rect (drag-box) | lasso (polígono libre) */
   selectMode: SelectMode;
 
   setSelection: (ids: ArrayLike<string | number>, primary?: string | number | null) => void;

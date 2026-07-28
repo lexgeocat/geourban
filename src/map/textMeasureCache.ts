@@ -1,22 +1,3 @@
-/**
- * Caché de `ctx.measureText` por clave `(fuente, texto)`.
- *
- * PostrenderPainter y styleFactory llaman measureText para cada etiqueta
- * de área/longitud en CADA frame de render (pan, zoom, incluso frames
- * intermedios de una animación), aunque el texto no haya cambiado — ver
- * diagnóstico H4. Cachear por (font, text) convierte la mayoría de esas
- * llamadas en un lookup de Map en vez de una medición nativa de texto.
- *
- * Invalidación: no hace falta invalidar a mano — la clave ya incluye el
- * texto exacto, así que un valor que cambia (ej. una cota en vivo
- * mientras se arrastra un vértice) simplemente genera una clave nueva y
- * no pisa la anterior. Para evitar crecimiento sin límite en ese caso
- * extremo, el caché se vacía por completo si supera MAX_ENTRIES — más
- * simple que un LRU real, y de todas formas sigue ahorrando trabajo
- * dentro de un mismo frame (un label se mide más de una vez: ancho para
- * el fondo + colisión).
- */
-
 const MAX_ENTRIES = 2000;
 
 export interface CachedTextMetrics {

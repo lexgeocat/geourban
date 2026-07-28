@@ -62,12 +62,9 @@ const baseMapId = useUiShellStore((s) => s.baseMap);
   const viewConfig = useMapStore((s) => s.viewConfig);
   const drawMode = useDrawStore().mode;
 
-  // --- Inicializar mapa (solo una vez) ---
   useEffect(() => {
     if (!mapDivRef.current) return;
 
-    // Visibilidad inicial derivada del registro de capas — reemplaza al
-    // extinto layerStore.workVisibility (ver plan Fase 1).
     const initialWorkVisibility: WorkVisibility = {
       lots:
         useLayersStore.getState().hasKindVisible('lote') ||
@@ -80,10 +77,6 @@ const baseMapId = useUiShellStore((s) => s.baseMap);
     const drawSrc = drawLayers.source;
     drawSrcRef.current = drawSrc;
     useMapStore.getState().setDrawSource(drawSrc);
-
-    // Fase 5 (sistema de capas): ya no hay un único WebGLVectorLayer —
-    // cada capa del registro tiene su propio layer/zIndex real de OL
-    // (ver DrawLayerRenderer.ts::LayeredWebglRenderer).
     const webglRenderer = drawLayers.webglRenderer;
     webglRendererRef.current = webglRenderer;
     const streetLayerSrc = drawLayers.streetSource;
@@ -92,16 +85,10 @@ const baseMapId = useUiShellStore((s) => s.baseMap);
     streetLayerRef.current = streetLayer;
     const postrenderLayer = drawLayers.postrenderLayer;
 
-    // --- Mapa base (BaseLayerManager — Fase 11.2) ---
     const baseLayerMgr = new BaseLayerManager();
 
     const map = new Map({
       target: mapDivRef.current!,
-      // Fase 5: N capas espejo del registro (una por capa, con su
-      // propio zIndex real) + street sketch + postrender. Estos dos
-      // últimos tienen zIndex fijo muy alto (ver DrawLayerRenderer.ts)
-      // para quedar SIEMPRE por encima de cualquier capa de polígonos,
-      // sin importar su zIndex en el panel — decisión documentada.
       layers: [...webglRenderer.getLayers(), streetLayer, postrenderLayer],
       view: new View({
         center: fromLonLat(viewConfig.center),
@@ -114,18 +101,11 @@ const baseMapId = useUiShellStore((s) => s.baseMap);
         }),
       ]),
     });
-    // Engancha el renderer de capas al Map recién creado — a partir de
-    // acá, altas/bajas de capas custom agregan/quitan sus propios
-    // WebGLVectorLayer en vivo.
     const detachWebglRenderer = webglRenderer.attach(map);
-
-    // Instalar mapa base (siempre en índice 0) vía BaseLayerManager.
     const baseLayer = baseLayerMgr.install(map, baseMapId);
     baseLayerRef.current = baseLayer;
     baseMapInitializedRef.current = true;
 
-    // Reemplazar el DragPan por defecto (left-click) con uno de click derecho+medio
-    // 1. Encontrar y remover el DragPan por defecto
     const interactions = map.getInteractions();
     const toRemove: any[] = [];
     interactions.forEach((interaction) => {
@@ -135,7 +115,6 @@ const baseMapId = useUiShellStore((s) => s.baseMap);
     });
     toRemove.forEach((interaction) => interactions.remove(interaction));
 
-    // 2. Agregar DragPan con click derecho (button 2) o click medio (button 1)
     const dragPan = new DragPan({
       condition: (event) => {
         const oe = event.originalEvent as unknown;
@@ -171,9 +150,6 @@ const baseMapId = useUiShellStore((s) => s.baseMap);
 
     // --- Live cursor coordinates & zoom ---
     const setCursorCoords = useMapStore.getState().setCursorCoords;
-    // pointermove dispara cientos de veces por segundo; cada llamada a
-    // setCursorCoords es un set() de Zustand que re-renderiza StatusBar.
-    // Coalescemos a 1 update por frame de render (rAF).
     const throttledSetCursorCoords = rafThrottle(setCursorCoords);
     const setZoom = useMapStore.getState().setZoom;
     const view = map.getView();
@@ -181,8 +157,6 @@ const baseMapId = useUiShellStore((s) => s.baseMap);
      map.on('pointermove', (evt) => {
       const crs = useProjectCrsStore.getState();
       if (crs.mode === 'utm') {
-        // Con UTM activo, mostramos las coordenadas REALES proyectadas
-        // (metros), no lon/lat — es lo que un CAD/GIS mostraría.
         const epsg = ensureUtmZoneRegistered(crs.utmZone, crs.utmHemisphere);
         const projected = transform(evt.coordinate, 'EPSG:3857', epsg) as [number, number];
         throttledSetCursorCoords({ x: projected[0], y: projected[1], isProjected: true });
@@ -205,9 +179,6 @@ const baseMapId = useUiShellStore((s) => s.baseMap);
     }
 
     const onMoveEnd = () => {
-      // Fin del gesto de pan/zoom: PostrenderPainter vuelve a pintar
-      // etiquetas de texto completas (ver H4 — modo barato durante
-      // interacción).
       postrenderPainter.setInteracting(false);
       const center = view.getCenter();
       const currentZoom = view.getZoom();
@@ -233,7 +204,6 @@ const baseMapId = useUiShellStore((s) => s.baseMap);
     });
     map.addLayer(snapIndicatorLayer);
 
-    // Pre-crear estilos de snap (uno por tipo, reutilizados en cada frame)
     const snapStyles = new globalThis.Map<string, Style>();
     const SNAP_SHAPES: Record<string, { points?: number; radius: number; radius2?: number; angle?: number }> = {
       endpoint:             { radius: 7,  points: 4,               angle: Math.PI / 4 }, // Cuadrado □
@@ -273,10 +243,6 @@ const baseMapId = useUiShellStore((s) => s.baseMap);
     const onSpatialRemove = (evt: any) => {
       if (evt.feature instanceof Feature) spatialIndex.remove(evt.feature as Feature<Polygon>);
     };
-    // 'changefeature' dispara en cada frame de un drag/edit en vivo
-    // (Modify, SafeTranslate) — sin esto el índice quedaba con el bbox
-    // viejo hasta el próximo add/remove real. Se coalesce a 1 reindexado
-    // por frame (por feature), igual criterio que el cursor.
     const pendingSpatialUpdates = new globalThis.Map<string | number, Feature<Polygon>>();
     const flushSpatialUpdates = rafThrottle(() => {
       pendingSpatialUpdates.forEach((f) => spatialIndex.update(f));
@@ -391,9 +357,6 @@ map.addInteraction(rotateLotsInteraction);
 
 useMapStore.getState().setMap(map);
     mapInstanceRef.current = map;
-
-    // Cleanup unificado — BaseLayerManager.dispose() reemplaza la
-    // manipulación manual de baseLayerCleanupRef que había antes.
     baseLayerMgrRef.current = baseLayerMgr;
 
     return () => {
@@ -424,10 +387,8 @@ postrenderPainter.dispose();
       if (m) m.setTarget(undefined);
       mapInstanceRef.current = null;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // --- Cambiar mapa base (BaseLayerManager — Fase 11.2) ---
   useEffect(() => {
     if (!baseMapEffectPrimedRef.current) {
       baseMapEffectPrimedRef.current = true;
@@ -443,12 +404,6 @@ postrenderPainter.dispose();
 
 useEffect(() => {
   const unsub = useLayersStore.subscribe((state) => {
-    // Fase 5: cada capa WebGL administra su propia visibilidad/estilo/
-    // zIndex de forma independiente — ver
-    // DrawLayerRenderer.ts::LayeredWebglRenderer (se auto-suscribe al
-    // registro dentro de su propio `attach()`). Acá solo queda lo que
-    // sigue siendo responsabilidad de Map.tsx: la capa de sketch de
-    // calles (vestigial, ver comentario en buildDrawLayers).
     const anyCalleVisible = state.layers.some((l) => l.kind === 'calle' && l.visible);
     if (streetLayerRef.current) streetLayerRef.current.setVisible(anyCalleVisible);
   });
@@ -490,15 +445,12 @@ useEffect(() => {
     map.removeInteraction(snapEngineRef.current);
     map.addInteraction(snapEngineRef.current);
   }
-  // El gizmo de "Rotar lotes" va todavía más al final: debe interceptar
-  // el arrastre de su manipulador antes que cualquier otra interacción (Select incluido).
   if (rotateLotsInteractionRef.current) {
     map.removeInteraction(rotateLotsInteractionRef.current);
     map.addInteraction(rotateLotsInteractionRef.current);
   }
 }, [drawMode]);
 
-  // --- Re-activar interacciones cuando cambia selectMode (rect/lasso) ---
   const selectMode = useSelectionStore((s) => s.selectMode);
   useEffect(() => {
     const map = mapInstanceRef.current;

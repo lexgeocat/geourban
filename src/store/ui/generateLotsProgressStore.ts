@@ -11,9 +11,6 @@ type GenerateLotsProgressState = {
   finish: () => void;
 };
 
-/** Fase 6, punto 4: progreso incremental + cancelación real de
- *  GenerateLotsCommand — antes era un único postMessage con TODOS los
- *  manzanos, sin feedback ni forma de abortar a mitad de camino. */
 export const useGenerateLotsProgressStore = create<GenerateLotsProgressState>()((set) => ({
   active: false,
   processed: 0,

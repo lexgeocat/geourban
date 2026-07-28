@@ -6,7 +6,6 @@ export interface Street {
   start: [number, number];
   end: [number, number];
   widthM: number;
-  /** Ancho de vereda (acera) en metros, fijado al trazar la calle. */
   sideWidthM: number;
   waypoints?: Array<[number, number]>;
   name: string;
@@ -16,7 +15,6 @@ export interface Street {
 interface StreetState {
   streets: Street[];
   defaultWidthM: number;
-  /** Ancho de vereda por defecto para las próximas calles trazadas. */
   defaultSideWidthM: number;
   visible: boolean;
   panelVisible: boolean;
@@ -24,9 +22,6 @@ interface StreetState {
   addStreet: (
     street: Omit<Street, 'id' | 'name' | 'sideWidthM'> & { sideWidthM?: number }
   ) => string;
-  /** Re-inserta una calle con un id específico — usado por
-   *  AddStreetCommand.redo() para no perder la referencia al id original
-   *  entre un undo y su redo. */
   addStreetWithId: (id: string, street: Omit<Street, 'id' | 'name'>) => void;
   updateStreet: (id: string, patch: Partial<Omit<Street, 'id'>>) => void;
   removeStreet: (id: string) => void;
@@ -39,9 +34,6 @@ interface StreetState {
 
 let nextId = 1;
 
-/** H-VIA-8: antes `nextId` vivía a nivel de módulo y nunca se reiniciaba
- *  entre proyectos. Se resetea desde `clearStreets()`, invocado al crear
- *  un proyecto nuevo (ver TopBar.handleNewProject). */
 function resetNextId(): void {
   nextId = 1;
 }
@@ -66,9 +58,6 @@ export const useStreetStore = create<StreetState>()(
 
     addStreet: (street) => {
       let newId = '';
-      // H-VIA-6: una calle con ancho <= 0 se podía guardar y dibujar sin
-      // cortar ningún manzano ("calle fantasma") — se clampea acá como
-      // última barrera, además del clamp en setDefaultWidth.
       const widthM = Math.max(0.5, street.widthM);
       set((state) => {
         const id = `street-${nextId++}`;

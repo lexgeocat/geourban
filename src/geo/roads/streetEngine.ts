@@ -60,9 +60,6 @@ function inSweep(ang: number, a: number, b: number): boolean {
   return rel <= sweep;
 }
 
-/** Radio máximo de ochave, configurable por proyecto (H-VIA-3). Antes era
- *  una constante fija de 8m sin UI ni relación con el ancho real de
- *  calzada. El control vive en ManzanoPanel → llama setMaxFilletRadius. */
 let filletMaxRadiusM = 8;
 
 export function setMaxFilletRadius(radiusM: number): void {
@@ -73,13 +70,6 @@ export function getMaxFilletRadius(): number {
   return filletMaxRadiusM;
 }
 
-/**
- * Radio de ochave por ángulo interno del vértice. `roadHalfWidthM`
- * (medio-ancho combinado de calzada+vereda de las 2 calles que se
- * cruzan) es opcional: si se pasa, el radio de tabla se escala hacia
- * arriba para vías anchas (una avenida de 30m no puede tener el mismo
- * ochave que una calle de 6m), sin superar `filletMaxRadiusM`.
- */
 export function getFilletRadiusForAngle(angleDeg: number, roadHalfWidthM?: number): number {
   const tableValue = (() => {
     if (angleDeg <= 35) return 2.5;
@@ -102,11 +92,6 @@ export interface StreetFilletsBundle {
   outer: StreetFillet[];
 }
 
-/** Fillets de UN par de calles (ambas variantes: calzada + vereda). Es
- *  el cuerpo por-par que antes vivía inline dentro del doble loop de
- *  `computeStreetFilletsBoth` — extraído para que PostrenderPainter
- *  pueda cachear por par y no recalcular TODO ante cualquier cambio
- *  (Fase 6, punto 2 / H-VIA-10). */
 export function computeStreetPairFillets(sA: Street, sB: Street): StreetFilletsBundle {
   const inner: StreetFillet[] = [];
   const outer: StreetFillet[] = [];
@@ -200,10 +185,6 @@ export function computeStreetPairFillets(sA: Street, sB: Street): StreetFilletsB
   return { inner, outer };
 }
 
-/** Agregado de TODOS los pares — se mantiene como API pública (recompute
- *  completo, útil para tests o cualquier otro consumidor), pero
- *  PostrenderPainter ya NO la usa directamente: usa `computeStreetPairFillets`
- *  con cache por par (ver PostrenderPainter.updateIncrementalStreetCaches). */
 export function computeStreetFilletsBoth(streets: Street[]): StreetFilletsBundle {
   const inner: StreetFillet[] = [];
   const outer: StreetFillet[] = [];

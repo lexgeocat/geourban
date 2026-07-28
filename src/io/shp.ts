@@ -24,10 +24,6 @@ export async function importShp(files: FileList | File[]): Promise<ImportResult>
   return { project, warnings };
 }
 
-/** Empaqueta .shp + .shx + .dbf + .cpg (opcional) en un único .zip, igual
- *  que se hace con KMZ. Antes se descargaban los 3 archivos sueltos, lo
- *  que obligaba al usuario a juntarlos a mano y olvidaba el `.shx`
- *  (índice obligatorio de Shapefile). */
 export async function exportShp(project: GeoUrbanProject): Promise<Blob> {
   const collection = project.data;
   const options = { types: inferShpTypes(collection) };
@@ -38,11 +34,6 @@ export async function exportShp(project: GeoUrbanProject): Promise<Blob> {
       ?.replace('.shp', '') ?? 'layer';
 
   const zip = new JSZip();
-  // shp-write no emite .shx; algunos GIS lo aceptan faltante, otros no.
-  // Lo generamos a partir del .shp parseando el header (1 record header
-  // de 8 bytes por shape: contenido + offset 50/50/4/etc). Para mantener
-  // el fix mínimo, dejamos el .shp + .dbf + .prj + .cpg. Si el usuario
-  // necesita .shx estricto puede regenerarlo con `shpjs`/`ogr2ogr`.
   if (result[`${layerName}.shp`]) zip.file(`${layerName}.shp`, result[`${layerName}.shp`], { base64: true });
   if (result[`${layerName}.shx`]) {
     zip.file(`${layerName}.shx`, result[`${layerName}.shx`], { base64: true });

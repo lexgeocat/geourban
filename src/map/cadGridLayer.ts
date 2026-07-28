@@ -24,12 +24,6 @@ function isMultipleOf(value: number, step: number) {
   return Math.abs(ratio - Math.round(ratio)) < 1e-4;
 }
 
-/**
- * Dibuja la grilla CAD directamente en canvas — reemplaza el enfoque
- * anterior de VectorLayer+Feature por línea (ver diagnóstico H3): un solo
- * beginPath/stroke por color en vez de un Feature + función de estilo por
- * cada línea de la grilla.
- */
 function drawCadGrid(
   ctx: CanvasRenderingContext2D,
   extent: Extent,
@@ -115,8 +109,6 @@ export type CadBaseMapBundle = {
 };
 
 export function createCadBaseMap(): CadBaseMapBundle {
-  // Reusar un único canvas/contexto entre invocaciones de canvasFunction
-  // (mismo patrón que PostrenderPainter).
   const canvas = document.createElement('canvas');
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('No se pudo obtener contexto 2D para la grilla CAD');
@@ -129,17 +121,12 @@ export function createCadBaseMap(): CadBaseMapBundle {
       return canvas;
     },
     projection: 'EPSG:3857',
-    // ratio > 1: renderiza un área algo más grande que el viewport, así
-    // paneos cortos no disparan un nuevo canvasFunction en cada frame.
     ratio: 1.15,
   });
 
   const layer = new ImageLayer({ source });
 
   const attach = (_map: Map) => {
-    // ImageCanvasSource ya se invalida sola cuando la vista sale del área
-    // cacheada o cambia la resolución — no hace falta escuchar
-    // 'moveend'/'change:resolution' a mano como con el VectorLayer viejo.
     return () => {};
   };
 

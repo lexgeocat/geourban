@@ -7,9 +7,6 @@ type RoadCornerState = {
   setMode: (mode: CornerMode) => void;
 };
 
-/** Modo de tratamiento de esquinas de la red vial: 'fillet' (ochave,
- *  arco — default, comportamiento histórico), 'chamfer' (chaflán, corte
- *  recto) o 'none' (esquina tal cual del miter, sin tratamiento). */
 export const useRoadCornerStore = create<RoadCornerState>()(
   persist(
     (set) => ({

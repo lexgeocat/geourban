@@ -18,27 +18,6 @@ interface StreetEntry {
   layerId?: string;
 }
 
-/**
- * Traza una calle.
- *
- * `recomputeManzanos()` ahora es debounced (ver diagnóstico H12 en
- * mapStore.ts): varias llamadas próximas comparten UN solo recompute
- * real. Esto significa que si el usuario traza varias calles en sucesión
- * rápida, sus respectivos `execute()` pueden terminar esperando la MISMA
- * ejecución compartida — y por lo tanto, ya no es seguro asumir que el
- * `before`/`after` de cada comando individual es exacto respecto al
- * resto.
- *
- * Solución: instancias trazadas dentro de la ventana de coalescing del
- * CommandStack se FUSIONAN vía `coalesceInto` en una sola entrada de
- * historial (mismo mecanismo que ya usa ModifyGeometryCommand para
- * arrastres consecutivos). El comando resultante conserva el `before`
- * original (antes de CUALQUIER calle del lote) y adopta el `after` de la
- * última absorbida — que ya refleja el estado combinado, porque para
- * cuando ese recompute compartido corre, TODAS las calles del lote ya
- * fueron agregadas a streetStore (cada `addStreet()` es síncrono, ocurre
- * antes de cualquier `await`).
- */
 export class AddStreetCommand extends Command {
   readonly label = 'Trazar calle';
   readonly coalesceKey = 'AddStreetCommand';

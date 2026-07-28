@@ -6,17 +6,10 @@ import type { Layer } from '../../core/objectModel';
 
 export interface RemoveLayerOptions {
   layerId: string;
-  /** 'move': reasigna features afectadas a `targetLayerId`.
-   *  'delete': además las borra del drawSource — mismo comando. */
   action: 'move' | 'delete';
   targetLayerId?: string;
 }
 
-/** Elimina una capa del registro. A diferencia del store crudo, esto es
- *  UN solo paso de historial que también cubre el destino de las
- *  features afectadas (mover o borrar) — antes `LayerDeleteModal`
- *  mezclaba un `DeleteFeaturesCommand` (undoable) con
- *  `removeLayer()` directo (no undoable), rompiendo la atomicidad. */
 export class RemoveLayerCommand extends Command {
   readonly label = 'Eliminar capa';
   private readonly opts: RemoveLayerOptions;

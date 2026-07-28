@@ -1,10 +1,6 @@
 import type Map from 'ol/Map.js';
 import type { SnapGuideVisual } from '../../advancedSnap';
 
-/** Guías visuales del motor de snap. Usa `map.getPixelFromCoordinate`
- *  directo (no el `toPx` con fallback [0,0]) para poder omitir el
- *  dibujo cuando el punto cae fuera de pantalla — mismo comportamiento
- *  que tenía inline en PostrenderPainter. Extraído en Fase 5. */
 export class SnapGuidePainter {
   private currentGuide: SnapGuideVisual | null = null;
 

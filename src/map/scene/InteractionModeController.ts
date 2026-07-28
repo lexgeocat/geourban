@@ -28,13 +28,6 @@ export interface InteractionContext {
   postrenderPainter?: PostrenderPainter;
 }
 
-/**
- * Orquestador de modos de interacción (Fase 5, punto 2 — antes ~550
- * líneas con un único `activate()` y un if gigante por modo). Cada modo
- * vive en `./modes/*Mode.ts`; acá solo queda el ciclo de vida (cleanup
- * entre cambios de modo) y el `ModeContext` compartido — mismo patrón
- * que ya separó `PostrenderPainter` en `./painters/*`.
- */
 export class InteractionModeController {
   private ctx: InteractionContext;
   private toClean: (() => void)[] = [];

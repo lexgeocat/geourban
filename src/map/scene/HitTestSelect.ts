@@ -10,9 +10,6 @@ import { click as clickCondition, pointerMove } from 'ol/events/condition.js';
 import type { SpatialIndex } from '../spatialIndex';
 import { hitTestAtCoordinate } from '../hitTest';
 
-/** Evento emitido en cada cambio de selección — mismo shape mínimo
- *  (`selected`/`deselected`) que `ol/interaction/Select`, para que el
- *  código que lo consume no tenga que cambiar de forma drástica. */
 export class HitTestSelectEvent extends BaseEvent {
   selected: Feature<Geometry>[];
   deselected: Feature<Geometry>[];
@@ -29,29 +26,11 @@ export interface HitTestSelectOptions {
   map: Map;
   source: VectorSource;
   spatialIndex: SpatialIndex;
-  /** Tolerancia de hit-test en píxeles (se multiplica por la resolución
-   *  vigente en cada evento). */
   pixelTolerance?: number;
-  /** true: shift+click agrega/quita de la selección. false: cada click
-   *  reemplaza (single-select), sin importar shift. */
   multi?: boolean;
   filter?: (feature: Feature<Geometry>) => boolean;
 }
 
-/**
- * Reemplazo de `ol/interaction/Select` que NO depende de una capa de
- * render para hacer hit-testing (ver diagnóstico H2). Antes, tanto
- * `Select` como `SafeTranslate` necesitaban `measurementLayer` — una
- * capa Canvas2D invisible clonando el mismo VectorSource del WebGL
- * layer, solo para que `forEachFeatureAtPixel` tuviera dónde buscar (y
- * de paso quedaba atada, por accidente, a la visibilidad de "Cotas").
- * Acá el hit-test corre contra el índice espacial (RBush) + test exacto
- * de geometría (`hitTest.ts`), sin ningún layer adicional.
- *
- * El resaltado visual de la selección lo maneja el llamador (ver
- * `InteractionModeController` → `highlightLayer`); esta clase no
- * renderiza nada por sí misma.
- */
 export class HitTestSelect extends Interaction {
   private readonly map: Map;
   private readonly source: VectorSource;

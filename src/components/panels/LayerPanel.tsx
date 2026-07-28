@@ -17,6 +17,8 @@ import { UpdateLayerCommand } from '../../commands/layers/UpdateLayerCommand';
 import { ReorderLayersCommand } from '../../commands/layers/ReorderLayersCommand';
 import { DuplicateLayerCommand } from '../../commands/layers/DuplicateLayerCommand';
 import { MoveFeaturesToLayerCommand } from '../../commands/layers/MoveFeaturesToLayerCommand';
+import { useStreetStore } from '../../store/entities/streetStore';
+import { useRoundaboutStore } from '../../store/entities/roundaboutStore';
 
 /* ─────────── Icons (decorativos — aria-hidden en su punto de uso) ─────────── */
 
@@ -286,10 +288,6 @@ function LayerRow({
     <div style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '4px 6px', borderRadius: 4 }}>
       {data.reorderable && (
         <>
-          {/* Fase 8: drag&drop es un método adicional para mouse; los
-              botones subir/bajar (abajo) son la vía 100% por teclado —
-              el handle queda oculto a lectores de pantalla para no
-              anunciar un control que no pueden operar. */}
           <span
             draggable
             onDragStart={(e) => { e.stopPropagation(); onDragHandleStart?.(); e.dataTransfer.effectAllowed = 'move'; }}
@@ -381,8 +379,6 @@ function LayerRow({
           style={{ flex: 1, fontSize: '0.72rem', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--cad-border)', borderRadius: 3, padding: '1px 4px', color: 'var(--cad-text)', outline: 'none', minWidth: 0 }}
         />
       ) : data.editableName ? (
-        // Fase 8: antes solo dblclick (mouse-only). Ahora es un <button>
-        // real, activable con Enter/Espacio, con foco visible.
         <button
           type="button"
           className="cad-a11y-btn"
@@ -715,8 +711,9 @@ export default function LayerPanel() {
 
   const drawSource = useMapStore((s) => s.drawSource);
   const tick = useDrawSourceTick(drawSource);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const featureCounts = useMemo(() => computeLayerFeatureCounts(drawSource), [drawSource, tick]);
+  const streets = useStreetStore((s) => s.streets);
+  const roundabouts = useRoundaboutStore((s) => s.roundabouts);
+  const featureCounts = useMemo(() => computeLayerFeatureCounts(drawSource), [drawSource, tick, streets, roundabouts]);
   const selectedCount = useSelectionStore((s) => s.selectedIds.size);
 
   const registryRows = useRegistryRows(setDeleteRequest, featureCounts, isolatedLayerId);
@@ -757,10 +754,6 @@ export default function LayerPanel() {
     setDropTarget(null);
   };
 
-  // Fase 8: navegación por teclado entre filas (roving focus). Cada fila
-  // es un contenedor focuseable (role="group"); ArrowUp/ArrowDown mueve
-  // el foco entre filas visibles, Enter/Espacio activa la acción
-  // principal (mostrar/ocultar), igual que un listbox nativo.
   const handleRowKeyDown = (e: React.KeyboardEvent<HTMLDivElement>, row: LayerRowData) => {
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       const panel = panelRef.current;

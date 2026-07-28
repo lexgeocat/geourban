@@ -15,13 +15,6 @@ interface LayerDeleteModalProps {
   onClose: () => void;
 }
 
-/** Fase 2 (persistencia/integridad de capas — diagnóstico §2.4): antes
- *  el ícono de papelera de LayerPanel llamaba directo a `removeLayer(id)`
- *  sin confirmación ni aviso de cuántos features quedarían huérfanos
- *  (`layerId` apuntando a una capa inexistente). Este modal obliga a
- *  elegir explícitamente qué pasa con esos features antes de borrar:
- *  moverlos a otra capa, o eliminarlos también (vía DeleteFeaturesCommand,
- *  así esa eliminación sí queda en el historial de undo/redo). */
 export default function LayerDeleteModal({ request, onClose }: LayerDeleteModalProps) {
   const drawSource = useMapStore((s) => s.drawSource);
   const layers = useLayersStore((s) => s.layers);

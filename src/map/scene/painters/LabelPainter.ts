@@ -50,8 +50,6 @@ function isColliding(
   return false;
 }
 
-/** Labels de área/perímetro/segmentos de lotes-manzanos + cotas manuales
- *  (`kind: 'cota'`). Extraído de PostrenderPainter (Fase 5). */
 export class LabelPainter {
   private lotGroupCounts = new globalThis.Map<string, number>();
 
@@ -82,10 +80,6 @@ export class LabelPainter {
     const selectedIds = useSelectionStore.getState().selectedIds;
     const placedBoxes: PlacedBox[] = [];
     const zoomFade = computeCotaOpacity(zoom);
-    // Fase 1 (fix H-CAPAS-2): "Cotas" del ribbon Vista (uiShellStore)
-    // era un flag que ningún painter leía. Ahora actúa como interruptor
-    // maestro que multiplica TODAS las opacidades de cota, por encima
-    // del showCota particular de cada capa.
     const cotaMaster = useUiShellStore.getState().measurementsVisible ? 1 : 0;
 
     const display = useDisplayLayersStore.getState();

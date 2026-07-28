@@ -16,15 +16,6 @@ function restoreGeom(f: Feature<Geometry>, captured: unknown) {
   f.setGeometry(captured as OlGeometry);
 }
 
-/** H-LOT-1 (Fase 0): si el feature tiene `origPts`/`origParcelId`
- *  (los guarda recomputeManzanosImmediate para poder re-cortarlo contra
- *  la red vial), y el usuario edita su geometría a mano (Modify/Translate),
- *  esa copia congelada queda desincronizada del dibujo real. Sin
- *  invalidarla, el próximo trazado de calle en CUALQUIER parte del
- *  proyecto revierte silenciosamente la edición manual (recompute corre
- *  sobre origPts, no sobre la geometría actual). Se elimina para forzar
- *  que el feature se re-derive como parcela nueva desde su geometría
- *  vigente en el próximo recompute. */
 function invalidateOrigin(f: Feature<Geometry>): void {
   if (f.get('origPts') !== undefined || f.get('origParcelId') !== undefined) {
     f.unset('origPts', true);
@@ -32,13 +23,6 @@ function invalidateOrigin(f: Feature<Geometry>): void {
   }
 }
 
-/**
- * Se eliminó el `refreshSourceMetrics` global tras cada execute/undo/redo
- * — este comando ya conoce exactamente qué features tocó (`this.targets`)
- * y ya recalcula su métrica una por una; barrer TODO `drawSource` en cada
- * arrastre de vértice/traslado era trabajo puro desperdiciado sobre
- * features que ni se movieron — ver diagnóstico H9.
- */
 export class ModifyGeometryCommand extends Command {
   readonly label: string;
   readonly coalesceKey: string;
@@ -58,7 +42,6 @@ export class ModifyGeometryCommand extends Command {
       .join(',')}`;
   }
 
-  /** Llamar ANTES de aplicar el cambio. */
   captureBefore(): void {
     if (this.captured) return;
     for (const t of this.targets) {
@@ -105,12 +88,6 @@ export class ModifyGeometryCommand extends Command {
     }
     ctx.drawSource.changed();
   }
-
-  /** Fusiona el "after" de un paso de edición posterior dentro de este
-   *  comando — el "before" original de la secuencia completa se mantiene,
-   *  así el primer undo revierte TODOS los pasos coalescidos de una vez
-   *  (p.ej. varios drags consecutivos del mismo vértice/feature dentro de
-   *  la ventana de coalescing). */
   override coalesceInto(previous: Command): boolean {
     if (!(previous instanceof ModifyGeometryCommand)) return false;
     if (previous.coalesceKey !== this.coalesceKey) return false;

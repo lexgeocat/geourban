@@ -2,10 +2,6 @@
 import type Geometry from 'ol/geom/Geometry.js';
 import { Command, type CommandContext } from '../core/Command';
 
-/**
- * Clears all features from the drawSource.
- * Stores a snapshot of the features for undo.
- */
 export class ClearFeaturesCommand extends Command {
   readonly label = 'Limpiar features';
   private features: Feature<Geometry>[] = [];

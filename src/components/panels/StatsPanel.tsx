@@ -56,8 +56,6 @@ function computeStats(drawSource: any, streets: any[]): StatsData {
     const coords = (geom as Polygon).getCoordinates();
     if (!coords[0] || coords[0].length < 4) return;
     const pts: Pt[] = coords[0].map((c: number[]) => [c[0], c[1]]);
-    // Preferí el área geodésica de Turf (ya calculada por metrics.ts al crear/editar el
-    // feature); polyArea() crudo sobre EPSG:3857 sobreestima según la latitud (~9% acá).
     const area = (f.get('areaM2') as number | undefined) ?? polyArea(pts);
 
     result.totalAreaM2 += area;
@@ -107,10 +105,6 @@ export default function StatsPanel() {
   const [pos, setPos] = useState({ x: window.innerWidth - 250, y: window.innerHeight - 350 });
   const dragRef = useRef<{ startX: number; startY: number; posX: number; posY: number } | null>(null);
 
-  // drawSource es un VectorSource mutable: agregar/borrar/editar features
-  // no cambia la referencia que devuelve useMapStore, así que
-  // useMemo([drawSource, streets]) nunca se invalidaba solo. Hook
-  // compartido con ManzanoPanel (Fase 2).
   const tick = useDrawSourceTick(drawSource);
 
   useEffect(() => {
@@ -124,8 +118,6 @@ export default function StatsPanel() {
     return () => window.removeEventListener('resize', onResize);
   }, []);
 
-  // tick es intencional: drawSource es mutable y no invalida la referencia.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   const stats = useMemo(() => computeStats(drawSource, streets), [drawSource, streets, tick]);
 
   const onMouseDown = useCallback((e: React.MouseEvent) => {

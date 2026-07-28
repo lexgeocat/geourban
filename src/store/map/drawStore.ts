@@ -17,11 +17,7 @@ export type DrawKind = 'lote' | 'area_verde' | 'equipamiento';
 
 type DrawState = {
   mode: DrawMode;
-
-  /** Tipo de feature a crear al dibujar (solo afecta a modo 'polygon') */
   areaKind: DrawKind;
-
-  /** Id tracking for drawing features (used in subdivision & exports) */
   lastDrawnLineId: string | number | null;
 
   /* ----- Mutations ----- */

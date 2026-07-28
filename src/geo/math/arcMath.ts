@@ -11,8 +11,6 @@ export interface ArcParams {
   counterClockwise: boolean;
 }
 
-/** Circunferencia que pasa por 3 puntos (inicio, fin, punto-en-arco).
- *  Devuelve centro y radio, o null si los 3 puntos son colineales. */
 export function circleFrom3Points(
   p1: [number, number],
   p2: [number, number],
@@ -62,8 +60,7 @@ export function arcFrom3Points(
   const { center, radius } = circle;
   const a0 = Math.atan2(start[1] - center[1], start[0] - center[0]);
   const a1 = Math.atan2(end[1] - center[1], end[0] - center[0]);
-  // Decidir sentido: si el punto medio cae en el sector CCW entre a0 y a1,
-  // el arco es CCW; si no, CW.
+
   const am = Math.atan2(midPoint[1] - center[1], midPoint[0] - center[0]);
   const ccw = isAngleInSweep(am, a0, a1, true);
   return { center, radius, startAngle: a0, endAngle: a1, counterClockwise: ccw };

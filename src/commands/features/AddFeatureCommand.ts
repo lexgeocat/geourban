@@ -4,10 +4,7 @@ import { Command, type CommandContext } from '../core/Command';
 import { GeoUrbanFeatureKind } from '../../core/objectModel';
 import { useLayersStore } from '../../store/entities/layersRegistryStore';
 import { nextId } from '../../lib/id';
-/**
- * Resuelve el layerId para una feature nueva: usa el override, luego la
- * capa activa, y por último la primera capa que coincida con el kind.
- */
+
 export function resolveLayerId(override?: string, kind?: GeoUrbanFeatureKind): string | undefined {
   if (override) return override;
   const reg = useLayersStore.getState();

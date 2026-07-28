@@ -11,85 +11,35 @@ import {
 } from '../../core/objectModel';
 
 type LayerState = {
-  /** Lista de capas ordenadas por z-index (índice en array = z-index) */
   layers: Layer[];
-  /** Índice para búsqueda rápida por id */
   index: Map<string, number>; // id -> posición en array
-  /** Capa activa: las features nuevas se asignan a esta */
   activeLayerId: string | null;
 
-  /* ---------- Mutations ---------- */
-  /** Añade una nueva capa al final (z-index más alto) */
   add: (layer: Omit<Layer, 'zIndex'>) => void;
-  /** Elimina una capa por id */
   remove: (id: string) => void;
-  /** Actualiza parcialmente una capa existente */
   update: (patch: Partial<Layer> & { id: string }) => void;
-  /** Cambia el orden de una o más capas */
   reorder: (ids: string[], position: number) => void;
-  /** Alterna el estado de bloqueo de una capa */
   toggleLock: (id: string) => void;
-  /** Alterna el estado de visibilidad de una capa */
   toggleVisibility: (id: string) => void;
-  /** Fase 7: "Aislar capa" — oculta todas las demás capas del registro y
-   *  muestra solo `id`. Llamar de nuevo con el mismo id restaura la
-   *  visibilidad previa a aislar. */
   isolatedLayerId: string | null;
   toggleIsolate: (id: string) => void;
-  /** Alterna la visibilidad de TODAS las capas cuyo `kind` esté incluido en
-   *  `kinds` — reemplaza el antiguo `layerStore.workVisibility` (ver
-   *  plan-optimizacion-geourban.md, Fase 1). Usado por los toggles
-   *  "Lotes"/"Calles" del ribbon de Vista (TopBar.tsx). */
   toggleKindsVisibility: (kinds: string[]) => void;
-  /** Selecciona la capa activa (las features nuevas se asignan a esta) */
   setActiveLayer: (id: string | null) => void;
-
-  /** Fase 2 (persistencia) + Fase 1 (plan de mejora de capas): reemplaza
-   *  TODO el registro — usado al abrir un proyecto guardado o al
-   *  importar un `.geourban`. Si `layers` viene vacío, el registro queda
-   *  VACÍO — ya no se auto-siembran capas de fábrica (ver
-   *  `diagnostico-plan-sistema-capas.md`, Fase 1). Las features
-   *  huérfanas de un proyecto viejo se resuelven vía
-   *  `reconcileOrphanFeatures`, nunca recreando capas por adivinanza. */
   loadLayers: (layers: Layer[], activeLayerId?: string | null) => void;
-  /** Vacía el registro ("Nuevo proyecto"). Antes reseteaba a 5 capas de
-   *  fábrica; ahora el estado "sin dibujar nada" es, literalmente, sin
-   *  capas. Renombrado de `resetToDefaults` para reflejar el
-   *  comportamiento real. */
   resetToEmpty: () => void;
-  /** Reconcilia features cuyo `layerId` no resuelve a ninguna capa del
-   *  registro actual (capa borrada/inexistente tras cargar un proyecto)
-   *  reasignándolas a una capa "Sin capa" visible, creada on-demand, en
-   *  vez de dejarlas huérfanas con estilos genéricos silenciosos.
-   *  Devuelve cuántas features se corrigieron. */
   reconcileOrphanFeatures: (features: Feature<Geometry>[]) => number;
-
-  /* ---------- Queries ---------- */
-  /** Obtiene una capa por id (undefined si no existe) */
   getById: (id: string) => Layer | undefined;
-  /** Obtiene todas las capas visibles en orden */
   getVisible: () => Layer[];
-  /** Obtiene el número de capas */
   count: () => number;
-  /** Verifica si alguna capa con el tipo dado está visible */
   hasKindVisible: (kind: string) => boolean;
-  /** Obtiene la primera capa que coincida con el kind dado */
   getLayerForKind: (kind: string) => Layer | undefined;
-
-  /* ---------- LayerKind queries (Fase 4) ---------- */
-  /** Obtiene el LayerKind de una capa por id (null si no existe o es inválido) */
   getKind: (id: string) => LayerKind | null;
-  /** Verifica si alguna capa tiene el kind dado */
   hasKind: (kind: LayerKind) => boolean;
-  /** Obtiene el colorMode de una capa por id */
   getColorMode: (id: string) => 'solid' | 'colorIdx';
 };
 
 export const useLayersStore = create<LayerState>()(
   immer((set, get) => ({
-    // Fase 1 (plan de mejora de capas): el registro nace VACÍO. La
-    // primera capa la crea el usuario a mano, o el resolver obligatorio
-    // de capa la crea al dibujar/generar la primera entidad (Fase 2/3).
     layers: [],
     index: new Map(),
     activeLayerId: null,
@@ -231,8 +181,6 @@ export const useLayersStore = create<LayerState>()(
 
     loadLayers: (layers, activeLayerId = null) =>
       set((state) => {
-        // Fase 1: si el proyecto no trae capas propias, el registro
-        // queda vacío — ya no se rellena con capas de fábrica.
         const next = layers.map((l) => ({
           ...l,
           kind: isLayerKind(l.kind) ? l.kind : 'lote',
@@ -297,7 +245,7 @@ export const useLayersStore = create<LayerState>()(
       return get().layers.find((layer) => layer.kind === kind);
     },
 
-    /* ---------- LayerKind queries (Fase 4) ---------- */
+    /* ---------- LayerKind queries---------- */
     getKind: (id) => {
       const index = get().index.get(id);
       if (index === undefined) return null;

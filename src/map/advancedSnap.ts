@@ -30,9 +30,7 @@ export interface SnapGuideVisual {
 export interface SnapResult {
   point: number[];
   type: SnapType;
-  /** Distancia (unidades de mapa) del cursor al punto de snap. */
   dist: number;
-  /** Feature de origen, si aplica (no aplica a intersecciones sintéticas ni a grilla). */
   feature?: Feature;
   guide?: SnapGuideVisual;
 }
@@ -91,8 +89,6 @@ const TYPE_TOLERANCE_FACTOR: Record<SnapType, number> = {
 
 /** Radio (px) del broad-phase para descartar segmentos irrelevantes. */
 const APPARENT_SEARCH_RADIUS_PX = 260;
-
-/** Banda de histéresis (px) para sostener el snap previo y evitar parpadeo. */
 const STICKY_BAND_PX = 3;
 
 export interface SpatialIndexLike {
@@ -106,9 +102,7 @@ export interface FindSnapOptions {
   parallelRefSegment?: [number[], number[]];
   spatialIndex?: SpatialIndexLike;
   enabled?: Partial<SnapSettings>;
-  /** Resultado del frame anterior — habilita histéresis anti-parpadeo. */
   previous?: SnapResult | null;
-  /** Feature a excluir (ej. la que se está editando/arrastrando). */
   excludeFeature?: Feature | null;
 }
 
@@ -321,8 +315,6 @@ export function findSnap(cursor: number[], src: VectorSource, options: FindSnapO
       }
     }
 
-    // Tangente: requiere anchor. Hay 2 tangentes posibles a un círculo
-    // desde un punto externo; devolvemos la más cercana al cursor.
     if (settings.tangent && anchor && geom instanceof Circle) {
       const c = geom.getCenter();
       const r = geom.getRadius();

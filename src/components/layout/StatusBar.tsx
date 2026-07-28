@@ -131,10 +131,6 @@ export default function StatusBar() {
   const zoomOut = useMapStore((s) => s.zoomOut);
   const fitToExtent = useMapStore((s) => s.fitToExtent);
 
-  // Cambiar de modo/zona CRS invalida las métricas cacheadas en cada
-  // feature (área/perímetro/longitud se recalculan proyectando al plano
-  // métrico correspondiente) — sin este refresh quedaban desactualizadas
-  // hasta que, por casualidad, otro comando disparara un refresh global.
   const handleCrsModeSelect = (m: ProjectCrsMode) => {
     setCrsMode(m);
     if (m === 'utm') setBaseMap('osm');
@@ -242,9 +238,6 @@ export default function StatusBar() {
 
       {/* Center: CRS + Base Map + OSNAP + Grid Snap */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, flex: 1, justifyContent: 'center' }}>
-        {/* CRS del proyecto — antes era un panel flotante aparte + un texto
-            fijo "EPSG:3857" acá; ahora es un único badge vivo que muestra
-            el EPSG real (o "Local" en modo dibujo libre). */}
         <div ref={crsRef} style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
           <button
             onClick={() => setCrsOpen(!crsOpen)}

@@ -10,8 +10,6 @@ import { updateFeatureMetrics } from '../../../geo/metrics';
 import type { HitTestSelect } from '../HitTestSelect';
 import type { ModeContext } from './ModeContext';
 
-/** Modify + SafeTranslate sobre la selección actual — se monta ARRIBA
- *  del HitTestSelect que ya creó `activateSelect`. */
 export function activateEdit(ctx: ModeContext, select: HitTestSelect): void {
   const { map, drawSource: src } = ctx;
   const primaryId = useSelectionStore.getState().primaryId;

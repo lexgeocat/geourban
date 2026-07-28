@@ -41,13 +41,6 @@ type MapState = {
   validateProjectTopology: () => Promise<{ valid: boolean; issues: string[] }>;
 };
 
-/**
- * Fase 5, punto 3: este store queda SOLO con estado + acciones de 1
- * paso. Toda la orquestación de `recomputeManzanos()` (antes ~300
- * líneas acá mismo) vive en `geo/recomputeManzanos.ts` — importá
- * `recomputeManzanos` / `checkTopologyInBackground` /
- * `resetIncrementalRoadTracking` desde ahí, no desde este archivo.
- */
 export const useMapStore = create<MapState>()(
   immer((set, get) => ({
     mapInstance: null,

@@ -1,11 +1,3 @@
-// src/geo/recomputeManzanos.ts
-//
-// Fase 5, punto 3: antes esta orquestación (recorte de manzanos contra
-// la red vial + re-lotización automática + fingerprint incremental)
-// vivía mezclada con la definición del store Zustand en
-// store/map/mapStore.ts (~470 líneas). Es lógica de negocio pura sobre
-// drawSource, no estado de UI — se separa acá; mapStore.ts queda con
-// SOLO la definición del store.
 import { extend as extendExtent, intersects as extentIntersects, type Extent } from 'ol/extent.js';
 import GeoJSON from 'ol/format/GeoJSON.js';
 import Feature from 'ol/Feature.js';
@@ -154,11 +146,6 @@ interface OriginGroup {
   members: Array<Feature<Geometry>>;
 }
 
-/** Agrupa los features del drawSource por parcela de origen
- *  (`origParcelId`/`origPts`). Extraído para que tanto
- *  `recomputeManzanosImmediate` (recorte incremental al trazar vías)
- *  como `reapplyRoadCornerMode` (re-fileteo al cambiar el modo de
- *  esquina) usen el mismo agrupamiento sin duplicar el loop. */
 function collectOriginGroups(src: VectorSource): {
   groups: globalThis.Map<string, OriginGroup>;
   lotsByGroupId: globalThis.Map<string, Array<Feature<Geometry>>>;
@@ -270,8 +257,6 @@ async function runBackgroundTopologyCheck(src: VectorSource): Promise<void> {
   }
 }
 
-/** Público — lo llaman SubdivideCommand, GenerateLotsCommand,
- *  RecomputeManzanoLotsCommand y `recomputeManzanosImmediate` acá abajo. */
 export function checkTopologyInBackground(): void {
   const src = useMapStore.getState().drawSource;
   if (!src) return;
@@ -389,8 +374,6 @@ async function recomputeManzanosImmediate(): Promise<void> {
   const targetAreaM2 = useManzanoStore.getState().targetAreaM2;
   const frontMinM = useManzanoStore.getState().frontMinM;
 
-  // ── Fase 1: emparejar fragmentos con features viejas + detectar qué
-  //    necesita confirmación del usuario, SIN mutar todavía nada ───────
   const assignmentsByGroupIdx = new globalThis.Map<number, ReturnType<typeof matchFragmentsToMembers<Feature<Geometry>>>>();
   const memberAreaByRefPerGroup = new globalThis.Map<number, globalThis.Map<Feature<Geometry>, number>>();
   const relotCandidates: Array<{ featureId: string; method: ManzanoLoteMethod; dirPref?: { ax: number; ay: number } }> = [];
@@ -450,8 +433,6 @@ async function recomputeManzanosImmediate(): Promise<void> {
     );
   }
 
-  // ── Fase 2: aplicar — reciclar in-place lo que se pueda, crear/borrar
-  //    solo lo estrictamente necesario ────────────────────────────────
   const relotTasks: Array<{ featureId: string; method: ManzanoLoteMethod; dirPref?: { ax: number; ay: number } }> = [];
 
   for (let idx = 0; idx < parcelIndexToGroup.length; idx++) {
@@ -656,20 +637,6 @@ export function recomputeManzanos(): Promise<void> {
   return recomputeInFlight;
 }
 
-/**
- * Re-filetea (ochave/chaflán/recto) TODOS los manzanos existentes según
- * el modo actual de useRoadCornerStore — se llama cuando el usuario
- * cambia el modo desde la UI, para que los manzanos YA trazados también
- * se actualicen sin necesidad de re-trazar ninguna vía.
- *
- * A diferencia de `recomputeManzanosImmediate`, acá se fuerza el
- * recálculo de TODOS los grupos ya cortados por alguna vía, sin el
- * filtro incremental por fingerprint de red vial ni el chequeo de
- * "¿la geometría nueva coincide con la actual?" — ese chequeo compara
- * áreas con una tolerancia relativa (0.2%), y un cambio de fileteado
- * (ochave ↔ chaflán ↔ recto) en manzanos grandes puede no superar esa
- * tolerancia, así que hay que forzar el reemplazo de geometría igual.
- */
 export async function reapplyRoadCornerMode(): Promise<void> {
   const src = useMapStore.getState().drawSource;
   if (!src) return;
@@ -681,9 +648,6 @@ export async function reapplyRoadCornerMode(): Promise<void> {
   const { groups } = collectOriginGroups(src);
   if (groups.size === 0) return;
 
-  // Solo interesan los grupos que HOY tienen un manzano ya cortado por
-  // una vía (esquinas cóncavas para ochavar/chaflanar). Una parcela
-  // intacta (nunca tocada por ninguna calle) no tiene nada que re-filetear.
   const touchedGroups = Array.from(groups.values()).filter((g) =>
     g.members.some((m) => getFeatureKind(m) === 'manzana'),
   );
@@ -738,10 +702,7 @@ export async function reapplyRoadCornerMode(): Promise<void> {
       if (fragments.length === 0) continue;
 
       const oldManzanaMembers = group.members.filter((m) => getFeatureKind(m) === 'manzana');
-      // Si la cantidad de fragmentos frescos no coincide con la cantidad
-      // de manzanos actuales (topología cambió, no solo el fileteado),
-      // dejamos que el próximo trazado real resuelva eso — acá solo
-      // re-fileteamos 1 a 1 cuando la forma general se mantiene.
+ 
       if (fragments.length !== oldManzanaMembers.length) continue;
 
       for (let i = 0; i < oldManzanaMembers.length; i++) {

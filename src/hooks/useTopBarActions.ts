@@ -42,9 +42,6 @@ export function useTopBarActions(fileInputRef: RefObject<HTMLInputElement | null
     project.baseMap = baseMap;
     project.view = { center: viewConfig.center, zoom: viewConfig.zoom };
     project.crs = getProjectCrsConfig();
-    // Fase 2 (persistencia): antes esto nunca se volcaba a project.layers
-    // — nombres/colores/opacidades/bloqueos custom se perdían en cada
-    // guardado/exportación (ver diagnóstico §2.1).
     project.layers = useLayersStore.getState().layers;
     project.activeLayerId = useLayersStore.getState().activeLayerId;
     return project;
@@ -59,11 +56,6 @@ export function useTopBarActions(fileInputRef: RefObject<HTMLInputElement | null
       if (file.name.toLowerCase().endsWith('.geourban')) {
         useProjectCrsStore.getState().loadConfig(project.crs);
       }
-
-      // Fase 2 (persistencia): el registro de capas se restaura ANTES de
-      // agregar los features, así resolveLayerId() (fallback para
-      // features sin layerId propio) resuelve contra las capas del
-      // proyecto que se está abriendo, no contra las que había antes.
       useLayersStore.getState().loadLayers(project.layers ?? [], project.activeLayerId ?? null);
 
       const features = readOlFeaturesFromProject(project);
@@ -71,8 +63,6 @@ export function useTopBarActions(fileInputRef: RefObject<HTMLInputElement | null
       await commandStack.run(new ClearFeaturesCommand());
       await commandStack.run(new AddFeaturesCommand(features));
 
-      // Reconciliación de huérfanos: layerId que no resuelven a ninguna
-      // capa del registro recién cargado se mueven a "Sin capa".
       const orphanCount = useLayersStore.getState().reconcileOrphanFeatures(features);
 
       refreshSourceMetrics(drawSource);

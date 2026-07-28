@@ -21,9 +21,6 @@ interface RoundaboutState {
   panelVisible: boolean;
 
   addRoundabout: (r: RoundaboutParams) => string;
-  /** Re-inserta una rotonda con un id específico — usado por
-   *  AddRoundaboutCommand.redo() para no perder la referencia al id
-   *  original entre un undo y su redo. */
   addRoundaboutWithId: (id: string, r: RoundaboutParams) => void;
   updateRoundabout: (id: string, patch: Partial<RoundaboutParams>) => void;
   removeRoundabout: (id: string) => void;

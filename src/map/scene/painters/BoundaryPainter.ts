@@ -12,23 +12,6 @@ import { useUiShellStore } from '../../../store/ui/uiShellStore'; // ← NUEVO
 import { measureCachedWidth } from '../../textMeasureCache';
 import { getFeatureKind } from '../../../core/objectModel';
 
-/**
- * Perímetro global de la "urbanización" — hoy no existe un feature real
- * de ese tipo en el modelo de datos, así que esto es una ENVOLVENTE
- * CONVEXA de todos los manzanos (o de los lotes, si no hay manzanos
- * todavía). Sirve como referencia visual de "Perímetro urb." / "Perímetro
- * georreferenciado" y sus cotas — no es una unión booleana exacta del
- * contorno real (eso requeriría un viaje al worker, no vale la pena en
- * un callback de postrender que corre por frame).
- *
- * Las distintas "capas" se gatean con el displayLayersStore:
- *   - perimUrb          → overlay 'urbanizacion' (visible + opacity)
- *   - perimGeo          → overlay 'georreferenciado'
- *   - cotasUrb          → urbanizacion.showCota
- *   - cotasGeo          → georreferenciado.showCota
- *   - etiquetasUrbNombre → urbanizacion.showLabel
- *   - etiquetasUrbSup   → urbanizacion.showLabel * showCota
- */
 export class BoundaryPainter {
   private cachedHull: Pt[] = [];
   private lastFingerprint = '';

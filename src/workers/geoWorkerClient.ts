@@ -20,12 +20,6 @@ function getBatchWorker(): Worker {
   return batchWorker;
 }
 
-/** Fase 6, punto 1 (H-LOT-11): antes un único Worker serializaba TODAS
- *  las operaciones — un "Generar todos" pesado bloqueaba la cola para
- *  el recompute puntual que dispara RotateLotsInteraction mientras el
- *  usuario arrastra. Ahora hay dos instancias del mismo script: una
- *  para ediciones interactivas de baja latencia y otra para batch/
- *  validación, que pueden correr en paralelo sin pisarse. */
 const INTERACTIVE_TYPES = new Set<GeoWorkerRequest['type']>([
   'subdivide',
   'subdivideManzano',
@@ -103,12 +97,6 @@ export async function computeManzanosInWorker(
   return response.manzanos;
 }
 
-/**
- * Subdivide un polígono (todas las variantes) en el worker — ver
- * diagnóstico H8. Si el worker rechaza (excepción real, no un `ok:false`
- * esperado de "no se pudo generar el preview"), la promesa se rechaza;
- * el llamador ya maneja ambos casos (ver SubdivisionDialog/SubdivideCommand).
- */
 export async function subdivideInWorker(
   polygon: GeoJsonPolygon,
   options: SubdivisionOptions,
@@ -140,8 +128,6 @@ export async function subdivideManzanoInWorker(
   return response.lots;
 }
 
-/** Subdivide TODOS los manzanos de una tanda en un solo viaje al worker
- *  (GenerateLotsCommand — "Generar lotes" sobre todo el proyecto). */
 export async function subdivideManzanoBatchInWorker(
   manzanos: Array<{
     id: string | number;

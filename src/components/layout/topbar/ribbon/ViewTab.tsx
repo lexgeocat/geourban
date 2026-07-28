@@ -34,8 +34,6 @@ export default function ViewTab() {
   return (
     <>
       <RibbonGroup label="Mapa base">
-        {/* FIX: antes iteraba Object.keys(BASE_MAP_DEFS) (un array) y el .find()
-            nunca matcheaba nada — el selector de mapa base no renderizaba. */}
         {BASE_MAP_DEFS.map((def) => {
           const icon =
             def.id === 'cad' ? <IconGrid /> :
@@ -53,9 +51,6 @@ export default function ViewTab() {
         <RibbonTool icon={<Settings2 />} label="Cotas" active={measurementsVisible} onClick={() => setMeasurementsVisible(!measurementsVisible)} />
       </RibbonGroup>
 
-      {/* Fase 6: atajo rápido para cambiar la capa activa sin abrir el
-          panel de Capas — las bloqueadas se muestran deshabilitadas
-          (mismo guard que layersRegistryStore.setActiveLayer). */}
       <RibbonGroup label="Capa activa">
         <div className="ribbon-inline-control" style={{ minWidth: 150 }}>
           <select
@@ -80,7 +75,6 @@ export default function ViewTab() {
         <RibbonTool icon={<IconLots />} label="Manzanos" active={manzanoPanelVisible} onClick={() => setManzanoPanelVisible(!manzanoPanelVisible)} />
         <RibbonTool icon={<IconRoundabout />} label="Rotondas" active={roundaboutPanelVisible} onClick={() => setRoundaboutPanelVisible(!roundaboutPanelVisible)} />
         <RibbonTool icon={<IconStreet />} label="Panel vías" active={streetPanelVisible} onClick={() => setStreetPanelVisible(!streetPanelVisible)} />
-        {/* eliminado: este botón "Panel vías" estaba duplicado dos veces en el original */}
         <RibbonTool
           icon={<IconCursor />} label="Propiedades" active={propsPanelVisible}
           onClick={() => useUiShellStore.getState().setPanelVisibility('properties', !propsPanelVisible)}

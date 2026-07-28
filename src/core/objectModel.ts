@@ -1,36 +1,6 @@
 import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
 
-/**
- * ─── Contrato de datos (Fase 1 — ver diagnostico-motores-lotizacion-vial.md, §4 y Fase 1) ───
- *
- * `kind` (GeoUrbanFeatureKind) es la ÚNICA fuente de verdad para identificar
- * el tipo de un feature de acá en más. El campo legado `type` (string libre
- * de versiones previas de GeoUrban) NUNCA debe escribirse desde código
- * nuevo, y solo se LEE dentro de `getFeatureKind()` — exclusivamente como
- * fallback para migrar en caliente proyectos `.geourban` guardados antes de
- * este cambio.
- *
- * `lotStatus` formaliza el contrato de "manzano lotizado" (Fase 1) y ahora
- * (Fase 4) también el resultado del recorte automático por trazado vial:
- *  - 'none': manzana virgen, nunca lotizada.
- *  - 'subdivided': tiene lotes hijos vivos (`lotGroupId === String(id)`).
- *  - 'pending': ESTUVO lotizada, una calle/rotonda nueva la recortó, y el
- *    motor vial no pudo (o no quiso, por ambigüedad) re-lotizarla sola —
- *    ver `recomputeManzanosImmediate` en mapStore.ts. Requiere que el
- *    usuario la regenere a mano desde ManzanoPanel.
- *
- * Reglas de mantenimiento (solo aplica a kind:'manzana'):
- *  - Nace 'none' (lo aplica `ensureKind` acá abajo).
- *  - `RecomputeManzanoLotsCommand` (acción manual del usuario) SIEMPRE
- *    resuelve a 'subdivided' o 'none' según el resultado real — nunca deja
- *    'pending' colgado tras una acción manual.
- *  - `recomputeManzanosImmediate` (automático, al trazar vías) es el único
- *    lugar que puede escribir 'pending'.
- *  - `ManzanoPanel.handleToggleEquip` la limpia a 'none' al volver de
- *    "equipamiento" a "manzana".
- */
-
 export type GeoUrbanFeatureKind =
   | 'lote'
   | 'manzana'
@@ -40,7 +10,6 @@ export type GeoUrbanFeatureKind =
   | 'linea'
   | 'texto'
   | 'cota'
-  // Fase 1 (plan de mejora de capas) — nuevos kinds del catálogo sugerido:
   | 'urbanizacion'
   | 'georreferenciado'
   | 'rotonda'
@@ -53,48 +22,18 @@ export interface Layer {
   name: string;
   kind: LayerKind;
   zIndex: number;
-  /** Color de contorno (trazo). */
   color: string;
-  /** Color de relleno. */
   fillColor: string;
   visible: boolean;
   locked: boolean;
   opacity: number;
-  /** Engranaje: ¿esta capa dibuja su etiqueta (nombre/número)? Solo se ve
-   *  si el master global "Etiquetas" también está activo. */
   showLabel: boolean;
-  /** Engranaje: ¿esta capa dibuja su acotación (longitudes/superficies)?
-   *  Solo se ve si el master global "Acotaciones" también está activo. */
   showCota: boolean;
-  /** Cómo se pinta el color de los features dentro de esta capa:
-   *  - 'solid': todos usan el `fillColor`/`color` de la capa (uniforme).
-   *  - 'colorIdx': cada feature usa su `colorIdx` propio (manzanos). */
   colorMode: 'solid' | 'colorIdx';
 }
 
-
-/**
- * Fase 1 (plan de mejora del sistema de capas — ver
- * `diagnostico-plan-sistema-capas.md`): el registro de capas YA NO nace
- * con capas de fábrica. Todo proyecto nuevo, y todo `layersRegistryStore`
- * recién inicializado, arranca en `[]` — la primera capa la crea el
- * usuario a mano, o el resolver obligatorio de capa (Fase 2/3) al
- * dibujar/generar la primera entidad.
- *
- * Se mantiene el símbolo exportado por compatibilidad con los
- * import-sites históricos (`layersRegistryStore`, `io/types.ts`), pero
- * su valor es intencionalmente `[]`. NO restaurar contenido acá: el
- * catálogo "de fábrica" fue reemplazado por `LAYER_SUGGESTIONS` (abajo),
- * que es solo un catálogo de PLANTILLAS para prellenar el formulario de
- * "crear capa nueva" — nunca se auto-siembra.
- */
 export const DEFAULT_LAYERS: Layer[] = [];
 
-/** Plantilla de sugerencia para el flujo "crear capa nueva" (Fase 2).
- *  No es un `Layer` real — le faltan `id`/`zIndex`/`visible`/`locked`/
- *  `opacity`/`showLabel`/`showCota`, que se generan recién al confirmar
- *  la creación. `geometryHint` es solo informativo para la UI (ícono/
- *  etiqueta de tipo de geometría en el selector de capas). */
 export interface LayerSuggestion {
   kind: GeoUrbanFeatureKind;
   name: string;
@@ -104,18 +43,6 @@ export interface LayerSuggestion {
   geometryHint: 'polygon' | 'line' | 'point';
 }
 
-/**
- * Catálogo sugerido de capas (6 polígono, 2 línea, 1 punto). Colores
- * elegidos para no colisionar entre sí y, donde ya existía una
- * convención visual en el resto de la app, para ser consistentes con
- * ella:
- *   - 'urbanizacion' / 'georreferenciado': mismos colores que ya usa
- *     `BoundaryPainter` para pintar esos contornos.
- *   - 'rotonda': mismo coral/salmón que ya usan `RoundaboutPainter` y
- *     `RoundaboutPanel`.
- *   - 'manzana' / 'lote' / 'calle' / 'equipamiento' / 'area_verde':
- *     mismos colores que tenían las 5 capas de fábrica históricas.
- */
 export const LAYER_SUGGESTIONS: LayerSuggestion[] = [
   { kind: 'urbanizacion', name: 'Urbanización', color: '#00d4ff', fillColor: '#00d4ff', colorMode: 'solid', geometryHint: 'polygon' },
   { kind: 'georreferenciado', name: 'Georreferenciado', color: '#10b981', fillColor: '#10b981', colorMode: 'solid', geometryHint: 'polygon' },
@@ -128,21 +55,11 @@ export const LAYER_SUGGESTIONS: LayerSuggestion[] = [
   { kind: 'vert_geo', name: 'Vert_Geo', color: '#eab308', fillColor: '#eab308', colorMode: 'solid', geometryHint: 'point' },
 ];
 
-/** Busca la sugerencia de catálogo para un `kind` dado — la usará el
- *  resolver de capas (Fase 2) para prellenar nombre/color al crear una
- *  capa nueva. `undefined` para kinds sin sugerencia predefinida (ej.
- *  'linea', 'texto', 'cota'). */
 export function getLayerSuggestion(kind: GeoUrbanFeatureKind): LayerSuggestion | undefined {
   return LAYER_SUGGESTIONS.find((s) => s.kind === kind);
 }
 
-
-/** Capa de fallback creada on-demand al reconciliar features cuyo
- *  `layerId` no resuelve a ninguna capa del registro (proyecto importado
- *  con capas custom que ya no existen) — ver
- *  `layersRegistryStore.reconcileOrphanFeatures`. */
 export const UNASSIGNED_LAYER_ID = 'unassigned';
-
 
 export function createUnassignedLayer(zIndex: number): Layer {
   return {
@@ -179,7 +96,6 @@ export interface LoteProps extends BaseFeatureProps {
   subdivisionMethod?: string;
 }
 
-/** Estado de lotización de un feature `kind: 'manzana'` (Fase 1 + Fase 4). */
 export type LotStatus = 'none' | 'subdivided' | 'pending';
 
 export interface ManzanaProps extends BaseFeatureProps {

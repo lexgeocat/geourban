@@ -77,7 +77,6 @@ export default function AppMenu({ actions }: { actions: AppMenuActions }) {
             <span className="app-menu-shortcut">Ctrl+O</span>
           </button>
 
-          {/* NUEVO: antes handleOpenProjectBrowser existía pero ningún botón lo llamaba */}
           <button role="menuitem" className="app-menu-item" onClick={() => runAndClose(actions.onOpenProjectBrowser)}>
             <FolderOpen />
             <span>Abrir proyecto…</span>
@@ -113,16 +112,12 @@ export default function AppMenu({ actions }: { actions: AppMenuActions }) {
               </div>
             )}
           </div>
-
           <div className="app-menu-divider" />
-
           <button role="menuitem" className="app-menu-item" onClick={() => runAndClose(actions.onAbout)}>
             <Info />
             <span>Acerca de GeoUrban</span>
           </button>
-
           <div className="app-menu-divider" />
-
           <button role="menuitem" className="app-menu-item danger" onClick={() => runAndClose(actions.onExit)}>
             <LogOut />
             <span>Salir</span>

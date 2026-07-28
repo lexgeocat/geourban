@@ -1,8 +1,6 @@
 import type { LassoPreview } from '../LassoSelection';
 import type { Pt } from '../../../geo/math/polygonEngine';
 
-/** Overlays efímeros: preview de selección rect/lazo y preview de
- *  subdivisión. Extraído de PostrenderPainter (Fase 5). */
 export class OverlayPainter {
   private currentLassoPreview: LassoPreview = null;
   private currentSubdivisionPreview: Pt[][] | null = null;

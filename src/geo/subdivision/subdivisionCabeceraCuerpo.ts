@@ -40,10 +40,6 @@ function minAreaBoundingQuad(pts: Pt[]): Pt[] {
   return corners.map(([rx, ry]) => [rx * cs - ry * sn, rx * sn + ry * cs] as Pt);
 }
 
-// Reduce el contorno real (con ochave tesselado) a sus 4 esquinas "vivas",
-// para poder orientar la cabecera/cuerpo según el rectángulo real del
-// manzano en vez de su envolvente. Si no da un cuadrilátero limpio, cae al
-// rectángulo de área mínima.
 function unfilletManzano(ringIn: Pt[]): Pt[] {
   const pts = ringIn.slice();
   if (pts.length > 1) {
@@ -88,8 +84,6 @@ function unfilletManzano(ringIn: Pt[]): Pt[] {
     runs.push({ s: [sp[0], sp[1]], e: [ep[0], ep[1]], len: L, dir: [dx / dl, dy / dl] });
   }
 
-  // Heurística: descarta las corridas cortas (cuerdas de un ochave tesselado)
-  // para quedarse solo con los 4 lados "reales" del manzano.
   const MAX_FILLET_R = 8;
   const arcChord = 2 * MAX_FILLET_R * Math.sin(0.18 / 2);
   const LMIN = Math.max(1.0, arcChord * 1.6);
@@ -287,9 +281,6 @@ function hbFitBodyRows(
   return Math.max(1, cap);
 }
 
-// ─── Motor principal: lotiza a lo largo de un eje "baseline" (u = fondo,
-// v = frente), con cabecera en ambas puntas y cuerpo a doble frente ──────
-
 interface HbLot { pts: Pt[]; area: number; zone: string; isRemainder: boolean; }
 
 function hbLotizeWithBaseline(mznPts: Pt[], cfg: HbConfig, baseline: [Pt, Pt]): HbLot[] {
@@ -354,9 +345,6 @@ function hbLotizeWithBaseline(mznPts: Pt[], cfg: HbConfig, baseline: [Pt, Pt]): 
     const vMinZ = Math.min(...zonePoly.map(vKey)), vMaxZ = Math.max(...zonePoly.map(vKey));
     const vSpanZ = vMaxZ - vMinZ;
 
-    // Divisor de columna: si ambos bordes (uA/uB) matchean con >=2 vértices,
-    // sigue el sesgo real del manzano (esquinas no perpendiculares al eje);
-    // si no, cae a un corte paralelo a "v".
     const dividerAt = (f: number): { nx: number; ny: number; d: number } => {
       if (!skewOk) return { nx: vx, ny: vy, d: vMinZ + f * vSpanZ };
       const pt = lerp(topLo!, topHi!, f), pb = lerp(botLo!, botHi!, f);
@@ -518,8 +506,6 @@ function hbLotizeWithBaseline(mznPts: Pt[], cfg: HbConfig, baseline: [Pt, Pt]): 
   return lots;
 }
 
-// Fusiona un lote de cabecera "remanente" (área < 80% del objetivo) con su
-// vecino de cabecera con mayor borde compartido, para no dejar recortes feos.
 function hbMergeHeadRemainders(lots: HbLot[], targetLotArea: number): HbLot[] {
   if (!targetLotArea || targetLotArea <= 0) return lots;
   const THRESHOLD = 0.8;
@@ -602,8 +588,6 @@ export function subdivideManzanoCabeceraCuerpo(
   raw = raw.filter((l) => l.area >= 0.5);
 
   return raw.map((l): LotResult => {
-    // frontM/depthM son solo informativos (para etiquetas/exportación);
-    // la geometría real es exacta, esto es una aproximación por bbox.
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
     for (const p of l.pts) {
       if (p[0] < minX) minX = p[0]; if (p[0] > maxX) maxX = p[0];

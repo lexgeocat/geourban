@@ -1,19 +1,3 @@
-// src/io/projectStore.ts
-//
-// Fase 5: persistencia unificada Desktop + Web (resuelve H15).
-//
-// Antes: Dexie (autosave, siempre) + sql.js en memoria (Gestor de
-// Proyectos, solo Tauri, nunca persistía a disco) — dos backends
-// desincronizados que nunca se veían entre sí.
-//
-// Ahora: UNA interfaz (`ProjectStore`) con dos implementaciones:
-//   - IndexedDbProjectStore → Web (Dexie/IndexedDB)
-//   - TauriSqlProjectStore  → Desktop (@tauri-apps/plugin-sql, SQLite real)
-//
-// sql.js queda reservado EXCLUSIVAMENTE para leer/escribir .gpkg
-// (io/gpkg.ts) — no debe volver a usarse como motor de persistencia de
-// proyectos.
-
 import Dexie, { type Table } from 'dexie';
 import type Database from '@tauri-apps/plugin-sql';
 import type { GeoUrbanProject } from './types';
@@ -61,14 +45,9 @@ class GeoUrbanDB extends Dexie {
 
   constructor() {
     super('GeoUrbanDB');
-    // v1 (legado): el autosave viejo pisaba siempre "la última fila" sin
-    // importar qué proyecto estuviera abierto. Se mantiene para que Dexie
-    // pueda migrar en caliente las bases ya existentes en el navegador.
     this.version(1).stores({
       projects: '++id, name, updatedAt, savedAt',
     });
-    // v2 (Fase 5): cada proyecto es su propia fila con identidad estable;
-    // el autosave ahora sabe a qué id pertenece (ver useCurrentProjectStore).
     this.version(2).stores({
       projects: '++id, name, updatedAt',
     });
@@ -124,12 +103,6 @@ class IndexedDbProjectStore implements ProjectStore {
     await this.db.projects.update(id, { thumbnail: thumbnailDataUrl });
   }
 }
-
-// ────────────────────────────────────────────────────────────────────
-// Desktop: SQLite real vía @tauri-apps/plugin-sql (reemplaza el sql.js
-// en memoria de la versión anterior — ver H15). El archivo vive en el
-// directorio de datos de la app y sobrevive a reinicios.
-// ────────────────────────────────────────────────────────────────────
 
 class TauriSqlProjectStore implements ProjectStore {
   private dbPromise: Promise<Database> | null = null;

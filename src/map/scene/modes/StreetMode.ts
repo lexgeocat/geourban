@@ -37,16 +37,6 @@ export function activateStreet(ctx: ModeContext): void {
 
   draw.on('drawend', (event) => {
     const feature = event.feature as Feature<Geometry>;
-    // ol/interaction/Draw agrega el sketch a `streetSource` SIEMPRE, antes
-    // de disparar este evento. Si cualquiera de las validaciones de abajo
-    // corta el flujo temprano (geometría degenerada, confirmación
-    // cancelada), el feature tiene que salir igual — si no, queda una
-    // feature "fantasma" en streetSource que OL sigue dibujando con su
-    // estilo por defecto (streetLayer confía en que streetSource esté
-    // siempre vacío entre trazos, ver DrawLayerRenderer.ts). Esa era la
-    // "línea de más" que aparecía al trazar, y ni "Limpiar vías" ni
-    // Deshacer la sacaban porque ninguno de los dos toca streetSource
-    // (solo tocan streetStore, que es un store aparte).
     try {
       const geom = feature.getGeometry();
       if (!geom || !(geom instanceof LineString)) return;

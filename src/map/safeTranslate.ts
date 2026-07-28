@@ -25,19 +25,9 @@ export class TranslateEvent extends BaseEvent {
 
 export interface SafeTranslateOptions {
   features: Collection<Feature<Geometry>>;
-  /** Tolerancia de hit-test en píxeles (se convierte a unidades de mapa
-   *  con la resolución vigente en cada evento). */
   hitTolerance?: number;
 }
 
-/**
- * Traslada las features seleccionadas por arrastre. Antes necesitaba una
- * capa de render dedicada (`hitDetectionLayer`, la `measurementLayer`
- * invisible) solo para que `map.forEachFeatureAtPixel` tuviera dónde
- * buscar — ver diagnóstico H2. Ahora el hit-test corre directo contra
- * las geometrías de `features` (el propio conjunto ya seleccionado,
- * típicamente unas pocas), sin depender de ningún layer.
- */
 export default class SafeTranslate extends Interaction {
   declare on: TranslateOnSignature<EventsKey>;
   declare once: TranslateOnSignature<EventsKey>;
