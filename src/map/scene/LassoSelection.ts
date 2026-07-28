@@ -131,7 +131,7 @@ export class LassoSelection extends Interaction {
       this.onComplete({ kind: 'lasso', polygon: poly });
       return false;
     }
-    if (type === 'pointercancel' || (type === 'pointerup' && !this.dragging_)) {
+    if (type === 'pointercancel' || (type === 'pointerup' && !this.dragging_ && this.anchor)) {
       if (this.anchor) this.onCancel();
       this.anchor = null;
       this.current_ = null;
@@ -140,6 +140,9 @@ export class LassoSelection extends Interaction {
       this.hostMap.getViewport().style.cursor = '';
       this.hostMap.render();
       return false;
+    }
+    if (type === 'pointerup' && !this.dragging_ && !this.anchor) {
+      return true;
     }
     return true;
   }
