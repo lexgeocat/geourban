@@ -28,7 +28,7 @@ export interface RecomputeManzanoLotsOpts {
   frontMinM: number;
   method: ManzanoLoteMethod;
   dirPref?: { ax: number; ay: number };
-  layerId?: string;
+  layerId: string;
 }
 
 export class RecomputeManzanoLotsCommand extends Command {

@@ -40,6 +40,7 @@ import { useSubdivisionPreviewStore } from '../store/ui/subdivisionPreviewStore'
 import { useStreetStore } from '../store/entities/streetStore';
 import { useRoadCornerStore } from '../store/map/roadCornerStore';
 import { reapplyRoadCornerMode } from '../geo/recomputeManzanos';
+import { requireLayerForKind } from '../store/ui/layerPickerStore';
 
 export default function MapView() {
   const mapDivRef = useRef<HTMLDivElement>(null);
@@ -347,9 +348,13 @@ const rotateLotsInteraction = new RotateLotsInteraction(map, (id, dir) => {
     const ring = ((geom.getCoordinates()[0] ?? []) as number[][]).map((c) => [c[0], c[1]] as [number, number]);
     setGeomSnapshot(id, { area: polyArea(ring), perimeter: ringPerimeter(ring), centroid: centroid(ring) });
   }
-  void runCommand(
-    new RecomputeManzanoLotsCommand({ manzanoId: id, targetAreaM2, frontMinM, method: getMethod(id), dirPref: dir }),
-  );
+  void (async () => {
+    const layerId = await requireLayerForKind('lote');
+    if (!layerId) return; // cancelado — no se regeneran lotes sin capa asignada
+    void runCommand(
+      new RecomputeManzanoLotsCommand({ manzanoId: id, targetAreaM2, frontMinM, method: getMethod(id), dirPref: dir, layerId }),
+    );
+  })();
 });
 rotateLotsInteractionRef.current = rotateLotsInteraction;
 rotateLotsCleanupRef.current = rotateLotsInteraction.install();

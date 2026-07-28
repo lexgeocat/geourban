@@ -17,7 +17,7 @@ export interface SubdivideCommandOpts {
   targetId: string | number;
   options: SubdivisionOptions;
   targetGeom?: GeoJsonPolygon | null;
-  layerId?: string;
+  layerId: string;
 }
 
 interface RemovedTargetSnapshot {

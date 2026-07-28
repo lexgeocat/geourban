@@ -106,14 +106,14 @@ const IconPointKind = () => (
 );
 
 function geometryIconForKind(kind: LayerKind) {
-  if (kind === 'calle' || kind === 'linea' || kind === 'cota') return <IconLineKind />;
-  if (kind === 'texto') return <IconPointKind />;
+  if (kind === 'calle' || kind === 'linea' || kind === 'cota' || kind === 'rotonda') return <IconLineKind />;
+  if (kind === 'texto' || kind === 'vert_geo') return <IconPointKind />;
   return <IconPolygonKind />;
 }
 
 function geometryLabelForKind(kind: LayerKind): string {
-  if (kind === 'calle' || kind === 'linea' || kind === 'cota') return 'línea';
-  if (kind === 'texto') return 'punto';
+  if (kind === 'calle' || kind === 'linea' || kind === 'cota' || kind === 'rotonda') return 'línea';
+  if (kind === 'texto' || kind === 'vert_geo') return 'punto';
   return 'polígono';
 }
 

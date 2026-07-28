@@ -22,7 +22,7 @@ const CHUNK_SIZE = 8;
 export interface GenerateLotsOpts {
   targetAreaM2: number;
   frontMinM: number;
-  layerId?: string;
+  layerId: string;
 }
 
 interface ManzanoBatchInput {

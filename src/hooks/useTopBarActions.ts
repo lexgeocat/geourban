@@ -286,11 +286,13 @@ export function useTopBarActions(fileInputRef: RefObject<HTMLInputElement | null
       alert('No hay manzanos para subdividir. Trazá calles primero para generar manzanos.');
       return;
     }
+    const layerId = await requireLayerForKind('lote');
+    if (!layerId) return; // cancelado — no se generan lotes sin capa asignada
     setLotsBusy(true);
     try {
       const result = await useCommandStack
         .getState()
-        .run(new GenerateLotsCommand({ targetAreaM2: 250, frontMinM: 12 }));
+        .run(new GenerateLotsCommand({ targetAreaM2: 250, frontMinM: 12, layerId }));
       if (!result.ok) {
         alert(result.error);
         return;

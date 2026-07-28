@@ -194,8 +194,15 @@ function collectOriginGroups(src: VectorSource): {
   return { groups, lotsByGroupId };
 }
 
-function resolveManzanaLayerId(): string | undefined {
+function resolveManzanaLayerId(originMembers?: Array<Feature<Geometry>>): string | undefined {
   const reg = useLayersStore.getState();
+  if (originMembers) {
+    for (const m of originMembers) {
+      const lid = m.get('layerId') as string | undefined;
+      const layer = lid ? reg.getById(lid) : undefined;
+      if (layer && !layer.locked) return layer.id;
+    }
+  }
   if (reg.activeLayerId) {
     const active = reg.getById(reg.activeLayerId);
     if (active && !active.locked) return active.id;
@@ -203,9 +210,12 @@ function resolveManzanaLayerId(): string | undefined {
   const match = reg.getLayerForKind('manzana');
   return match && !match.locked ? match.id : undefined;
 }
-
-function resolveLoteLayerId(): string | undefined {
+function resolveLoteLayerId(preferredLayerId?: string): string | undefined {
   const reg = useLayersStore.getState();
+  if (preferredLayerId) {
+    const preferred = reg.getById(preferredLayerId);
+    if (preferred && !preferred.locked) return preferred.id;
+  }
   if (reg.activeLayerId) {
     const active = reg.getById(reg.activeLayerId);
     if (active && !active.locked) return active.id;
@@ -433,7 +443,7 @@ async function recomputeManzanosImmediate(): Promise<void> {
     );
   }
 
-  const relotTasks: Array<{ featureId: string; method: ManzanoLoteMethod; dirPref?: { ax: number; ay: number } }> = [];
+  const relotTasks: Array<{ featureId: string; method: ManzanoLoteMethod; dirPref?: { ax: number; ay: number }; layerId?: string }> = [];
 
   for (let idx = 0; idx < parcelIndexToGroup.length; idx++) {
     const group = parcelIndexToGroup[idx];
@@ -502,6 +512,7 @@ async function recomputeManzanosImmediate(): Promise<void> {
         const wasSubdivided = getLotStatus(reused) === 'subdivided';
         const oldLots = lotsByGroupId.get(String(reusedId));
         if (oldLots && oldLots.length > 0) {
+          const prevLotLayerId = oldLots[0]?.get('layerId') as string | undefined;
           for (const lot of oldLots) {
             if (src.getFeatureById(lot.getId() as string | number) != null) src.removeFeature(lot);
           }
@@ -510,6 +521,7 @@ async function recomputeManzanosImmediate(): Promise<void> {
               featureId: String(reusedId),
               method: useManzanoStore.getState().getMethod(reusedId),
               dirPref: useManzanoStore.getState().getRotateDir(reusedId),
+              layerId: prevLotLayerId,
             });
           } else {
             setLotStatus(reused, 'none');
@@ -532,7 +544,7 @@ async function recomputeManzanosImmediate(): Promise<void> {
           'manzana',
         ),
       );
-      const lid = resolveManzanaLayerId();
+      const lid = resolveManzanaLayerId(group.members);
       if (lid) newFeat.set('layerId', lid);
       src.addFeature(newFeat);
       updateFeatureMetrics(newFeat as Feature<Geometry>);
@@ -580,7 +592,7 @@ async function recomputeManzanosImmediate(): Promise<void> {
             'lote',
           ),
         );
-        const lotLid = resolveLoteLayerId();
+        const lotLid = resolveLoteLayerId(task.layerId);
         if (lotLid) lotFeat.set('layerId', lotLid);
         src.addFeature(lotFeat);
         updateFeatureMetrics(lotFeat as Feature<Geometry>);

@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Modal } from '../ui/Modal';
 import { useLayerPickerStore } from '../../store/ui/layerPickerStore';
 import { useLayersStore } from '../../store/entities/layersRegistryStore';
-import type { GeoUrbanFeatureKind } from '../../core/objectModel';
+import { UNASSIGNED_LAYER_ID, type GeoUrbanFeatureKind } from '../../core/objectModel';
 
 const KIND_LABELS: Partial<Record<GeoUrbanFeatureKind, string>> = {
   lote: 'Lote / parcela',
@@ -38,7 +38,8 @@ export default function LayerResolverModal() {
   useEffect(() => {
     if (!pending) return;
     const suggestion = pending.suggestion;
-    setTab(layers.length > 0 ? 'existing' : 'create');
+    const selectableCount = layers.filter((l) => l.id !== UNASSIGNED_LAYER_ID).length;
+    setTab(selectableCount > 0 ? 'existing' : 'create');
     setName(suggestion?.name ?? (KIND_LABELS[pending.kind] ?? 'Nueva capa'));
     setColor(suggestion?.color ?? '#58a6ff');
     setFillColor(suggestion?.fillColor ?? suggestion?.color ?? '#58a6ff');
@@ -46,11 +47,13 @@ export default function LayerResolverModal() {
 
   const sorted = useMemo(() => {
     if (!pending) return [];
-    return [...layers].sort((a, b) => {
-      const aMatch = a.kind === pending.kind ? 0 : 1;
-      const bMatch = b.kind === pending.kind ? 0 : 1;
-      return aMatch - bMatch;
-    });
+    return [...layers]
+      .filter((l) => l.id !== UNASSIGNED_LAYER_ID)
+      .sort((a, b) => {
+        const aMatch = a.kind === pending.kind ? 0 : 1;
+        const bMatch = b.kind === pending.kind ? 0 : 1;
+        return aMatch - bMatch;
+      });
   }, [layers, pending]);
 
   if (!pending) return null;
@@ -87,7 +90,7 @@ export default function LayerResolverModal() {
             fontSize: '0.72rem', fontWeight: 600, cursor: 'pointer',
           }}
         >
-          Elegir existente {layers.length > 0 ? `(${layers.length})` : ''}
+          Elegir existente {sorted.length > 0 ? `(${sorted.length})` : ''}
         </button>
         <button
           type="button"
