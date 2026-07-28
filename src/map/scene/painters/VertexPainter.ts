@@ -18,7 +18,7 @@ export class VertexPainter {
 
     for (const feature of features) {
       const kind = getFeatureKind(feature);
-      if (kind !== 'lote' && kind !== 'manzana') continue;
+      if (kind !== 'lote' && kind !== 'manzana' && kind !== 'perimetro') continue;
       const geom = feature.getGeometry();
       if (!(geom instanceof Polygon)) continue;
       const ring = geom.getCoordinates()[0];

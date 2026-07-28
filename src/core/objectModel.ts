@@ -13,7 +13,8 @@ export type GeoUrbanFeatureKind =
   | 'urbanizacion'
   | 'georreferenciado'
   | 'rotonda'
-  | 'vert_geo';
+  | 'vert_geo'
+  | 'perimetro';
 
 export type LayerKind = GeoUrbanFeatureKind;
 
@@ -44,6 +45,7 @@ export interface LayerSuggestion {
 }
 
 export const LAYER_SUGGESTIONS: LayerSuggestion[] = [
+  { kind: 'perimetro', name: 'Perímetro', color: '#f0f6fc', fillColor: '#f0f6fc', colorMode: 'solid', geometryHint: 'polygon' },
   { kind: 'urbanizacion', name: 'Urbanización', color: '#00d4ff', fillColor: '#00d4ff', colorMode: 'solid', geometryHint: 'polygon' },
   { kind: 'georreferenciado', name: 'Georreferenciado', color: '#10b981', fillColor: '#10b981', colorMode: 'solid', geometryHint: 'polygon' },
   { kind: 'manzana', name: 'Manzano', color: '#f59e0b', fillColor: '#f59e0b', colorMode: 'colorIdx', geometryHint: 'polygon' },
@@ -124,6 +126,12 @@ export interface LineaProps extends BaseFeatureProps {
   kind: 'linea';
 }
 
+export interface PerimetroProps extends BaseFeatureProps {
+  kind: 'perimetro';
+  areaM2?: number;
+  perimeterM?: number;
+}
+
 export interface TextoProps extends BaseFeatureProps {
   kind: 'texto';
   text: string;
@@ -144,11 +152,12 @@ export type GeoUrbanFeatureProps =
   | AreaVerdeProps
   | LineaProps
   | TextoProps
-  | CotaProps;
+  | CotaProps
+  | PerimetroProps;
 
 const KNOWN_KINDS: ReadonlySet<GeoUrbanFeatureKind> = new Set<GeoUrbanFeatureKind>([
   'lote', 'manzana', 'calle', 'equipamiento', 'area_verde', 'linea', 'texto', 'cota',
-  'urbanizacion', 'georreferenciado', 'rotonda', 'vert_geo',
+  'urbanizacion', 'georreferenciado', 'rotonda', 'vert_geo', 'perimetro',
 ]);
 
 export function isGeoUrbanFeatureKind(value: unknown): value is GeoUrbanFeatureKind {

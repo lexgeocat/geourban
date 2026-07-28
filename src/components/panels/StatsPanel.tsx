@@ -53,6 +53,9 @@ function computeStats(drawSource: any, streets: any[]): StatsData {
   drawSource.forEachFeature((f: Feature<Geometry>) => {
     const geom = f.getGeometry();
     if (!geom || geom.getType() !== 'Polygon') return;
+    const kind = getFeatureKind(f);
+    if (kind === 'perimetro') return; // referencia intacta — no forma parte de las métricas operativas
+
     const coords = (geom as Polygon).getCoordinates();
     if (!coords[0] || coords[0].length < 4) return;
     const pts: Pt[] = coords[0].map((c: number[]) => [c[0], c[1]]);
@@ -60,7 +63,6 @@ function computeStats(drawSource: any, streets: any[]): StatsData {
 
     result.totalAreaM2 += area;
 
-    const kind = getFeatureKind(f);
     const isManzana = kind === 'manzana';
     const isLot = f.get('subdivision') || f.get('label')?.startsWith('Lote');
     const isEquip = kind === 'equipamiento';

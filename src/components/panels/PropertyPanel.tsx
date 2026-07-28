@@ -104,6 +104,7 @@ export default function PropertyPanel() {
   const feat = drawSource.getFeatureById(primaryId) as any;
   if (!feat) return null;
 
+  const featureKind = getFeatureKind(feat);
   const areaM2 = feat.get('areaM2') as number | undefined;
   const perimeterM = feat.get('perimeterM') as number | undefined;
   const lengthM = feat.get('lengthM') as number | undefined;
@@ -190,11 +191,15 @@ export default function PropertyPanel() {
 
         {/* Acciones rapidas */}
         <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 4 }}>
-          {isPolygon && (
+          {isPolygon && featureKind === 'perimetro' && (
+            <p style={{ fontSize: '0.65rem', color: 'var(--cad-text-muted)', fontStyle: 'italic' }}>
+              Este es el perímetro del sitio (referencia intacta). Trazá calles para generar manzanos.
+            </p>
+          )}
+          {isPolygon && featureKind !== 'perimetro' && (
             <button
               onClick={() => {
-                const kind = getFeatureKind(feat);
-                if (kind === 'manzana') {
+                if (featureKind === 'manzana') {
                   const { targetAreaM2, frontMinM } = useManzanoStore.getState();
                   openSubdivision(primaryId, 'auto', { targetAreaM2, frontMinM });
                 } else {

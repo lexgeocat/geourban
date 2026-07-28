@@ -266,7 +266,12 @@ export function useTopBarActions(fileInputRef: RefObject<HTMLInputElement | null
     const src = useMapStore.getState().drawSource;
     const feat = src?.getFeatureById(primaryId) as any;
     const openSubdivision = useSubdivisionStore.getState().open;
-    if (feat && getFeatureKind(feat) === 'manzana') {
+    const kind = feat ? getFeatureKind(feat) : null;
+    if (kind === 'perimetro') {
+      alert('El perímetro es la referencia intacta del sitio y no se subdivide directamente. Trazá calles para generar manzanos, o seleccioná un manzano.');
+      return;
+    }
+    if (feat && kind === 'manzana') {
       const { targetAreaM2, frontMinM } = useManzanoStore.getState();
       openSubdivision(primaryId, 'auto', { targetAreaM2, frontMinM });
     } else {

@@ -141,6 +141,50 @@ function roundaboutApproxExtent(r: Roundabout): Extent {
   return [r.center[0] - half, r.center[1] - half, r.center[0] + half, r.center[1] + half];
 }
 
+const PERIMETER_WORKING_SUFFIX = '__working';
+
+/**
+ * El perímetro (kind 'perimetro') es la referencia intacta del límite del
+ * sitio: nunca se lee ni se modifica en este pipeline. Antes de recalcular,
+ * garantizamos que exista una COPIA de trabajo (kind 'lote') por cada
+ * perímetro — esa copia es la que se corta contra la red vial y termina
+ * fragmentada en manzanos. Es idempotente: si la copia ya existe (o ya
+ * derivó en manzano/s con el mismo id), no hace nada.
+ */
+function ensurePerimeterWorkingCopies(src: VectorSource): void {
+  const perimetros: Array<Feature<Geometry>> = [];
+  src.forEachFeature((f) => {
+    if (getFeatureKind(f as Feature<Geometry>) === 'perimetro') {
+      perimetros.push(f as Feature<Geometry>);
+    }
+  });
+
+  for (const perim of perimetros) {
+    const perimId = perim.getId();
+    if (perimId == null) continue;
+    const workingId = `${perimId}${PERIMETER_WORKING_SUFFIX}`;
+    if (src.getFeatureById(workingId) != null) continue;
+
+    const geom = perim.getGeometry();
+    if (!(geom instanceof PolygonGeom)) continue;
+
+    const working = new Feature({ geometry: geom.clone() });
+    working.setId(workingId);
+    working.setProperties(
+      ensureKind(
+        {
+          label: (perim.get('label') as string | undefined) ?? 'Parcela',
+          perimeterSourceId: String(perimId),
+        },
+        'lote',
+      ),
+    );
+    working.set('layerId', resolveLoteLayerId(), true);
+    src.addFeature(working);
+    updateFeatureMetrics(working as Feature<Geometry>);
+  }
+}
+
 interface OriginGroup {
   origId: string;
   origPts: Pt[];
@@ -272,6 +316,11 @@ async function recomputeManzanosImmediate(): Promise<void> {
   const streets = useStreetStore.getState().streets;
   const roundabouts = useRoundaboutStore.getState().roundabouts;
   if (streets.length === 0 && roundabouts.length === 0) return;
+
+  // Antes de tocar nada: aseguramos la copia de trabajo de cada perímetro.
+  // De acá en adelante el pipeline solo ve/toca esas copias — el feature
+  // 'perimetro' original nunca se lee más abajo de este punto.
+  ensurePerimeterWorkingCopies(src);
 
   const { groups, lotsByGroupId } = collectOriginGroups(src);
   if (groups.size === 0) return;

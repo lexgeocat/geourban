@@ -12,6 +12,7 @@ import { AddFeatureCommand } from '../../../commands/features/AddFeatureCommand'
 import { updateFeatureMetrics } from '../../../geo/metrics';
 import { createLiveDrawingLabelStyle } from '../../styleFactory';
 import { requireLayerForKind } from '../../../store/ui/layerPickerStore';
+import { resolveOrCreateLayerForKind } from '../../../store/entities/layerAutoCreate';
 import type { ModeContext } from './ModeContext';
 
 export function activatePolygon(ctx: ModeContext): void {
@@ -95,6 +96,24 @@ export function activatePolygon(ctx: ModeContext): void {
   draw.on('drawend', (event) => {
     const feature = event.feature as Feature<Geometry>;
     const areaKind = useDrawStore.getState().areaKind;
+
+    // Dibujar en modo "lote" con Polígono/Rectángulo = definir el
+    // PERÍMETRO del sitio. Va siempre a su propia capa "Perímetro"
+    // (nunca a la capa activa de otro tipo) y queda intacto: el pipeline
+    // de manzanos/vías trabaja sobre una copia de trabajo, nunca sobre
+    // este feature (ver ensurePerimeterWorkingCopies en recomputeManzanos.ts).
+    if (areaKind === 'lote') {
+      const layerId = resolveOrCreateLayerForKind('perimetro');
+      void (async () => {
+        await runCommand(
+          new AddFeatureCommand(feature, { mode: 'claim', label: 'Dibujar perímetro', kind: 'perimetro', layerId }),
+        );
+        updateFeatureMetrics(feature);
+        ctx.refreshLayers();
+      })();
+      return;
+    }
+
     void (async () => {
       const layerId = await requireLayerForKind(areaKind);
       if (!layerId) {

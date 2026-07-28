@@ -7,6 +7,7 @@ import { runCommand } from '../../../commands/core/CommandStack';
 import { AddFeatureCommand } from '../../../commands/features/AddFeatureCommand';
 import { updateFeatureMetrics } from '../../../geo/metrics';
 import { requireLayerForKind } from '../../../store/ui/layerPickerStore';
+import { resolveOrCreateLayerForKind } from '../../../store/entities/layerAutoCreate';
 import type { ModeContext } from './ModeContext';
 
 export function activateRectangle(ctx: ModeContext): void {
@@ -23,6 +24,20 @@ export function activateRectangle(ctx: ModeContext): void {
   draw.on('drawend', (event) => {
      const feature = event.feature as Feature<Geometry>;
      const areaKind = useDrawStore.getState().areaKind;
+
+     // Mismo criterio que PolygonMode: rectángulo en modo "lote" = perímetro.
+     if (areaKind === 'lote') {
+       const layerId = resolveOrCreateLayerForKind('perimetro');
+       void (async () => {
+         await runCommand(
+           new AddFeatureCommand(feature, { mode: 'claim', label: 'Dibujar perímetro', kind: 'perimetro', layerId }),
+         );
+         updateFeatureMetrics(feature);
+         ctx.refreshLayers();
+       })();
+       return;
+     }
+
      void (async () => {
       const layerId = await requireLayerForKind(areaKind);
       if (!layerId) {
