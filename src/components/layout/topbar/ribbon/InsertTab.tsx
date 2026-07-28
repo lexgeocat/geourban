@@ -5,7 +5,7 @@ import { useStreetStore } from '../../../../store/entities/streetStore';
 import { useRoundaboutStore } from '../../../../store/entities/roundaboutStore';
 import { useGenerateLotsProgressStore } from '../../../../store/ui/generateLotsProgressStore';
 import { RibbonGroup, RibbonTool } from '../RibbonPrimitives';
-import { IconPolygon, IconLine, IconRect, IconGreen, IconEquip, IconStreet, IconRoundabout, IconSubdivide, IconLots } from '../icons';
+import { IconPolygon, IconLine, IconRect, IconGreen, IconEquip, IconStreet, IconRoundabout, IconSubdivide, IconLots, IconUrbanizacion, IconGeoref } from '../icons';
 
 export interface InsertTabProps {
   lotsBusy: boolean;
@@ -35,6 +35,10 @@ export default function InsertTab({ lotsBusy, onOpenSubdivision, onGenerateLots 
         <RibbonTool mode="rectangle" icon={<IconRect />} label="Rectángulo" shortcut="R" />
         <RibbonTool icon={<IconGreen />} label="Área verde" shortcut="Shift+G" onClick={() => { setAreaKind('area_verde'); setMode('polygon'); }} tooltip="Crear área verde (Shift+G)" />
         <RibbonTool icon={<IconEquip />} label="Equipamiento" shortcut="Shift+E" onClick={() => { setAreaKind('equipamiento'); setMode('polygon'); }} tooltip="Crear equipamiento (Shift+E)" />
+      </RibbonGroup>
+      <RibbonGroup label="Referencia">
+        <RibbonTool icon={<IconUrbanizacion />} label="Urbanización" onClick={() => { setAreaKind('urbanizacion'); setMode('polygon'); }} tooltip="Crear polígono de Urbanización" />
+        <RibbonTool icon={<IconGeoref />} label="Georreferenciado" onClick={() => { setAreaKind('georreferenciado'); setMode('polygon'); }} tooltip="Crear polígono Georreferenciado" />
       </RibbonGroup>
       <RibbonGroup label="Vialidad">
         <RibbonTool mode="street" icon={<IconStreet />} label="Trazar calle" shortcut="S" active={mode === 'street'} />

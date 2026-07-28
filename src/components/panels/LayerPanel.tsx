@@ -1,7 +1,6 @@
 ﻿import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useLayersStore } from '../../store/entities/layersRegistryStore';
 import type { LayerKind } from '../../core/objectModel';
-import { useDisplayLayersStore, type OverlayLayerId } from '../../store/ui/displayLayersStore';
 import { useLayerPanelUiStore } from '../../store/ui/layerPanelUiStore';
 import { useIncrementalRender } from '../../hooks/useIncrementalRender';
 import { useViewportWidth } from '../../hooks/useViewportWidth';
@@ -75,14 +74,6 @@ const IconGear = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: 13, height: 13 }} aria-hidden="true">
     <circle cx="12" cy="12" r="3" />
     <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-  </svg>
-);
-
-const IconGrip = () => (
-  <svg viewBox="0 0 24 24" fill="currentColor" style={{ width: 10, height: 10 }} aria-hidden="true">
-    <circle cx="9" cy="6" r="1.4" /><circle cx="15" cy="6" r="1.4" />
-    <circle cx="9" cy="12" r="1.4" /><circle cx="15" cy="12" r="1.4" />
-    <circle cx="9" cy="18" r="1.4" /><circle cx="15" cy="18" r="1.4" />
   </svg>
 );
 
@@ -194,6 +185,7 @@ function ColorDot({ color, onChange, title, warn }: { color: string; onChange: (
 /* ─────────── Opacity slider ─────────── */
 
 function OpacitySlider({ value, onChange, layerName }: { value: number; onChange: (v: number) => void; layerName: string }) {
+  const pct = Math.round(value * 100);
   return (
     <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
       <input
@@ -201,11 +193,10 @@ function OpacitySlider({ value, onChange, layerName }: { value: number; onChange
         onChange={(e) => { e.stopPropagation(); onChange(Number.parseFloat(e.target.value)); }}
         onClick={(e) => e.stopPropagation()}
         aria-label={`Opacidad de la capa ${layerName}`}
-        style={{ width: 42, height: 3, accentColor: 'var(--cad-accent)', cursor: 'pointer', opacity: 0.8 }}
+        aria-valuetext={`${pct}%`}
+        title={`Opacidad: ${pct}%`}
+        style={{ width: 52, height: 3, accentColor: 'var(--cad-accent)', cursor: 'pointer', opacity: 0.8 }}
       />
-      <span aria-hidden="true" style={{ fontSize: '0.55rem', color: 'var(--cad-text-dim)', fontFamily: 'JetBrains Mono, monospace', minWidth: 24, textAlign: 'right' }}>
-        {Math.round(value * 100)}%
-      </span>
     </span>
   );
 }
@@ -255,7 +246,7 @@ const gearLabelStyle: React.CSSProperties = {
 };
 
 function LayerRow({
-  data, isActive, onToggleActive, onMoveUp, onMoveDown, canMoveUp, canMoveDown, onDragHandleStart, onDragHandleEnd, hasSelection,
+  data, isActive, onToggleActive, onMoveUp, onMoveDown, canMoveUp, canMoveDown, hasSelection,
 }: {
   data: LayerRowData;
   isActive?: boolean;
@@ -264,8 +255,6 @@ function LayerRow({
   onMoveDown?: () => void;
   canMoveUp?: boolean;
   canMoveDown?: boolean;
-  onDragHandleStart?: () => void;
-  onDragHandleEnd?: () => void;
   hasSelection?: boolean;
 }) {
   const [gearOpen, setGearOpen] = useState(false);
@@ -287,42 +276,33 @@ function LayerRow({
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '4px 6px', borderRadius: 4 }}>
       {data.reorderable && (
-        <>
-          <span
-            draggable
-            onDragStart={(e) => { e.stopPropagation(); onDragHandleStart?.(); e.dataTransfer.effectAllowed = 'move'; }}
-            onDragEnd={onDragHandleEnd}
-            aria-hidden="true"
-            tabIndex={-1}
-            style={{ display: 'flex', color: 'var(--cad-text-muted)', cursor: 'grab', touchAction: 'none' }}
+        <div
+          style={{ display: 'flex', flexDirection: 'column' }}
+          title="Usá las flechas para reordenar la capa"
+        >
+          <button
+            type="button"
+            className="cad-a11y-btn"
+            onClick={(e) => { e.stopPropagation(); onMoveUp?.(); }}
+            disabled={!canMoveUp}
+            aria-label={`Subir capa ${data.name} (dibujar encima)`}
+            title="Subir (dibujar encima)"
+            style={{ height: 9, opacity: canMoveUp ? 0.75 : 0.2, color: 'var(--cad-text-dim)' }}
           >
-            <IconGrip />
-          </span>
-          <div style={{ display: 'flex', flexDirection: 'column' }}>
-            <button
-              type="button"
-              className="cad-a11y-btn"
-              onClick={(e) => { e.stopPropagation(); onMoveUp?.(); }}
-              disabled={!canMoveUp}
-              aria-label={`Subir capa ${data.name} (dibujar encima)`}
-              title="Subir (dibujar encima)"
-              style={{ height: 9, opacity: canMoveUp ? 0.75 : 0.2, color: 'var(--cad-text-dim)' }}
-            >
-              <IconChevronSmall dir="up" />
-            </button>
-            <button
-              type="button"
-              className="cad-a11y-btn"
-              onClick={(e) => { e.stopPropagation(); onMoveDown?.(); }}
-              disabled={!canMoveDown}
-              aria-label={`Bajar capa ${data.name} (dibujar debajo)`}
-              title="Bajar (dibujar debajo)"
-              style={{ height: 9, opacity: canMoveDown ? 0.75 : 0.2, color: 'var(--cad-text-dim)' }}
-            >
-              <IconChevronSmall dir="down" />
-            </button>
-          </div>
-        </>
+            <IconChevronSmall dir="up" />
+          </button>
+          <button
+            type="button"
+            className="cad-a11y-btn"
+            onClick={(e) => { e.stopPropagation(); onMoveDown?.(); }}
+            disabled={!canMoveDown}
+            aria-label={`Bajar capa ${data.name} (dibujar debajo)`}
+            title="Bajar (dibujar debajo)"
+            style={{ height: 9, opacity: canMoveDown ? 0.75 : 0.2, color: 'var(--cad-text-dim)' }}
+          >
+            <IconChevronSmall dir="down" />
+          </button>
+        </div>
       )}
 
       <button
@@ -539,8 +519,6 @@ function LayerRow({
 
 /* ─────────── Adaptadores de cada store ─────────── */
 
-const NON_REMOVABLE = new Set(['lots', 'manzanas', 'streets', 'equipment', 'greenareas']);
-
 function computeDuplicatedColorIds(layers: Array<{ id: string; color: string }>): Set<string> {
   const byColor = new globalThis.Map<string, string[]>();
   for (const l of layers) {
@@ -597,7 +575,7 @@ function useRegistryRows(
     showLabel: l.showLabel,
     showCota: l.showCota,
     editableName: true,
-    removable: !NON_REMOVABLE.has(l.id),
+    removable: true,
     lockable: true,
     locked: l.locked,
     kind: l.kind,
@@ -623,50 +601,6 @@ function useRegistryRows(
     onDuplicate: () => handleDuplicate({ id: l.id, name: l.name }),
     onMoveSelectionHere: () => handleMoveSelectionHere(l.id),
   }));
-}
-
-const OVERLAY_LABELS: Record<OverlayLayerId, string> = {
-  urbanizacion: 'Urbanización',
-  georreferenciado: 'Georreferenciado',
-  vertices: 'Vértices',
-};
-
-function useOverlayRows(): LayerRowData[] {
-  const overlays = useDisplayLayersStore((s) => s.overlays);
-  const setVisible = useDisplayLayersStore((s) => s.setOverlayVisible);
-  const setOpacity = useDisplayLayersStore((s) => s.setOverlayOpacity);
-  const setStroke = useDisplayLayersStore((s) => s.setOverlayStrokeColor);
-  const setFill = useDisplayLayersStore((s) => s.setOverlayFillColor);
-  const setOption = useDisplayLayersStore((s) => s.setOverlayOption);
-
-  return (Object.keys(overlays) as OverlayLayerId[]).map((id): LayerRowData => {
-    const o = overlays[id];
-    return {
-      id,
-      name: OVERLAY_LABELS[id],
-      visible: o.visible,
-      opacity: o.opacity,
-      strokeColor: o.strokeColor,
-      fillColor: o.fillColor,
-      showLabel: o.showLabel,
-      showCota: o.showCota,
-      editableName: false,
-      removable: false,
-      lockable: false,
-      hideCota: id === 'vertices',
-      kind: 'linea' as LayerKind,
-      colorMode: 'solid' as const,
-      reorderable: false,
-      isDataLayer: false,
-      onToggleVisible: () => setVisible(id, !o.visible),
-      onOpacity: (v) => setOpacity(id, v),
-      onStrokeColor: (c) => setStroke(id, c),
-      onFillColor: (c) => setFill(id, c),
-      onShowLabel: (v) => setOption(id, 'showLabel', v),
-      onShowCota: (v) => setOption(id, 'showCota', v),
-      onSetColorMode: () => {},
-    };
-  });
 }
 
 /* ─────────── Header de sección ─────────── */
@@ -698,12 +632,8 @@ export default function LayerPanel() {
   const setOpen = useLayerPanelUiStore((s) => s.setOpen);
   const expandedData = useLayerPanelUiStore((s) => s.expandedData);
   const setExpandedData = useLayerPanelUiStore((s) => s.setExpandedData);
-  const expandedRefs = useLayerPanelUiStore((s) => s.expandedRefs);
-  const setExpandedRefs = useLayerPanelUiStore((s) => s.setExpandedRefs);
 
   const [deleteRequest, setDeleteRequest] = useState<LayerDeleteRequest | null>(null);
-  const [dragId, setDragId] = useState<string | null>(null);
-  const [dropTarget, setDropTarget] = useState<{ id: string; position: 'before' | 'after' } | null>(null);
 
   const setActiveLayer = useLayersStore((s) => s.setActiveLayer);
   const activeLayerId = useLayersStore((s) => s.activeLayerId);
@@ -717,7 +647,6 @@ export default function LayerPanel() {
   const selectedCount = useSelectionStore((s) => s.selectedIds.size);
 
   const registryRows = useRegistryRows(setDeleteRequest, featureCounts, isolatedLayerId);
-  const overlayRows = useOverlayRows();
 
   const registryRowsDisplay = [...registryRows].sort((a, b) => b.zIndex - a.zIndex);
 
@@ -725,7 +654,7 @@ export default function LayerPanel() {
   const panelMinWidth = Math.min(250, viewportWidth - 24);
 
   const panelRef = useRef<HTMLDivElement>(null);
-  const allRowsForIncremental = [...(expandedData ? registryRowsDisplay : []), ...(expandedRefs ? overlayRows : [])];
+  const allRowsForIncremental = expandedData ? registryRowsDisplay : [];
   const { visibleCount, sentinelRef } = useIncrementalRender(allRowsForIncremental.length, 60, panelRef);
 
   const [addLayerOpen, setAddLayerOpen] = useState(false);
@@ -737,21 +666,6 @@ export default function LayerPanel() {
     const targetIdx = direction === 'up' ? idx + 1 : idx - 1;
     if (targetIdx < 0 || targetIdx >= layers.length) return;
     void runCommand(new ReorderLayersCommand([id], targetIdx));
-  };
-
-  const handleDrop = (targetId: string, position: 'before' | 'after') => {
-    if (dragId && dragId !== targetId) {
-      const displayIds = registryRowsDisplay.map((r) => r.id);
-      const withoutDragged = displayIds.filter((id) => id !== dragId);
-      const targetIdx = withoutDragged.indexOf(targetId);
-      const insertAt = position === 'before' ? targetIdx : targetIdx + 1;
-      const newDisplayOrder = [...withoutDragged];
-      newDisplayOrder.splice(insertAt, 0, dragId);
-      const newAscendingOrder = [...newDisplayOrder].reverse();
-      void runCommand(new ReorderLayersCommand(newAscendingOrder, 0));
-    }
-    setDragId(null);
-    setDropTarget(null);
   };
 
   const handleRowKeyDown = (e: React.KeyboardEvent<HTMLDivElement>, row: LayerRowData) => {
@@ -774,8 +688,6 @@ export default function LayerPanel() {
     const displayIndex = registryRowsDisplay.findIndex((r) => r.id === row.id);
     const canMoveUp = row.reorderable && displayIndex > 0;
     const canMoveDown = row.reorderable && displayIndex !== -1 && displayIndex < registryRowsDisplay.length - 1;
-    const isDropBefore = dropTarget?.id === row.id && dropTarget.position === 'before';
-    const isDropAfter = dropTarget?.id === row.id && dropTarget.position === 'after';
     const isActive = isRegistryRow && activeLayerId === row.id;
 
     return (
@@ -786,21 +698,11 @@ export default function LayerPanel() {
         tabIndex={0}
         aria-label={`Capa ${row.name}${row.isDataLayer ? '' : ' (capa de referencia)'}`}
         onKeyDown={(e) => handleRowKeyDown(e, row)}
-        onDragOver={row.reorderable ? (e) => {
-          e.preventDefault();
-          const rect = e.currentTarget.getBoundingClientRect();
-          const position = e.clientY - rect.top < rect.height / 2 ? 'before' : 'after';
-          setDropTarget({ id: row.id, position });
-        } : undefined}
-        onDragLeave={row.reorderable ? () => setDropTarget((dt) => (dt?.id === row.id ? null : dt)) : undefined}
-        onDrop={row.reorderable ? (e) => { e.preventDefault(); handleDrop(row.id, dropTarget?.position ?? 'before'); } : undefined}
         style={{
           borderRadius: 4,
           background: isActive ? 'rgba(0,212,255,0.08)' : row.isIsolated ? 'rgba(0,212,255,0.05)' : 'transparent',
           border: isActive ? '1px solid rgba(0,212,255,0.25)' : row.isIsolated ? '1px dashed rgba(0,212,255,0.4)' : '1px solid transparent',
-          borderTop: isDropBefore ? '2px solid var(--cad-accent)' : undefined,
-          borderBottom: isDropAfter ? '2px solid var(--cad-accent)' : undefined,
-          opacity: dragId === row.id ? 0.4 : !row.isDataLayer ? 0.85 : 1,
+          opacity: !row.isDataLayer ? 0.85 : 1,
         }}
       >
         <LayerRow
@@ -812,8 +714,6 @@ export default function LayerPanel() {
           onMoveDown={canMoveDown ? () => moveLayer(row.id, 'down') : undefined}
           canMoveUp={canMoveUp}
           canMoveDown={canMoveDown}
-          onDragHandleStart={() => setDragId(row.id)}
-          onDragHandleEnd={() => { setDragId(null); setDropTarget(null); }}
         />
       </div>
     );
@@ -905,19 +805,6 @@ export default function LayerPanel() {
                     return renderRow(row, true);
                   })
                 )}
-              </div>
-            )}
-          </div>
-
-          <div style={{ marginTop: 10, paddingTop: 8, borderTop: '1px solid var(--cad-border)' }}>
-            <SectionHeader panelId="layerpanel-refs-section" label="Capas de referencia" count={overlayRows.length} expanded={expandedRefs} onToggle={() => setExpandedRefs(!expandedRefs)} isRef />
-            {expandedRefs && (
-              <div id="layerpanel-refs-section" style={{ marginTop: 2 }}>
-                {overlayRows.map((row) => {
-                  if (renderedSoFar >= visibleCount) return null;
-                  renderedSoFar++;
-                  return renderRow(row, false);
-                })}
               </div>
             )}
           </div>
