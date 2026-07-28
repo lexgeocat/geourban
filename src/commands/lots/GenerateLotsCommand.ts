@@ -17,13 +17,12 @@ import { estimateGeometryBytes } from '../core/memoryEstimate';
 
 const geoJsonFormat = new GeoJSON();
 
-/** Manzanos por tanda enviada al worker — balance entre granularidad de
- *  progreso/cancelación y overhead de múltiples round-trips. */
 const CHUNK_SIZE = 8;
 
 export interface GenerateLotsOpts {
   targetAreaM2: number;
   frontMinM: number;
+  layerId?: string;
 }
 
 interface ManzanoBatchInput {
@@ -41,16 +40,6 @@ interface ConsumedManzanoSnapshot {
   props: Record<string, unknown>;
 }
 
-/**
- * Genera lotes automáticos sobre todos los manzanos del drawSource.
- *
- * Fase 6, punto 4: la subdivisión ahora se envía al worker en TANDAS
- * (`CHUNK_SIZE` manzanos por vez) en vez de un único postMessage con
- * todos — esto permite (a) reportar progreso real entre tandas y (b)
- * cancelar de verdad a mitad de camino: lo ya aplicado queda aplicado
- * (y es exactamente lo que undo() revierte), lo no procesado nunca se
- * generó.
- */
 export class GenerateLotsCommand extends Command {
   readonly label = 'Generar lotes';
   private readonly opts: GenerateLotsOpts;
@@ -85,9 +74,6 @@ export class GenerateLotsCommand extends Command {
 
     if (manzanos.length === 0) return;
 
-    // Capturamos method/dirPref ANTES del viaje al worker (igual que
-    // antes) — si el usuario toca ManzanoPanel mientras esperamos, no
-    // queremos etiquetar lotes con un método distinto al calculado.
     const batchInput: ManzanoBatchInput[] = manzanos.map(({ id, ring }) => ({
       id,
       ring,
@@ -133,8 +119,6 @@ export class GenerateLotsCommand extends Command {
       if (lots.length === 0) continue;
       const method = methodById.get(String(id))!;
 
-      // H-LOT-9 (Fase 3): snapshot geométrico actualizado siempre que
-      // este comando lotiza un manzano.
       const ringPts = ring.map((c) => [c[0], c[1]] as [number, number]);
       useManzanoStore.getState().setGeomSnapshot(id, {
         area: polyArea(ringPts),
@@ -184,7 +168,7 @@ export class GenerateLotsCommand extends Command {
           ),
         );
         ctx.drawSource.addFeature(newFeat);
-        const lid = resolveLayerId(undefined, 'lote');
+        const lid = resolveLayerId(this.opts.layerId, 'lote');
         if (lid) newFeat.set('layerId', lid);
         updateFeatureMetrics(newFeat as Feature<Geometry>);
         this.newLotIds.push(newId);
@@ -212,9 +196,6 @@ export class GenerateLotsCommand extends Command {
     await this.execute(ctx);
   }
 
-  /** Fase 6, punto 5: memoria retenida por este comando en el
-   *  historial — la suma de las geometrías clonadas de los manzanos
-   *  consumidos (potencialmente muchas en un "Generar todos" grande). */
   override approxMemoryBytes(): number {
     return this.consumedManzanos.reduce((sum, s) => sum + estimateGeometryBytes(s.geometry), 0);
   }

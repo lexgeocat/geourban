@@ -14,6 +14,7 @@ import { formatMetricArea } from '../../geo/metrics';
 import { useSubdivisionPreviewStore } from '../../store/ui/subdivisionPreviewStore';
 import { SUBDIVISION_METHOD_INFO } from '../../geo/subdivision/subdivisionMethodLabels';
 import { Modal } from '../ui/Modal';
+import { requireLayerForKind } from '../../store/ui/layerPickerStore';
 
 const geoJsonFormat = new GeoJSON();
 
@@ -119,6 +120,8 @@ export default function SubdivisionDialog() {
       setError('Trazá una línea (tecla L) que cruce el polígono antes de aplicar.');
       return;
     }
+    const layerId = await requireLayerForKind('lote');
+    if (!layerId) return;
     setLoading(true);
     setError(null);
     try {
@@ -128,7 +131,7 @@ export default function SubdivisionDialog() {
       const targetGeomCopy = targetGeom;
       const result = await useCommandStack
         .getState()
-        .run(new SubdivideCommand({ targetId, options: effectiveOptions, targetGeom: targetGeomCopy }));
+        .run(new SubdivideCommand({ targetId, options: effectiveOptions, targetGeom: targetGeomCopy, layerId }));
       if (!result.ok) {
         setError(result.error);
         return;

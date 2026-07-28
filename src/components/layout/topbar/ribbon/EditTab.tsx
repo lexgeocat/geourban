@@ -3,16 +3,17 @@ import { Trash2 } from 'lucide-react';
 import { useDrawStore } from '../../../../store/map/drawStore';
 import { useSelectionStore } from '../../../../store/map/selectionStore';
 import { RibbonGroup, RibbonTool } from '../RibbonPrimitives';
-import { IconCursor, IconEdit, IconRectDashed, IconLasso, IconAlertTriangle, IconAlertCircle } from '../icons';
+import { IconCursor, IconEdit, IconRectDashed, IconLasso, IconAlertTriangle, IconAlertCircle, IconVertices } from '../icons';
 
 export interface EditTabProps {
   onToggleEdit: () => void;
   onDeleteSelected: () => void;
   onFindOverlaps: () => void;
   onFindGaps: () => void;
+  onGenerateVertices: () => void;
 }
 
-export default function EditTab({ onToggleEdit, onDeleteSelected, onFindOverlaps, onFindGaps }: EditTabProps) {
+export default function EditTab({ onToggleEdit, onDeleteSelected, onFindOverlaps, onFindGaps, onGenerateVertices }: EditTabProps) {
   const mode = useDrawStore((s) => s.mode);
   const selectedCount = useSelectionStore((s) => s.selectedIds.size);
   const primarySelected = useSelectionStore((s) => s.primaryId !== null);
@@ -41,6 +42,13 @@ export default function EditTab({ onToggleEdit, onDeleteSelected, onFindOverlaps
       <RibbonGroup label="Validación">
         <RibbonTool icon={<IconAlertTriangle />} label="Overlaps" onClick={onFindOverlaps} tooltip="Detectar superposiciones entre lotes/manzanos" />
         <RibbonTool icon={<IconAlertCircle />} label="Huecos" onClick={onFindGaps} tooltip="Detectar huecos entre manzanos" />
+      </RibbonGroup>
+      <RibbonGroup label="Generar">
+        <RibbonTool
+          icon={<IconVertices />} label="Vértices" disabled={selectedCount === 0}
+          onClick={onGenerateVertices}
+          tooltip="Generar un punto por cada vértice de la selección (capa 'vert_geo')"
+        />
       </RibbonGroup>
     </>
   );

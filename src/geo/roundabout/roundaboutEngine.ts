@@ -1,5 +1,4 @@
-﻿// src/geo/roundaboutEngine.ts
-import type { Pt } from '../math/polygonEngine';
+﻿import type { Pt } from '../math/polygonEngine';
 import { resolutionAwareSegments } from '../math/lod';
 
 export interface RoundaboutParams {
@@ -9,6 +8,7 @@ export interface RoundaboutParams {
   rotation: number;
   roadWidthM: number;
   sidewalkWidthM: number;
+  layerId?: string;
 }
 
 export interface RoundaboutGeometry {
@@ -27,15 +27,6 @@ export function ngonRing(center: Pt, circumR: number, n: number, rot = 0): Pt[] 
   return pts;
 }
 
-/**
- * Circunferencia tesselada. Si se pasa `resolution` (unidades de mapa
- * por píxel, la vigente al momento de pintar), la cantidad de segmentos
- * se calcula para que el error de tesselación no supere ~1.5px en
- * pantalla — a diferencia del criterio viejo (fijo por radio), esto
- * baja los segmentos automáticamente cuando el usuario aleja el zoom.
- * Sin `resolution` (o con `segs` explícito) se mantiene el
- * comportamiento anterior, para no romper otros call-sites.
- */
 export function circleRing(center: Pt, radius: number, segs?: number, resolution?: number): Pt[] {
   const n =
     segs ??
@@ -50,10 +41,6 @@ export function circleRing(center: Pt, radius: number, segs?: number, resolution
   return pts;
 }
 
-/** Geometría completa de una rotonda. `resolution` es opcional — pasarla
- *  desde el postrender habilita el LOD de `circleRing`; los polígonos
- *  regulares (`sides >= 3`) no la necesitan, su vértice count depende
- *  solo de `sides`, no de tesselación. */
 export function roundaboutGeometry(rb: RoundaboutParams, resolution?: number): RoundaboutGeometry {
   const half = rb.roadWidthM / 2;
   const sw = Math.max(0, rb.sidewalkWidthM);
@@ -93,13 +80,6 @@ function ringArea(ring: Pt[]): number {
   }
   return Math.abs(a) / 2;
 }
-/**
- * Valida que los parámetros de una rotonda no produzcan un polígono
- * externo auto-intersectante (H-VIA-9): con pocos lados (3-4) y una
- * calzada muy ancha respecto al radio, `k = 1/cos(π/n)` puede inflar el
- * radio efectivo tanto que las esquinas del ochave se crucen entre sí.
- * Devuelve un mensaje de error, o null si los parámetros son seguros.
- */
 export function validateRoundaboutParams(rb: RoundaboutParams): string | null {
   if (!(rb.radiusM > 0)) return 'El radio debe ser mayor a 0.';
   if (rb.sides !== 0 && rb.sides < 3) return 'Un polígono necesita al menos 3 lados (o 0 para círculo).';

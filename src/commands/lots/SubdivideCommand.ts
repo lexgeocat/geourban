@@ -16,8 +16,8 @@ const geoJsonFormat = new GeoJSON();
 export interface SubdivideCommandOpts {
   targetId: string | number;
   options: SubdivisionOptions;
-  /** geometría del target (si no se pasa, se lee del drawSource) */
   targetGeom?: GeoJsonPolygon | null;
+  layerId?: string;
 }
 
 interface RemovedTargetSnapshot {
@@ -26,17 +26,6 @@ interface RemovedTargetSnapshot {
   props: Record<string, unknown>;
 }
 
-/**
- * La subdivisión (bisección iterativa, hasta 200 iteraciones) ahora corre
- * en el Web Worker — ver diagnóstico H8 — así que "Aplicar" en
- * SubdivisionDialog ya no bloquea el hilo de UI mientras calcula.
- *
- * También se eliminó el `refreshSourceMetrics` global al final de
- * execute()/undo(): los lotes nuevos ya reciben su métrica una por una
- * (`updateFeatureMetrics`), y el target restaurado en undo() ya trae su
- * métrica correcta guardada en `props` (capturada antes de removerlo) —
- * ver diagnóstico H9.
- */
 export class SubdivideCommand extends Command {
   readonly label = 'Subdividir manzano';
   private readonly opts: SubdivideCommandOpts;
@@ -100,7 +89,7 @@ export class SubdivideCommand extends Command {
         ),
       );
       ctx.drawSource.addFeature(olFeat);
-      const lid = resolveLayerId(undefined, 'lote');
+      const lid = resolveLayerId(this.opts.layerId, 'lote');
       if (lid) olFeat.set('layerId', lid);
       updateFeatureMetrics(olFeat as Feature<Geometry>);
       this.newFeatureIds.push(newId);
@@ -125,7 +114,6 @@ export class SubdivideCommand extends Command {
   }
 
   override async redo(ctx: CommandContext): Promise<void> {
-    // undo() restauró el polígono original con id/geometría intactos.
     await this.execute(ctx);
   }
 

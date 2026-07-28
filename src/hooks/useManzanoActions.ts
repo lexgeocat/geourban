@@ -13,6 +13,7 @@ import { useSubdivisionPreviewStore } from '../store/ui/subdivisionPreviewStore'
 import { subdivideManzanoInWorker } from '../workers/geoWorkerClient';
 import { useGenerateLotsProgressStore } from '../store/ui/generateLotsProgressStore';
 import type { ManzanoRow } from '../geo/selectors/manzanoRows';
+import { requireLayerForKind } from '../store/ui/layerPickerStore';
 
 export function useManzanoActions(drawSource: VectorSource | null) {
   const targetAreaM2 = useManzanoStore((s) => s.targetAreaM2);
@@ -28,6 +29,8 @@ export function useManzanoActions(drawSource: VectorSource | null) {
 
   const runRecompute = useCallback(
     async (row: ManzanoRow) => {
+      const layerId = await requireLayerForKind('lote');
+      if (!layerId) return;
       const key = String(row.id);
       setRecomputingIds((s) => new Set(s).add(key));
       useSubdivisionPreviewStore.getState().clear();
@@ -35,7 +38,7 @@ export function useManzanoActions(drawSource: VectorSource | null) {
         const method = getMethod(row.id);
         const dirPref = getRotateDir(row.id);
         await useCommandStack.getState().run(
-          new RecomputeManzanoLotsCommand({ manzanoId: row.id, targetAreaM2, frontMinM, method, dirPref }),
+          new RecomputeManzanoLotsCommand({ manzanoId: row.id, targetAreaM2, frontMinM, method, dirPref, layerId }),
         );
       } finally {
         setRecomputingIds((s) => {
@@ -135,10 +138,12 @@ export function useManzanoActions(drawSource: VectorSource | null) {
   );
 
   const handleGenerarTodos = useCallback(async () => {
+    const layerId = await requireLayerForKind('lote');
+    if (!layerId) return;
     useSubdivisionPreviewStore.getState().clear();
     setLotsBusy(true);
     try {
-      await useCommandStack.getState().run(new GenerateLotsCommand({ targetAreaM2, frontMinM }));
+      await useCommandStack.getState().run(new GenerateLotsCommand({ targetAreaM2, frontMinM, layerId }));
     } finally {
       setLotsBusy(false);
     }

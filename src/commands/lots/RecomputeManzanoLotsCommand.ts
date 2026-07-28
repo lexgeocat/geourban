@@ -28,6 +28,7 @@ export interface RecomputeManzanoLotsOpts {
   frontMinM: number;
   method: ManzanoLoteMethod;
   dirPref?: { ax: number; ay: number };
+  layerId?: string;
 }
 
 export class RecomputeManzanoLotsCommand extends Command {
@@ -124,17 +125,13 @@ export class RecomputeManzanoLotsCommand extends Command {
         ),
       );
       ctx.drawSource.addFeature(newFeat);
-      const lid = resolveLayerId(undefined, 'lote');
+      const lid = resolveLayerId(this.opts.layerId, 'lote');
       if (lid) newFeat.set('layerId', lid);
       updateFeatureMetrics(newFeat as Feature<Geometry>);
       this.newLotIds.push(newId);
     });
 
     setLotStatus(mznFeat, this.newLotIds.length > 0 ? 'subdivided' : 'none');
-    // H-LOT-9: el snapshot geométrico se actualiza siempre acá, no solo
-    // cuando el llamador (ManzanoPanel) se acuerda de hacerlo — antes
-    // quedaba condicionado a `if (dirPref)`, dejando el badge
-    // "desactualizado" inconsistente para el resto de los flujos.
     useManzanoStore.getState().setGeomSnapshot(this.opts.manzanoId, {
       area: areaM2,
       perimeter: perimeterM,
