@@ -8,6 +8,7 @@ import type Geometry from 'ol/geom/Geometry.js';
 import { useLayersStore } from '../../store/entities/layersRegistryStore';
 import type { Layer } from '../../core/objectModel';
 import { MZN_COLORS, MZN_COLOR_COUNT } from '../../geo/manzanoColor';
+import { recordSetStyleCall, recordSyncLayerSetCall, recordWebglLayerCount } from '../../store/debug/debugCounters';
 
 export type WorkVisibility = {
   lots: boolean;
@@ -202,6 +203,7 @@ export class LayeredWebglRenderer {
   }
 
   private syncLayerSet(layers: Layer[]): void {
+    recordSyncLayerSetCall();
     const byId = new globalThis.Map(layers.map((l) => [l.id, l] as const));
     const currentIds = new Set(byId.keys());
 
@@ -220,6 +222,7 @@ export class LayeredWebglRenderer {
         this.map?.addLayer(entry.layer);
       } else {
         entry.layer.setStyle(buildSingleLayerStyle(layer));
+        recordSetStyleCall();
         entry.layer.setZIndex(layer.zIndex);
         entry.layer.setVisible(layer.visible);
       }
@@ -245,6 +248,8 @@ export class LayeredWebglRenderer {
         this.place(f as Feature<Geometry>, byId);
       }
     }
+
+    recordWebglLayerCount(this.mirrors.size + 1);
   }
 
   attach(map: Map): () => void {

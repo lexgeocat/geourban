@@ -16,6 +16,7 @@ import ProjectSetupModal from './components/modals/ProjectSetupModal';
 import ManzanoPanel from './components/panels/ManzanoPanel';
 import RoundaboutPanel from './components/panels/RoundaboutPanel';
 import StreetPanel from './components/panels/StreetPanel';
+import DebugPanel from './components/debug/DebugPanel';
 
 
 function App() {
@@ -79,6 +80,7 @@ function App() {
       <LayerPanel />
 
       <StatusBar />
+      <DebugPanel />
     </div>
   );
 }

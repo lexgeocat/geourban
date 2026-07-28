@@ -14,6 +14,7 @@ import { LabelPainter } from './painters/LabelPainter';
 import { SnapGuidePainter } from './painters/SnapGuidePainter';
 import { OverlayPainter } from './painters/OverlayPainter';
 import { VertexPainter } from './painters/VertexPainter';
+import { recordPostrenderDuration } from '../../store/debug/debugCounters';
 
 function getZoomFromResolution(resolution: number): number {
   return Math.log2(156543.03392804097 / resolution);
@@ -84,6 +85,7 @@ export class PostrenderPainter {
   private handle(event: any): void {
     const ctx = event.context as CanvasRenderingContext2D | undefined;
     if (!ctx) return;
+    const t0 = performance.now();
 
     const resolution = this.map.getView().getResolution() ?? 1;
     const zoom = getZoomFromResolution(resolution);
@@ -104,6 +106,8 @@ export class PostrenderPainter {
     this.vertexPainter.paint(ctx, visibleFeatures, toPx);
     this.snapGuidePainter.paint(ctx, resolution);
     this.overlayPainter.paint(ctx, toPx);
+
+    recordPostrenderDuration(performance.now() - t0);
   }
 
   private getVisibleFeatures(all: Array<Feature<Geometry>>): Array<Feature<Geometry>> {
