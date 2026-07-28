@@ -1,7 +1,7 @@
-﻿import React, { useMemo, useEffect, useRef } from 'react';
+﻿// src/components/panels/ManzanoPanel.tsx
+import React, { useMemo, useEffect, useRef, useState, useCallback } from 'react';
 import { useMapStore } from '../../store/map/mapStore';
 import { useManzanoStore } from '../../store/entities/manzanoStore';
-import { useDrawStore } from '../../store/map/drawStore';
 import { useIncrementalRender } from '../../hooks/useIncrementalRender';
 import { useDrawSourceTick } from '../../hooks/useDrawSourceTick';
 import { useViewportWidth } from '../../hooks/useViewportWidth';
@@ -9,10 +9,10 @@ import { useManzanoActions } from '../../hooks/useManzanoActions';
 import { readManzanoRows } from '../../geo/selectors/manzanoRows';
 import { useSubdivisionPreviewStore } from '../../store/ui/subdivisionPreviewStore';
 import { formatMetricArea } from '../../geo/metrics';
-import StreetParamsCard from './manzano/StreetParamsCard';
-import RoundaboutParamsCard from './manzano/RoundaboutParamsCard';
 import LotParamsCard from './manzano/LotParamsCard';
 import ManzanoCard from './manzano/ManzanoCard';
+
+const DEFAULT_POSITION = { top: 90, left: 10 };
 
 export default function ManzanoPanel() {
   const drawSource = useMapStore((s) => s.drawSource);
@@ -22,7 +22,6 @@ export default function ManzanoPanel() {
   const panelVisible = useManzanoStore((s) => s.panelVisible);
   const setPanelVisible = useManzanoStore((s) => s.setPanelVisible);
 
-  const drawMode = useDrawStore((s) => s.mode);
   const viewportWidth = useViewportWidth();
   const panelWidth = Math.min(280, viewportWidth - 20);
 
@@ -30,6 +29,53 @@ export default function ManzanoPanel() {
   const { visibleCount, sentinelRef } = useIncrementalRender(rows.length, 40, panelRef);
 
   const actions = useManzanoActions(drawSource);
+
+  // ─── Drag & drop (panel movible) ───────────────────────────────
+  const [position, setPosition] = useState(DEFAULT_POSITION);
+  const dragRef = useRef({ isDragging: false, startX: 0, startY: 0, startTop: 0, startLeft: 0 });
+
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    dragRef.current = {
+      isDragging: true,
+      startX: e.clientX,
+      startY: e.clientY,
+      startTop: position.top,
+      startLeft: position.left,
+    };
+    document.body.style.cursor = 'grabbing';
+    document.body.style.userSelect = 'none';
+    e.stopPropagation();
+  }, [position]);
+
+  const handleMouseMove = useCallback((e: MouseEvent) => {
+    if (!dragRef.current.isDragging) return;
+    const dx = e.clientX - dragRef.current.startX;
+    const dy = e.clientY - dragRef.current.startY;
+    const newTop = dragRef.current.startTop + dy;
+    const newLeft = dragRef.current.startLeft + dx;
+    // Mantener el panel dentro del viewport
+    const maxTop = window.innerHeight - 60;
+    const maxLeft = window.innerWidth - 60;
+    setPosition({
+      top: Math.max(0, Math.min(maxTop, newTop)),
+      left: Math.max(0, Math.min(maxLeft, newLeft)),
+    });
+  }, []);
+
+  const handleMouseUp = useCallback(() => {
+    dragRef.current.isDragging = false;
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [handleMouseMove, handleMouseUp]);
 
   useEffect(() => {
     if (!panelVisible) useSubdivisionPreviewStore.getState().clear();
@@ -44,17 +90,43 @@ export default function ManzanoPanel() {
     <div
       ref={panelRef}
       className="cad-panel-glass"
-      style={{ position: 'fixed', top: 90, left: 10, width: panelWidth, maxHeight: 'calc(100vh - 140px)', overflowY: 'auto', zIndex: 900, padding: '10px 10px', fontSize: '0.72rem' }}
+      style={{
+        position: 'fixed',
+        top: position.top,
+        left: position.left,
+        width: panelWidth,
+        maxHeight: 'calc(100vh - 140px)',
+        overflowY: 'auto',
+        zIndex: 900,
+        padding: '10px 10px',
+        fontSize: '0.72rem',
+      }}
     >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, borderBottom: '1px solid var(--cad-border)', paddingBottom: 6 }}>
+      <div
+        onMouseDown={handleMouseDown}
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: 8,
+          borderBottom: '1px solid var(--cad-border)',
+          paddingBottom: 6,
+          cursor: 'grab',
+          userSelect: 'none',
+        }}
+      >
         <span style={{ fontWeight: 700, color: 'var(--cad-text)', letterSpacing: '0.03em' }}>
-          Manzanos {rows.length > 0 && <span style={{ color: 'var(--cad-text-muted)', fontWeight: 400 }}>({rows.length})</span>}
+          Manzanos y Lotes {rows.length > 0 && <span style={{ color: 'var(--cad-text-muted)', fontWeight: 400 }}>({rows.length})</span>}
         </span>
-        <button onClick={() => setPanelVisible(false)} style={{ background: 'none', border: 'none', color: 'var(--cad-text-dim)', cursor: 'pointer', fontSize: '0.85rem' }} title="Cerrar">✕</button>
+        <button
+          onClick={() => setPanelVisible(false)}
+          onMouseDown={(e) => e.stopPropagation()}
+          style={{ background: 'none', border: 'none', color: 'var(--cad-text-dim)', cursor: 'pointer', fontSize: '0.85rem' }}
+          title="Cerrar"
+        >
+          ✕
+        </button>
       </div>
-
-      {drawMode === 'street' && <StreetParamsCard />}
-      {drawMode === 'roundabout' && <RoundaboutParamsCard />}
 
       <LotParamsCard
         lotsBusy={actions.lotsBusy}
