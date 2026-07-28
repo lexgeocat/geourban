@@ -3,20 +3,17 @@ import { Trash2 } from 'lucide-react';
 import { useDrawStore } from '../../../../store/map/drawStore';
 import { useSelectionStore } from '../../../../store/map/selectionStore';
 import { RibbonGroup, RibbonTool } from '../RibbonPrimitives';
-import { IconCursor, IconEdit, IconRectDashed, IconLasso, IconAlertTriangle, IconAlertCircle, IconVertices } from '../icons';
+import { IconCursor, IconRectDashed, IconLasso, IconAlertTriangle, IconAlertCircle, IconVertices } from '../icons';
 
 export interface EditTabProps {
-  onToggleEdit: () => void;
   onDeleteSelected: () => void;
   onFindOverlaps: () => void;
   onFindGaps: () => void;
   onGenerateVertices: () => void;
 }
 
-export default function EditTab({ onToggleEdit, onDeleteSelected, onFindOverlaps, onFindGaps, onGenerateVertices }: EditTabProps) {
-  const mode = useDrawStore((s) => s.mode);
+export default function EditTab({ onDeleteSelected, onFindOverlaps, onFindGaps, onGenerateVertices }: EditTabProps) {
   const selectedCount = useSelectionStore((s) => s.selectedIds.size);
-  const primarySelected = useSelectionStore((s) => s.primaryId !== null);
   const selectMode = useSelectionStore((s) => s.selectMode);
   const setSelectMode = useSelectionStore((s) => s.setSelectMode);
 
@@ -24,7 +21,6 @@ export default function EditTab({ onToggleEdit, onDeleteSelected, onFindOverlaps
     <>
       <RibbonGroup label="Selección">
         <RibbonTool mode="select" icon={<IconCursor />} label="Seleccionar" shortcut="V" />
-        <RibbonTool mode="edit" icon={<IconEdit />} label="Editar vértices" disabled={!primarySelected} active={mode === 'edit'} onClick={onToggleEdit} />
         <RibbonTool
           icon={<IconRectDashed />} label="Rect" active={selectMode === 'rect'}
           onClick={() => { useDrawStore.getState().setMode('select'); setSelectMode('rect'); }}

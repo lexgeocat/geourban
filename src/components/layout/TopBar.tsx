@@ -84,7 +84,6 @@ export default function TopBar() {
               {activeTab === 'map' && (
                 <MapTab
                   lotsBusy={actions.lotsBusy}
-                  onToggleEdit={actions.handleToggleEdit}
                   onDeleteSelected={actions.handleDeleteSelected}
                   onOpenSubdivision={actions.handleOpenSubdivision}
                   onGenerateLots={actions.handleGenerateLots}
@@ -92,7 +91,6 @@ export default function TopBar() {
               )}
               {activeTab === 'edit' && (
                 <EditTab
-                  onToggleEdit={actions.handleToggleEdit}
                   onDeleteSelected={actions.handleDeleteSelected}
                   onFindOverlaps={actions.handleFindOverlaps}
                   onFindGaps={actions.handleFindGaps}

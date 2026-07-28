@@ -6,24 +6,22 @@ import { useStreetStore } from '../../../../store/entities/streetStore';
 import { useRoundaboutStore } from '../../../../store/entities/roundaboutStore';
 import { useGenerateLotsProgressStore } from '../../../../store/ui/generateLotsProgressStore';
 import { recomputeManzanos, resetIncrementalRoadTracking } from '../../../../geo/recomputeManzanos';
-import { RibbonGroup, RibbonTool } from '../RibbonPrimitives';
+import { RibbonGroup, RibbonTool, RibbonToolDropdown } from '../RibbonPrimitives';
 import {
-  IconCursor, IconEraser, IconPolygon, IconLine, IconRect, IconEdit,
+  IconCursor, IconEraser, IconPolygon, IconLine, IconRect, IconPerimeter,
   IconSubdivide, IconLots, IconStreet, IconRoundabout,
 } from '../icons';
 
 export interface MapTabProps {
   lotsBusy: boolean;
-  onToggleEdit: () => void;
   onDeleteSelected: () => void;
   onOpenSubdivision: () => void;
   onGenerateLots: () => void;
 }
 
-export default function MapTab({ lotsBusy, onToggleEdit, onDeleteSelected, onOpenSubdivision, onGenerateLots }: MapTabProps) {
+export default function MapTab({ lotsBusy, onDeleteSelected, onOpenSubdivision, onGenerateLots }: MapTabProps) {
   const mode = useDrawStore((s) => s.mode);
   const selectedCount = useSelectionStore((s) => s.selectedIds.size);
-  const primarySelected = useSelectionStore((s) => s.primaryId !== null);
   const genLotsProgress = useGenerateLotsProgressStore();
 
   const rbDefaultRadiusM = useRoundaboutStore((s) => s.defaultRadiusM);
@@ -49,13 +47,19 @@ export default function MapTab({ lotsBusy, onToggleEdit, onDeleteSelected, onOpe
       </RibbonGroup>
 
       <RibbonGroup label="Dibujo">
-        <RibbonTool mode="polygon" icon={<IconPolygon />} label="Polígono" shortcut="P" />
+        <RibbonToolDropdown
+          icon={<IconPerimeter />}
+          label="Diseñar perímetro"
+          tooltip="Diseñar perímetro — Polígono (P) o Rectángulo (R)"
+          options={[
+            { mode: 'polygon', icon: <IconPolygon />, label: 'Polígono', shortcut: 'P' },
+            { mode: 'rectangle', icon: <IconRect />, label: 'Rectángulo', shortcut: 'R' },
+          ]}
+        />
         <RibbonTool mode="line" icon={<IconLine />} label="Línea" shortcut="L" />
-        <RibbonTool mode="rectangle" icon={<IconRect />} label="Rectángulo" shortcut="R" />
       </RibbonGroup>
 
       <RibbonGroup label="Edición">
-        <RibbonTool icon={<IconEdit />} label="Vértices" disabled={!primarySelected} active={mode === 'edit'} onClick={onToggleEdit} />
         <RibbonTool
           icon={<Trash2 />}
           label="Eliminar"
@@ -66,7 +70,7 @@ export default function MapTab({ lotsBusy, onToggleEdit, onDeleteSelected, onOpe
       </RibbonGroup>
 
       <RibbonGroup label="Subdivisión">
-        <RibbonTool icon={<IconSubdivide />} label="Subdividir" disabled={!primarySelected} onClick={onOpenSubdivision} />
+        <RibbonTool icon={<IconSubdivide />} label="Subdividir" onClick={onOpenSubdivision} />
         <RibbonTool
           icon={<IconLots />}
           label="Gen. Lotes"

@@ -26,6 +26,17 @@ export const IconRectDashed = () => (
     <rect x="4" y="6" width="16" height="12" strokeDasharray="3 2" />
   </svg>
 );
+export const IconPerimeter = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M4 8L9 4h9l2 5-3 9H7z" strokeDasharray="3 2" />
+    <circle cx="9" cy="4" r="1.2" fill="currentColor" stroke="none" />
+    <circle cx="18" cy="4" r="1.2" fill="currentColor" stroke="none" />
+    <circle cx="20" cy="9" r="1.2" fill="currentColor" stroke="none" />
+    <circle cx="17" cy="18" r="1.2" fill="currentColor" stroke="none" />
+    <circle cx="7" cy="18" r="1.2" fill="currentColor" stroke="none" />
+    <circle cx="4" cy="8" r="1.2" fill="currentColor" stroke="none" />
+  </svg>
+);
 export const IconLasso = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M4 18 Q12 4 20 18" strokeDasharray="3 2" />
