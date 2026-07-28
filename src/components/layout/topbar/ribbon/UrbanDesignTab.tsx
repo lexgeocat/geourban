@@ -1,7 +1,6 @@
 import React from 'react';
 import { Trash2 } from 'lucide-react';
 import { useDrawStore } from '../../../../store/map/drawStore';
-import { useSelectionStore } from '../../../../store/map/selectionStore';
 import { useStreetStore } from '../../../../store/entities/streetStore';
 import { useRoundaboutStore } from '../../../../store/entities/roundaboutStore';
 import { useGenerateLotsProgressStore } from '../../../../store/ui/generateLotsProgressStore';
@@ -12,20 +11,20 @@ import {
   IconSubdivide, IconLots, IconStreet, IconRoundabout,
 } from '../icons';
 
-export interface MapTabProps {
+export interface UrbanDesignTabProps {
   lotsBusy: boolean;
-  onDeleteSelected: () => void;
   onOpenSubdivision: () => void;
   onGenerateLots: () => void;
 }
 
-export default function MapTab({ lotsBusy, onDeleteSelected, onOpenSubdivision, onGenerateLots }: MapTabProps) {
+export default function UrbanDesignTab({ lotsBusy, onOpenSubdivision, onGenerateLots }: UrbanDesignTabProps) {
   const mode = useDrawStore((s) => s.mode);
-  const selectedCount = useSelectionStore((s) => s.selectedIds.size);
   const genLotsProgress = useGenerateLotsProgressStore();
 
   const rbDefaultRadiusM = useRoundaboutStore((s) => s.defaultRadiusM);
   const setRbDefaultRadius = useRoundaboutStore((s) => s.setDefaultRadius);
+  const defaultWidthM = useStreetStore((s) => s.defaultWidthM);
+  const setDefaultWidth = useStreetStore((s) => s.setDefaultWidth);
   const defaultSideWidthM = useStreetStore((s) => s.defaultSideWidthM);
   const setDefaultSideWidth = useStreetStore((s) => s.setDefaultSideWidth);
   const streets = useStreetStore((s) => s.streets);
@@ -59,37 +58,16 @@ export default function MapTab({ lotsBusy, onDeleteSelected, onOpenSubdivision, 
         <RibbonTool mode="line" icon={<IconLine />} label="Línea" shortcut="L" />
       </RibbonGroup>
 
-      <RibbonGroup label="Edición">
-        <RibbonTool
-          icon={<Trash2 />}
-          label="Eliminar"
-          disabled={selectedCount === 0}
-          badge={selectedCount > 0 ? selectedCount : undefined}
-          onClick={onDeleteSelected}
-        />
-      </RibbonGroup>
-
-      <RibbonGroup label="Subdivisión">
-        <RibbonTool icon={<IconSubdivide />} label="Subdividir" onClick={onOpenSubdivision} />
-        <RibbonTool
-          icon={<IconLots />}
-          label="Gen. Lotes"
-          disabled={lotsBusy}
-          badge={genLotsProgress.active ? genLotsProgress.processed : undefined}
-          onClick={onGenerateLots}
-        />
-      </RibbonGroup>
-
-      <RibbonGroup label="Calles">
+      <RibbonGroup label="Vialidad">
         <RibbonTool mode="street" icon={<IconStreet />} label="Trazar calle" shortcut="S" active={mode === 'street'} />
         <RibbonTool mode="roundabout" icon={<IconRoundabout />} label="Rotonda" shortcut="O" active={mode === 'roundabout'} />
         <div className="ribbon-inline-control">
           <input
-            type="number" className="ribbon-inline-input" value={rbDefaultRadiusM} min={3} max={200} step={1}
-            onChange={(e) => setRbDefaultRadius(parseFloat(e.target.value) || 12)}
-            title="Radio de rotonda (m)" aria-label="Radio de rotonda en metros"
+            type="number" className="ribbon-inline-input" value={defaultWidthM} min={1} max={50} step={1}
+            onChange={(e) => setDefaultWidth(parseFloat(e.target.value) || 8)}
+            title="Ancho de calzada (m)" aria-label="Ancho de calzada en metros"
           />
-          <span className="ribbon-inline-text">Radio rot. (m)</span>
+          <span className="ribbon-inline-text">Calzada (m)</span>
         </div>
         <div className="ribbon-inline-control">
           <input
@@ -97,7 +75,15 @@ export default function MapTab({ lotsBusy, onDeleteSelected, onOpenSubdivision, 
             onChange={(e) => setDefaultSideWidth(Math.max(0, parseFloat(e.target.value) || 0))}
             title="Ancho de vereda (m)" aria-label="Ancho de vereda en metros"
           />
-          <span className="ribbon-inline-text">Vereda (m) · {streets.length} trazadas</span>
+          <span className="ribbon-inline-text">Vereda (m)</span>
+        </div>
+        <div className="ribbon-inline-control">
+          <input
+            type="number" className="ribbon-inline-input" value={rbDefaultRadiusM} min={3} max={200} step={1}
+            onChange={(e) => setRbDefaultRadius(parseFloat(e.target.value) || 12)}
+            title="Radio de rotonda (m)" aria-label="Radio de rotonda en metros"
+          />
+          <span className="ribbon-inline-text">Radio rot. (m) · {streets.length} trazadas</span>
         </div>
         {streets.length > 0 && (
           <button className="ribbon-tool small" onClick={handleClearStreets} style={{ color: 'var(--cad-accent-red)' }} data-tooltip="Limpiar todas las calles" title="Limpiar todas las calles">
@@ -105,6 +91,14 @@ export default function MapTab({ lotsBusy, onDeleteSelected, onOpenSubdivision, 
             <span className="ribbon-tool-label">Limpiar</span>
           </button>
         )}
+      </RibbonGroup>
+
+      <RibbonGroup label="Subdivisión">
+        <RibbonTool icon={<IconSubdivide />} label="Subdividir" onClick={onOpenSubdivision} />
+        <RibbonTool
+          icon={<IconLots />} label="Gen. Lotes" disabled={lotsBusy}
+          badge={genLotsProgress.active ? genLotsProgress.processed : undefined} onClick={onGenerateLots}
+        />
       </RibbonGroup>
     </>
   );

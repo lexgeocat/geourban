@@ -7,15 +7,13 @@ import { ProjectBrowserModal } from '../modals/ProjectBrowserModal';
 import { useTopBarActions } from '../../hooks/useTopBarActions';
 import AppMenu from './topbar/AppMenu';
 import { RibbonContext } from './topbar/RibbonContext';
-import MapTab from './topbar/ribbon/MapTab';
+import UrbanDesignTab from './topbar/ribbon/UrbanDesignTab';
 import EditTab from './topbar/ribbon/EditTab';
-import InsertTab from './topbar/ribbon/InsertTab';
 import ViewTab from './topbar/ribbon/ViewTab';
 
 const RIBBON_TABS: { id: RibbonTabId; label: string }[] = [
-  { id: 'map', label: 'Mapa' },
+  { id: 'map', label: 'Diseño Urbanístico' },
   { id: 'edit', label: 'Editar' },
-  { id: 'insert', label: 'Insertar' },
   { id: 'view', label: 'Vista' },
 ];
 
@@ -82,9 +80,8 @@ export default function TopBar() {
           <RibbonContext.Provider value={{ currentMode: mode, setMode }}>
             <div className="topbar-ribbon">
               {activeTab === 'map' && (
-                <MapTab
+                <UrbanDesignTab
                   lotsBusy={actions.lotsBusy}
-                  onDeleteSelected={actions.handleDeleteSelected}
                   onOpenSubdivision={actions.handleOpenSubdivision}
                   onGenerateLots={actions.handleGenerateLots}
                 />
@@ -95,13 +92,6 @@ export default function TopBar() {
                   onFindOverlaps={actions.handleFindOverlaps}
                   onFindGaps={actions.handleFindGaps}
                   onGenerateVertices={actions.handleGenerateVertices}
-                />
-              )}
-              {activeTab === 'insert' && (
-                <InsertTab
-                  lotsBusy={actions.lotsBusy}
-                  onOpenSubdivision={actions.handleOpenSubdivision}
-                  onGenerateLots={actions.handleGenerateLots}
                 />
               )}
               {activeTab === 'view' && <ViewTab />}

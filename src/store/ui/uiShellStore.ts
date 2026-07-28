@@ -7,7 +7,7 @@ type PanelKey = 'properties';
 
 
 /** Tabs del ribbon estilo ArcGIS Pro. Cada tab tiene un id y un label. */
-export type RibbonTabId = 'map' | 'edit' | 'insert' | 'view';
+export type RibbonTabId = 'map' | 'edit' | 'view';
 
 
 /** Ids de paneles (subsecciones dentro del ribbon). */
