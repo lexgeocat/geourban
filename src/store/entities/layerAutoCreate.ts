@@ -18,14 +18,6 @@ function uniqueAutoName(kind: GeoUrbanFeatureKind): string {
   return name;
 }
 
-/**
- * Crea automáticamente (sin modal, sin interrumpir al usuario) una nueva capa
- * para `kind`, usando el color/nombre sugerido en LAYER_SUGGESTIONS.
- * El id se genera de forma síncrona: AddLayerCommand.execute() ejecuta
- * store.add(...) de forma síncrona apenas se invoca runCommand(), aunque
- * runCommand() en sí sea async — por eso el id devuelto ya es válido y
- * está disponible de inmediato en el registro. Nunca deja features huérfanas.
- */
 export function autoCreateLayerForKind(kind: GeoUrbanFeatureKind): string {
   const suggestion = getLayerSuggestion(kind);
   const id = `layer-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -37,7 +29,7 @@ export function autoCreateLayerForKind(kind: GeoUrbanFeatureKind): string {
         kind,
         color: suggestion?.color ?? '#58a6ff',
         fillColor: suggestion?.fillColor ?? suggestion?.color ?? '#58a6ff',
-        visible: true,
+        visible: kind !== 'perimetro',
         locked: false,
         opacity: 1,
         showLabel: true,
@@ -50,14 +42,6 @@ export function autoCreateLayerForKind(kind: GeoUrbanFeatureKind): string {
   return id;
 }
 
-/**
- * Resuelve la capa a usar para `kind`, priorizando:
- *  1) la capa activa, SOLO si coincide en `kind` (nunca "roba" la capa activa
- *     de otro tipo — p.ej. la del perímetro al generar manzanos),
- *  2) cualquier capa ya existente de ese `kind`,
- *  3) si no hay ninguna candidata: se crea una nueva capa independiente.
- * Nunca devuelve undefined — evita features huérfanas.
- */
 export function resolveOrCreateLayerForKind(kind: GeoUrbanFeatureKind): string {
   const registry = useLayersStore.getState();
 

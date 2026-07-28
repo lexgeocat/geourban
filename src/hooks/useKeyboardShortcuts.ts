@@ -5,10 +5,11 @@ import { useMapStore } from '../store/map/mapStore';
 import { useSelectionStore } from '../store/map/selectionStore';
 import { useSnapSettingsStore } from '../store/map/snapSettingsStore';
 import { useLayersStore } from '../store/entities/layersRegistryStore';
+import { useStreetStore } from '../store/entities/streetStore';
+import { useRoundaboutStore } from '../store/entities/roundaboutStore';
+import { recomputeManzanos } from '../geo/recomputeManzanos';
 import { DeleteFeaturesCommand } from '../commands/features/DeleteFeaturesCommand';
 import { runCommand } from '../commands/core/CommandStack';
-
-// No se disparan si el foco esta en un input/textarea/contentEditable
 
 function isTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -27,7 +28,6 @@ export function useKeyboardShortcuts() {
       const ctrlOrCmd = e.ctrlKey || e.metaKey;
       const key = e.key;
 
-      // Undo / Redo (delegan al CommandStack)
       if (ctrlOrCmd && (key === 'z' || key === 'Z')) {
         e.preventDefault();
         if (e.shiftKey) redo();
@@ -42,7 +42,6 @@ export function useKeyboardShortcuts() {
         return;
       }
 
-      // Ctrl/Cmd + A: seleccionar todo (excluye capas locked)
       if (ctrlOrCmd && (key === 'a' || key === 'A')) {
         const src = useMapStore.getState().drawSource;
         if (!src) return;
@@ -63,31 +62,52 @@ export function useKeyboardShortcuts() {
         return;
       }
 
-      // Delete / Backspace: borrar seleccion (via comando)
       if (key === 'Delete' || key === 'Backspace') {
         e.preventDefault();
         const ids = Array.from(useSelectionStore.getState().selectedIds);
-        if (ids.length > 0) {
-          void runCommand(new DeleteFeaturesCommand(ids));
+        if (ids.length === 0) return;
+
+        const src = useMapStore.getState().drawSource;
+        const regularIds: Array<string | number> = [];
+        const streetIds: string[] = [];
+        const roundaboutIds: string[] = [];
+
+        for (const id of ids) {
+          if (src && src.getFeatureById(id) != null) {
+            regularIds.push(id);
+            continue;
+          }
+          if (useStreetStore.getState().streets.some((s) => s.id === id)) {
+            streetIds.push(String(id));
+          } else if (useRoundaboutStore.getState().roundabouts.some((r) => r.id === id)) {
+            roundaboutIds.push(String(id));
+          }
+        }
+
+        if (regularIds.length > 0) {
+          void runCommand(new DeleteFeaturesCommand(regularIds));
+        }
+        if (streetIds.length > 0 || roundaboutIds.length > 0) {
+          streetIds.forEach((sid) => useStreetStore.getState().removeStreet(sid));
+          roundaboutIds.forEach((rid) => useRoundaboutStore.getState().removeRoundabout(rid));
+          useSelectionStore.getState().clear();
+          void recomputeManzanos();
         }
         return;
       }
 
-      // Escape: sale de cualquier modo y vuelve a 'select' normal (click)
       if (key === 'Escape') {
         e.preventDefault();
         useDrawStore.getState().setMode('select');
         useSelectionStore.getState().setSelectMode('click');
         return;
       }
-      // F3: alterna el motor de snap completo (OSNAP maestro, como AutoCAD)
       if (key === 'F3') {
         e.preventDefault();
         useSnapSettingsStore.getState().toggleEnabled();
         return;
       }
 
-      // Single-key shortcuts (sin modifier)
       if (ctrlOrCmd) return;
       const lower = key.toLowerCase();
       const map: Record<string, DrawMode> = {

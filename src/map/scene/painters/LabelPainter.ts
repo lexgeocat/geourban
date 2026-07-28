@@ -16,7 +16,7 @@ import {
 import { formatMetricLength, formatMetricArea, type SegmentMetric } from '../../../geo/metrics';
 import { manzanoDisplayColor } from '../../../geo/manzanoColor';
 import { measureCached, measureCachedWidth } from '../../textMeasureCache';
-import { getFeatureKind } from '../../../core/objectModel';
+import { getFeatureKind, getLotStatus } from '../../../core/objectModel';
 import { useDisplayLayersStore } from '../../../store/ui/displayLayersStore';
 import { useLayersStore } from '../../../store/entities/layersRegistryStore';
 import { useUiShellStore } from '../../../store/ui/uiShellStore'; // ← NUEVO
@@ -102,6 +102,7 @@ export class LabelPainter {
 
       const featureKind = getFeatureKind(feature);
       const isManzana = featureKind === 'manzana';
+      if (isManzana && getLotStatus(feature) === 'subdivided') continue;
       const isLote = featureKind === 'lote';
       const colorIdx = feature.get('colorIdx') ?? 0;
       const featureId = feature.getId();

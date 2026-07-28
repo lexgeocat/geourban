@@ -5,8 +5,10 @@ import { intersects as extentIntersects } from 'ol/extent.js';
 import { HitTestSelect, type HitTestSelectEvent } from '../HitTestSelect';
 import { LassoSelection, type LassoMode } from '../LassoSelection';
 import { useSelectionStore } from '../../../store/map/selectionStore';
+import { useDrawStore } from '../../../store/map/drawStore';
 import { hitTestCandidatesInExtent } from '../../hitTest';
 import { pointInPoly } from '../../../geo/math/polygonEngine';
+import { getOrCreateRoadSnapSource } from '../../roadSnapSource';
 import type { ModeContext } from './ModeContext';
 
 export const SELECT_STYLE = new Style({
@@ -36,6 +38,14 @@ export function activateSelect(ctx: ModeContext): HitTestSelect {
     pixelTolerance: 6,
     multi: true,
     filter: (feature) => !ctx.isLayerLocked(feature),
+    // Calles/rotondas (fuera de drawSource, ver roadSnapSource.ts) se
+    // pueden clickear/resaltar en 'select', pero no en 'edit': su
+    // geometría no vive en drawSource y Modify/Translate no tendrían
+    // forma de persistir un arrastre sobre ellas.
+    getExtraFeatures: () => {
+      if (useDrawStore.getState().mode === 'edit') return [];
+      return getOrCreateRoadSnapSource().getFeatures() as Feature<Geometry>[];
+    },
   });
 
   seedFromStore(ctx, select);

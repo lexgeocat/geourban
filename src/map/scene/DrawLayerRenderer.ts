@@ -91,10 +91,16 @@ export function buildLayerFilter(layers: Layer[]): any[] {
 
 function buildSingleLayerStyle(layer: Layer): Record<string, unknown> {
   const op = layer.opacity ?? 1;
+  const isManzanaLayer = layer.kind === 'manzana';
+  const hideIfSubdivided = (expr: unknown): unknown =>
+    isManzanaLayer
+      ? ['case', ['==', ['get', 'lotStatus'], 'subdivided'], 'rgba(0,0,0,0)', expr]
+      : expr;
+
   if (layer.colorMode !== 'colorIdx') {
     return {
-      'fill-color': withAlpha(layer.fillColor ?? layer.color, 0.3 * op),
-      'stroke-color': withAlpha(layer.color, op),
+      'fill-color': hideIfSubdivided(withAlpha(layer.fillColor ?? layer.color, 0.3 * op)),
+      'stroke-color': hideIfSubdivided(withAlpha(layer.color, op)),
       'stroke-width': 2,
     };
   }
@@ -106,7 +112,11 @@ function buildSingleLayerStyle(layer: Layer): Record<string, unknown> {
   }
   fillExpr.push(withAlpha(MZN_COLORS[0], 0.3 * op));
   strokeExpr.push(withAlpha(MZN_COLORS[0], op));
-  return { 'fill-color': fillExpr, 'stroke-color': strokeExpr, 'stroke-width': 2 };
+  return {
+    'fill-color': hideIfSubdivided(fillExpr),
+    'stroke-color': hideIfSubdivided(strokeExpr),
+    'stroke-width': 2,
+  };
 }
 
 const FALLBACK_STYLE = {

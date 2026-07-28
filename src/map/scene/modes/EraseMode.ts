@@ -1,7 +1,13 @@
 import { Fill, Stroke, Style } from 'ol/style.js';
+import type Feature from 'ol/Feature.js';
+import type Geometry from 'ol/geom/Geometry.js';
 import { HitTestSelect, type HitTestSelectEvent } from '../HitTestSelect';
 import { runCommand } from '../../../commands/core/CommandStack';
 import { DeleteFeaturesCommand } from '../../../commands/features/DeleteFeaturesCommand';
+import { useStreetStore } from '../../../store/entities/streetStore';
+import { useRoundaboutStore } from '../../../store/entities/roundaboutStore';
+import { recomputeManzanos } from '../../../geo/recomputeManzanos';
+import { getOrCreateRoadSnapSource } from '../../roadSnapSource';
 import type { ModeContext } from './ModeContext';
 
 export const ERASE_STYLE = new Style({
@@ -16,19 +22,34 @@ export function activateErase(ctx: ModeContext): void {
     spatialIndex: ctx.spatialIndex,
     pixelTolerance: 6,
     multi: false,
+    // Permite click-to-erase también sobre calles/rotondas.
+    getExtraFeatures: () => getOrCreateRoadSnapSource().getFeatures() as Feature<Geometry>[],
   });
   ctx.highlightLayer.setStyle(ERASE_STYLE);
   select.addEventListener('select', (evt) => {
     const e = evt as unknown as HitTestSelectEvent;
     if (e.selected.length === 0) return;
     const ids: Array<string | number> = [];
+    let removedRoadEntity = false;
     e.selected.forEach((f) => {
       const id = f.getId();
       if (id === undefined || id === null) return;
       if (ctx.isLayerLocked(f)) return;
+      const kind = f.get('kind') as string | undefined;
+      if (kind === 'calle') {
+        useStreetStore.getState().removeStreet(String(id));
+        removedRoadEntity = true;
+        return;
+      }
+      if (kind === 'rotonda') {
+        useRoundaboutStore.getState().removeRoundabout(String(id));
+        removedRoadEntity = true;
+        return;
+      }
       ids.push(id as string | number);
     });
     if (ids.length > 0) void runCommand(new DeleteFeaturesCommand(ids));
+    if (removedRoadEntity) void recomputeManzanos();
     select.getFeatures().clear();
     ctx.highlightSource.clear();
   });

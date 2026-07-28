@@ -29,6 +29,8 @@ export interface HitTestSelectOptions {
   pixelTolerance?: number;
   multi?: boolean;
   filter?: (feature: Feature<Geometry>) => boolean;
+  /** Features adicionales al pool de hit-test (p.ej. calles/rotondas "fantasma" — ver roadSnapSource.ts). */
+  getExtraFeatures?: () => Feature<Geometry>[];
 }
 
 export class HitTestSelect extends Interaction {
@@ -38,6 +40,7 @@ export class HitTestSelect extends Interaction {
   private readonly pixelTolerance: number;
   private readonly multi: boolean;
   private readonly filterFn?: (feature: Feature<Geometry>) => boolean;
+  private readonly getExtraFeatures_?: () => Feature<Geometry>[];
   private readonly features_ = new Collection<Feature<Geometry>>();
 
   constructor(options: HitTestSelectOptions) {
@@ -48,6 +51,7 @@ export class HitTestSelect extends Interaction {
     this.pixelTolerance = options.pixelTolerance ?? 6;
     this.multi = options.multi ?? false;
     this.filterFn = options.filter;
+    this.getExtraFeatures_ = options.getExtraFeatures;
   }
 
   getFeatures(): Collection<Feature<Geometry>> {
@@ -62,6 +66,7 @@ export class HitTestSelect extends Interaction {
     const hit = hitTestAtCoordinate(evt.coordinate, this.spatialIndex, this.source, {
       tolerance,
       filter: this.filterFn,
+      extraFeatures: this.getExtraFeatures_?.(),
     });
 
     const oe = evt.originalEvent as MouseEvent | undefined;

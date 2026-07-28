@@ -179,7 +179,8 @@ function ensurePerimeterWorkingCopies(src: VectorSource): void {
         'lote',
       ),
     );
-    working.set('layerId', resolveLoteLayerId(), true);
+    const perimLayerId = (perim.get('layerId') as string | undefined) ?? resolveOrCreateLayerForKind('perimetro');
+    working.set('layerId', perimLayerId, true);
     src.addFeature(working);
     updateFeatureMetrics(working as Feature<Geometry>);
   }
@@ -559,12 +560,9 @@ async function recomputeManzanosImmediate(): Promise<void> {
         reused.setGeometry(new PolygonGeom([rounded]));
         if (getFeatureKind(reused) !== 'manzana') {
           reused.set('kind', 'manzana', true);
+          reused.set('layerId', resolveManzanaLayerId(), true);
           manzanoCreated = true;
         }
-        // Crítico: sin esto, este manzano "reusado" pierde el vínculo con la
-        // parcela madre original. En el próximo recompute, collectOriginGroups
-        // ya no lo agrupa bien con sus hermanos y usa solo SU forma actual
-        // como si fuera el perímetro completo -> borra al resto del grupo.
         reused.set('origParcelId', group.origId, true);
         reused.set('origPts', group.origPts, true);
         updateFeatureMetrics(reused as Feature<Geometry>);

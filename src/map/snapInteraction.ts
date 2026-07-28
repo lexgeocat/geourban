@@ -12,6 +12,7 @@ import {
 import { getEffectiveSnapSettings } from '../store/map/snapSettingsStore';
 import { useSnapLiveStore } from '../store/map/snapLiveStore';
 import { rafThrottle } from '../utils/rafThrottle';
+import { getOrCreateRoadSnapSource } from './roadSnapSource';
 
 const SNAP_COORD_EVENT_TYPES = new Set([
   'pointermove',
@@ -75,7 +76,6 @@ export default class SnapEngine extends Interaction {
     const map = evt.map;
     const resolution = map.getView().getResolution() ?? 1;
 
-    // 1) Snap de máxima prioridad (cierre de polígono contra el primer vértice)
     const priorityPoint = this.opts.getPriorityTarget?.(evt.coordinate);
     if (priorityPoint) {
       if (this.opts.shouldSnapCoordinate(type)) {
@@ -86,8 +86,8 @@ export default class SnapEngine extends Interaction {
       return true;
     }
 
-    // 2) Snap general (endpoint/midpoint/intersección/perpendicular/paralelo/extensión)
     const effective = getEffectiveSnapSettings();
+    const roadFeatures = getOrCreateRoadSnapSource().getFeatures() as Feature[];
     const result = findSnap(evt.coordinate, src, {
       resolution,
       pixelTolerance: this.opts.pixelTolerance ?? 10,
@@ -96,6 +96,7 @@ export default class SnapEngine extends Interaction {
       previous: this.lastResult,
       anchor: this.opts.getAnchor?.(),
       excludeFeature: this.opts.getExcludeFeature?.(),
+      extraFeatures: roadFeatures,
     });
 
     this.lastResult = result;

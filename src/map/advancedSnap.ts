@@ -104,6 +104,7 @@ export interface FindSnapOptions {
   enabled?: Partial<SnapSettings>;
   previous?: SnapResult | null;
   excludeFeature?: Feature | null;
+  extraFeatures?: Feature[];
 }
 
 interface SnapCandidate {
@@ -277,6 +278,7 @@ export function findSnap(cursor: number[], src: VectorSource, options: FindSnapO
     enabled,
     previous,
     excludeFeature,
+    extraFeatures,
   } = options;
 
   const settings: SnapSettings = { ...DEFAULT_SNAP_SETTINGS, ...enabled };
@@ -445,6 +447,10 @@ export function findSnap(cursor: number[], src: VectorSource, options: FindSnapO
     for (const feat of nearbyFeatures) processFeature(feat as Feature);
   } else {
     src.forEachFeature((feat) => processFeature(feat));
+  }
+
+  if (extraFeatures && extraFeatures.length > 0) {
+    for (const feat of extraFeatures) processFeature(feat);
   }
 
   if (settings.intersection || settings.apparentIntersection) {

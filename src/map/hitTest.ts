@@ -13,6 +13,8 @@ export interface HitTestOptions {
   tolerance: number;
   exclude?: Feature<Geometry> | null;
   filter?: (feature: Feature<Geometry>) => boolean;
+  /** Features adicionales a incluir en el pool de candidatos (p.ej. calles/rotondas "fantasma" — ver roadSnapSource.ts). */
+  extraFeatures?: Array<Feature<Geometry>>;
 }
 
 function distToSegment(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
@@ -42,7 +44,7 @@ function polygonHit(coord: number[], geom: Polygon, tolerance: number): { hit: b
   if (pointInPoly(coord[0], coord[1], outer as [number, number][])) {
     for (let i = 1; i < rings.length; i++) {
       if (pointInPoly(coord[0], coord[1], rings[i] as [number, number][])) {
-        return { hit: false, area: Infinity }; // cayó en un hueco (ring interno)
+        return { hit: false, area: Infinity };
       }
     }
     return { hit: true, area: ringArea(outer) };
@@ -103,9 +105,10 @@ export function hitTestAtCoordinate(
   source: VectorSource,
   options: HitTestOptions,
 ): Feature<Geometry> | null {
-  const { tolerance, exclude, filter } = options;
+  const { tolerance, exclude, filter, extraFeatures } = options;
   const candidates = spatialIndex.searchPoint(coordinate[0], coordinate[1], tolerance) as unknown as Array<Feature<Geometry>>;
-  const pool = candidates.length > 0 ? candidates : (source.getFeatures() as unknown as Array<Feature<Geometry>>);
+  const basePool = candidates.length > 0 ? candidates : (source.getFeatures() as unknown as Array<Feature<Geometry>>);
+  const pool = extraFeatures && extraFeatures.length > 0 ? [...basePool, ...extraFeatures] : basePool;
 
   let bestPolygon: { feature: Feature<Geometry>; area: number } | null = null;
   let bestLinear: { feature: Feature<Geometry>; dist: number } | null = null;

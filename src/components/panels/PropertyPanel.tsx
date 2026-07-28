@@ -7,6 +7,8 @@ import { useUiShellStore } from '../../store/ui/uiShellStore';
 import { formatMetricArea, formatMetricLength, type SegmentMetric } from '../../geo/metrics';
 import { useManzanoStore } from '../../store/entities/manzanoStore';
 import { getFeatureKind } from '../../core/objectModel';
+import { useStreetStore } from '../../store/entities/streetStore';
+import { useRoundaboutStore } from '../../store/entities/roundaboutStore';
 
 const panelStyle: React.CSSProperties = {
   position: 'absolute',
@@ -102,7 +104,40 @@ export default function PropertyPanel() {
   }
 
   const feat = drawSource.getFeatureById(primaryId) as any;
-  if (!feat) return null;
+
+  if (!feat) {
+    const street = useStreetStore.getState().streets.find((s) => s.id === primaryId);
+    if (street) {
+      return (
+        <div style={{ ...panelStyle, top: position.top, right: position.right }} className="cad-panel-glass animate-fade-in">
+          <div style={{ padding: '10px 12px' }}>
+            <div style={headerStyle} onMouseDown={handleMouseDown}>
+              <span className="cad-section-title">Propiedades</span>
+            </div>
+            <p style={{ fontSize: '0.75rem', color: 'var(--cad-text)', marginBottom: 8 }}>{street.name}</p>
+            <div className="cad-row"><span>Calzada</span><span className="cad-row-value">{formatMetricLength(street.widthM)}</span></div>
+            <div className="cad-row"><span>Vereda</span><span className="cad-row-value">{formatMetricLength(street.sideWidthM)}</span></div>
+          </div>
+        </div>
+      );
+    }
+    const roundabout = useRoundaboutStore.getState().roundabouts.find((r) => r.id === primaryId);
+    if (roundabout) {
+      return (
+        <div style={{ ...panelStyle, top: position.top, right: position.right }} className="cad-panel-glass animate-fade-in">
+          <div style={{ padding: '10px 12px' }}>
+            <div style={headerStyle} onMouseDown={handleMouseDown}>
+              <span className="cad-section-title">Propiedades</span>
+            </div>
+            <p style={{ fontSize: '0.75rem', color: 'var(--cad-text)', marginBottom: 8 }}>{roundabout.name}</p>
+            <div className="cad-row"><span>Radio</span><span className="cad-row-value">{formatMetricLength(roundabout.radiusM)}</span></div>
+            <div className="cad-row"><span>Calzada</span><span className="cad-row-value">{formatMetricLength(roundabout.roadWidthM)}</span></div>
+          </div>
+        </div>
+      );
+    }
+    return null;
+  }
 
   const featureKind = getFeatureKind(feat);
   const areaM2 = feat.get('areaM2') as number | undefined;

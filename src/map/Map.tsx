@@ -30,6 +30,7 @@ import SnapEngine from './snapInteraction';
 import { RotateLotsInteraction } from './scene/RotateLotsInteraction';
 import { useRoundaboutStore } from '../store/entities/roundaboutStore';
 import { getOrCreateSpatialIndex } from './spatialIndex';
+import { getOrCreateRoadSnapSource } from './roadSnapSource';
 import { ensureUtmZoneRegistered } from '../geo/crs/utmZones';
 import { useManzanoStore } from '../store/entities/manzanoStore';
 import { runCommand } from '../commands/core/CommandStack';
@@ -236,6 +237,8 @@ const baseMapId = useUiShellStore((s) => s.baseMap);
     // Spatial Index para snap O(log n)
     const spatialIndex = getOrCreateSpatialIndex();
     spatialIndex.load(drawSrc.getFeatures() as Feature<Polygon>[]);
+
+     getOrCreateRoadSnapSource();
 
     // Actualizar índice cuando cambian features
     const onSpatialInsert = (evt: any) => {
