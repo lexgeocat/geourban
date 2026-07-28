@@ -273,7 +273,7 @@ export class StreetPainter {
     const zoomBucket = Math.round(zoom * 4);
     const zoomBucketChanged = zoomBucket !== this.lastLabelZoomBucket;
 
-    if (streetsChangedGlobal || forceDirty) {
+    if (streetsChangedGlobal) {
       this.updateCrossingsCache(streets);
       this.lastStreetHash = currentHash;
     }
@@ -297,12 +297,12 @@ export class StreetPainter {
         this.groupCaches.set(group.layerId, cache);
       }
 
-      if (groupStreetsChanged || groupCornerModeChanged || forceDirty) {
+      if (groupStreetsChanged || groupCornerModeChanged) {
         cache.net = computeRoadNetworkNet(group.streets);
         cache.streetHash = hash;
         cache.cornerMode = cornerMode;
       }
-      if (groupStreetsChanged || forceDirty || zoomBucketChanged) {
+      if (groupStreetsChanged || zoomBucketChanged) {
         cache.labelSlots = computeAllStreetLabelSlots(ctx, group.streets, this.cachedCrossings, zoom, resolution);
       }
     }

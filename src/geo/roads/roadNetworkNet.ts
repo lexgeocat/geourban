@@ -49,8 +49,18 @@ function extractPolygonRingsFromMultiPolygon(mp: ClipMultiPolygon): Pt[][][] {
   return polygons;
 }
 
+const MAX_UNION_POINTS = 15000;
+
 function unionRings(rings: Pt[][]): Pt[][][] {
   if (rings.length === 0) return [];
+
+  const totalPoints = rings.reduce((sum, r) => sum + r.length, 0);
+  if (totalPoints > MAX_UNION_POINTS) {
+    console.warn(
+      `roadNetworkNet: unión omitida — ${totalPoints} puntos totales supera el límite de seguridad (${MAX_UNION_POINTS}). Revisá geometría de vías por segmentos degenerados o duplicados.`,
+    );
+    return rings.map((r) => [r]);
+  }
 
   const polys: ClipPolygon[] = [];
   for (const ring of rings) {
