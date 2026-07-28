@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
+import { useStreetStore } from '../entities/streetStore';
+import { useRoundaboutStore } from '../entities/roundaboutStore';
 
 export type DrawMode =
   | 'select'
@@ -36,10 +38,13 @@ export const useDrawStore = create<DrawState>()(
     areaKind: 'lote', // Por defecto se crean lotes
     lastDrawnLineId: null,
 
-    setMode: (mode) =>
+    setMode: (mode) => {
+      if (mode === 'street') useStreetStore.getState().setPanelVisible(true);
+      if (mode === 'roundabout') useRoundaboutStore.getState().setPanelVisible(true);
       set((state) => {
         state.mode = mode;
-      }),
+      });
+    },
 
     setLastDrawnLineId: (id) =>
       set((state) => {

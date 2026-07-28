@@ -1,4 +1,5 @@
 import Draw from 'ol/interaction/Draw.js';
+import { primaryAction } from 'ol/events/condition.js';
 import { toLonLat } from 'ol/proj.js';
 import { Fill, Stroke, Style, Circle as CircleStyle } from 'ol/style.js';
 import LineString from 'ol/geom/LineString.js';
@@ -20,6 +21,7 @@ export function activatePolygon(ctx: ModeContext): void {
   const draw = new Draw({
     source: src,
     type: 'Polygon',
+    condition: primaryAction,
     style: (feature) => {
       const geom = feature.getGeometry();
       const sketchCoords =

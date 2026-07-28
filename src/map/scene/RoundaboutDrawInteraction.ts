@@ -41,7 +41,7 @@ export class RoundaboutDrawInteraction extends Interaction {
       return false;
     }
 
-    if (type === 'click' || type === 'singleclick') {
+    if ((type === 'click' || type === 'singleclick') && evt.originalEvent instanceof MouseEvent && evt.originalEvent.button === 0) {
       const coord = evt.coordinate as number[];
       if (!this.center) {
         this.center = coord;

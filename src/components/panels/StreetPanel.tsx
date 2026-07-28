@@ -1,11 +1,10 @@
-﻿import React, { useState } from 'react';
+﻿import React, { useState, useRef, useCallback } from 'react';
 import { useStreetStore } from '../../store/entities/streetStore';
 import { useRoadCornerStore } from '../../store/map/roadCornerStore';
 import { type CornerMode } from '../../geo/roads/ringFillet';
 import { recomputeManzanos } from '../../geo/recomputeManzanos';
 import { formatMetricLength, formatMetricArea } from '../../geo/metrics';
 import { pathLength } from '../../geo/math/polygonEngine';
-import { useViewportWidth } from '../../hooks/useViewportWidth';
 
 function streetLengthM(street: { start: [number, number]; end: [number, number]; waypoints?: Array<[number, number]> }): number {
   return pathLength([street.start, ...(street.waypoints ?? []), street.end]);
@@ -53,9 +52,31 @@ export default function StreetPanel() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
 
-  const viewportWidth = useViewportWidth();
-  const panelWidth = Math.min(280, viewportWidth - 20);
-  const panelLeft = Math.min(550, Math.max(6, viewportWidth - panelWidth - 10));
+  const [pos, setPos] = useState({ x: 550, y: 4 });
+  const dragRef = useRef<{ startX: number; startY: number; posX: number; posY: number } | null>(null);
+
+  const onHeaderMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    dragRef.current = { startX: e.clientX, startY: e.clientY, posX: pos.x, posY: pos.y };
+    const onMove = (ev: MouseEvent) => {
+      if (!dragRef.current) return;
+      const nextX = dragRef.current.posX + (ev.clientX - dragRef.current.startX);
+      const nextY = dragRef.current.posY + (ev.clientY - dragRef.current.startY);
+      const maxX = window.innerWidth - 40;
+      const maxY = window.innerHeight - 40;
+      setPos({
+        x: Math.min(Math.max(0, nextX), maxX),
+        y: Math.min(Math.max(0, nextY), maxY),
+      });
+    };
+    const onUp = () => {
+      dragRef.current = null;
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }, [pos.x, pos.y]);
 
   if (!panelVisible) return null;
 
@@ -91,21 +112,25 @@ export default function StreetPanel() {
       className="cad-panel-glass animate-fade-in"
       style={{
         position: 'fixed',
-        top: 'calc(var(--cad-topbar-height) + 12px)',
-        left: panelLeft,
-        width: panelWidth,
+        left: pos.x,
+        top: pos.y,
         maxHeight: 'calc(100vh - 160px)',
         overflowY: 'auto',
-        zIndex: 90,
+        zIndex: 110,
         padding: '10px 10px',
         fontSize: '0.72rem',
+        minWidth: 260,
+        maxWidth: 300,
       }}
     >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, borderBottom: '1px solid var(--cad-border)', paddingBottom: 6 }}>
+      <div
+        onMouseDown={onHeaderMouseDown}
+        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, borderBottom: '1px solid var(--cad-border)', paddingBottom: 6, cursor: 'grab', userSelect: 'none' }}
+      >
         <span style={{ fontWeight: 700, color: 'var(--cad-text)', letterSpacing: '0.03em' }}>
-          Calles <span style={{ color: 'var(--cad-text-muted)', fontWeight: 400 }}>({streets.length})</span>
+          Vías <span style={{ color: 'var(--cad-text-muted)', fontWeight: 400 }}>({streets.length})</span>
         </span>
-        <button onClick={() => setPanelVisible(false)} style={{ background: 'none', border: 'none', color: 'var(--cad-text-dim)', cursor: 'pointer', fontSize: '0.85rem' }} title="Cerrar" aria-label="Cerrar panel de calles">×</button>
+        <button onClick={() => setPanelVisible(false)} style={{ background: 'none', border: 'none', color: 'var(--cad-text-dim)', cursor: 'pointer', fontSize: '0.85rem' }} title="Cerrar" aria-label="Cerrar panel de vías">×</button>
       </div>
 
       <div style={{ background: 'var(--cad-bg-surface)', borderRadius: 6, padding: 8, marginBottom: 8 }}>

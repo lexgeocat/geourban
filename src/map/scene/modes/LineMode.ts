@@ -1,4 +1,5 @@
 import Draw from 'ol/interaction/Draw.js';
+import { primaryAction } from 'ol/events/condition.js';
 import { Stroke, Style } from 'ol/style.js';
 import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
@@ -14,6 +15,7 @@ export function activateLine(ctx: ModeContext): void {
   const draw = new Draw({
     source: src,
     type: 'LineString',
+    condition: primaryAction,
     style: new Style({
       stroke: new Stroke({ color: 'rgba(0, 212, 255, 0.95)', width: 2, lineDash: [6, 4], lineCap: 'round' }),
     }),

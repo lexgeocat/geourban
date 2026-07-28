@@ -1,4 +1,5 @@
 import Draw from 'ol/interaction/Draw.js';
+import { primaryAction } from 'ol/events/condition.js';
 import { Stroke, Style } from 'ol/style.js';
 import LineString from 'ol/geom/LineString.js';
 import type Feature from 'ol/Feature.js';
@@ -30,6 +31,7 @@ export function activateStreet(ctx: ModeContext): void {
   const draw = new Draw({
     source: streetSource,
     type: 'LineString',
+    condition: primaryAction,
     style: new Style({
       stroke: new Stroke({ color: 'rgba(255, 166, 87, 0.95)', width: 2.5, lineDash: [6, 4], lineCap: 'round' }),
     }),

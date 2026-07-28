@@ -73,10 +73,11 @@ export function useKeyboardShortcuts() {
         return;
       }
 
-      // Escape: sale de cualquier modo y vuelve a 'select'
+      // Escape: sale de cualquier modo y vuelve a 'select' normal (click)
       if (key === 'Escape') {
         e.preventDefault();
         useDrawStore.getState().setMode('select');
+        useSelectionStore.getState().setSelectMode('click');
         return;
       }
       // F3: alterna el motor de snap completo (OSNAP maestro, como AutoCAD)

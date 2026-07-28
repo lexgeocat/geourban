@@ -52,7 +52,7 @@ export const useManzanoStore = create<ManzanoState>()((set, get) => ({
   rotatingId: null,
   rotateAnchor: null,
   rotateHandle: null,
-  panelVisible: true,
+  panelVisible: false,
   targetAreaM2: 250,
   frontMinM: 12,
   setMethod: (id, method) => set((s) => ({ methods: { ...s.methods, [String(id)]: method } })),

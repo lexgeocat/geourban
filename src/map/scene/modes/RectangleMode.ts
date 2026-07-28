@@ -1,4 +1,5 @@
 import Draw, { createBox } from 'ol/interaction/Draw.js';
+import { primaryAction } from 'ol/events/condition.js';
 import { Fill, Stroke, Style } from 'ol/style.js';
 import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
@@ -16,6 +17,7 @@ export function activateRectangle(ctx: ModeContext): void {
     source: src,
     type: 'Circle',
     geometryFunction: createBox(),
+    condition: primaryAction,
     style: new Style({
       stroke: new Stroke({ color: 'rgba(0, 212, 255, 0.95)', width: 2, lineDash: [6, 4] }),
       fill: new Fill({ color: 'rgba(0, 212, 255, 0.10)' }),

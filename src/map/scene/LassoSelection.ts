@@ -54,6 +54,7 @@ export class LassoSelection extends Interaction {
   private handleEvent_(evt: MapBrowserEvent): boolean {
     const type = evt.type;
     if (type === 'pointerdown') {
+      if (evt.originalEvent instanceof MouseEvent && evt.originalEvent.button !== 0) return true;
       const coord = evt.coordinate as number[];
       this.anchor = coord;
       this.current_ = coord;
