@@ -3,19 +3,89 @@ import type { GeoWorkerRequest, GeoWorkerResponse } from './geoOperations';
 import type { SubdivisionOptions, SubdivisionResult, ManzanoLoteMethod } from '../geo/subdivision/subdivisionAlgorithms';
 import type { LotResult } from '../geo/math/polygonEngine';
 
+interface PendingEntry {
+  type: GeoWorkerRequest['type'];
+  worker: Worker;
+  resolve: (data: GeoWorkerResponse) => void;
+  reject: (reason: unknown) => void;
+}
+
+let nextRequestId = 1;
+const pending = new Map<number, PendingEntry>();
+
 let interactiveWorker: Worker | null = null;
 let batchWorker: Worker | null = null;
 
+function rejectAllPendingFor(w: Worker, reason: unknown): void {
+  for (const [id, entry] of pending) {
+    if (entry.worker !== w) continue;
+    pending.delete(id);
+    entry.reject(reason);
+  }
+}
+
+function createWorker(onFatalError: () => void): Worker {
+  const w = new Worker(new URL('./geoWorker.ts', import.meta.url), { type: 'module' });
+
+  w.addEventListener('message', (event: MessageEvent<GeoWorkerResponse & { requestId?: number }>) => {
+    const data = event.data;
+    const requestId = data?.requestId;
+
+    if (requestId == null) {
+      console.warn('geoWorkerClient: mensaje del worker sin requestId — se ignora.', data);
+      return;
+    }
+
+    const entry = pending.get(requestId);
+    if (!entry) {
+      return;
+    }
+    pending.delete(requestId);
+
+    if (data.error) {
+      entry.reject(new Error(data.error));
+      return;
+    }
+    if (data.type !== entry.type) {
+      entry.reject(
+        new Error(
+          `geoWorkerClient: se esperaba respuesta de tipo "${entry.type}" pero llegó "${data.type}" (requestId=${requestId}).`,
+        ),
+      );
+      return;
+    }
+    entry.resolve(data);
+  });
+
+  w.addEventListener('messageerror', (event) => {
+    console.error('geoWorkerClient: mensaje no deserializable recibido del worker (structured clone falló)', event);
+  });
+
+  w.addEventListener('error', (err: ErrorEvent) => {
+    console.error('geoWorkerClient: error no controlado en geoWorker — se rechazan todos los requests en vuelo de este worker', err);
+    rejectAllPendingFor(w, err.error ?? new Error(err.message || 'Error desconocido en geoWorker'));
+    onFatalError();
+  });
+
+  return w;
+}
+
 function getInteractiveWorker(): Worker {
   if (!interactiveWorker) {
-    interactiveWorker = new Worker(new URL('./geoWorker.ts', import.meta.url), { type: 'module' });
+    interactiveWorker = createWorker(() => {
+      interactiveWorker?.terminate();
+      interactiveWorker = null;
+    });
   }
   return interactiveWorker;
 }
 
 function getBatchWorker(): Worker {
   if (!batchWorker) {
-    batchWorker = new Worker(new URL('./geoWorker.ts', import.meta.url), { type: 'module' });
+    batchWorker = createWorker(() => {
+      batchWorker?.terminate();
+      batchWorker = null;
+    });
   }
   return batchWorker;
 }
@@ -31,25 +101,23 @@ function pickWorker(type: GeoWorkerRequest['type']): Worker {
 }
 
 function runWorker<T extends GeoWorkerResponse>(request: GeoWorkerRequest): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const w = pickWorker(request.type);
+  const w = pickWorker(request.type);
+  const requestId = nextRequestId++;
 
-    const onMessage = (event: MessageEvent<T>) => {
-      w.removeEventListener('message', onMessage);
-      w.removeEventListener('error', onError);
-      if (event.data.error) reject(new Error(event.data.error));
-      else resolve(event.data);
-    };
-
-    const onError = (err: ErrorEvent) => {
-      w.removeEventListener('message', onMessage);
-      w.removeEventListener('error', onError);
-      reject(err.error ?? new Error(err.message));
-    };
-
-    w.addEventListener('message', onMessage);
-    w.addEventListener('error', onError);
-    w.postMessage(request);
+  return new Promise<T>((resolvePromise, rejectPromise) => {
+    pending.set(requestId, {
+      type: request.type,
+      worker: w,
+      resolve: (data) => resolvePromise(data as T),
+      reject: rejectPromise,
+    });
+    try {
+      const correlated: GeoWorkerRequest & { requestId: number } = { ...request, requestId };
+      w.postMessage(correlated);
+    } catch (err) {
+      pending.delete(requestId);
+      rejectPromise(err);
+    }
   });
 }
 
@@ -143,4 +211,21 @@ export async function subdivideManzanoBatchInWorker(
     manzanos,
   });
   return response.results;
+}
+
+/** Solo para tests/depuración — nunca llamar desde código de producción. */
+export function _resetGeoWorkersForTests(): void {
+  interactiveWorker?.terminate();
+  batchWorker?.terminate();
+  interactiveWorker = null;
+  batchWorker = null;
+  for (const [, entry] of pending) {
+    entry.reject(new Error('geoWorkerClient: reseteado para tests'));
+  }
+  pending.clear();
+}
+
+/** Solo para depuración (p. ej. cablear al DebugPanel). */
+export function _debugPendingRequestCount(): number {
+  return pending.size;
 }

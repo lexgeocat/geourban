@@ -279,6 +279,9 @@ async function runBackgroundTopologyCheck(src: VectorSource): Promise<void> {
       findGapsInWorker(collection),
     ]);
 
+    const overlapsList = Array.isArray(overlaps) ? overlaps : [];
+    const gapsCount = Array.isArray(gaps?.features) ? gaps.features.length : 0;
+
     const affected = new Set<string>();
     const attributeToManzano = (idx: number) => {
       const f = features[idx] as Feature<Geometry> | undefined;
@@ -292,12 +295,12 @@ async function runBackgroundTopologyCheck(src: VectorSource): Promise<void> {
         if (gid) affected.add(gid);
       }
     };
-    for (const o of overlaps) {
+    for (const o of overlapsList) {
       attributeToManzano(o.indexA);
       attributeToManzano(o.indexB);
     }
 
-    useTopologyWarningsStore.getState().setResults(overlaps.length, gaps.features.length, affected);
+    useTopologyWarningsStore.getState().setResults(overlapsList.length, gapsCount, affected);
   } catch (err) {
     console.error('Validación topológica automática falló', err);
     useTopologyWarningsStore.getState().setChecking(false);
