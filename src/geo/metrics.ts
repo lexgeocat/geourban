@@ -10,6 +10,10 @@ import { ensureUtmZoneRegistered } from './crs/utmZones';
 import { pathLength } from './math/polygonEngine';
 
 export type SegmentMetric = {
+  /** Punto inicial del lado lógico (mismas unidades que la geometría, ej. EPSG:3857). */
+  p0: [number, number];
+  /** Punto final del lado lógico. */
+  p1: [number, number];
   midpoint: [number, number];
   lengthM: number;
   angleRad: number;
@@ -62,31 +66,75 @@ function normalizeTextAngle(angleRad: number) {
   return angleRad;
 }
 
+const ARC_MERGE_BREAK_RAD = (12 * Math.PI) / 180;
+/** Tope de seguridad: nunca fusionar más de N aristas crudas en un lado. */
+const ARC_MERGE_MAX_RUN = 48;
+
 function getSegmentMetrics(
   coords3857: [number, number][],
   coordsMetric: [number, number][]
 ): SegmentMetric[] {
-  const segments: SegmentMetric[] = [];
-  for (let i = 0; i < coords3857.length - 1; i++) {
-    const start3857 = coords3857[i];
-    const finish3857 = coords3857[i + 1];
-    if (!start3857 || !finish3857) continue;
+  const n = Math.min(coords3857.length, coordsMetric.length);
+  if (n < 2) return [];
 
-    const lengthM = Math.hypot(
-      coordsMetric[i + 1][0] - coordsMetric[i][0],
-      coordsMetric[i + 1][1] - coordsMetric[i][1]
-    );
-    if (!Number.isFinite(lengthM) || lengthM <= 0) continue;
+  const edgeCount = n - 1;
+  const edgeLenM = new Array<number>(edgeCount);
+  const dirX = new Array<number>(edgeCount);
+  const dirY = new Array<number>(edgeCount);
+
+  for (let i = 0; i < edgeCount; i++) {
+    const a3 = coords3857[i], b3 = coords3857[i + 1];
+    const aM = coordsMetric[i], bM = coordsMetric[i + 1];
+    if (!a3 || !b3 || !aM || !bM) {
+      edgeLenM[i] = 0;
+      dirX[i] = 0;
+      dirY[i] = 0;
+      continue;
+    }
+    edgeLenM[i] = Math.hypot(bM[0] - aM[0], bM[1] - aM[1]);
+    const dx = b3[0] - a3[0];
+    const dy = b3[1] - a3[1];
+    const len = Math.hypot(dx, dy) || 1;
+    dirX[i] = dx / len;
+    dirY[i] = dy / len;
+  }
+
+  const segments: SegmentMetric[] = [];
+
+  const flushRun = (runStart: number, runEndVertex: number) => {
+    const start3857 = coords3857[runStart];
+    const finish3857 = coords3857[runEndVertex];
+    if (!start3857 || !finish3857) return;
+
+    let lengthM = 0;
+    for (let k = runStart; k < runEndVertex; k++) lengthM += edgeLenM[k];
+    if (!Number.isFinite(lengthM) || lengthM <= 0) return;
 
     const dx = finish3857[0] - start3857[0];
     const dy = finish3857[1] - start3857[1];
 
     segments.push({
+      p0: [start3857[0], start3857[1]],
+      p1: [finish3857[0], finish3857[1]],
       midpoint: [(start3857[0] + finish3857[0]) / 2, (start3857[1] + finish3857[1]) / 2],
       lengthM,
       angleRad: normalizeTextAngle(Math.atan2(dy, dx)),
     });
+  };
+
+  let runStart = 0;
+  for (let i = 1; i < edgeCount; i++) {
+    const dot = Math.max(-1, Math.min(1, dirX[i - 1] * dirX[i] + dirY[i - 1] * dirY[i]));
+    const turn = Math.acos(dot);
+    const runLen = i - runStart;
+    const isBreak = !Number.isFinite(turn) || turn > ARC_MERGE_BREAK_RAD || runLen >= ARC_MERGE_MAX_RUN;
+    if (isBreak) {
+      flushRun(runStart, i);
+      runStart = i;
+    }
   }
+  flushRun(runStart, edgeCount);
+
   return segments;
 }
 

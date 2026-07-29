@@ -4,6 +4,7 @@ import type VectorSource from 'ol/source/Vector.js';
 import type VectorLayer from 'ol/layer/Vector.js';
 import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
+import type Polygon from 'ol/geom/Polygon.js';
 import type { SnapGuideVisual } from '../advancedSnap';
 import type { RoundaboutDrawPreview } from './RoundaboutDrawInteraction';
 import type { LassoPreview } from './LassoSelection';
@@ -131,6 +132,15 @@ export class PostrenderPainter {
 
   private getVisibleFeatures(all: Array<Feature<Geometry>>): Array<Feature<Geometry>> {
     const index = getOrCreateSpatialIndex();
+    if (index.size === 0 && all.length > 0) {
+      if (import.meta.env.DEV) {
+        console.warn(
+          `PostrenderPainter: índice espacial vacío con ${all.length} feature(s) presentes — reconstruyendo. ` +
+          'Esto no debería pasar en uso normal; si se repite, revisar la sincronización addfeature/removefeature/changefeature en Map.tsx.',
+        );
+      }
+      index.load(all as unknown as Feature<Polygon>[]);
+    }
     if (index.size === 0) return all;
     const size = this.map.getSize();
     if (!size) return all;

@@ -114,7 +114,6 @@ function drawDimTick(
 
 export function drawSegmentLabels(
   ctx: CanvasRenderingContext2D,
-  points: number[][],
   segmentLengths: SegmentMetric[] | undefined,
   centroidWorld: [number, number] | undefined,
   orientation: DimensionOrientation,
@@ -125,7 +124,6 @@ export function drawSegmentLabels(
   showBackground: boolean = true,
 ): void {
   if (!segmentLengths || segmentLengths.length === 0) return;
-  if (segmentLengths.length !== points.length - 1) return;
   if (opacity <= 0.002) return;
 
   const MIN_SEGMENT_PX = 34;
@@ -141,9 +139,10 @@ export function drawSegmentLabels(
   for (let i = 0; i < segmentLengths.length; i++) {
     const meta = segmentLengths[i];
     if (!meta || !Number.isFinite(meta.lengthM) || meta.lengthM <= 0) continue;
+    if (!meta.p0 || !meta.p1) continue;
 
-    const aPx = toPixel(points[i]);
-    const bPx = toPixel(points[i + 1]);
+    const aPx = toPixel(meta.p0);
+    const bPx = toPixel(meta.p1);
     const dxPx = bPx[0] - aPx[0];
     const dyPx = bPx[1] - aPx[1];
     const lenPx = Math.hypot(dxPx, dyPx);
@@ -205,7 +204,6 @@ export function drawSegmentLabels(
       ctx.fillStyle = mainColor;
       ctx.fillText(label, 0, 0);
     } else {
-      // Halo en vez de caja — legible sobre el relleno del lote sin fondo.
       ctx.lineWidth = 3;
       ctx.strokeStyle = DIM_TEXT_HALO_COLOR;
       ctx.strokeText(label, 0, 0);
