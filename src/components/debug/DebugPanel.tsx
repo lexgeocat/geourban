@@ -3,6 +3,7 @@ import { useDebugPanelStore } from '../../store/debug/debugPanelStore';
 import { useMapStore } from '../../store/map/mapStore';
 import { readDebugCounters } from '../../store/debug/debugCounters';
 import type { DebugCountersSnapshot } from '../../store/debug/debugCounters';
+import { readGeometryTelemetry } from '../../store/debug/geometryTelemetry';
 
 const REFRESH_MS = 400;
 
@@ -53,11 +54,13 @@ export default function DebugPanel() {
   const { fps, fpsAvg } = useFps(open);
   const [counters, setCounters] = useState<DebugCountersSnapshot | null>(null);
   const [featureCount, setFeatureCount] = useState(0);
+  const [geoTelemetry, setGeoTelemetry] = useState<ReturnType<typeof readGeometryTelemetry> | null>(null);
 
   useEffect(() => {
     if (!open) return;
     const tick = () => {
       setCounters(readDebugCounters());
+      setGeoTelemetry(readGeometryTelemetry());
       const src = useMapStore.getState().drawSource;
       setFeatureCount(src ? src.getFeatures().length : 0);
     };
@@ -102,6 +105,20 @@ export default function DebugPanel() {
       <Row label="setStyle/min" value={String(counters?.setStyleCallsPerMin ?? 0)} />
       <Row label="syncLayerSet/min" value={String(counters?.syncLayerSetCallsPerMin ?? 0)} />
       <Row label="syncGizmo/min" value={String(counters?.syncGizmoCallsPerMin ?? 0)} />
+      {geoTelemetry && Object.values(geoTelemetry.countsByContext).some((n) => n > 0) && (
+        <div style={{ marginTop: 6, paddingTop: 6, borderTop: '1px solid var(--cad-border)' }}>
+          <div style={{ color: 'var(--cad-accent-amber)', fontWeight: 700, marginBottom: 3 }}>
+            Saneo de geometría (últimos 60s)
+          </div>
+          {Object.entries(geoTelemetry.countsByContext)
+            .filter(([, n]) => n > 0)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 6)
+            .map(([ctx, n]) => (
+              <Row key={ctx} label={ctx} value={String(n)} />
+            ))}
+        </div>
+      )}
       <div style={{ marginTop: 6, fontSize: '0.6rem', color: 'var(--cad-text-muted)' }}>
         Ctrl+Shift+D para alternar
       </div>

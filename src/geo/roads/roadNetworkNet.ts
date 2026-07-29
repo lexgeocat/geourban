@@ -3,6 +3,7 @@ import type { Street } from '../../store/entities/streetStore';
 import type { RoundaboutParams } from '../roundabout/roundaboutEngine';
 import { buildRoadNetworkRings, buildRoadOnlyRings } from './roadNetworkEngine';
 import { roundRingReflex, type CornerMode } from './ringFillet';
+import { sanitizeRings } from '../sanitizeRing';
 import polygonClipping, {
   type Polygon as ClipPolygon,
   type MultiPolygon as ClipMultiPolygon,
@@ -59,18 +60,21 @@ function now(): number {
 function unionRings(rings: Pt[][]): Pt[][][] {
   if (rings.length === 0) return [];
 
-  const totalPoints = rings.reduce((sum, r) => sum + r.length, 0);
-  if (totalPoints > MAX_UNION_POINTS || rings.length > MAX_UNION_SHAPES) {
+  const sanitized = sanitizeRings(rings, { context: 'roadNetworkNet.unionRings' });
+  if (sanitized.length === 0) return [];
+
+  const totalPoints = sanitized.reduce((sum, r) => sum + r.length, 0);
+  if (totalPoints > MAX_UNION_POINTS || sanitized.length > MAX_UNION_SHAPES) {
     console.warn(
-      `roadNetworkNet: unión omitida — ${rings.length} anillo(s) / ${totalPoints} punto(s) totales supera el ` +
+      `roadNetworkNet: unión omitida — ${sanitized.length} anillo(s) / ${totalPoints} punto(s) totales supera el ` +
       `límite de seguridad (shapes: ${MAX_UNION_SHAPES}, points: ${MAX_UNION_POINTS}). Se dibuja cada calle sin ` +
       `fusionar. Revisá geometría de vías por segmentos degenerados o duplicados.`,
     );
-    return rings.map((r) => [r]);
+    return sanitized.map((r) => [r]);
   }
 
   const polys: ClipPolygon[] = [];
-  for (const ring of rings) {
+  for (const ring of sanitized) {
     const rounded = roundRingForUnion(ring);
     if (rounded.length >= 3) polys.push([closeRing(rounded)] as unknown as ClipPolygon);
   }
@@ -81,12 +85,20 @@ function unionRings(rings: Pt[][]): Pt[][][] {
     let mp: ClipMultiPolygon;
     try {
       mp = polygonClipping.union(polys[0], ...polys.slice(1));
-    } catch {
+    } catch (err1) {
+      console.warn(
+        'roadNetworkNet: unión directa falló, reintentando con auto-limpieza por polígono individual.',
+        err1 instanceof Error ? err1.message : err1,
+      );
       const selfCleaned: ClipPolygon[] = [];
       for (const p of polys) {
-        for (const poly of polygonClipping.union(p)) selfCleaned.push(poly);
+        try {
+          for (const poly of polygonClipping.union(p)) selfCleaned.push(poly);
+        } catch (errSelf) {
+          console.warn('roadNetworkNet: auto-limpieza de un polígono individual también falló — se descarta.', errSelf);
+        }
       }
-      if (selfCleaned.length === 0) return [];
+      if (selfCleaned.length === 0) return sanitized.map((r) => [r]);
       mp = polygonClipping.union(selfCleaned[0], ...selfCleaned.slice(1));
     }
     return extractPolygonRingsFromMultiPolygon(mp);
@@ -95,7 +107,7 @@ function unionRings(rings: Pt[][]): Pt[][][] {
       'roadNetworkNet: unión falló sin recuperación (revisá si alguna vía tiene una curva muy cerrada para su ancho/offset):',
       err2,
     );
-    return rings.map((r) => [r]);
+    return sanitized.map((r) => [r]);
   } finally {
     const elapsed = now() - t0;
     if (elapsed > UNION_TIME_WARNING_MS) {

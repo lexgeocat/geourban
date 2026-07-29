@@ -13,6 +13,7 @@ import {
   pointInPoly,
   buildCutPolys,
 } from '../math/polygonEngine';
+import { sanitizeRing } from '../sanitizeRing';
 
 // ─── Tipos públicos ─────────────────────────────────────────────────
 
@@ -592,6 +593,16 @@ export function sliceBisectManzano(
   return best;
 }
 
+function sanitizeLotResults(lots: LotResult[], context: string): LotResult[] {
+  const out: LotResult[] = [];
+  for (const lot of lots) {
+    const cleaned = sanitizeRing(lot.pts, { context });
+    if (!cleaned) continue;
+    out.push({ ...lot, pts: cleaned.slice(0, -1) });
+  }
+  return out;
+}
+
 export type ManzanoLoteMethod = 'auto' | 'exact' | 'modo2';
 
 export function subdivideManzano(
@@ -606,9 +617,12 @@ export function subdivideManzano(
   if (pts[0][0] !== pts[pts.length - 1][0] || pts[0][1] !== pts[pts.length - 1][1]) {
     pts.push([pts[0][0], pts[0][1]]);
   }
-  if (method === 'exact') return subdivideManzanoExact(pts, targetAreaM2, frontMinM, dirPref);
-  if (method === 'modo2') return subdivideManzanoAuto(pts, targetAreaM2, frontMinM, dirPref);
-  return subdivideManzanoCabeceraCuerpo(pts, targetAreaM2, frontMinM, dirPref);
+  let lots: LotResult[];
+  if (method === 'exact') lots = subdivideManzanoExact(pts, targetAreaM2, frontMinM, dirPref);
+  else if (method === 'modo2') lots = subdivideManzanoAuto(pts, targetAreaM2, frontMinM, dirPref);
+  else lots = subdivideManzanoCabeceraCuerpo(pts, targetAreaM2, frontMinM, dirPref);
+
+  return sanitizeLotResults(lots, 'subdivisionAlgorithms.subdivideManzano');
 }
 
 export function subdivide(
@@ -671,9 +685,17 @@ export function subdivide(
       return { ok: false, features: [], warnings, error: 'No se generaron lotes' };
     }
 
-    warnings.push(`${lots.length} lotes generados (${lots.filter(l => l.isRemnant).length} remanentes)`);
+    const sanitizedLots = sanitizeLotResults(lots, 'subdivisionAlgorithms.subdivide');
+    if (sanitizedLots.length === 0) {
+      return { ok: false, features: [], warnings, error: 'Los lotes generados quedaron con geometría degenerada tras el saneo' };
+    }
+    if (sanitizedLots.length < lots.length) {
+      warnings.push(`${lots.length - sanitizedLots.length} lote(s) descartado(s) por geometría degenerada.`);
+    }
 
-    const features = lots.map((lot, i) =>
+    warnings.push(`${sanitizedLots.length} lotes generados (${sanitizedLots.filter(l => l.isRemnant).length} remanentes)`);
+
+    const features = sanitizedLots.map((lot, i) =>
       toGeoJsonFeature(lot.pts, {
         subdivision: opts.method,
         label: lot.isRemnant ? `Remanente ${i + 1}` : `Lote ${i + 1}`,

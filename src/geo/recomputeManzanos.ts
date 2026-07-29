@@ -30,6 +30,7 @@ import { buildRoadNetworkRings } from './roads/roadNetworkEngine';
 import { roundRingReflex, pointOnRing } from './roads/ringFillet';
 import { matchFragmentsToMembers } from './roads/fragmentReconciliation';
 import { autoCreateLayerForKind, resolveOrCreateLayerForKind } from '../store/entities/layerAutoCreate';
+import { sanitizeFeatureCollectionRings } from './sanitizeGeoJson';
 
 const geoJsonFormat = new GeoJSON();
 
@@ -461,12 +462,22 @@ async function recomputeManzanosImmediate(): Promise<void> {
     })) as never[],
   };
 
-  let result: FeatureCollection;
+let result: FeatureCollection;
   try {
     result = await computeManzanosInWorker(parcelsFC, roadNetworkFC);
   } catch (err) {
     console.error('recomputeManzanos: fallo la unión/diferencia de la red vial', err);
     return;
+  }
+  {
+    const { collection: sanitizedManzanos, droppedCount } = sanitizeFeatureCollectionRings(
+      result,
+      'recomputeManzanos.computeManzanosResult',
+    );
+    if (droppedCount > 0) {
+      console.warn(`recomputeManzanos: se descartaron ${droppedCount} fragmento(s) de manzano por geometría degenerada.`);
+    }
+    result = sanitizedManzanos;
   }
 
   const fragmentsByGroup = new globalThis.Map<number, Pt[][]>();
@@ -883,6 +894,17 @@ export async function reapplyRoadCornerMode(): Promise<void> {
     } catch (err) {
       console.error('reapplyRoadCornerMode: fallo la unión/diferencia de la red vial', err);
       return;
+    }
+
+    {
+      const { collection: sanitizedManzanos, droppedCount } = sanitizeFeatureCollectionRings(
+        result,
+        'reapplyRoadCornerMode.computeManzanosResult',
+      );
+      if (droppedCount > 0) {
+        console.warn(`reapplyRoadCornerMode: se descartaron ${droppedCount} fragmento(s) de manzano por geometría degenerada.`);
+      }
+      result = sanitizedManzanos;
     }
 
     const fragmentsByGroup = new globalThis.Map<number, Pt[][]>();

@@ -7,6 +7,7 @@ import type { RoundaboutParams } from '../geo/roundabout/roundaboutEngine';
 import type { CornerMode } from '../geo/roads/ringFillet';
 import type { RoadNetworkNet } from '../geo/roads/roadNetworkNet';
 import type { Pt } from '../geo/math/polygonEngine';
+import { recordGeometrySanitizeEvent } from '../store/debug/geometryTelemetry';
 
 interface PendingEntry {
   type: GeoWorkerRequest['type'];
@@ -29,11 +30,23 @@ function rejectAllPendingFor(w: Worker, reason: unknown): void {
   }
 }
 
+type WorkerTelemetryMessage = { __geoTelemetry: true; context: string; detail?: Record<string, unknown> };
+
+function isWorkerTelemetryMessage(data: unknown): data is WorkerTelemetryMessage {
+  return !!data && typeof data === 'object' && (data as { __geoTelemetry?: unknown }).__geoTelemetry === true;
+}
+
 function createWorker(onFatalError: () => void): Worker {
   const w = new Worker(new URL('./geoWorker.ts', import.meta.url), { type: 'module' });
 
-  w.addEventListener('message', (event: MessageEvent<GeoWorkerResponse & { requestId?: number }>) => {
+  w.addEventListener('message', (event: MessageEvent<(GeoWorkerResponse & { requestId?: number }) | WorkerTelemetryMessage>) => {
     const data = event.data;
+
+    if (isWorkerTelemetryMessage(data)) {
+      recordGeometrySanitizeEvent(`worker:${data.context}`, data.detail ?? {});
+      return;
+    }
+
     const requestId = data?.requestId;
 
     if (requestId == null) {

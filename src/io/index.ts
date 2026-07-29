@@ -20,19 +20,34 @@ export * from './dxf';
 export * from './persistence';
 
 export { getProjectStore, isTauri, type ProjectStore, type ProjectSummary } from './projectStore';
+import { sanitizeFeatureCollectionRings } from '../geo/sanitizeGeoJson';
 
 export async function importFile(file: File, format?: ImportFormat): Promise<ImportResult> {
   const ext = format ?? inferFormat(file.name);
-  switch (ext) {
-    case 'geourban': return { project: parseGeoUrbanJson(await file.text()), warnings: [] };
-    case 'geojson':  return { project: parseGeoJson(await file.text(), file.name), warnings: [] };
-    case 'kml':  return importKml(file);
-    case 'kmz':  return importKmz(file);
-    case 'shp':  return importShp([file]);
-    case 'gpkg': return importGpkg(file);
-    case 'dxf':  return importDxf(file); // ya no recibe options — el CRS sale del store
-    default: throw new Error(`Formato no soportado: ${ext}`);
+  const result = await (async (): Promise<ImportResult> => {
+    switch (ext) {
+      case 'geourban': return { project: parseGeoUrbanJson(await file.text()), warnings: [] };
+      case 'geojson':  return { project: parseGeoJson(await file.text(), file.name), warnings: [] };
+      case 'kml':  return importKml(file);
+      case 'kmz':  return importKmz(file);
+      case 'shp':  return importShp([file]);
+      case 'gpkg': return importGpkg(file);
+      case 'dxf':  return importDxf(file); // ya no recibe options — el CRS sale del store
+      default: throw new Error(`Formato no soportado: ${ext}`);
+    }
+  })();
+
+  const { collection, droppedCount } = sanitizeFeatureCollectionRings(result.project.data, `import.${ext}`);
+  result.project.data = collection;
+  if (droppedCount > 0) {
+    result.warnings = [
+      ...result.warnings,
+      `${droppedCount} geometría(s) poligonal(es) se descartaron por estar degeneradas (área nula, anillos ` +
+      `auto-intersectantes irrecuperables, etc.). Revisá el archivo de origen si esto es inesperado.`,
+    ];
   }
+
+  return result;
 }
 
 export async function exportProject(

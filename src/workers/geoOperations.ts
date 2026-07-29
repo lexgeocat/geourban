@@ -21,6 +21,7 @@ import { matchFragmentsToMembers } from '../geo/roads/fragmentReconciliation';
 import type { Street } from '../store/entities/streetStore';
 import type { RoundaboutParams } from '../geo/roundabout/roundaboutEngine';
 import type { CornerMode } from '../geo/roads/ringFillet';
+import { sanitizeRing } from '../geo/sanitizeRing';
 
 const geometryFactory = new GeometryFactory();
 const reader = new GeoJSONReader(geometryFactory);
@@ -160,7 +161,19 @@ function robustUnionRoadNetwork(roadNetwork: FeatureCollection): any {
   const polys: ClipPolygon[] = [];
   for (const f of roadNetwork.features) {
     if (!f.geometry || f.geometry.type !== 'Polygon') continue;
-    const rounded = (f.geometry as GeoJsonPolygon).coordinates.map((ring) =>
+
+
+    const sanitizedRings: [number, number][][] = [];
+    (f.geometry as GeoJsonPolygon).coordinates.forEach((ring, idx) => {
+      const clean = sanitizeRing(ring as [number, number][], {
+        context: `geoOperations.robustUnionRoadNetwork.${idx === 0 ? 'outer' : 'hole'}`,
+      });
+      if (clean) sanitizedRings.push(clean);
+    });
+    if (sanitizedRings.length === 0) continue;
+
+
+    const rounded = sanitizedRings.map((ring) =>
       ring.map(([x, y]) => [
         Math.round(x * ROAD_UNION_PRECISION) / ROAD_UNION_PRECISION,
         Math.round(y * ROAD_UNION_PRECISION) / ROAD_UNION_PRECISION,
@@ -173,10 +186,17 @@ function robustUnionRoadNetwork(roadNetwork: FeatureCollection): any {
   let mp: ClipMultiPolygon;
   try {
     mp = polygonClipping.union(polys[0], ...polys.slice(1));
-  } catch {
+  } catch (err1) {
+    console.warn('computeManzanos: unión directa de red vial falló, reintentando con auto-limpieza.', err1);
     try {
       const selfCleaned: ClipPolygon[] = [];
-      for (const p of polys) for (const poly of polygonClipping.union(p)) selfCleaned.push(poly);
+      for (const p of polys) {
+        try {
+          for (const poly of polygonClipping.union(p)) selfCleaned.push(poly);
+        } catch (errSelf) {
+          console.warn('computeManzanos: auto-limpieza de un polígono individual de la red vial falló — se descarta.', errSelf);
+        }
+      }
       if (selfCleaned.length === 0) return null;
       mp = polygonClipping.union(selfCleaned[0], ...selfCleaned.slice(1));
     } catch (err2) {
@@ -188,7 +208,8 @@ function robustUnionRoadNetwork(roadNetwork: FeatureCollection): any {
   const gj = mp.length === 1 ? { type: 'Polygon', coordinates: mp[0] } : { type: 'MultiPolygon', coordinates: mp };
   try {
     return reader.read(gj as any);
-  } catch {
+  } catch (errRead) {
+    console.warn('computeManzanos: JSTS GeoJSONReader no pudo leer el resultado de la unión — se descarta.', errRead);
     return null;
   }
 }
