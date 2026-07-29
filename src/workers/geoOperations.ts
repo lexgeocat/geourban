@@ -16,6 +16,11 @@ import {
   type ManzanoLoteMethod,
 } from '../geo/subdivision/subdivisionAlgorithms';
 import type { LotResult } from '../geo/math/polygonEngine';
+import { computeRoadNetworkNet, type RoadNetworkNet } from '../geo/roads/roadNetworkNet';
+import { matchFragmentsToMembers } from '../geo/roads/fragmentReconciliation';
+import type { Street } from '../store/entities/streetStore';
+import type { RoundaboutParams } from '../geo/roundabout/roundaboutEngine';
+import type { CornerMode } from '../geo/roads/ringFillet';
 
 const geometryFactory = new GeometryFactory();
 const reader = new GeoJSONReader(geometryFactory);
@@ -87,6 +92,24 @@ export type SubdivideManzanoBatchRequest = {
   }>;
 };
 
+export type ComputeRoadNetworkNetRequest = {
+  type: 'computeRoadNetworkNet';
+  streets: Street[];
+  roundabouts: RoundaboutParams[];
+  cornerMode: CornerMode;
+};
+
+export interface MatchFragmentsBatchItem {
+  groupIdx: number;
+  fragments: [number, number][][];
+  memberRings: [number, number][][];
+}
+
+export type MatchFragmentsBatchRequest = {
+  type: 'matchFragmentsBatch';
+  items: MatchFragmentsBatchItem[];
+};
+
 export type GeoWorkerRequest =
   | UnionRequest
   | MergeRequest
@@ -98,7 +121,9 @@ export type GeoWorkerRequest =
   | ComputeManzanosRequest
   | SubdivideRequest
   | SubdivideManzanoRequest
-  | SubdivideManzanoBatchRequest;
+  | SubdivideManzanoBatchRequest
+  | ComputeRoadNetworkNetRequest
+  | MatchFragmentsBatchRequest;
 
 export type GeoWorkerResponse =
   | { type: 'union' | 'merge' | 'intersect'; result: FeatureCollection; error?: string }
@@ -109,7 +134,9 @@ export type GeoWorkerResponse =
   | { type: 'computeManzanos'; manzanos: FeatureCollection; error?: string }
   | { type: 'subdivide'; result: SubdivisionResult; error?: string }
   | { type: 'subdivideManzano'; lots: LotResult[]; error?: string }
-  | { type: 'subdivideManzanoBatch'; results: Array<{ id: string | number; lots: LotResult[] }>; error?: string };
+  | { type: 'subdivideManzanoBatch'; results: Array<{ id: string | number; lots: LotResult[] }>; error?: string }
+  | { type: 'computeRoadNetworkNet'; net: RoadNetworkNet; error?: string }
+  | { type: 'matchFragmentsBatch'; results: Array<{ groupIdx: number; assignments: Array<{ fragmentIdx: number; memberIdx: number | null; overlapArea: number }> }>; error?: string };
 
 /* ---------- Helpers ---------- */
 
@@ -388,6 +415,29 @@ function runSubdivideManzanoBatch(request: SubdivideManzanoBatchRequest): GeoWor
   return { type: 'subdivideManzanoBatch', results };
 }
 
+/* ---------- Red vial y reconciliación de fragmentos (Fase 3) ---------- */
+
+function runComputeRoadNetworkNet(request: ComputeRoadNetworkNetRequest): GeoWorkerResponse {
+  const net = computeRoadNetworkNet(request.streets, request.roundabouts, request.cornerMode);
+  return { type: 'computeRoadNetworkNet', net };
+}
+
+function runMatchFragmentsBatch(request: MatchFragmentsBatchRequest): GeoWorkerResponse {
+  const results = request.items.map((item) => {
+    const members = item.memberRings.map((ring, idx) => ({ ring, ref: idx }));
+    const assignments = matchFragmentsToMembers<number>(item.fragments, members);
+    return {
+      groupIdx: item.groupIdx,
+      assignments: assignments.map((a) => ({
+        fragmentIdx: a.fragmentIdx,
+        memberIdx: a.member,
+        overlapArea: a.overlapArea,
+      })),
+    };
+  });
+  return { type: 'matchFragmentsBatch', results };
+}
+
 /* ---------- Dispatcher ---------- */
 
 export function handleGeoWorkerRequest(request: GeoWorkerRequest): GeoWorkerResponse {
@@ -423,6 +473,10 @@ export function handleGeoWorkerRequest(request: GeoWorkerRequest): GeoWorkerResp
         return runSubdivideManzano(request);
       case 'subdivideManzanoBatch':
         return runSubdivideManzanoBatch(request);
+      case 'computeRoadNetworkNet':
+        return runComputeRoadNetworkNet(request);
+      case 'matchFragmentsBatch':
+        return runMatchFragmentsBatch(request);
       default:
         throw new Error(`Unknown request type: ${(request as any).type}`);
     }
@@ -459,6 +513,10 @@ export function handleGeoWorkerRequest(request: GeoWorkerRequest): GeoWorkerResp
         return { type: 'subdivideManzano', lots: [], error: message };
       case 'subdivideManzanoBatch':
         return { type: 'subdivideManzanoBatch', results: [], error: message };
+      case 'computeRoadNetworkNet':
+        return { type: 'computeRoadNetworkNet', net: { road: [], outer: [] }, error: message };
+      case 'matchFragmentsBatch':
+        return { type: 'matchFragmentsBatch', results: [], error: message };
       default:
         throw new Error(`Unknown request type in catch: ${(request as any).type}`, { cause: err });
     }

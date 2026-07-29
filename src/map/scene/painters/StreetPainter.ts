@@ -1,8 +1,9 @@
 import { useStreetStore, type Street } from '../../../store/entities/streetStore';
 import { useRoadCornerStore } from '../../../store/map/roadCornerStore';
-import { computeRoadNetworkNet, type RoadNetworkNet } from '../../../geo/roads/roadNetworkNet';
-import { type Pt } from '../../../geo/math/polygonEngine';
 import { type CornerMode } from '../../../geo/roads/ringFillet';
+import type { RoadNetworkNet } from '../../../geo/roads/roadNetworkNet';
+import { computeRoadNetworkNetInWorker } from '../../../workers/geoWorkerClient';
+import { type Pt } from '../../../geo/math/polygonEngine';
 import { measureCachedWidth } from '../../textMeasureCache';
 import { useLayersStore } from '../../../store/entities/layersRegistryStore';
 import { useDisplayLayersStore } from '../../../store/ui/displayLayersStore';
@@ -17,6 +18,7 @@ interface StreetLabelZone { lo: number; hi: number }
 
 const FALLBACK_STREET_COLOR = '#f78166';
 const NO_LAYER_KEY = '__geourban_street_no_layer__';
+const NET_RECOMPUTE_DEBOUNCE_MS = 200;
 
 function streetsHash(streets: Street[]): string {
   return streets
@@ -217,9 +219,12 @@ function groupStreetsByLayer(streets: Street[]): StreetLayerGroup[] {
 
 interface StreetGroupCache {
   net: RoadNetworkNet;
+  /** Hash de calles para el que el `net` actual fue efectivamente calculado y aplicado. */
+  netHash: string;
+  netCornerMode: CornerMode;
   labelSlots: globalThis.Map<string, StreetLabelSlot[]>;
-  streetHash: string;
-  cornerMode: CornerMode;
+  /** Hash de calles para el que labelSlots fue calculado (independiente de netHash). */
+  labelHash: string;
 }
 
 export class StreetPainter {
@@ -229,6 +234,89 @@ export class StreetPainter {
   private lastStreetHash = '';
   private lastLabelZoomBucket = -1;
   private pairCrossingCache = new globalThis.Map<string, { points: Pt[]; hashA: string; hashB: string }>();
+
+  // ─── Fase 3: cómputo de red vial desacoplado del render ─────────────
+  private readonly requestRender: () => void;
+  private unsubscribeStreets: (() => void) | null = null;
+  private unsubscribeCorner: (() => void) | null = null;
+  private netDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+  private netRecomputeGeneration = 0;
+
+  constructor(requestRender: () => void = () => {}) {
+    this.requestRender = requestRender;
+
+    // Disparado por cambios de estado, NUNCA desde dentro de postrender.
+    this.unsubscribeStreets = useStreetStore.subscribe((state, prev) => {
+      if (state.streets !== prev.streets) this.scheduleNetRecomputeAll();
+    });
+    this.unsubscribeCorner = useRoadCornerStore.subscribe(() => this.scheduleNetRecomputeAll());
+
+    // Cubre el caso de "ya había calles cuando se montó el mapa" (p.ej. al
+    // cargar un proyecto guardado) sin esperar a un cambio futuro.
+    this.scheduleNetRecomputeAll();
+  }
+
+  dispose(): void {
+    this.unsubscribeStreets?.();
+    this.unsubscribeStreets = null;
+    this.unsubscribeCorner?.();
+    this.unsubscribeCorner = null;
+    if (this.netDebounceTimer) {
+      clearTimeout(this.netDebounceTimer);
+      this.netDebounceTimer = null;
+    }
+  }
+
+  private scheduleNetRecomputeAll(): void {
+    if (this.netDebounceTimer) clearTimeout(this.netDebounceTimer);
+    this.netDebounceTimer = setTimeout(() => {
+      this.netDebounceTimer = null;
+      void this.recomputeAllNets();
+    }, NET_RECOMPUTE_DEBOUNCE_MS);
+  }
+
+  /**
+   * Recalcula la unión+fillets de la red vial para todos los grupos
+   * (agrupados por capa), en paralelo, cada uno vía worker. Nunca corre en
+   * el hilo principal ni dentro del callback de postrender.
+   */
+  private async recomputeAllNets(): Promise<void> {
+    const streets = useStreetStore.getState().streets;
+    const cornerMode = useRoadCornerStore.getState().mode;
+    const groups = groupStreetsByLayer(streets);
+    const generation = ++this.netRecomputeGeneration;
+
+    const results = await Promise.all(
+      groups.map(async (group) => {
+        try {
+          const net = await computeRoadNetworkNetInWorker(group.streets, [], cornerMode);
+          return { layerId: group.layerId, net, hash: streetsHash(group.streets), cornerMode };
+        } catch (err) {
+          console.error(`StreetPainter: no se pudo calcular la red vial de la capa "${group.layerId}"`, err);
+          return null;
+        }
+      }),
+    );
+
+    // Llegó una corrida más nueva mientras esperábamos ésta — se descarta.
+    if (generation !== this.netRecomputeGeneration) return;
+
+    let appliedAny = false;
+    for (const r of results) {
+      if (!r) continue;
+      let cache = this.groupCaches.get(r.layerId);
+      if (!cache) {
+        cache = { net: r.net, netHash: r.hash, netCornerMode: r.cornerMode, labelSlots: new globalThis.Map(), labelHash: '' };
+        this.groupCaches.set(r.layerId, cache);
+      } else {
+        cache.net = r.net;
+        cache.netHash = r.hash;
+        cache.netCornerMode = r.cornerMode;
+      }
+      appliedAny = true;
+    }
+    if (appliedAny) this.requestRender();
+  }
 
   private streetPairHash(s: Street): string {
     return `${s.start[0]},${s.start[1]}|${s.end[0]},${s.end[1]}|${s.widthM}|${s.sideWidthM}|${(s.waypoints ?? []).map((w) => `${w[0]},${w[1]}`).join(';')}`;
@@ -265,10 +353,14 @@ export class StreetPainter {
     this.cachedCrossings = crossings;
   }
 
-  update(ctx: CanvasRenderingContext2D, zoom: number, forceDirty: boolean, resolution: number): void {
+  /**
+   * Llamado cada frame desde PostrenderPainter. A partir de la Fase 3, NO
+   * calcula unión ni fillets (eso pasó a recomputeAllNets(), async/worker).
+   * Solo actualiza cachés baratas: crossings y label slots.
+   */
+  update(ctx: CanvasRenderingContext2D, zoom: number, _forceDirty: boolean, resolution: number): void {
     const streets = useStreetStore.getState().streets;
     const currentHash = streetsHash(streets);
-    const cornerMode = useRoadCornerStore.getState().mode;
     const streetsChangedGlobal = currentHash !== this.lastStreetHash;
     const zoomBucket = Math.round(zoom * 4);
     const zoomBucketChanged = zoomBucket !== this.lastLabelZoomBucket;
@@ -289,21 +381,22 @@ export class StreetPainter {
     for (const group of groups) {
       const hash = streetsHash(group.streets);
       let cache = this.groupCaches.get(group.layerId);
-      const groupStreetsChanged = !cache || cache.streetHash !== hash;
-      const groupCornerModeChanged = !cache || cache.cornerMode !== cornerMode;
-
       if (!cache) {
-        cache = { net: { road: [], outer: [] }, labelSlots: new globalThis.Map(), streetHash: '', cornerMode };
+        // Placeholder vacío — el neto real llega async vía recomputeAllNets().
+        cache = {
+          net: { road: [], outer: [] },
+          netHash: '',
+          netCornerMode: useRoadCornerStore.getState().mode,
+          labelSlots: new globalThis.Map(),
+          labelHash: '',
+        };
         this.groupCaches.set(group.layerId, cache);
       }
 
-      if (groupStreetsChanged || groupCornerModeChanged) {
-        cache.net = computeRoadNetworkNet(group.streets);
-        cache.streetHash = hash;
-        cache.cornerMode = cornerMode;
-      }
-      if (groupStreetsChanged || zoomBucketChanged) {
+      const labelsStale = cache.labelHash !== hash || zoomBucketChanged;
+      if (labelsStale) {
         cache.labelSlots = computeAllStreetLabelSlots(ctx, group.streets, this.cachedCrossings, zoom, resolution);
+        cache.labelHash = hash;
       }
     }
 
@@ -330,9 +423,6 @@ export class StreetPainter {
       const fillColor = layer.fillColor ?? strokeColor;
       const layerOp = layer.opacity ?? 1;
 
-      // Durante interacción, saltamos el relleno/stroke de los polígonos de
-      // calzada+vereda (caro: unión + fillet) y dejamos solo el eje
-      // punteado (barato, O(streets)) — igual que ya hacían las etiquetas.
       if (!interacting) {
         this.paintRings(ctx, cache.net.outer, toPx, { fill: null, stroke: withAlpha('#c8c8c8', 0.55 * layerOp), lineWidth: 1 });
         this.paintRings(ctx, cache.net.road, toPx, {
@@ -388,6 +478,7 @@ export class StreetPainter {
       }
     }
   }
+
   private paintRings(
     ctx: CanvasRenderingContext2D,
     polygons: Pt[][][],

@@ -28,7 +28,7 @@ export class PostrenderPainter {
   private readonly listener: (event: any) => void;
 
 
-  private readonly streetPainter = new StreetPainter();
+  private readonly streetPainter: StreetPainter;
   private readonly roundaboutPainter = new RoundaboutPainter();
   private readonly labelPainter = new LabelPainter();
   private readonly snapGuidePainter: SnapGuidePainter;
@@ -45,6 +45,7 @@ export class PostrenderPainter {
     this.drawSource = opts.drawSource;
     this.postrenderLayer = opts.postrenderLayer;
     this.snapGuidePainter = new SnapGuidePainter(this.map);
+    this.streetPainter = new StreetPainter(() => this.map.render());
 
 
     const onFeatureChange = () => { this.dirty = true; };
@@ -152,5 +153,6 @@ export class PostrenderPainter {
 
   dispose(): void {
     this.postrenderLayer.un('postrender', this.listener);
+    this.streetPainter.dispose();
   }
 }

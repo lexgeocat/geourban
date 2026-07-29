@@ -20,6 +20,7 @@ import {
   subdivideManzanoInWorker,
   findOverlapsInWorker,
   findGapsInWorker,
+  matchFragmentsBatchInWorker,
 } from '../workers/geoWorkerClient';
 import { useTopologyWarningsStore } from '../store/topologyWarningsStore';
 import { confirmAsync } from '../store/ui/confirmDialogStore';
@@ -485,12 +486,27 @@ async function recomputeManzanosImmediate(): Promise<void> {
   const memberAreaByRefPerGroup = new globalThis.Map<number, globalThis.Map<Feature<Geometry>, number>>();
   const relotCandidates: Array<{ featureId: string; method: ManzanoLoteMethod; dirPref?: { ax: number; ay: number } }> = [];
 
+
+  // ─── Fase 3 ───────────────────────────────────────────────────────
+  // matchFragmentsToMembers (polygonClipping.intersection, O(fragmentos×
+  // miembros)) ya NO corre en el hilo principal: se batchea en un único
+  // viaje al worker. Primero juntamos los "casos a resolver" (solo
+  // anillos + índices — nunca el Feature de OL, que no es serializable).
+  interface ReconTask {
+    idx: number;
+    fragments: Pt[][];
+    existingMembers: Array<{ ring: Pt[]; ref: Feature<Geometry> }>;
+  }
+  const reconTasks: ReconTask[] = [];
+
+
   for (let idx = 0; idx < parcelIndexToGroup.length; idx++) {
     const group = parcelIndexToGroup[idx];
     const fragments = fragmentsByGroup.get(idx) ?? [];
     const untouched = fragments.length === 1 && polyArea(fragments[0]) >= polyArea(group.origPts) * 0.999;
     if (untouched) continue;
     if (fragmentsMatchCurrentMembers(group.members, fragments)) continue;
+
 
     const existingMembers = group.members
       .map((m) => {
@@ -502,31 +518,74 @@ async function recomputeManzanosImmediate(): Promise<void> {
       })
       .filter((x) => x.ring.length >= 3);
 
+
     const areaByRef = new globalThis.Map<Feature<Geometry>, number>();
     for (const em of existingMembers) areaByRef.set(em.ref, polyArea(em.ring));
     memberAreaByRefPerGroup.set(idx, areaByRef);
 
-    const assignments = matchFragmentsToMembers(fragments, existingMembers);
-    assignmentsByGroupIdx.set(idx, assignments);
 
-    for (const a of assignments) {
-      if (!a.member) continue;
-      const oldArea = areaByRef.get(a.member) ?? 0;
-      const fragArea = polyArea(fragments[a.fragmentIdx]);
-      const ratioOld = oldArea > 0 ? a.overlapArea / oldArea : 0;
-      const ratioFrag = fragArea > 0 ? a.overlapArea / fragArea : 0;
-      const barelyChanged = Math.min(ratioOld, ratioFrag) >= 0.92;
-      if (barelyChanged) continue;
-      if (getLotStatus(a.member) !== 'subdivided') continue;
-      const mid = a.member.getId();
-      if (mid == null) continue;
-      const hasLots = (lotsByGroupId.get(String(mid))?.length ?? 0) > 0;
-      if (!hasLots) continue;
-      relotCandidates.push({
-        featureId: String(mid),
-        method: useManzanoStore.getState().getMethod(mid),
-        dirPref: useManzanoStore.getState().getRotateDir(mid),
-      });
+    reconTasks.push({ idx, fragments, existingMembers });
+  }
+
+
+  if (reconTasks.length > 0) {
+    let batchResults: Array<{ groupIdx: number; assignments: Array<{ fragmentIdx: number; memberIdx: number | null; overlapArea: number }> }>;
+    try {
+      batchResults = await matchFragmentsBatchInWorker(
+        reconTasks.map((t) => ({
+          groupIdx: t.idx,
+          fragments: t.fragments,
+          memberRings: t.existingMembers.map((m) => m.ring),
+        })),
+      );
+    } catch (err) {
+      console.error(
+        'recomputeManzanos: matchFragmentsBatch en worker falló — se recalcula en el hilo principal como respaldo (más lento, pero funcional).',
+        err,
+      );
+      batchResults = reconTasks.map((t) => ({
+        groupIdx: t.idx,
+        assignments: matchFragmentsToMembers(t.fragments, t.existingMembers).map((a) => {
+          const foundIdx = a.member != null ? t.existingMembers.findIndex((m) => m.ref === a.member) : -1;
+          return { fragmentIdx: a.fragmentIdx, memberIdx: foundIdx >= 0 ? foundIdx : null, overlapArea: a.overlapArea };
+        }),
+      }));
+    }
+
+
+    const resultsByGroupIdx = new globalThis.Map(batchResults.map((r) => [r.groupIdx, r.assignments]));
+
+
+    for (const task of reconTasks) {
+      const rawAssignments = resultsByGroupIdx.get(task.idx) ?? [];
+      const assignments = rawAssignments.map((a) => ({
+        fragmentIdx: a.fragmentIdx,
+        member: a.memberIdx != null ? (task.existingMembers[a.memberIdx]?.ref ?? null) : null,
+        overlapArea: a.overlapArea,
+      }));
+      assignmentsByGroupIdx.set(task.idx, assignments);
+
+
+      const areaByRef = memberAreaByRefPerGroup.get(task.idx);
+      for (const a of assignments) {
+        if (!a.member) continue;
+        const oldArea = areaByRef?.get(a.member) ?? 0;
+        const fragArea = polyArea(task.fragments[a.fragmentIdx]);
+        const ratioOld = oldArea > 0 ? a.overlapArea / oldArea : 0;
+        const ratioFrag = fragArea > 0 ? a.overlapArea / fragArea : 0;
+        const barelyChanged = Math.min(ratioOld, ratioFrag) >= 0.92;
+        if (barelyChanged) continue;
+        if (getLotStatus(a.member) !== 'subdivided') continue;
+        const mid = a.member.getId();
+        if (mid == null) continue;
+        const hasLots = (lotsByGroupId.get(String(mid))?.length ?? 0) > 0;
+        if (!hasLots) continue;
+        relotCandidates.push({
+          featureId: String(mid),
+          method: useManzanoStore.getState().getMethod(mid),
+          dirPref: useManzanoStore.getState().getRotateDir(mid),
+        });
+      }
     }
   }
 
@@ -838,6 +897,16 @@ export async function reapplyRoadCornerMode(): Promise<void> {
 
     const cornerMode = useRoadCornerStore.getState().mode;
 
+    // Fase 3: igual que en recomputeManzanosImmediate, la reconciliación
+    // fragmento↔manzano se batchea en el worker en vez de correr
+    // sincrónicamente acá.
+    interface ReconTask {
+      groupIdx: number;
+      fragments: Pt[][];
+      existingMembers: Array<{ ring: Pt[]; ref: Feature<Geometry> }>;
+    }
+    const reconTasks: ReconTask[] = [];
+
     for (let idx = 0; idx < touchedGroups.length; idx++) {
       const group = touchedGroups[idx];
       const fragments = fragmentsByGroup.get(idx) ?? [];
@@ -846,10 +915,6 @@ export async function reapplyRoadCornerMode(): Promise<void> {
       const oldManzanaMembers = group.members.filter((m) => getFeatureKind(m) === 'manzana');
       if (oldManzanaMembers.length === 0) continue;
 
-      // Emparejar por SOLAPAMIENTO ESPACIAL, no por posición en el array:
-      // el orden que devuelve el worker no coincide necesariamente con el
-      // orden de group.members, y eso podía intercambiar geometrías entre
-      // dos manzanos al cambiar el modo de esquina.
       const existingMembers = oldManzanaMembers
         .map((m) => {
           const g = m.getGeometry();
@@ -860,14 +925,46 @@ export async function reapplyRoadCornerMode(): Promise<void> {
         })
         .filter((x) => x.ring.length >= 3);
 
-      const assignments = matchFragmentsToMembers(fragments, existingMembers);
+      reconTasks.push({ groupIdx: idx, fragments, existingMembers });
+    }
 
-      for (let i = 0; i < fragments.length; i++) {
-        const assignment = assignments.find((a) => a.fragmentIdx === i);
-        const feat = assignment?.member;
+    let batchResults: Array<{ groupIdx: number; assignments: Array<{ fragmentIdx: number; memberIdx: number | null; overlapArea: number }> }> = [];
+    if (reconTasks.length > 0) {
+      try {
+        batchResults = await matchFragmentsBatchInWorker(
+          reconTasks.map((t) => ({
+            groupIdx: t.groupIdx,
+            fragments: t.fragments,
+            memberRings: t.existingMembers.map((m) => m.ring),
+          })),
+        );
+      } catch (err) {
+        console.error(
+          'reapplyRoadCornerMode: matchFragmentsBatch en worker falló — se recalcula en el hilo principal como respaldo.',
+          err,
+        );
+        batchResults = reconTasks.map((t) => ({
+          groupIdx: t.groupIdx,
+          assignments: matchFragmentsToMembers(t.fragments, t.existingMembers).map((a) => {
+            const foundIdx = a.member != null ? t.existingMembers.findIndex((m) => m.ref === a.member) : -1;
+            return { fragmentIdx: a.fragmentIdx, memberIdx: foundIdx >= 0 ? foundIdx : null, overlapArea: a.overlapArea };
+          }),
+        }));
+      }
+    }
+
+    const resultsByGroupIdx = new globalThis.Map(batchResults.map((r) => [r.groupIdx, r.assignments]));
+
+    for (const task of reconTasks) {
+      const rawAssignments = resultsByGroupIdx.get(task.groupIdx) ?? [];
+      const group = touchedGroups[task.groupIdx];
+
+      for (let i = 0; i < task.fragments.length; i++) {
+        const assignment = rawAssignments.find((a) => a.fragmentIdx === i);
+        const feat = assignment?.memberIdx != null ? task.existingMembers[assignment.memberIdx]?.ref : undefined;
         if (!feat) continue;
         const rounded = roundRingReflex(
-          orientRingCcw(fragments[i]), 0, false, cornerMode,
+          orientRingCcw(task.fragments[i]), 0, false, cornerMode,
           (pt) => !pointOnRing(pt, group.origPts),
         );
         if (rounded.length < 4) continue;

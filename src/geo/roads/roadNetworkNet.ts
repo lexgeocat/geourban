@@ -2,8 +2,7 @@ import type { Pt } from '../math/polygonEngine';
 import type { Street } from '../../store/entities/streetStore';
 import type { RoundaboutParams } from '../roundabout/roundaboutEngine';
 import { buildRoadNetworkRings, buildRoadOnlyRings } from './roadNetworkEngine';
-import { roundRingReflex } from './ringFillet';
-import { useRoadCornerStore } from '../../store/map/roadCornerStore';
+import { roundRingReflex, type CornerMode } from './ringFillet';
 import polygonClipping, {
   type Polygon as ClipPolygon,
   type MultiPolygon as ClipMultiPolygon,
@@ -29,7 +28,7 @@ function orientRingCcw(ring: Pt[]): Pt[] {
   return area >= 0 ? ring : ring.slice().reverse();
 }
 
-const UNION_PRECISION = 1e6; // grilla de ~1e-6 unidades de mapa
+const UNION_PRECISION = 1e6;
 function roundRingForUnion(ring: Pt[]): Pt[] {
   return ring.map(
     ([x, y]) =>
@@ -50,14 +49,22 @@ function extractPolygonRingsFromMultiPolygon(mp: ClipMultiPolygon): Pt[][][] {
 }
 
 const MAX_UNION_POINTS = 15000;
+const MAX_UNION_SHAPES = 800;
+const UNION_TIME_WARNING_MS = 300;
+
+function now(): number {
+  return typeof performance !== 'undefined' ? performance.now() : Date.now();
+}
 
 function unionRings(rings: Pt[][]): Pt[][][] {
   if (rings.length === 0) return [];
 
   const totalPoints = rings.reduce((sum, r) => sum + r.length, 0);
-  if (totalPoints > MAX_UNION_POINTS) {
+  if (totalPoints > MAX_UNION_POINTS || rings.length > MAX_UNION_SHAPES) {
     console.warn(
-      `roadNetworkNet: unión omitida — ${totalPoints} puntos totales supera el límite de seguridad (${MAX_UNION_POINTS}). Revisá geometría de vías por segmentos degenerados o duplicados.`,
+      `roadNetworkNet: unión omitida — ${rings.length} anillo(s) / ${totalPoints} punto(s) totales supera el ` +
+      `límite de seguridad (shapes: ${MAX_UNION_SHAPES}, points: ${MAX_UNION_POINTS}). Se dibuja cada calle sin ` +
+      `fusionar. Revisá geometría de vías por segmentos degenerados o duplicados.`,
     );
     return rings.map((r) => [r]);
   }
@@ -69,25 +76,33 @@ function unionRings(rings: Pt[][]): Pt[][][] {
   }
   if (polys.length === 0) return [];
 
+  const t0 = now();
   try {
-    const result = polygonClipping.union(polys[0], ...polys.slice(1));
-    return extractPolygonRingsFromMultiPolygon(result);
-  } catch {
+    let mp: ClipMultiPolygon;
     try {
+      mp = polygonClipping.union(polys[0], ...polys.slice(1));
+    } catch {
       const selfCleaned: ClipPolygon[] = [];
       for (const p of polys) {
         for (const poly of polygonClipping.union(p)) selfCleaned.push(poly);
       }
       if (selfCleaned.length === 0) return [];
-      const result = polygonClipping.union(selfCleaned[0], ...selfCleaned.slice(1));
-      return extractPolygonRingsFromMultiPolygon(result);
-    } catch (err2) {
+      mp = polygonClipping.union(selfCleaned[0], ...selfCleaned.slice(1));
+    }
+    return extractPolygonRingsFromMultiPolygon(mp);
+  } catch (err2) {
+    console.warn(
+      'roadNetworkNet: unión falló sin recuperación (revisá si alguna vía tiene una curva muy cerrada para su ancho/offset):',
+      err2,
+    );
+    return rings.map((r) => [r]);
+  } finally {
+    const elapsed = now() - t0;
+    if (elapsed > UNION_TIME_WARNING_MS) {
       console.warn(
-        'roadNetworkNet: unión falló sin recuperación (revisá si alguna vía tiene una curva muy cerrada para su ancho/offset):',
-        err2,
+        `roadNetworkNet: unión de ${polys.length} polígono(s) (${totalPoints} pts) tardó ${elapsed.toFixed(0)}ms. ` +
+        `Si esto se repite seguido, es indicio de geometría degenerada o de una red vial demasiado densa.`,
       );
-      // Fallback sin unión real: cada anillo como su propio polígono sin holes.
-      return rings.map((r) => [r]);
     }
   }
 }
@@ -125,6 +140,7 @@ function makeSideExtraProbe(streets: Street[], roundabouts: RoundaboutParams[]) 
 export function computeRoadNetworkNet(
   streets: Street[],
   roundabouts: RoundaboutParams[] = [],
+  cornerMode: CornerMode = 'fillet',
 ): RoadNetworkNet {
   const roadRingsRaw = buildRoadOnlyRings(streets, roundabouts);
   const outerRingsRaw = buildRoadNetworkRings(streets, roundabouts);
@@ -132,8 +148,6 @@ export function computeRoadNetworkNet(
 
   const roadUnion = unionRings(roadRingsRaw);
   const outerUnion = unionRings(outerRingsRaw);
-
-  const cornerMode = useRoadCornerStore.getState().mode;
 
   const processPolygons = (
     polygons: Pt[][][],

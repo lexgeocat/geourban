@@ -43,6 +43,15 @@ export function matchFragmentsToMembers<T>(
   members: Array<{ ring: Pt[]; ref: T }>,
 ): Array<FragmentAssignment<T>> {
   const candidates: Array<{ fragIdx: number; memberIdx: number; overlap: number }> = [];
+  const MATCH_COMPLEXITY_WARNING = 20000;
+  const totalPairs = fragments.length * members.length;
+  if (totalPairs > MATCH_COMPLEXITY_WARNING) {
+    console.warn(
+      `fragmentReconciliation: matchFragmentsToMembers procesando ${fragments.length} fragmento(s) × ` +
+      `${members.length} miembro(s) = ${totalPairs} pares candidatos — puede ser lento. Revisá si hay ` +
+      `demasiadas vías cruzándose en la misma zona.`,
+    );
+  }
 
   for (let fi = 0; fi < fragments.length; fi++) {
     if (polyArea(fragments[fi]) <= 0) continue;
