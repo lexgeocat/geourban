@@ -17,7 +17,7 @@ import ManzanoPanel from './components/panels/ManzanoPanel';
 import RoundaboutPanel from './components/panels/RoundaboutPanel';
 import StreetPanel from './components/panels/StreetPanel';
 import DebugPanel from './components/debug/DebugPanel';
-
+import ConfirmDialog from './components/modals/ConfirmDialog';
 
 function App() {
   useKeyboardShortcuts();
@@ -78,6 +78,7 @@ function App() {
       <ProjectSetupModal />
       <SubdivisionDialog />
       <LayerPanel />
+      <ConfirmDialog />
 
       <StatusBar />
       <DebugPanel />

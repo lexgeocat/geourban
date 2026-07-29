@@ -37,9 +37,8 @@ function createWorker(onFatalError: () => void): Worker {
     }
 
     const entry = pending.get(requestId);
-    if (!entry) {
-      return;
-    }
+    if (!entry) return; // respuesta huérfana (ya resuelta/rechazada antes) — se descarta a propósito
+
     pending.delete(requestId);
 
     if (data.error) {
@@ -121,6 +120,24 @@ function runWorker<T extends GeoWorkerResponse>(request: GeoWorkerRequest): Prom
   });
 }
 
+export interface FindOverlapsPayload {
+  overlaps: Array<{ indexA: number; indexB: number; area: number }>;
+}
+export interface FindGapsPayload {
+  gaps: FeatureCollection;
+}
+
+export function isFindOverlapsPayload(value: unknown): value is FindOverlapsPayload {
+  return !!value && typeof value === 'object' && Array.isArray((value as { overlaps?: unknown }).overlaps);
+}
+
+export function isFindGapsPayload(value: unknown): value is FindGapsPayload {
+  const gaps = (value as { gaps?: { type?: unknown; features?: unknown } } | undefined)?.gaps;
+  return !!gaps && gaps.type === 'FeatureCollection' && Array.isArray(gaps.features);
+}
+
+// ─── API pública ────────────────────────────────────────────────────────
+
 export async function mergePolygonsInWorker(features: FeatureCollection) {
   const response = await runWorker<{ type: 'merge'; result: FeatureCollection }>({
     type: 'merge',
@@ -142,6 +159,9 @@ export async function findOverlapsInWorker(features: FeatureCollection) {
     type: 'findOverlaps',
     features,
   });
+  if (!isFindOverlapsPayload(response)) {
+    throw new Error('geoWorkerClient: respuesta de findOverlaps con forma inesperada (falta "overlaps").');
+  }
   return response.overlaps;
 }
 
@@ -150,6 +170,9 @@ export async function findGapsInWorker(features: FeatureCollection) {
     type: 'findGaps',
     features,
   });
+  if (!isFindGapsPayload(response)) {
+    throw new Error('geoWorkerClient: respuesta de findGaps con forma inesperada (falta "gaps.features").');
+  }
   return response.gaps;
 }
 
@@ -177,7 +200,6 @@ export async function subdivideInWorker(
   return response.result;
 }
 
-/** Subdivide un solo manzano ya conocido (RecomputeManzanoLotsCommand). */
 export async function subdivideManzanoInWorker(
   ring: [number, number][],
   method: ManzanoLoteMethod,
@@ -213,19 +235,16 @@ export async function subdivideManzanoBatchInWorker(
   return response.results;
 }
 
-/** Solo para tests/depuración — nunca llamar desde código de producción. */
+/** Solo para tests/depuración. */
 export function _resetGeoWorkersForTests(): void {
   interactiveWorker?.terminate();
   batchWorker?.terminate();
   interactiveWorker = null;
   batchWorker = null;
-  for (const [, entry] of pending) {
-    entry.reject(new Error('geoWorkerClient: reseteado para tests'));
-  }
+  for (const [, entry] of pending) entry.reject(new Error('geoWorkerClient: reseteado para tests'));
   pending.clear();
 }
 
-/** Solo para depuración (p. ej. cablear al DebugPanel). */
 export function _debugPendingRequestCount(): number {
   return pending.size;
 }

@@ -1,6 +1,6 @@
 import { useState, type ChangeEvent, type RefObject } from 'react';
 import { useMapStore } from '../store/map/mapStore';
-import { resetIncrementalRoadTracking } from '../geo/recomputeManzanos';
+import { resetIncrementalRoadTracking, resetTopologyCheckTracking } from '../geo/recomputeManzanos';
 import { useCurrentProjectStore } from '../store/project/currentProjectStore';
 import { useUiShellStore } from '../store/ui/uiShellStore';
 import { useCommandStack } from '../commands/core/CommandStack';
@@ -56,6 +56,7 @@ export function useTopBarActions(fileInputRef: RefObject<HTMLInputElement | null
         useProjectCrsStore.getState().loadConfig(project.crs);
       }
       useLayersStore.getState().loadLayers(project.layers ?? [], project.activeLayerId ?? null);
+      resetTopologyCheckTracking();
 
       const features = readOlFeaturesFromProject(project);
       const commandStack = useCommandStack.getState();
@@ -144,6 +145,7 @@ export function useTopBarActions(fileInputRef: RefObject<HTMLInputElement | null
     useStreetStore.getState().clearStreets();
     useRoundaboutStore.getState().clearRoundabouts();
     resetIncrementalRoadTracking();
+    resetTopologyCheckTracking();
     useLayersStore.getState().resetToEmpty();
     refreshSourceMetrics(drawSource);
     drawSource.changed();
@@ -157,6 +159,7 @@ export function useTopBarActions(fileInputRef: RefObject<HTMLInputElement | null
     if (!drawSource) return;
     try {
       useLayersStore.getState().loadLayers(project.layers ?? [], project.activeLayerId ?? null);
+      resetTopologyCheckTracking();
 
       const features = readOlFeaturesFromProject(project);
       const commandStack = useCommandStack.getState();

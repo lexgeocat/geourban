@@ -22,6 +22,7 @@ import {
   findGapsInWorker,
 } from '../workers/geoWorkerClient';
 import { useTopologyWarningsStore } from '../store/topologyWarningsStore';
+import { confirmAsync } from '../store/ui/confirmDialogStore';
 import { ensureKind, getFeatureKind, getLotStatus, setLotStatus } from '../core/objectModel';
 import type { ManzanoLoteMethod } from './subdivision/subdivisionAlgorithms';
 import { buildRoadNetworkRings } from './roads/roadNetworkEngine';
@@ -261,7 +262,12 @@ function resolveLoteLayerId(preferredLayerId?: string): string {
   return autoCreateLayerForKind('lote');
 }
 
-async function runBackgroundTopologyCheck(src: VectorSource): Promise<void> {
+let topologyCheckGeneration = 0;
+let topologyCheckInFlight = false;
+let topologyCheckRerunRequested = false;
+
+
+async function runBackgroundTopologyCheck(src: VectorSource, generation: number): Promise<void> {
   useTopologyWarningsStore.getState().setChecking(true);
   try {
     const features = src.getFeatures();
@@ -279,8 +285,13 @@ async function runBackgroundTopologyCheck(src: VectorSource): Promise<void> {
       findGapsInWorker(collection),
     ]);
 
+
+    if (generation !== topologyCheckGeneration) return;
+
+
     const overlapsList = Array.isArray(overlaps) ? overlaps : [];
-    const gapsCount = Array.isArray(gaps?.features) ? gaps.features.length : 0;
+    const gapsCount = gaps && Array.isArray(gaps.features) ? gaps.features.length : 0;
+
 
     const affected = new Set<string>();
     const attributeToManzano = (idx: number) => {
@@ -300,17 +311,56 @@ async function runBackgroundTopologyCheck(src: VectorSource): Promise<void> {
       attributeToManzano(o.indexB);
     }
 
+
+    if (generation !== topologyCheckGeneration) return;
     useTopologyWarningsStore.getState().setResults(overlapsList.length, gapsCount, affected);
   } catch (err) {
     console.error('Validación topológica automática falló', err);
-    useTopologyWarningsStore.getState().setChecking(false);
+    if (generation === topologyCheckGeneration) {
+      useTopologyWarningsStore.getState().setChecking(false);
+    }
   }
 }
+
 
 export function checkTopologyInBackground(): void {
   const src = useMapStore.getState().drawSource;
   if (!src) return;
-  void runBackgroundTopologyCheck(src);
+
+
+  topologyCheckGeneration += 1;
+
+
+  if (topologyCheckInFlight) {
+    topologyCheckRerunRequested = true;
+    return;
+  }
+
+
+  void runTopologyCheckLoop();
+}
+
+
+async function runTopologyCheckLoop(): Promise<void> {
+  topologyCheckInFlight = true;
+  try {
+    do {
+      topologyCheckRerunRequested = false;
+      const src = useMapStore.getState().drawSource;
+      if (!src) return;
+      const generation = topologyCheckGeneration;
+      await runBackgroundTopologyCheck(src, generation);
+    } while (topologyCheckRerunRequested);
+  } finally {
+    topologyCheckInFlight = false;
+  }
+}
+
+
+export function resetTopologyCheckTracking(): void {
+  topologyCheckGeneration += 1;
+  topologyCheckRerunRequested = false;
+  useTopologyWarningsStore.getState().clear();
 }
 
 async function recomputeManzanosImmediate(): Promise<void> {
@@ -483,10 +533,11 @@ async function recomputeManzanosImmediate(): Promise<void> {
   let allowAutoRelot = true;
   if (relotCandidates.length > 0) {
     const plural = relotCandidates.length > 1;
-    allowAutoRelot = window.confirm(
+    allowAutoRelot = await confirmAsync(
       `El trazado nuevo modificó lo suficiente ${plural ? 'a estos manzanos ya lotizados' : 'a este manzano ya lotizado'} ` +
-      `como para necesitar regenerar sus lotes automáticamente (el resto del proyecto no se ve afectado).\n\n¿Continuar?\n\n` +
-      'Si cancelás, el corte igual se aplica pero esos lotes quedan pendientes de regenerar a mano.'
+      `como para necesitar regenerar sus lotes automáticamente (el resto del proyecto no se ve afectado).\n\n` +
+      'Si cancelás, el corte igual se aplica pero esos lotes quedan pendientes de regenerar a mano.',
+      { title: '¿Regenerar lotes automáticamente?', confirmLabel: 'Continuar', cancelLabel: 'Cancelar' },
     );
   }
 
@@ -689,7 +740,7 @@ async function recomputeManzanosImmediate(): Promise<void> {
   }
 
   src.changed();
-  void runBackgroundTopologyCheck(src);
+  checkTopologyInBackground();
 }
 
 const RECOMPUTE_DEBOUNCE_MS = 250;
@@ -826,7 +877,7 @@ export async function reapplyRoadCornerMode(): Promise<void> {
     }
 
     src.changed();
-    void runBackgroundTopologyCheck(src);
+    checkTopologyInBackground();
   } finally {
     useRecomputeStatusStore.getState().setRunning(false);
   }
