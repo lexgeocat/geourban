@@ -1,9 +1,7 @@
-﻿import React, { useRef } from 'react';
+﻿import React from 'react';
 import { ChevronUp } from 'lucide-react';
 import { useDrawStore } from '../../store/map/drawStore';
 import { useUiShellStore, type RibbonTabId } from '../../store/ui/uiShellStore';
-import { useCurrentProjectStore } from '../../store/project/currentProjectStore';
-import { ProjectBrowserModal } from '../modals/ProjectBrowserModal';
 import { useTopBarActions } from '../../hooks/useTopBarActions';
 import AppMenu from './topbar/AppMenu';
 import { RibbonContext } from './topbar/RibbonContext';
@@ -17,11 +15,7 @@ const RIBBON_TABS: { id: RibbonTabId; label: string }[] = [
   { id: 'view', label: 'Vista' },
 ];
 
-const IMPORT_ACCEPT = '.geourban,.geojson,.json,.kml,.kmz,.shp,.gpkg,.dxf';
-
 export default function TopBar() {
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
   const mode = useDrawStore((s) => s.mode);
   const setMode = useDrawStore((s) => s.setMode);
 
@@ -30,82 +24,60 @@ export default function TopBar() {
   const ribbonCollapsed = useUiShellStore((s) => s.ribbonCollapsed);
   const setRibbonCollapsed = useUiShellStore((s) => s.setRibbonCollapsed);
 
-  const currentProjectId = useCurrentProjectStore((s) => s.currentProjectId);
-
-  const actions = useTopBarActions(fileInputRef);
+  const actions = useTopBarActions();
 
   return (
-    <>
-      <div className="topbar-root">
-        <input ref={fileInputRef} type="file" accept={IMPORT_ACCEPT} hidden onChange={actions.handleImport} />
+    <div className="topbar-root">
+      <div className="topbar-tabs">
+        <AppMenu
+          actions={{
+            onNewProject: actions.handleNewProject,
+            onAbout: actions.handleAbout,
+            onExit: actions.handleExit,
+          }}
+        />
 
-        <div className="topbar-tabs">
-          <AppMenu
-            actions={{
-              onNewProject: actions.handleNewProject,
-              onImportClick: actions.handleImportClick,
-              onOpenProjectBrowser: () => actions.setProjectBrowserOpen(true),
-              onSave: actions.handleSave,
-              onExport: actions.handleExport,
-              onAbout: actions.handleAbout,
-              onExit: actions.handleExit,
-            }}
-          />
-
-          {RIBBON_TABS.map((tab) => (
-            <button
-              key={tab.id}
-              className={`topbar-tab ${activeTab === tab.id ? 'active' : ''}`}
-              onClick={() => {
-                setActiveTab(tab.id);
-                if (ribbonCollapsed) setRibbonCollapsed(false);
-              }}
-            >
-              {tab.label}
-            </button>
-          ))}
-          <div className="topbar-tab-spacer" />
+        {RIBBON_TABS.map((tab) => (
           <button
-            className={`topbar-collapse-btn ${ribbonCollapsed ? 'collapsed' : ''}`}
-            onClick={() => setRibbonCollapsed(!ribbonCollapsed)}
-            data-tooltip={ribbonCollapsed ? 'Expandir cinta' : 'Contraer cinta'}
-            aria-label={ribbonCollapsed ? 'Expandir cinta' : 'Contraer cinta'}
-            title={ribbonCollapsed ? 'Expandir cinta' : 'Contraer cinta'}
+            key={tab.id}
+            className={`topbar-tab ${activeTab === tab.id ? 'active' : ''}`}
+            onClick={() => {
+              setActiveTab(tab.id);
+              if (ribbonCollapsed) setRibbonCollapsed(false);
+            }}
           >
-            <ChevronUp />
+            {tab.label}
           </button>
-        </div>
-
-        {!ribbonCollapsed && (
-          <RibbonContext.Provider value={{ currentMode: mode, setMode }}>
-            <div className="topbar-ribbon">
-              {activeTab === 'map' && (
-                <UrbanDesignTab
-                  lotsBusy={actions.lotsBusy}
-                  onOpenSubdivision={actions.handleOpenSubdivision}
-                  onGenerateLots={actions.handleGenerateLots}
-                />
-              )}
-              {activeTab === 'edit' && (
-                <EditTab
-                  onDeleteSelected={actions.handleDeleteSelected}
-                  onFindOverlaps={actions.handleFindOverlaps}
-                  onFindGaps={actions.handleFindGaps}
-                />
-              )}
-              {activeTab === 'view' && <ViewTab />}
-            </div>
-          </RibbonContext.Provider>
-        )}
+        ))}
+        <div className="topbar-tab-spacer" />
+        <button
+          className={`topbar-collapse-btn ${ribbonCollapsed ? 'collapsed' : ''}`}
+          onClick={() => setRibbonCollapsed(!ribbonCollapsed)}
+          data-tooltip={ribbonCollapsed ? 'Expandir cinta' : 'Contraer cinta'}
+          aria-label={ribbonCollapsed ? 'Expandir cinta' : 'Contraer cinta'}
+          title={ribbonCollapsed ? 'Expandir cinta' : 'Contraer cinta'}
+        >
+          <ChevronUp />
+        </button>
       </div>
 
-      <ProjectBrowserModal
-        isOpen={actions.projectBrowserOpen}
-        onClose={() => actions.setProjectBrowserOpen(false)}
-        onOpenProject={actions.handleProjectOpen}
-        onNewProject={actions.handleNewProject}
-        currentProjectId={currentProjectId}
-      />
-    </>
+      {!ribbonCollapsed && (
+        <RibbonContext.Provider value={{ currentMode: mode, setMode }}>
+          <div className="topbar-ribbon">
+            {activeTab === 'map' && (
+              <UrbanDesignTab
+                lotsBusy={actions.lotsBusy}
+                onOpenSubdivision={actions.handleOpenSubdivision}
+                onGenerateLots={actions.handleGenerateLots}
+              />
+            )}
+            {activeTab === 'edit' && (
+              <EditTab onDeleteSelected={actions.handleDeleteSelected} />
+            )}
+            {activeTab === 'view' && <ViewTab />}
+          </div>
+        </RibbonContext.Provider>
+      )}
+    </div>
   );
 }

@@ -8,7 +8,6 @@ import { ensureKind } from '../../core/objectModel';
 import { resolveLayerId } from '../features/AddFeatureCommand';
 import type { SubdivisionOptions } from '../../geo/subdivision/subdivisionAlgorithms';
 import type { Polygon as GeoJsonPolygon } from 'geojson';
-import { checkTopologyInBackground } from '../../geo/recomputeManzanos';
 import { estimateGeometryBytes } from '../core/memoryEstimate';
 
 const geoJsonFormat = new GeoJSON();
@@ -96,7 +95,6 @@ export class SubdivideCommand extends Command {
     });
 
     ctx.drawSource.changed();
-    checkTopologyInBackground();
   }
 
   override undo(ctx: CommandContext): void {

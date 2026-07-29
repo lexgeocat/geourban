@@ -1,11 +1,8 @@
-import { useState, type ChangeEvent, type RefObject } from 'react';
+import { useState } from 'react';
 import { useMapStore } from '../store/map/mapStore';
-import { resetIncrementalRoadTracking, resetTopologyCheckTracking } from '../geo/recomputeManzanos';
-import { useCurrentProjectStore } from '../store/project/currentProjectStore';
-import { useUiShellStore } from '../store/ui/uiShellStore';
+import { resetIncrementalRoadTracking } from '../geo/recomputeManzanos';
 import { useCommandStack } from '../commands/core/CommandStack';
 import { ClearFeaturesCommand } from '../commands/features/ClearFeaturesCommand';
-import { AddFeaturesCommand } from '../commands/features/AddFeaturesCommand';
 import { useSelectionStore } from '../store/map/selectionStore';
 import { useSubdivisionStore } from '../store/ui/subdivisionStore';
 import { useStreetStore } from '../store/entities/streetStore';
@@ -14,126 +11,12 @@ import { useManzanoStore } from '../store/entities/manzanoStore';
 import { useLayersStore } from '../store/entities/layersRegistryStore';
 import { useDrawStore } from '../store/map/drawStore';
 import { GenerateLotsCommand } from '../commands/lots/GenerateLotsCommand';
-import {
-  importFile,
-  exportProject,
-  writeProjectFromOlFeatures,
-  readOlFeaturesFromProject,
-  type ExportFormat,
-} from '../io';
 import { refreshSourceMetrics } from '../geo/metrics';
-import { useProjectCrsStore, getProjectCrsConfig } from '../store/project/projectCrsStore';
 import { getFeatureKind } from '../core/objectModel';
-import type { GeoUrbanProject } from '../io/types';
 import { requireLayerForKind } from '../store/ui/layerPickerStore';
 
-export function useTopBarActions(fileInputRef: RefObject<HTMLInputElement | null>) {
+export function useTopBarActions() {
   const [lotsBusy, setLotsBusy] = useState(false);
-  const [projectBrowserOpen, setProjectBrowserOpen] = useState(false);
-
-  const getCurrentProject = (): GeoUrbanProject => {
-    const drawSource = useMapStore.getState().drawSource;
-    const baseMap = useUiShellStore.getState().baseMap;
-    const viewConfig = useMapStore.getState().viewConfig;
-    const features = drawSource?.getFeatures() ?? [];
-    const project = writeProjectFromOlFeatures(features);
-    project.name = 'Proyecto GeoUrban';
-    project.baseMap = baseMap;
-    project.view = { center: viewConfig.center, zoom: viewConfig.zoom };
-    project.crs = getProjectCrsConfig();
-    project.layers = useLayersStore.getState().layers;
-    project.activeLayerId = useLayersStore.getState().activeLayerId;
-    return project;
-  };
-
-  const handleImport = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    const drawSource = useMapStore.getState().drawSource;
-    if (!file || !drawSource) return;
-    try {
-      const { project, warnings } = await importFile(file);
-      if (file.name.toLowerCase().endsWith('.geourban')) {
-        useProjectCrsStore.getState().loadConfig(project.crs);
-      }
-      useLayersStore.getState().loadLayers(project.layers ?? [], project.activeLayerId ?? null);
-      resetTopologyCheckTracking();
-
-      const features = readOlFeaturesFromProject(project);
-      const commandStack = useCommandStack.getState();
-      await commandStack.run(new ClearFeaturesCommand());
-      await commandStack.run(new AddFeaturesCommand(features));
-
-      const orphanCount = useLayersStore.getState().reconcileOrphanFeatures(features);
-
-      refreshSourceMetrics(drawSource);
-      drawSource.changed();
-      useMapStore.getState().fitToExtent();
-
-      const allWarnings = [...warnings];
-      if (orphanCount > 0) {
-        allWarnings.push(`${orphanCount} elemento(s) pertenecían a capas que ya no existen — se reasignaron a "Sin capa".`);
-      }
-      if (allWarnings.length) alert(allWarnings.join('\n'));
-    } catch (err) {
-      console.error(err);
-      alert(err instanceof Error ? err.message : 'Error al importar archivo');
-    } finally {
-      event.target.value = '';
-    }
-  };
-
-  const handleImportClick = () => {
-    fileInputRef.current?.click();
-  };
-
-  const handleExportPng = async () => {
-    try {
-      const map = useMapStore.getState().mapInstance;
-      if (!map) throw new Error('Mapa no inicializado');
-      await new Promise<void>((resolve) => {
-        map.once('rendercomplete', () => {
-          const canvas = map.getViewport().querySelector('canvas') as HTMLCanvasElement;
-          if (canvas) {
-            canvas.toBlob((blob) => {
-              if (blob) {
-                const url = URL.createObjectURL(blob);
-                const anchor = document.createElement('a');
-                anchor.href = url;
-                anchor.download = 'geourban-proyecto.png';
-                anchor.click();
-                URL.revokeObjectURL(url);
-              }
-              resolve();
-            }, 'image/png');
-          } else {
-            resolve();
-          }
-        });
-        map.renderSync();
-      });
-    } catch (err) {
-      console.error(err);
-      alert(err instanceof Error ? err.message : 'Error al exportar PNG');
-    }
-  };
-
-  const handleExport = async (format: ExportFormat) => {
-    try {
-      if (format === 'png') {
-        await handleExportPng();
-        return;
-      }
-      const result = await exportProject(getCurrentProject(), format, 'geourban-proyecto');
-      if (result?.message) alert(result.message);
-    } catch (err) {
-      console.error(err);
-      alert(err instanceof Error ? err.message : 'Error al exportar');
-    }
-  };
-
-  const handleSave = async () => {
-    await handleExport('geourban');
-  };
 
   const handleNewProject = async () => {
     const drawSource = useMapStore.getState().drawSource;
@@ -145,41 +28,10 @@ export function useTopBarActions(fileInputRef: RefObject<HTMLInputElement | null
     useStreetStore.getState().clearStreets();
     useRoundaboutStore.getState().clearRoundabouts();
     resetIncrementalRoadTracking();
-    resetTopologyCheckTracking();
     useLayersStore.getState().resetToEmpty();
     refreshSourceMetrics(drawSource);
     drawSource.changed();
     useSelectionStore.getState().clear();
-    useCurrentProjectStore.getState().setCurrentProjectId(null);
-  };
-
-  const handleProjectOpen = async (project: GeoUrbanProject) => {
-    setProjectBrowserOpen(false);
-    const drawSource = useMapStore.getState().drawSource;
-    if (!drawSource) return;
-    try {
-      useLayersStore.getState().loadLayers(project.layers ?? [], project.activeLayerId ?? null);
-      resetTopologyCheckTracking();
-
-      const features = readOlFeaturesFromProject(project);
-      const commandStack = useCommandStack.getState();
-      await commandStack.run(new ClearFeaturesCommand());
-      await commandStack.run(new AddFeaturesCommand(features));
-
-      const orphanCount = useLayersStore.getState().reconcileOrphanFeatures(features);
-
-      refreshSourceMetrics(drawSource);
-      drawSource.changed();
-      useMapStore.getState().fitToExtent();
-      useCurrentProjectStore.getState().setCurrentProjectId(
-        typeof project.id === 'number' ? project.id : null,
-      );
-      if (orphanCount > 0) {
-        alert(`${orphanCount} elemento(s) pertenecían a capas que ya no existen — se reasignaron a "Sin capa".`);
-      }
-    } catch (err) {
-      alert(err instanceof Error ? err.message : 'Error al abrir proyecto');
-    }
   };
 
   const handleExit = () => {
@@ -200,51 +52,6 @@ export function useTopBarActions(fileInputRef: RefObject<HTMLInputElement | null
     }
   };
 
-  const handleFindOverlaps = async () => {
-    const src = useMapStore.getState().drawSource;
-    if (!src) return;
-    try {
-      const GeoJSON = (await import('ol/format/GeoJSON')).default;
-      const format = new GeoJSON();
-      const features = src.getFeatures().map((f) =>
-        format.writeFeatureObject(f, { featureProjection: 'EPSG:3857', dataProjection: 'EPSG:3857' }),
-      );
-      const { findOverlapsInWorker } = await import('../workers/geoWorkerClient');
-      const overlaps = await findOverlapsInWorker({ type: 'FeatureCollection', features });
-      if (overlaps.length > 0) {
-        alert(
-          `Se detectaron ${overlaps.length} superposiciones:\n${overlaps
-            .map((o: any) => `Lote ${o.indexA} ↔ Lote ${o.indexB}: ${o.area.toFixed(2)} m²`)
-            .join('\n')}`,
-        );
-      } else {
-        alert('No se detectaron superposiciones.');
-      }
-    } catch (err) {
-      alert(err instanceof Error ? err.message : 'Error al validar superposiciones');
-    }
-  };
-
-  const handleFindGaps = async () => {
-    const src = useMapStore.getState().drawSource;
-    if (!src) return;
-    try {
-      const GeoJSON = (await import('ol/format/GeoJSON')).default;
-      const format = new GeoJSON();
-      const features = src.getFeatures().map((f) =>
-        format.writeFeatureObject(f, { featureProjection: 'EPSG:3857', dataProjection: 'EPSG:3857' }),
-      );
-      const { findGapsInWorker } = await import('../workers/geoWorkerClient');
-      const gaps = await findGapsInWorker({ type: 'FeatureCollection', features });
-      if (gaps.features.length > 0) {
-        alert(`Se detectaron ${gaps.features.length} huecos.`);
-      } else {
-        alert('No se detectaron huecos.');
-      }
-    } catch (err) {
-      alert(err instanceof Error ? err.message : 'Error al validar huecos');
-    }
-  };
   const handleOpenSubdivision = () => {
     const primaryId = useSelectionStore.getState().primaryId;
     if (!primaryId) {
@@ -280,7 +87,7 @@ export function useTopBarActions(fileInputRef: RefObject<HTMLInputElement | null
       return;
     }
     const layerId = await requireLayerForKind('lote');
-    if (!layerId) return; // cancelado — no se generan lotes sin capa asignada
+    if (!layerId) return;
     setLotsBusy(true);
     try {
       const result = await useCommandStack
@@ -322,19 +129,10 @@ export function useTopBarActions(fileInputRef: RefObject<HTMLInputElement | null
 
   return {
     lotsBusy,
-    projectBrowserOpen,
-    setProjectBrowserOpen,
-    handleImport,
-    handleImportClick,
-    handleExport,
-    handleSave,
     handleNewProject,
-    handleProjectOpen,
     handleExit,
     handleAbout,
     handleDeleteSelected,
-    handleFindOverlaps,
-    handleFindGaps,
     handleOpenSubdivision,
     handleGenerateLots,
     handleToggleEdit,

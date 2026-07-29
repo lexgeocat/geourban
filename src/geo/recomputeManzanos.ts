@@ -18,11 +18,8 @@ import { useRoadCornerStore } from '../store/map/roadCornerStore';
 import {
   computeManzanosInWorker,
   subdivideManzanoInWorker,
-  findOverlapsInWorker,
-  findGapsInWorker,
   matchFragmentsBatchInWorker,
 } from '../workers/geoWorkerClient';
-import { useTopologyWarningsStore } from '../store/topologyWarningsStore';
 import { confirmAsync } from '../store/ui/confirmDialogStore';
 import { ensureKind, getFeatureKind, getLotStatus, setLotStatus } from '../core/objectModel';
 import type { ManzanoLoteMethod } from './subdivision/subdivisionAlgorithms';
@@ -262,107 +259,6 @@ function resolveLoteLayerId(preferredLayerId?: string): string {
   const match = reg.getLayerForKind('lote');
   if (match && !match.locked) return match.id;
   return autoCreateLayerForKind('lote');
-}
-
-let topologyCheckGeneration = 0;
-let topologyCheckInFlight = false;
-let topologyCheckRerunRequested = false;
-
-
-async function runBackgroundTopologyCheck(src: VectorSource, generation: number): Promise<void> {
-  useTopologyWarningsStore.getState().setChecking(true);
-  try {
-    const features = src.getFeatures();
-    const collection: FeatureCollection = {
-      type: 'FeatureCollection',
-      features: features.map((f) =>
-        geoJsonFormat.writeFeatureObject(f, {
-          featureProjection: 'EPSG:3857',
-          dataProjection: 'EPSG:3857',
-        })
-      ),
-    };
-    const [overlaps, gaps] = await Promise.all([
-      findOverlapsInWorker(collection),
-      findGapsInWorker(collection),
-    ]);
-
-
-    if (generation !== topologyCheckGeneration) return;
-
-
-    const overlapsList = Array.isArray(overlaps) ? overlaps : [];
-    const gapsCount = gaps && Array.isArray(gaps.features) ? gaps.features.length : 0;
-
-
-    const affected = new Set<string>();
-    const attributeToManzano = (idx: number) => {
-      const f = features[idx] as Feature<Geometry> | undefined;
-      if (!f) return;
-      const kind = getFeatureKind(f);
-      if (kind === 'manzana') {
-        const id = f.getId();
-        if (id != null) affected.add(String(id));
-      } else if (kind === 'lote') {
-        const gid = f.get('lotGroupId') as string | undefined;
-        if (gid) affected.add(gid);
-      }
-    };
-    for (const o of overlapsList) {
-      attributeToManzano(o.indexA);
-      attributeToManzano(o.indexB);
-    }
-
-
-    if (generation !== topologyCheckGeneration) return;
-    useTopologyWarningsStore.getState().setResults(overlapsList.length, gapsCount, affected);
-  } catch (err) {
-    console.error('Validación topológica automática falló', err);
-    if (generation === topologyCheckGeneration) {
-      useTopologyWarningsStore.getState().setChecking(false);
-    }
-  }
-}
-
-
-export function checkTopologyInBackground(): void {
-  const src = useMapStore.getState().drawSource;
-  if (!src) return;
-
-
-  topologyCheckGeneration += 1;
-
-
-  if (topologyCheckInFlight) {
-    topologyCheckRerunRequested = true;
-    return;
-  }
-
-
-  void runTopologyCheckLoop();
-}
-
-
-async function runTopologyCheckLoop(): Promise<void> {
-  topologyCheckInFlight = true;
-  try {
-    do {
-      topologyCheckRerunRequested = false;
-      const src = useMapStore.getState().drawSource;
-      if (!src) return;
-      const generation = topologyCheckGeneration;
-      await runBackgroundTopologyCheck(src, generation);
-    } while (topologyCheckRerunRequested);
-  } finally {
-    topologyCheckInFlight = false;
-  }
-}
-
-
-export function resetTopologyCheckTracking(): void {
-  topologyCheckGeneration += 1;
-  topologyCheckRerunRequested = false;
-  useTopologyWarningsStore.getState().clear();
 }
 
 async function recomputeManzanosImmediate(): Promise<void> {
@@ -809,8 +705,7 @@ let result: FeatureCollection;
     useManzanoStore.getState().setPanelVisible(true);
   }
 
-  src.changed();
-  checkTopologyInBackground();
+src.changed();
 }
 
 const RECOMPUTE_DEBOUNCE_MS = 250;
@@ -995,8 +890,7 @@ export async function reapplyRoadCornerMode(): Promise<void> {
       }
     }
 
-    src.changed();
-    checkTopologyInBackground();
+src.changed();
   } finally {
     useRecomputeStatusStore.getState().setRunning(false);
   }

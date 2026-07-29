@@ -2,7 +2,6 @@
 import GeoJSONWriter from 'jsts/org/locationtech/jts/io/GeoJSONWriter.js';
 import GeometryFactory from 'jsts/org/locationtech/jts/geom/GeometryFactory.js';
 import OverlayOp from 'jsts/org/locationtech/jts/operation/overlay/OverlayOp.js';
-import RBush from 'rbush';
 import polygonClipping, {
   type Polygon as ClipPolygon,
   type MultiPolygon as ClipMultiPolygon,
@@ -48,14 +47,6 @@ export type IntersectRequest = {
 };
 export type ValidateRequest = {
   type: 'validate';
-  features: FeatureCollection;
-};
-export type FindOverlapsRequest = {
-  type: 'findOverlaps';
-  features: FeatureCollection;
-};
-export type FindGapsRequest = {
-  type: 'findGaps';
   features: FeatureCollection;
 };
 export type ComputeManzanosRequest = {
@@ -117,8 +108,6 @@ export type GeoWorkerRequest =
   | SubtractRequest
   | IntersectRequest
   | ValidateRequest
-  | FindOverlapsRequest
-  | FindGapsRequest
   | ComputeManzanosRequest
   | SubdivideRequest
   | SubdivideManzanoRequest
@@ -130,8 +119,6 @@ export type GeoWorkerResponse =
   | { type: 'union' | 'merge' | 'intersect'; result: FeatureCollection; error?: string }
   | { type: 'subtract'; result: FeatureCollection; error?: string }
   | { type: 'validate'; valid: boolean; issues: string[]; error?: string }
-  | { type: 'findOverlaps'; overlaps: Array<{ indexA: number; indexB: number; area: number }>; error?: string }
-  | { type: 'findGaps'; gaps: FeatureCollection; error?: string }
   | { type: 'computeManzanos'; manzanos: FeatureCollection; error?: string }
   | { type: 'subdivide'; result: SubdivisionResult; error?: string }
   | { type: 'subdivideManzano'; lots: LotResult[]; error?: string }
@@ -308,45 +295,6 @@ interface BboxItem {
   pos: number;
 }
 
-export function findOverlaps(collection: FeatureCollection): Array<{ indexA: number; indexB: number; area: number }> {
-  const overlaps: Array<{ indexA: number; indexB: number; area: number }> = [];
-  const items = readAllGeometries(collection);
-  if (items.length < 2) return overlaps;
-
-  const tree = new RBush<BboxItem>();
-  const entries: BboxItem[] = items.map((item, pos) => {
-    const env = item.geom.getEnvelopeInternal();
-    return {
-      minX: env.getMinX(),
-      minY: env.getMinY(),
-      maxX: env.getMaxX(),
-      maxY: env.getMaxY(),
-      pos,
-    };
-  });
-  tree.load(entries);
-
-  for (let pos = 0; pos < entries.length; pos++) {
-    const candidates = tree.search(entries[pos]);
-    for (const cand of candidates) {
-      if (cand.pos <= pos) continue; // evita self-match y pares duplicados (A,B)/(B,A)
-      try {
-        const intersection = OverlayOp.intersection(items[pos].geom, items[cand.pos].geom);
-        if (!intersection.isEmpty()) {
-          const area = intersection.getArea();
-          if (area > 0.01) { // umbral para evitar falsos positivos numéricos
-            overlaps.push({ indexA: items[pos].index, indexB: items[cand.pos].index, area });
-          }
-        }
-      } catch {
-        // ignorar errores de topología en pares específicos
-      }
-    }
-  }
-
-  return overlaps;
-}
-
 export function findGaps(collection: FeatureCollection): FeatureCollection {
   // Unir todos los polígonos del mismo kind 'manzana'
   const manzanaFeatures = collection.features.filter(f =>
@@ -478,14 +426,6 @@ export function handleGeoWorkerRequest(request: GeoWorkerRequest): GeoWorkerResp
         const v = validateTopology(request.features);
         return { type: 'validate', valid: v.valid, issues: v.issues };
       }
-      case 'findOverlaps': {
-        const overlaps = findOverlaps(request.features);
-        return { type: 'findOverlaps', overlaps };
-      }
-      case 'findGaps': {
-        const gaps = findGaps(request.features);
-        return { type: 'findGaps', gaps };
-      }
       case 'computeManzanos':
         return { type: 'computeManzanos', manzanos: computeManzanos(request.parcels, request.roadNetwork) };
       case 'subdivide':
@@ -518,10 +458,6 @@ export function handleGeoWorkerRequest(request: GeoWorkerRequest): GeoWorkerResp
         };
       case 'validate':
         return { type: 'validate', valid: false, issues: [], error: message };
-      case 'findOverlaps':
-        return { type: 'findOverlaps', overlaps: [], error: message };
-      case 'findGaps':
-        return { type: 'findGaps', gaps: { type: 'FeatureCollection', features: [] }, error: message };
       case 'computeManzanos':
         return { type: 'computeManzanos', manzanos: { type: 'FeatureCollection', features: [] }, error: message };
       case 'subdivide':

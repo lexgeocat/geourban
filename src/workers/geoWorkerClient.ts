@@ -174,22 +174,6 @@ function runWorker<T extends GeoWorkerResponse>(request: GeoWorkerRequest, timeo
   });
 }
 
-export interface FindOverlapsPayload {
-  overlaps: Array<{ indexA: number; indexB: number; area: number }>;
-}
-export interface FindGapsPayload {
-  gaps: FeatureCollection;
-}
-
-export function isFindOverlapsPayload(value: unknown): value is FindOverlapsPayload {
-  return !!value && typeof value === 'object' && Array.isArray((value as { overlaps?: unknown }).overlaps);
-}
-
-export function isFindGapsPayload(value: unknown): value is FindGapsPayload {
-  const gaps = (value as { gaps?: { type?: unknown; features?: unknown } } | undefined)?.gaps;
-  return !!gaps && gaps.type === 'FeatureCollection' && Array.isArray(gaps.features);
-}
-
 // ─── API pública ────────────────────────────────────────────────────────
 
 export async function mergePolygonsInWorker(features: FeatureCollection) {
@@ -206,28 +190,6 @@ export async function validateTopologyInWorker(features: FeatureCollection) {
     features,
   });
   return { valid: response.valid, issues: response.issues };
-}
-
-export async function findOverlapsInWorker(features: FeatureCollection) {
-  const response = await runWorker<{ type: 'findOverlaps'; overlaps: Array<{ indexA: number; indexB: number; area: number }> }>({
-    type: 'findOverlaps',
-    features,
-  });
-  if (!isFindOverlapsPayload(response)) {
-    throw new Error('geoWorkerClient: respuesta de findOverlaps con forma inesperada (falta "overlaps").');
-  }
-  return response.overlaps;
-}
-
-export async function findGapsInWorker(features: FeatureCollection) {
-  const response = await runWorker<{ type: 'findGaps'; gaps: FeatureCollection }>({
-    type: 'findGaps',
-    features,
-  });
-  if (!isFindGapsPayload(response)) {
-    throw new Error('geoWorkerClient: respuesta de findGaps con forma inesperada (falta "gaps.features").');
-  }
-  return response.gaps;
 }
 
 export async function computeManzanosInWorker(

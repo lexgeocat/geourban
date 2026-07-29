@@ -8,7 +8,6 @@ import { useProjectCrsStore, type ProjectCrsMode } from '../../store/project/pro
 import { BASE_MAP_DEFS, type BaseMapId } from '../../map/baseMaps';
 import { refreshSourceMetrics } from '../../geo/metrics';
 import SnapPanel from '../panels/SnapPanel';
-import { useTopologyWarningsStore } from '../../store/topologyWarningsStore';
 import { useRecomputeStatusStore } from '../../store/ui/recomputeStatusStore';
 
 /* ─── Icons ─── */
@@ -108,10 +107,6 @@ export default function StatusBar() {
   const crsRef = useRef<HTMLDivElement>(null);
 
   const recomputingRoads = useRecomputeStatusStore((s) => s.running);
-  const topoChecking = useTopologyWarningsStore((s) => s.checking);
-  const overlapCount = useTopologyWarningsStore((s) => s.overlapCount);
-  const gapCount = useTopologyWarningsStore((s) => s.gapCount);
-  const topoIssues = overlapCount + gapCount;
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -448,31 +443,7 @@ export default function StatusBar() {
             </span>
           </>
         )}
-        {(topoIssues > 0 || topoChecking) && (
-          <>
-            <span style={{ opacity: 0.2, margin: '0 4px' }}>│</span>
-            <span
-              className="cad-tooltip"
-              data-tooltip={
-                topoChecking
-                  ? 'Validando topología en segundo plano…'
-                  : `${overlapCount} superposición(es) · ${gapCount} hueco(s) detectados`
-              }
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 4,
-                padding: '2px 6px',
-                borderRadius: 4,
-                border: `1px solid ${topoChecking ? 'var(--cad-border)' : 'var(--cad-accent-red)'}`,
-                color: topoChecking ? 'var(--cad-text-muted)' : 'var(--cad-accent-red)',
-                fontSize: '0.65rem',
-              }}
-            >
-              {topoChecking ? '⏳ validando…' : `⚠ ${topoIssues} problema(s)`}
-            </span>
-          </>
-        )}
+
       </div>
 
       {/* Right: Zoom controls + zoom level indicator */}

@@ -11,7 +11,6 @@ import PolygonGeom from 'ol/geom/Polygon.js';
 import FeatureOL from 'ol/Feature.js';
 import type { ManzanoLoteMethod } from '../../geo/subdivision/subdivisionAlgorithms';
 import { polyArea, ringPerimeter, centroid, type LotResult } from '../../geo/math/polygonEngine';
-import { checkTopologyInBackground } from '../../geo/recomputeManzanos';
 import { useGenerateLotsProgressStore } from '../../store/ui/generateLotsProgressStore';
 import { estimateGeometryBytes } from '../core/memoryEstimate';
 
@@ -107,7 +106,6 @@ export class GenerateLotsCommand extends Command {
     }
 
     ctx.drawSource.changed();
-    checkTopologyInBackground();
   }
 
   private applyChunkResults(

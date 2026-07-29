@@ -17,7 +17,6 @@ import { resolveLayerId } from '../features/AddFeatureCommand';
 import { subdivideManzanoInWorker } from '../../workers/geoWorkerClient';
 import { useManzanoStore } from '../../store/entities/manzanoStore';
 import { polyArea, ringPerimeter, centroid } from '../../geo/math/polygonEngine';
-import { checkTopologyInBackground } from '../../geo/recomputeManzanos';
 import { estimateGeometryBytes } from '../core/memoryEstimate';
 
 const geoJsonFormat = new GeoJSON();
@@ -139,7 +138,6 @@ export class RecomputeManzanoLotsCommand extends Command {
     });
 
     ctx.drawSource.changed();
-    checkTopologyInBackground();
   }
 
   override undo(ctx: CommandContext): void {

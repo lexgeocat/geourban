@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { useManzanoStore, type ManzanoLoteMethod } from '../../../store/entities/manzanoStore';
-import { useTopologyWarningsStore } from '../../../store/topologyWarningsStore';
 import { formatMetricArea } from '../../../geo/metrics';
 import { SUBDIVISION_METHOD_INFO } from '../../../geo/subdivision/subdivisionMethodLabels';
 import { manzanoDisplayColor } from '../../../geo/manzanoColor';
@@ -35,7 +34,6 @@ export default function ManzanoCard({
   const hasGeomChanged = useManzanoStore((s) => s.hasGeomChanged);
   const rotatingId = useManzanoStore((s) => s.rotatingId);
   const cancelRotateLots = useManzanoStore((s) => s.cancelRotateLots);
-  const affectedManzanoIds = useTopologyWarningsStore((s) => s.affectedManzanoIds);
 
   const [lotsOpen, setLotsOpen] = useState(false);
   const [manualAngleOpen, setManualAngleOpen] = useState(false);
@@ -59,7 +57,6 @@ export default function ManzanoCard({
             {formatMetricArea(row.areaM2)}{row.lots.length ? ` · ${row.lots.length} lotes` : ''}
             {geomChanged && <span style={{ color: 'var(--cad-accent-amber)' }}> · ⚠ desactualizado</span>}
             {row.lotStatus === 'pending' && <span style={{ color: 'var(--cad-accent-red)' }}> · ⏳ pendiente</span>}
-            {affectedManzanoIds.has(String(row.id)) && <span style={{ color: 'var(--cad-accent-red)' }}> · ⚠ topología</span>}
             {isRecomputing && <span style={{ color: 'var(--cad-accent)' }}> · ⏳ calculando…</span>}
           </div>
         </div>
