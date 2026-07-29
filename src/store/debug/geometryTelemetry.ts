@@ -27,6 +27,7 @@ function forwardToMainIfWorker(context: string, detail: Record<string, unknown>)
       detail,
     });
   } catch {
+    /* telemetría nunca debe romper al caller */
   }
 }
 

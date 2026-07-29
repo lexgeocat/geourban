@@ -17,7 +17,9 @@ const DEFAULT_POSITION = { top: 90, left: 10 };
 export default function ManzanoPanel() {
   const drawSource = useMapStore((s) => s.drawSource);
   const tick = useDrawSourceTick(drawSource);
-  const rows = useMemo(() => readManzanoRows(drawSource), [drawSource, tick]);
+  const rows = useMemo(() => readManzanoRows(drawSource),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  [drawSource, tick]);
 
   const panelVisible = useManzanoStore((s) => s.panelVisible);
   const setPanelVisible = useManzanoStore((s) => s.setPanelVisible);

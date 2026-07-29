@@ -120,7 +120,9 @@ export default function StatsPanel() {
     return () => window.removeEventListener('resize', onResize);
   }, []);
 
-  const stats = useMemo(() => computeStats(drawSource, streets), [drawSource, streets, tick]);
+  const stats = useMemo(() => computeStats(drawSource, streets),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  [drawSource, streets, tick]);
 
   const onMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();

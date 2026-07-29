@@ -585,6 +585,9 @@ function useRegistryRows(
   const layers = useLayersStore((s) => s.layers);
   const toggleIsolate = useLayersStore((s) => s.toggleIsolate);
   const duplicatedColorIds = useMemo(() => computeDuplicatedColorIds(layers), [layers]);
+  // Contador monotónico para IDs únicos de capas duplicadas — evita
+  // llamadas impuras (Date.now/Math.random) en scope de render.
+  const dupIdCounterRef = useRef(0);
 
   const handleZoomToLayer = (layerId: string) => {
     const map = useMapStore.getState().mapInstance;
@@ -599,7 +602,7 @@ function useRegistryRows(
     const newName = window.prompt('Nombre para la copia:', `${layer.name} (copia)`);
     if (!newName) return;
     const duplicateFeatures = window.confirm('¿Duplicar también los elementos de esta capa?\n\nAceptar = copiar elementos · Cancelar = capa vacía');
-    const newId = `layer-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+    const newId = `layer-dup-${(++dupIdCounterRef.current).toString(36)}`;
     void runCommand(new DuplicateLayerCommand({ sourceLayerId: layer.id, newLayerId: newId, newName, duplicateFeatures }));
   };
 
@@ -687,7 +690,9 @@ export default function LayerPanel() {
   const tick = useDrawSourceTick(drawSource);
   const streets = useStreetStore((s) => s.streets);
   const roundabouts = useRoundaboutStore((s) => s.roundabouts);
-  const featureCounts = useMemo(() => computeLayerFeatureCounts(drawSource), [drawSource, tick, streets, roundabouts]);
+  const featureCounts = useMemo(() => computeLayerFeatureCounts(drawSource),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  [drawSource, tick, streets, roundabouts]);
   const selectedCount = useSelectionStore((s) => s.selectedIds.size);
 
   const registryRows = useRegistryRows(setDeleteRequest, featureCounts, isolatedLayerId);

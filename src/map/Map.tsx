@@ -395,6 +395,7 @@ postrenderPainter.dispose();
       if (m) m.setTarget(undefined);
       mapInstanceRef.current = null;
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {

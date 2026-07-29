@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Modal } from '../ui/Modal';
 import { useLayerPickerStore } from '../../store/ui/layerPickerStore';
 import { useLayersStore } from '../../store/entities/layersRegistryStore';
@@ -32,18 +32,25 @@ export default function LayerResolverModal() {
   const [name, setName] = useState('');
   const [color, setColor] = useState('#58a6ff');
   const [fillColor, setFillColor] = useState('#58a6ff');
+  const [lastPendingRef, setLastPendingRef] = useState<typeof pending>(null);
 
   const kindLabel = pending ? (KIND_LABELS[pending.kind] ?? 'elemento') : '';
 
-  useEffect(() => {
-    if (!pending) return;
-    const suggestion = pending.suggestion;
-    const selectableCount = layers.filter((l) => l.id !== UNASSIGNED_LAYER_ID).length;
-    setTab(selectableCount > 0 ? 'existing' : 'create');
-    setName(suggestion?.name ?? (KIND_LABELS[pending.kind] ?? 'Nueva capa'));
-    setColor(suggestion?.color ?? '#58a6ff');
-    setFillColor(suggestion?.fillColor ?? suggestion?.color ?? '#58a6ff');
-  }, [pending]);
+  // Cuando llega un nuevo `pending` (identidad del objeto cambia entre
+  // requests), reseteamos el estado del formulario derivado de él. Usamos
+  // el patrón "ajustar estado durante render" — más performante que un
+  // useEffect, y no causa renders en cascada.
+  if (pending !== lastPendingRef) {
+    setLastPendingRef(pending);
+    if (pending) {
+      const suggestion = pending.suggestion;
+      const selectableCount = layers.filter((l) => l.id !== UNASSIGNED_LAYER_ID).length;
+      setTab(selectableCount > 0 ? 'existing' : 'create');
+      setName(suggestion?.name ?? (KIND_LABELS[pending.kind] ?? 'Nueva capa'));
+      setColor(suggestion?.color ?? '#58a6ff');
+      setFillColor(suggestion?.fillColor ?? suggestion?.color ?? '#58a6ff');
+    }
+  }
 
   const sorted = useMemo(() => {
     if (!pending) return [];
