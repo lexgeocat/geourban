@@ -146,7 +146,24 @@ const IconMoveToLayer = () => (
 
 function ColorDot({ color, onChange, title, warn }: { color: string; onChange: (c: string) => void; title?: string; warn?: boolean }) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const label = `${title ?? 'Color'}: ${color}${warn ? ' — atención: similar al de otra capa' : ''}`;
+  const [localColor, setLocalColor] = useState(color);
+  const commitTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const draggingRef = useRef(false);
+
+  useEffect(() => {
+    if (!draggingRef.current) setLocalColor(color);
+  }, [color]);
+
+  const label = `${title ?? 'Color'}: ${localColor}${warn ? ' — atención: similar al de otra capa' : ''}`;
+
+  const scheduleCommit = (c: string) => {
+    if (commitTimer.current) clearTimeout(commitTimer.current);
+    commitTimer.current = setTimeout(() => {
+      onChange(c);
+      draggingRef.current = false;
+    }, 120);
+  };
+
   return (
     <span style={{ position: 'relative', display: 'inline-flex' }}>
       <button
@@ -156,7 +173,7 @@ function ColorDot({ color, onChange, title, warn }: { color: string; onChange: (
         aria-label={label}
         title={label}
         style={{
-          width: 12, height: 12, borderRadius: 3, background: color,
+          width: 12, height: 12, borderRadius: 3, background: localColor,
           border: '1.5px solid rgba(255,255,255,0.25)',
         }}
       />
@@ -165,8 +182,14 @@ function ColorDot({ color, onChange, title, warn }: { color: string; onChange: (
         type="color"
         tabIndex={-1}
         aria-hidden="true"
-        value={color.startsWith('#') ? color : '#58a6ff'}
-        onChange={(e) => { e.stopPropagation(); onChange(e.target.value); }}
+        value={localColor.startsWith('#') ? localColor : '#58a6ff'}
+        onChange={(e) => {
+          e.stopPropagation();
+          draggingRef.current = true;
+          const c = e.target.value;
+          setLocalColor(c);
+          scheduleCommit(c);
+        }}
         style={{ position: 'absolute', width: 0, height: 0, opacity: 0, pointerEvents: 'none' }}
       />
       {warn && (
@@ -182,15 +205,36 @@ function ColorDot({ color, onChange, title, warn }: { color: string; onChange: (
   );
 }
 
-/* ─────────── Opacity slider ─────────── */
-
 function OpacitySlider({ value, onChange, layerName }: { value: number; onChange: (v: number) => void; layerName: string }) {
-  const pct = Math.round(value * 100);
+  const [localValue, setLocalValue] = useState(value);
+  const commitTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const draggingRef = useRef(false);
+
+  useEffect(() => {
+    if (!draggingRef.current) setLocalValue(value);
+  }, [value]);
+
+  const pct = Math.round(localValue * 100);
+
+  const scheduleCommit = (v: number) => {
+    if (commitTimer.current) clearTimeout(commitTimer.current);
+    commitTimer.current = setTimeout(() => {
+      onChange(v);
+      draggingRef.current = false;
+    }, 100);
+  };
+
   return (
     <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
       <input
-        type="range" min={0} max={1} step={0.05} value={value}
-        onChange={(e) => { e.stopPropagation(); onChange(Number.parseFloat(e.target.value)); }}
+        type="range" min={0} max={1} step={0.05} value={localValue}
+        onChange={(e) => {
+          e.stopPropagation();
+          draggingRef.current = true;
+          const v = Number.parseFloat(e.target.value);
+          setLocalValue(v);
+          scheduleCommit(v);
+        }}
         onClick={(e) => e.stopPropagation()}
         aria-label={`Opacidad de la capa ${layerName}`}
         aria-valuetext={`${pct}%`}

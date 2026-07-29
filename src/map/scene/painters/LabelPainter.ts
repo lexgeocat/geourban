@@ -57,7 +57,7 @@ export class LabelPainter {
     if (changed) this.lotGroupCounts = computeLotGroupCounts(features);
   }
 
-  paint(
+paint(
     ctx: CanvasRenderingContext2D,
     features: Array<Feature<Geometry>>,
     zoom: number,
@@ -65,8 +65,8 @@ export class LabelPainter {
     toPx: (c: number[]) => [number, number],
     interacting: boolean,
   ): void {
-    const shouldPaintLabels = !interacting;
-    if (shouldPaintLabels) this.paintFeatureLabels(ctx, features, zoom, resolution, toPx);
+    if (interacting) return; // antes solo protegía paintFeatureLabels, no paintManualCotaz
+    this.paintFeatureLabels(ctx, features, zoom, resolution, toPx);
     this.paintManualCotaz(ctx, features, zoom, toPx);
   }
 

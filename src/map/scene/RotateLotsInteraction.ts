@@ -66,8 +66,10 @@ export class RotateLotsInteraction extends Interaction {
     });
     this.tempLayer = layer;
     this.hostMap.addLayer(layer);
-    this.unsubscribe = useManzanoStore.subscribe((state) => {
-      this.syncGizmo(state.rotateAnchor, state.rotateHandle);
+    this.unsubscribe = useManzanoStore.subscribe((state, prevState) => {
+      if (state.rotateAnchor !== prevState.rotateAnchor || state.rotateHandle !== prevState.rotateHandle) {
+        this.syncGizmo(state.rotateAnchor, state.rotateHandle);
+      }
     });
     const initial = useManzanoStore.getState();
     this.syncGizmo(initial.rotateAnchor, initial.rotateHandle);

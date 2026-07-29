@@ -330,12 +330,17 @@ export class StreetPainter {
       const fillColor = layer.fillColor ?? strokeColor;
       const layerOp = layer.opacity ?? 1;
 
-      this.paintRings(ctx, cache.net.outer, toPx, { fill: null, stroke: withAlpha('#c8c8c8', 0.55 * layerOp), lineWidth: 1 });
-      this.paintRings(ctx, cache.net.road, toPx, {
-        fill: withAlpha(fillColor, 0.08 * layerOp),
-        stroke: withAlpha(strokeColor, 0.75 * layerOp),
-        lineWidth: 1.5,
-      });
+      // Durante interacción, saltamos el relleno/stroke de los polígonos de
+      // calzada+vereda (caro: unión + fillet) y dejamos solo el eje
+      // punteado (barato, O(streets)) — igual que ya hacían las etiquetas.
+      if (!interacting) {
+        this.paintRings(ctx, cache.net.outer, toPx, { fill: null, stroke: withAlpha('#c8c8c8', 0.55 * layerOp), lineWidth: 1 });
+        this.paintRings(ctx, cache.net.road, toPx, {
+          fill: withAlpha(fillColor, 0.08 * layerOp),
+          stroke: withAlpha(strokeColor, 0.75 * layerOp),
+          lineWidth: 1.5,
+        });
+      }
 
       ctx.save();
       ctx.strokeStyle = withAlpha(strokeColor, 0.75 * layerOp);
@@ -383,7 +388,6 @@ export class StreetPainter {
       }
     }
   }
-
   private paintRings(
     ctx: CanvasRenderingContext2D,
     polygons: Pt[][][],

@@ -4,7 +4,10 @@ import type Map from 'ol/Map.js';
 import type { Extent } from 'ol/extent.js';
 import type { Size } from 'ol/size.js';
 
-const NICE_STEPS = [0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000];
+const NICE_STEPS = [
+  0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000,
+  50000, 100000, 200000, 500000, 1000000, 2000000, 5000000, 10000000, 20000000,
+];
 
 const CAD_BG = '#0a0e14';
 const CAD_MINOR = 'rgba(36, 48, 68, 0.85)';
@@ -24,6 +27,8 @@ function isMultipleOf(value: number, step: number) {
   return Math.abs(ratio - Math.round(ratio)) < 1e-4;
 }
 
+const MAX_LINES_PER_AXIS = 4000;
+
 function drawCadGrid(
   ctx: CanvasRenderingContext2D,
   extent: Extent,
@@ -35,12 +40,18 @@ function drawCadGrid(
   const width = size[0];
   const height = size[1];
 
-  // Fondo
   ctx.fillStyle = CAD_BG;
   ctx.fillRect(0, 0, width, height);
 
   const minorSpacing = snapSpacing(resolution * 52);
   const majorSpacing = minorSpacing * 5;
+
+  // Guarda de seguridad: aunque NICE_STEPS ya cubre resoluciones de mundo
+  // completo, esto evita cualquier cuelgue si el extent viene inesperado
+  // (p.ej. un bug de proyección) en vez de dibujar cientos de miles de líneas.
+  if ((maxX - minX) / minorSpacing > MAX_LINES_PER_AXIS || (maxY - minY) / minorSpacing > MAX_LINES_PER_AXIS) {
+    return;
+  }
 
   const pad = minorSpacing * 3;
   const x0 = Math.floor((minX - pad) / minorSpacing) * minorSpacing;
@@ -48,7 +59,6 @@ function drawCadGrid(
   const y0 = Math.floor((minY - pad) / minorSpacing) * minorSpacing;
   const y1 = Math.ceil((maxY + pad) / minorSpacing) * minorSpacing;
 
-  // Mundo -> pixel de canvas (Y invertida; el canvas crece hacia abajo)
   const toPxX = (x: number) => ((x - minX) / resolution) * pixelRatio;
   const toPxY = (y: number) => ((maxY - y) / resolution) * pixelRatio;
 
@@ -125,11 +135,7 @@ export function createCadBaseMap(): CadBaseMapBundle {
   });
 
   const layer = new ImageLayer({ source });
-
-  const attach = (_map: Map) => {
-    return () => {};
-  };
-
+  const attach = (_map: Map) => () => {};
   return { layer, attach };
 }
 

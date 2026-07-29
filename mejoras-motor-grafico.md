@@ -42,7 +42,9 @@ Esto **no es "usar WebGL", es "usar N motores WebGL en paralelo"**. Es el equiva
 `LayeredWebglRenderer.syncLayerSet()` (en `DrawLayerRenderer.ts`) se suscribe así:
 
 ```ts
-this.unsubscribeStore = useLayersStore.subscribe((state) => this.syncLayerSet(state.layers));
+this.unsubscribeStore = useLayersStore.subscribe((state, prevState) => {
+  if (state.layers !== prevState.layers) this.syncLayerSet(state.layers);
+});
 ```
 
 Es una suscripción **sin selector** a todo `useLayersStore`. Ese store no solo contiene `layers`: también contiene `activeLayerId`, `isolatedLayerId`, `isolatePrevVisibility`. Cualquier cambio en **cualquiera** de esos campos —activar una capa, aislar una capa, etc.— dispara `syncLayerSet(layers)`, y ese método, para **cada** capa existente, hace:

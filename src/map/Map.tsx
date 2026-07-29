@@ -419,14 +419,14 @@ useEffect(() => {
 }, []);
 
 useEffect(() => {
-  const unsub = useRoundaboutStore.subscribe(() => {
-    mapInstanceRef.current?.render();
+  const unsub = useRoundaboutStore.subscribe((state, prevState) => {
+    if (state.roundabouts !== prevState.roundabouts) mapInstanceRef.current?.render();
   });
   return unsub;
 }, []);
 useEffect(() => {
-  const unsub = useStreetStore.subscribe(() => {
-    mapInstanceRef.current?.render();
+  const unsub = useStreetStore.subscribe((state, prevState) => {
+    if (state.streets !== prevState.streets) mapInstanceRef.current?.render();
   });
   return unsub;
 }, []);

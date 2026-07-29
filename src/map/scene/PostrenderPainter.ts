@@ -103,7 +103,7 @@ export class PostrenderPainter {
     this.labelPainter.paint(ctx, visibleFeatures, zoom, resolution, toPx, this.interacting);
     this.streetPainter.paint(ctx, zoom, resolution, toPx, this.interacting);
     this.roundaboutPainter.paint(ctx, toPx, resolution);
-    this.vertexPainter.paint(ctx, visibleFeatures, toPx);
+    this.vertexPainter.paint(ctx, visibleFeatures, toPx, this.interacting);
     this.snapGuidePainter.paint(ctx, resolution);
     this.overlayPainter.paint(ctx, toPx);
 

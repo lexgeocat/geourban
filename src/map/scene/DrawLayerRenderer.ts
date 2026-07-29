@@ -149,6 +149,7 @@ export class LayeredWebglRenderer {
   private onAdd?: (evt: { feature?: Feature<Geometry> }) => void;
   private onRemove?: (evt: { feature?: Feature<Geometry> }) => void;
   private onChange?: (evt: { feature?: Feature<Geometry> }) => void;
+  private lastStyleSignatures = new globalThis.Map<string, string>();
 
   constructor(master: VectorSource) {
     this.master = master;
@@ -166,6 +167,9 @@ export class LayeredWebglRenderer {
     });
     layer.setVisible(visible);
     return { source, layer };
+  }
+  private static layerSignature(layer: Layer): string {
+    return `${layer.color}|${layer.fillColor}|${layer.opacity}|${layer.colorMode}|${layer.kind}`;
   }
 
   private getByIdMap(): globalThis.Map<string, Layer> {
@@ -216,13 +220,21 @@ export class LayeredWebglRenderer {
 
     for (const layer of layers) {
       let entry = this.mirrors.get(layer.id);
+      const sig = LayeredWebglRenderer.layerSignature(layer);
       if (!entry) {
         entry = this.createMirror(buildSingleLayerStyle(layer), layer.zIndex, layer.visible);
         this.mirrors.set(layer.id, entry);
         this.map?.addLayer(entry.layer);
+        this.lastStyleSignatures.set(layer.id, sig);
       } else {
-        entry.layer.setStyle(buildSingleLayerStyle(layer));
-        recordSetStyleCall();
+        // setStyle() es lo caro (recompila el pipeline de shaders): solo lo
+        // llamamos si algo que afecta el estilo realmente cambió, no en
+        // cada tick del store (p.ej. al mover el slider de OTRA capa).
+        if (this.lastStyleSignatures.get(layer.id) !== sig) {
+          entry.layer.setStyle(buildSingleLayerStyle(layer));
+          recordSetStyleCall();
+          this.lastStyleSignatures.set(layer.id, sig);
+        }
         entry.layer.setZIndex(layer.zIndex);
         entry.layer.setVisible(layer.visible);
       }
@@ -238,6 +250,7 @@ export class LayeredWebglRenderer {
       this.map?.removeLayer(entry.layer);
       entry.layer.dispose();
       this.mirrors.delete(id);
+      this.lastStyleSignatures.delete(id);
     }
 
     this.knownLayerIds = currentIds;
@@ -263,7 +276,9 @@ export class LayeredWebglRenderer {
     this.master.on('removefeature', this.onRemove as never);
     this.master.on('changefeature', this.onChange as never);
 
-    this.unsubscribeStore = useLayersStore.subscribe((state) => this.syncLayerSet(state.layers));
+    this.unsubscribeStore = useLayersStore.subscribe((state, prevState) => {
+      if (state.layers !== prevState.layers) this.syncLayerSet(state.layers);
+    });
 
     return () => {
       if (this.onAdd) this.master.un('addfeature', this.onAdd as never);
