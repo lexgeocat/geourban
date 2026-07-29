@@ -107,13 +107,13 @@ const IconPointKind = () => (
 
 function geometryIconForKind(kind: LayerKind) {
   if (kind === 'calle' || kind === 'linea' || kind === 'cota' || kind === 'rotonda') return <IconLineKind />;
-  if (kind === 'texto' || kind === 'vert_geo') return <IconPointKind />;
+  if (kind === 'texto') return <IconPointKind />;
   return <IconPolygonKind />;
 }
 
 function geometryLabelForKind(kind: LayerKind): string {
   if (kind === 'calle' || kind === 'linea' || kind === 'cota' || kind === 'rotonda') return 'línea';
-  if (kind === 'texto' || kind === 'vert_geo') return 'punto';
+  if (kind === 'texto') return 'punto';
   return 'polígono';
 }
 

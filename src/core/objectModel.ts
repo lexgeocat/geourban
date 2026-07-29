@@ -13,7 +13,6 @@ export type GeoUrbanFeatureKind =
   | 'urbanizacion'
   | 'georreferenciado'
   | 'rotonda'
-  | 'vert_geo'
   | 'perimetro';
 
 export type LayerKind = GeoUrbanFeatureKind;
@@ -54,7 +53,6 @@ export const LAYER_SUGGESTIONS: LayerSuggestion[] = [
   { kind: 'equipamiento', name: 'Áreas de equipamientos', color: '#4dd0c4', fillColor: '#4dd0c4', colorMode: 'solid', geometryHint: 'polygon' },
   { kind: 'calle', name: 'Vías', color: '#8b5cf6', fillColor: '#8b5cf6', colorMode: 'solid', geometryHint: 'line' },
   { kind: 'rotonda', name: 'Rotonda', color: '#f78166', fillColor: '#f78166', colorMode: 'solid', geometryHint: 'line' },
-  { kind: 'vert_geo', name: 'Vert_Geo', color: '#eab308', fillColor: '#eab308', colorMode: 'solid', geometryHint: 'point' },
 ];
 
 export function getLayerSuggestion(kind: GeoUrbanFeatureKind): LayerSuggestion | undefined {
@@ -157,7 +155,7 @@ export type GeoUrbanFeatureProps =
 
 const KNOWN_KINDS: ReadonlySet<GeoUrbanFeatureKind> = new Set<GeoUrbanFeatureKind>([
   'lote', 'manzana', 'calle', 'equipamiento', 'area_verde', 'linea', 'texto', 'cota',
-  'urbanizacion', 'georreferenciado', 'rotonda', 'vert_geo', 'perimetro',
+  'urbanizacion', 'georreferenciado', 'rotonda', 'perimetro',
 ]);
 
 export function isGeoUrbanFeatureKind(value: unknown): value is GeoUrbanFeatureKind {

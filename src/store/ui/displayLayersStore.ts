@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 
-export type OverlayLayerId = 'urbanizacion' | 'georreferenciado' | 'vertices';
+export type OverlayLayerId = 'urbanizacion' | 'georreferenciado';
 
 export interface OverlayLayerConfig {
   visible: boolean;
@@ -30,7 +30,6 @@ interface DisplayLayersState {
 const DEFAULT_OVERLAYS: Record<OverlayLayerId, OverlayLayerConfig> = {
   urbanizacion: { visible: true, opacity: 1, strokeColor: '#00d4ff', fillColor: '#00d4ff', showLabel: false, showCota: true },
   georreferenciado: { visible: true, opacity: 1, strokeColor: '#3fb950', fillColor: '#3fb950', showLabel: false, showCota: true },
-  vertices: { visible: true, opacity: 1, strokeColor: '#f59e0b', fillColor: '#f59e0b', showLabel: true, showCota: false },
 };
 
 export const useDisplayLayersStore = create<DisplayLayersState>()(

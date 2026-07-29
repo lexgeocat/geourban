@@ -26,7 +26,6 @@ import { useProjectCrsStore, getProjectCrsConfig } from '../store/project/projec
 import { getFeatureKind } from '../core/objectModel';
 import type { GeoUrbanProject } from '../io/types';
 import { requireLayerForKind } from '../store/ui/layerPickerStore';
-import { GenerateVerticesCommand } from '../commands/features/GenerateVerticesCommand';
 
 export function useTopBarActions(fileInputRef: RefObject<HTMLInputElement | null>) {
   const [lotsBusy, setLotsBusy] = useState(false);
@@ -243,20 +242,6 @@ export function useTopBarActions(fileInputRef: RefObject<HTMLInputElement | null
       alert(err instanceof Error ? err.message : 'Error al validar huecos');
     }
   };
-  const handleGenerateVertices = async () => {
-    const ids = Array.from(useSelectionStore.getState().selectedIds);
-    if (ids.length === 0) {
-      alert('Seleccioná una o más features en el mapa para generar sus vértices.');
-      return;
-    }
-    const layerId = await requireLayerForKind('vert_geo');
-    if (!layerId) return;
-    const result = await useCommandStack
-      .getState()
-      .run(new GenerateVerticesCommand({ sourceFeatureIds: ids, layerId }));
-    if (!result.ok) alert(result.error);
-  };
-
   const handleOpenSubdivision = () => {
     const primaryId = useSelectionStore.getState().primaryId;
     if (!primaryId) {
@@ -350,6 +335,5 @@ export function useTopBarActions(fileInputRef: RefObject<HTMLInputElement | null
     handleOpenSubdivision,
     handleGenerateLots,
     handleToggleEdit,
-    handleGenerateVertices,
   };
 }

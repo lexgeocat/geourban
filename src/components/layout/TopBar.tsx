@@ -91,7 +91,6 @@ export default function TopBar() {
                   onDeleteSelected={actions.handleDeleteSelected}
                   onFindOverlaps={actions.handleFindOverlaps}
                   onFindGaps={actions.handleFindGaps}
-                  onGenerateVertices={actions.handleGenerateVertices}
                 />
               )}
               {activeTab === 'view' && <ViewTab />}

@@ -13,12 +13,13 @@ import { RoundaboutPainter } from './painters/RoundaboutPainter';
 import { LabelPainter } from './painters/LabelPainter';
 import { SnapGuidePainter } from './painters/SnapGuidePainter';
 import { OverlayPainter } from './painters/OverlayPainter';
-import { VertexPainter } from './painters/VertexPainter';
 import { recordPostrenderDuration } from '../../store/debug/debugCounters';
+
 
 function getZoomFromResolution(resolution: number): number {
   return Math.log2(156543.03392804097 / resolution);
 }
+
 
 export class PostrenderPainter {
   private readonly map: Map;
@@ -26,16 +27,18 @@ export class PostrenderPainter {
   private readonly postrenderLayer: VectorLayer<VectorSource>;
   private readonly listener: (event: any) => void;
 
+
   private readonly streetPainter = new StreetPainter();
   private readonly roundaboutPainter = new RoundaboutPainter();
   private readonly labelPainter = new LabelPainter();
   private readonly snapGuidePainter: SnapGuidePainter;
   private readonly overlayPainter = new OverlayPainter();
-  private readonly vertexPainter = new VertexPainter();
+
 
   private dirty = true;
   private lastFeatureCount = -1;
   private interacting = false;
+
 
   constructor(opts: { map: Map; drawSource: VectorSource; postrenderLayer: VectorLayer<VectorSource> }) {
     this.map = opts.map;
@@ -43,18 +46,22 @@ export class PostrenderPainter {
     this.postrenderLayer = opts.postrenderLayer;
     this.snapGuidePainter = new SnapGuidePainter(this.map);
 
+
     const onFeatureChange = () => { this.dirty = true; };
     this.drawSource.on('addfeature', onFeatureChange);
     this.drawSource.on('removefeature', onFeatureChange);
     this.drawSource.on('change', onFeatureChange);
 
+
     this.listener = (event: any) => this.handle(event);
     this.postrenderLayer.on('postrender', this.listener);
   }
 
+
   invalidate(): void {
     this.dirty = true;
   }
+
 
   setInteracting(value: boolean): void {
     if (this.interacting === value) return;
@@ -62,53 +69,64 @@ export class PostrenderPainter {
     this.postrenderLayer.changed();
   }
 
+
   setSnapGuide(guide: SnapGuideVisual | null): void {
     this.snapGuidePainter.setGuide(guide);
     this.postrenderLayer.changed();
   }
+
 
   setRoundaboutPreview(preview: RoundaboutDrawPreview | null): void {
     this.roundaboutPainter.setPreview(preview);
     this.postrenderLayer.changed();
   }
 
+
   setLassoPreview(preview: LassoPreview): void {
     this.overlayPainter.setLassoPreview(preview);
     this.postrenderLayer.changed();
   }
+
 
   setSubdivisionPreview(rings: Pt[][] | null): void {
     this.overlayPainter.setSubdivisionPreview(rings);
     this.postrenderLayer.changed();
   }
 
+
   private handle(event: any): void {
     const ctx = event.context as CanvasRenderingContext2D | undefined;
     if (!ctx) return;
     const t0 = performance.now();
 
+
     const resolution = this.map.getView().getResolution() ?? 1;
     const zoom = getZoomFromResolution(resolution);
     const features = (this.drawSource.getFeatures() ?? []) as Array<Feature<Geometry>>;
 
+
     this.updateCaches(ctx, features, zoom, resolution);
+
 
     const toPx = (coord: number[]): [number, number] => {
       const px = this.map.getPixelFromCoordinate(coord as [number, number]);
       return px ? [px[0], px[1]] : [0, 0];
     };
 
+
     const visibleFeatures = this.getVisibleFeatures(features);
+
 
     this.labelPainter.paint(ctx, visibleFeatures, zoom, resolution, toPx, this.interacting);
     this.streetPainter.paint(ctx, zoom, resolution, toPx, this.interacting);
     this.roundaboutPainter.paint(ctx, toPx, resolution);
-    this.vertexPainter.paint(ctx, visibleFeatures, toPx, this.interacting);
     this.snapGuidePainter.paint(ctx, resolution);
     this.overlayPainter.paint(ctx, toPx);
 
+
     recordPostrenderDuration(performance.now() - t0);
   }
+
 
   private getVisibleFeatures(all: Array<Feature<Geometry>>): Array<Feature<Geometry>> {
     const index = getOrCreateSpatialIndex();
@@ -122,6 +140,7 @@ export class PostrenderPainter {
     return index.search(minX - marginX, minY - marginY, maxX + marginX, maxY + marginY) as unknown as Array<Feature<Geometry>>;
   }
 
+
   private updateCaches(ctx: CanvasRenderingContext2D, features: Array<Feature<Geometry>>, zoom: number, resolution: number): void {
     const featuresChanged = features.length !== this.lastFeatureCount;
     this.streetPainter.update(ctx, zoom, this.dirty, resolution);
@@ -129,6 +148,7 @@ export class PostrenderPainter {
     this.lastFeatureCount = features.length;
     this.dirty = false;
   }
+
 
   dispose(): void {
     this.postrenderLayer.un('postrender', this.listener);

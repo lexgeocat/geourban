@@ -16,7 +16,7 @@ const KIND_LABELS: Partial<Record<GeoUrbanFeatureKind, string>> = {
   urbanizacion: 'Urbanización',
   georreferenciado: 'Georreferenciado',
   rotonda: 'Rotonda',
-  vert_geo: 'Vértice geo',
+
 };
 
 type Tab = 'existing' | 'create';

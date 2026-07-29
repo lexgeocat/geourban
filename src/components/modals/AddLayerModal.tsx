@@ -7,7 +7,7 @@ import { AddLayerCommand } from '../../commands/layers/AddLayerCommand';
 const KIND_OPTIONS: { value: LayerKind; label: string }[] = [
   { value: 'lote', label: 'Polígono' },
   { value: 'linea', label: 'Línea' },
-  { value: 'vert_geo', label: 'Punto' },
+
 ];
 
 export interface AddLayerModalProps {

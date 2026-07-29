@@ -135,14 +135,6 @@ export const IconAlertCircle = () => (
     <line x1="12" y1="16" x2="12.01" y2="16" />
   </svg>
 );
-export const IconVertices = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M5 6 19 6 12 18Z" />
-    <circle cx="5" cy="6" r="1.6" fill="currentColor" stroke="none" />
-    <circle cx="19" cy="6" r="1.6" fill="currentColor" stroke="none" />
-    <circle cx="12" cy="18" r="1.6" fill="currentColor" stroke="none" />
-  </svg>
-);
 
 export const IconUrbanizacion = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
