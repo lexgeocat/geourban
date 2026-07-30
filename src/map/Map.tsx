@@ -63,7 +63,7 @@ const rotateLotsInteractionRef = useRef<RotateLotsInteraction | null>(null);
 const rotateLotsCleanupRef = useRef<(() => void) | null>(null);
 const baseMapId = useUiShellStore((s) => s.baseMap);
   const viewConfig = useMapStore((s) => s.viewConfig);
-  const drawMode = useDrawStore().mode;
+  const drawMode = useDrawStore((s) => s.mode);
 
   useEffect(() => {
     if (!mapDivRef.current) return;

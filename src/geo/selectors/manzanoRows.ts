@@ -25,13 +25,36 @@ export interface ManzanoRow {
 
 export function readManzanoRows(drawSource: VectorSource | null): ManzanoRow[] {
   if (!drawSource) return [];
-  const rows: ManzanoRow[] = [];
-  let fallbackIdx = 0;
+
+  // Un solo recorrido: agrupamos lotes por lotGroupId y separamos manzanos/equipamientos.
+  const lotsByGroup = new Map<string, LotInfo[]>();
+  const manzanoFeatures: Feature<Geometry>[] = [];
+
   drawSource.forEachFeature((f: Feature<Geometry>) => {
     const kind = getFeatureKind(f);
-    if (kind !== 'manzana' && kind !== 'equipamiento') return;
+    if (kind === 'manzana' || kind === 'equipamiento') {
+      manzanoFeatures.push(f);
+      return;
+    }
+    if (kind === 'lote') {
+      const groupId = f.get('lotGroupId') as string | undefined;
+      if (!groupId) return;
+      const info: LotInfo = {
+        label: (f.get('label') as string) ?? 'Lote',
+        areaM2: (f.get('areaM2') as number) ?? 0,
+        isRemnant: !!f.get('isRemnant'),
+      };
+      const list = lotsByGroup.get(groupId);
+      if (list) list.push(info);
+      else lotsByGroup.set(groupId, [info]);
+    }
+  });
+
+  const rows: ManzanoRow[] = [];
+  let fallbackIdx = 0;
+  for (const f of manzanoFeatures) {
     const id = f.getId();
-    if (id == null) return;
+    if (id == null) continue;
     const geom = f.getGeometry();
     const ring: Pt[] = geom instanceof Polygon
       ? ((geom.getCoordinates()[0] ?? []) as number[][]).map((c) => [c[0], c[1]] as Pt)
@@ -39,27 +62,19 @@ export function readManzanoRows(drawSource: VectorSource | null): ManzanoRow[] {
     const areaM2 = (f.get('areaM2') as number | undefined) ?? (ring.length ? polyArea(ring) : 0);
     const perimeterM = ring.length ? ringPerimeter(ring) : 0;
     const centroidPt: Pt = ring.length ? centroid(ring) : [0, 0];
-    const lots: LotInfo[] = [];
-    drawSource.forEachFeature((g: Feature<Geometry>) => {
-      if (g.get('lotGroupId') !== String(id)) return;
-      lots.push({
-        label: (g.get('label') as string) ?? 'Lote',
-        areaM2: (g.get('areaM2') as number) ?? 0,
-        isRemnant: !!g.get('isRemnant'),
-      });
-    });
     const colorIdx = (f.get('colorIdx') as number | undefined) ?? fallbackIdx;
+
     rows.push({
       id,
       colorIdx: colorIdx % MZN_COLORS.length,
       areaM2,
       perimeterM,
       centroid: centroidPt,
-      isEquip: kind === 'equipamiento',
-      lots,
+      isEquip: getFeatureKind(f) === 'equipamiento',
+      lots: lotsByGroup.get(String(id)) ?? [],
       lotStatus: getLotStatus(f),
     });
     fallbackIdx++;
-  });
+  }
   return rows;
 }

@@ -56,9 +56,6 @@ export function activateSelect(ctx: ModeContext): HitTestSelect {
     }
     ctx.refreshLayers();
   });
-  select.addEventListener('hover', (evt) => {
-
-  });
 
   ctx.map.addInteraction(select);
   ctx.selectInteractionRef.current = select;

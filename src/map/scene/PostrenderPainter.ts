@@ -49,18 +49,16 @@ export class PostrenderPainter {
     this.postrenderLayer = opts.postrenderLayer;
     this.snapGuidePainter = new SnapGuidePainter(this.map);
     this.streetPainter = new StreetPainter(() => this.map.render());
-
+    this.selectionHighlightPainter.attach(this.map); // ← agregar
 
     const onFeatureChange = () => { this.dirty = true; };
     this.drawSource.on('addfeature', onFeatureChange);
     this.drawSource.on('removefeature', onFeatureChange);
     this.drawSource.on('change', onFeatureChange);
 
-
     this.listener = (event: any) => this.handle(event);
     this.postrenderLayer.on('postrender', this.listener);
   }
-
 
   invalidate(): void {
     this.dirty = true;
@@ -167,5 +165,6 @@ export class PostrenderPainter {
   dispose(): void {
     this.postrenderLayer.un('postrender', this.listener);
     this.streetPainter.dispose();
+    this.selectionHighlightPainter.dispose(); // ← agregar
   }
 }
