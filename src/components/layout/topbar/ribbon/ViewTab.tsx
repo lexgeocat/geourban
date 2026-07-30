@@ -1,7 +1,6 @@
 import React from 'react';
 import { BarChart3 } from 'lucide-react';
 import { useUiShellStore } from '../../../../store/ui/uiShellStore';
-import { useLayersStore } from '../../../../store/entities/layersRegistryStore';
 import { useManzanoStore } from '../../../../store/entities/manzanoStore';
 import { useRoundaboutStore } from '../../../../store/entities/roundaboutStore';
 import { useStreetStore } from '../../../../store/entities/streetStore';
@@ -12,9 +11,6 @@ import { IconGrid, IconSat, IconRoad, IconStreet, IconLots, IconRoundabout, Icon
 export default function ViewTab() {
   const baseMap = useUiShellStore((s) => s.baseMap);
   const setBaseMap = useUiShellStore((s) => s.setBaseMap);
-  const layers = useLayersStore((s) => s.layers);
-  const activeLayerId = useLayersStore((s) => s.activeLayerId);
-  const setActiveLayer = useLayersStore((s) => s.setActiveLayer);
   const statsPanelVisible = useUiShellStore((s) => s.statsPanelVisible);
   const setStatsPanelVisible = useUiShellStore((s) => s.setStatsPanelVisible);
   const propsPanelVisible = useUiShellStore((s) => s.panelVisibility.properties);
@@ -41,25 +37,6 @@ export default function ViewTab() {
         })}
       </RibbonGroup>
 
-      <RibbonGroup label="Capa activa">
-        <div className="ribbon-inline-control" style={{ minWidth: 150 }}>
-          <select
-            className="ribbon-inline-input"
-            value={activeLayerId ?? ''}
-            onChange={(e) => setActiveLayer(e.target.value || null)}
-            title="Capa activa — los nuevos trazos se asignan acá"
-            aria-label="Capa activa"
-          >
-            <option value="">— Sin capa activa —</option>
-            {layers.map((l) => (
-              <option key={l.id} value={l.id} disabled={l.locked}>
-                {l.name}{l.locked ? ' 🔒' : ''}
-              </option>
-            ))}
-          </select>
-          <span className="ribbon-inline-text">Capa activa</span>
-        </div>
-      </RibbonGroup>
       <RibbonGroup label="Paneles">
         <RibbonTool icon={<BarChart3 />} label="Estadísticas" active={statsPanelVisible} onClick={() => setStatsPanelVisible(!statsPanelVisible)} />
         <RibbonTool icon={<IconLots />} label="Manzanos" active={manzanoPanelVisible} onClick={() => setManzanoPanelVisible(!manzanoPanelVisible)} />

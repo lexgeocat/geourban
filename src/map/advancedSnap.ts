@@ -91,16 +91,17 @@ export interface SpatialIndexLike {
 }
 
 export interface FindSnapOptions {
-  resolution: number;
-  pixelTolerance?: number;
-  anchor?: number[];
-  parallelRefSegment?: [number[], number[]];
-  spatialIndex?: SpatialIndexLike;
-  enabled?: Partial<SnapSettings>;
-  previous?: SnapResult | null;
-  excludeFeature?: Feature | null;
-  extraFeatures?: Feature[];
-}
+   resolution: number;
+   pixelTolerance?: number;
+   anchor?: number[];
+   parallelRefSegment?: [number[], number[]];
+   spatialIndex?: SpatialIndexLike;
+   enabled?: Partial<SnapSettings>;
+   previous?: SnapResult | null;
+   excludeFeature?: Feature | null;
+   extraFeatures?: Feature[];
+  filter?: (feature: Feature) => boolean;
+ }
 
 interface SnapCandidate {
   point: number[];
@@ -252,6 +253,7 @@ export function findSnap(cursor: number[], src: VectorSource, options: FindSnapO
     previous,
     excludeFeature,
     extraFeatures,
+    filter,
   } = options;
 
   const settings: SnapSettings = { ...DEFAULT_SNAP_SETTINGS, ...enabled };
@@ -268,6 +270,7 @@ export function findSnap(cursor: number[], src: VectorSource, options: FindSnapO
 
   const processFeature = (feat: Feature) => {
     if (excludeFeature && feat === excludeFeature) return;
+    if (filter && !filter(feat)) return;
     const geom = feat.getGeometry();
     if (!geom) return;
     const fid = feat.getId() != null ? String(feat.getId()) : getUid(feat);

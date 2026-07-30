@@ -42,6 +42,7 @@ import { useStreetStore } from '../store/entities/streetStore';
 import { useRoadCornerStore } from '../store/map/roadCornerStore';
 import { reapplyRoadCornerMode } from '../geo/recomputeManzanos';
 import { requireLayerForKind } from '../store/ui/layerPickerStore';
+import { isFeatureLayerVisible } from '../core/layerVisibility';
 
 export default function MapView() {
   const mapDivRef = useRef<HTMLDivElement>(null);
@@ -142,6 +143,7 @@ const baseMapId = useUiShellStore((s) => s.baseMap);
     viewport.addEventListener('pointerdown', onPointerDown);
     viewport.addEventListener('pointerup', onPointerUp);
     viewport.addEventListener('pointerleave', onPointerUp);
+
 
     const postrenderPainter = new PostrenderPainter({
       map,
@@ -322,6 +324,7 @@ const baseMapId = useUiShellStore((s) => s.baseMap);
       shouldSnapCoordinate,
       getAnchor,
       getExcludeFeature,
+      getFilter: () => isFeatureLayerVisible,
       getPriorityTarget: getCloseTarget,
       pixelTolerance: 10,
       onResultChange: (result) => {
@@ -430,6 +433,7 @@ useEffect(() => {
   });
   return unsub;
 }, []);
+
 useEffect(() => {
   const unsub = useRoadCornerStore.subscribe(() => {
     void reapplyRoadCornerMode();

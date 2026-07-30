@@ -31,6 +31,7 @@ export interface SnapEngineOptions {
   getAnchor?: () => number[] | undefined;
   getExcludeFeature?: () => Feature<Geometry> | undefined;
   getPriorityTarget?: (coordinate: number[]) => number[] | null;
+  getFilter?: () => (feature: Feature<Geometry>) => boolean;
   pixelTolerance?: number;
   onResultChange?: (result: SnapResult | null) => void;
   onGuideChange?: (guide: SnapGuideVisual | null) => void;
@@ -97,6 +98,7 @@ export default class SnapEngine extends Interaction {
       anchor: this.opts.getAnchor?.(),
       excludeFeature: this.opts.getExcludeFeature?.(),
       extraFeatures: roadFeatures,
+      filter: this.opts.getFilter?.() as ((feature: import('ol/Feature.js').default) => boolean) | undefined,
     });
 
     this.lastResult = result;

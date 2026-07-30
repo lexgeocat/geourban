@@ -1,6 +1,7 @@
 ﻿// src/components/RoundaboutPanel.tsx
 import React from 'react';
 import { useRoundaboutStore } from '../../store/entities/roundaboutStore';
+import { useSelectionStore } from '../../store/map/selectionStore';
 import { useDrawStore } from '../../store/map/drawStore';
 import { roundaboutRoadAreaM2 } from '../../geo/roundabout/roundaboutEngine';
 import { formatMetricArea } from '../../geo/metrics';
@@ -33,6 +34,8 @@ export default function RoundaboutPanel() {
 
   const mode = useDrawStore((s) => s.mode);
   const setMode = useDrawStore((s) => s.setMode);
+  const selectedIds = useSelectionStore((s) => s.selectedIds);
+  const selectOnMap = useSelectionStore((s) => s.setSelection);
 
   const { position: pos, onDragHandleMouseDown } = useDraggablePanel({ initial: { top: 4, left: 280 } });
 
@@ -104,11 +107,24 @@ export default function RoundaboutPanel() {
         <p style={{ fontSize: '0.68rem', color: 'var(--cad-text-muted)' }}>Todavía no hay rotondas trazadas.</p>
       ) : (
         roundabouts.map((rb) => (
-          <div key={rb.id} style={{ border: '1px solid var(--cad-border)', borderLeft: '3px solid #f78166', borderRadius: 4, marginBottom: 6, padding: '6px 8px' }}>
+          <div
+            key={rb.id}
+            onClick={() => selectOnMap([rb.id], rb.id)}
+            title="Click: resalta esta rotonda en el mapa"
+            style={{
+              border: `1px solid ${selectedIds.has(rb.id) ? 'var(--cad-accent-amber)' : 'var(--cad-border)'}`,
+              borderLeft: '3px solid #f78166',
+              borderRadius: 4,
+              marginBottom: 6,
+              padding: '6px 8px',
+              cursor: 'pointer',
+             boxShadow: selectedIds.has(rb.id) ? '0 0 0 1px var(--cad-accent-amber)' : 'none',
+              transition: 'box-shadow 120ms ease, border-color 120ms ease',
+            }}
+          >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ fontWeight: 700, color: 'var(--cad-text)' }}>{rb.name}</span>
-              <button onClick={() => removeRoundabout(rb.id)} style={{ background: 'none', border: 'none', color: 'var(--cad-accent-red)', cursor: 'pointer', fontSize: '0.75rem' }} title="Eliminar rotonda">✕</button>
-            </div>
+<button onClick={(e) => { e.stopPropagation(); removeRoundabout(rb.id); }} style={{ background: 'none', border: 'none', color: 'var(--cad-accent-red)', cursor: 'pointer', fontSize: '0.75rem' }} title="Eliminar rotonda">✕</button>            </div>
             <div style={{ color: 'var(--cad-text-muted)', fontSize: '0.65rem', marginBottom: 4 }}>
               {formatMetricArea(roundaboutRoadAreaM2(rb))} de calzada
             </div>
@@ -116,12 +132,14 @@ export default function RoundaboutPanel() {
               <label style={{ flex: 1, fontSize: '0.6rem', color: 'var(--cad-text-dim)' }}>
                 Radio
                 <input type="number" min={3} step={1} value={rb.radiusM}
-                  onChange={(e) => updateRoundabout(rb.id, { radiusM: parseFloat(e.target.value) || rb.radiusM })} className="cad-input cad-input-sm" />
+                  onChange={(e) => updateRoundabout(rb.id, { radiusM: parseFloat(e.target.value) || rb.radiusM })}
+                  onClick={(e) => e.stopPropagation()} className="cad-input cad-input-sm" />
               </label>
               <label style={{ flex: 1, fontSize: '0.6rem', color: 'var(--cad-text-dim)' }}>
                 Calzada
                 <input type="number" min={1} step={0.5} value={rb.roadWidthM}
-                  onChange={(e) => updateRoundabout(rb.id, { roadWidthM: parseFloat(e.target.value) || rb.roadWidthM })} className="cad-input cad-input-sm" />
+                  onChange={(e) => updateRoundabout(rb.id, { roadWidthM: parseFloat(e.target.value) || rb.roadWidthM })}
+                  onClick={(e) => e.stopPropagation()} className="cad-input cad-input-sm" />
               </label>
             </div>
           </div>

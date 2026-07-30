@@ -14,6 +14,7 @@ import { RoundaboutPainter } from './painters/RoundaboutPainter';
 import { LabelPainter } from './painters/LabelPainter';
 import { SnapGuidePainter } from './painters/SnapGuidePainter';
 import { OverlayPainter } from './painters/OverlayPainter';
+import { SelectionHighlightPainter } from './painters/SelectionHighlightPainter';
 import { recordPostrenderDuration } from '../../store/debug/debugCounters';
 
 
@@ -34,6 +35,7 @@ export class PostrenderPainter {
   private readonly labelPainter = new LabelPainter();
   private readonly snapGuidePainter: SnapGuidePainter;
   private readonly overlayPainter = new OverlayPainter();
+  private readonly selectionHighlightPainter = new SelectionHighlightPainter();
 
 
   private dirty = true;
@@ -122,6 +124,7 @@ export class PostrenderPainter {
     this.labelPainter.paint(ctx, visibleFeatures, zoom, resolution, toPx, this.interacting);
     this.streetPainter.paint(ctx, zoom, resolution, toPx, this.interacting);
     this.roundaboutPainter.paint(ctx, toPx, resolution);
+    this.selectionHighlightPainter.paint(ctx, toPx, resolution, this.drawSource);
     this.snapGuidePainter.paint(ctx, resolution);
     this.overlayPainter.paint(ctx, toPx);
 

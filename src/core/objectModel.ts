@@ -7,7 +7,6 @@ export type GeoUrbanFeatureKind =
   | 'calle'
   | 'equipamiento'
   | 'linea'
-  | 'texto'
   | 'rotonda'
   | 'perimetro';
 
@@ -116,23 +115,16 @@ export interface PerimetroProps extends BaseFeatureProps {
   perimeterM?: number;
 }
 
-export interface TextoProps extends BaseFeatureProps {
-  kind: 'texto';
-  text: string;
-  size?: number;
-}
-
 export type GeoUrbanFeatureProps =
   | LoteProps
   | ManzanaProps
   | CalleProps
   | EquipamientoProps
   | LineaProps
-  | TextoProps
   | PerimetroProps;
 
 const KNOWN_KINDS: ReadonlySet<GeoUrbanFeatureKind> = new Set<GeoUrbanFeatureKind>([
-  'lote', 'manzana', 'calle', 'equipamiento', 'linea', 'texto',
+  'lote', 'manzana', 'calle', 'equipamiento', 'linea',
   'rotonda', 'perimetro',
 ]);
 
@@ -161,7 +153,6 @@ export function getFeatureKind(feature: Feature<Geometry> | null | undefined): G
   if (legacy === 'calle') return 'calle';
   if (legacy === 'equipamiento') return 'equipamiento';
   if (legacy === 'linea') return 'linea';
-  if (legacy === 'texto') return 'texto';
   return null;
 }
 

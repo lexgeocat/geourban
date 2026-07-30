@@ -29,7 +29,6 @@ export interface HitTestSelectOptions {
   pixelTolerance?: number;
   multi?: boolean;
   filter?: (feature: Feature<Geometry>) => boolean;
-  /** Features adicionales al pool de hit-test (p.ej. calles/rotondas "fantasma" — ver roadSnapSource.ts). */
   getExtraFeatures?: () => Feature<Geometry>[];
 }
 

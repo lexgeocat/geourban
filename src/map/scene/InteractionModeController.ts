@@ -5,7 +5,7 @@ import type Draw from 'ol/interaction/Draw.js';
 import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
 import type { DrawMode } from '../../store/map/drawStore';
-import { useLayersStore } from '../../store/entities/layersRegistryStore';
+import { isFeatureLayerLocked, isFeatureLayerVisible } from '../../core/layerVisibility';
 import type { PostrenderPainter } from './PostrenderPainter';
 import type { HitTestSelect } from './HitTestSelect';
 import { getOrCreateSpatialIndex, type SpatialIndex } from '../spatialIndex';
@@ -80,18 +80,8 @@ export class InteractionModeController {
       selectInteractionRef: this.selectInteractionRef,
       addCleanup: (fn) => this.toClean.push(fn),
       refreshLayers: () => drawLayer?.changed(),
-      isLayerLocked: (f: Feature<Geometry>) => {
-        const layerId = f.get('layerId') as string | undefined;
-        if (!layerId) return false;
-        const layer = useLayersStore.getState().getById(layerId);
-        return !!layer?.locked;
-      },
-      isLayerVisible: (f: Feature<Geometry>) => {
-        const layerId = f.get('layerId') as string | undefined;
-        if (!layerId) return true; // feature huérfano: no bloquear
-        const layer = useLayersStore.getState().getById(layerId);
-        return layer ? layer.visible : true;
-      },
+      isLayerLocked: isFeatureLayerLocked,
+      isLayerVisible: isFeatureLayerVisible,
     };
 
     switch (mode) {

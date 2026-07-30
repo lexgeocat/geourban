@@ -1,5 +1,6 @@
 ﻿import React, { useState } from 'react';
 import { useStreetStore } from '../../store/entities/streetStore';
+import { useSelectionStore } from '../../store/map/selectionStore';
 import { useRoadCornerStore } from '../../store/map/roadCornerStore';
 import { type CornerMode } from '../../geo/roads/ringFillet';
 import { recomputeManzanos } from '../../geo/recomputeManzanos';
@@ -47,6 +48,8 @@ export default function StreetPanel() {
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
+  const selectedIds = useSelectionStore((s) => s.selectedIds);
+  const selectOnMap = useSelectionStore((s) => s.setSelection);
 
   const { position: pos, onDragHandleMouseDown } = useDraggablePanel({ initial: { top: 4, left: 550 } });
 
@@ -154,7 +157,21 @@ export default function StreetPanel() {
         <p style={{ fontSize: '0.68rem', color: 'var(--cad-text-muted)' }}>Todavía no hay calles trazadas.</p>
       ) : (
         streets.map((s) => (
-          <div key={s.id} style={{ border: '1px solid var(--cad-border)', borderLeft: '3px solid #8b5cf6', borderRadius: 4, marginBottom: 6, padding: '6px 8px' }}>
+          <div
+            key={s.id}
+            onClick={() => selectOnMap([s.id], s.id)}
+            title="Click: resalta esta calle en el mapa"
+            style={{
+              border: `1px solid ${selectedIds.has(s.id) ? 'var(--cad-accent-amber)' : 'var(--cad-border)'}`,
+              borderLeft: '3px solid #8b5cf6',
+              borderRadius: 4,
+              marginBottom: 6,
+              padding: '6px 8px',
+              cursor: 'pointer',
+              boxShadow: selectedIds.has(s.id) ? '0 0 0 1px var(--cad-accent-amber)' : 'none',
+              transition: 'box-shadow 120ms ease, border-color 120ms ease',
+            }}
+          >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               {editingId === s.id ? (
                 <input
@@ -163,12 +180,13 @@ export default function StreetPanel() {
                   onChange={(e) => setEditName(e.target.value)}
                   onBlur={commitRename}
                   onKeyDown={(e) => { if (e.key === 'Enter') commitRename(); if (e.key === 'Escape') setEditingId(null); }}
+                  onClick={(e) => e.stopPropagation()}
                   className="cad-input cad-input-sm" style={{ marginTop: 0, flex: 1, marginRight: 6 }}
                   aria-label={`Nombre de ${s.name}`}
                 />
               ) : (
                 <span
-                  onDoubleClick={() => startRename(s.id, s.name)}
+                  onDoubleClick={(e) => { e.stopPropagation(); startRename(s.id, s.name); }}
                   style={{ fontWeight: 700, color: 'var(--cad-text)', cursor: 'text' }}
                   title="Doble click para renombrar"
                 >
@@ -176,7 +194,7 @@ export default function StreetPanel() {
                 </span>
               )}
               <button
-                onClick={() => handleDelete(s.id)}
+                onClick={(e) => { e.stopPropagation(); handleDelete(s.id); }}
                 style={{ background: 'none', border: 'none', color: 'var(--cad-accent-red)', cursor: 'pointer', fontSize: '0.75rem' }}
                 title="Eliminar calle"
                 aria-label={`Eliminar ${s.name}`}
@@ -196,6 +214,7 @@ export default function StreetPanel() {
                   step={0.5}
                   value={s.widthM}
                   onChange={(e) => handleWidthChange(s.id, Math.max(0.5, parseFloat(e.target.value) || s.widthM))}
+                  onClick={(e) => e.stopPropagation()}
                   className="cad-input cad-input-sm"
                   aria-label={`Ancho de calzada de ${s.name} en metros`}
                 />
@@ -208,6 +227,7 @@ export default function StreetPanel() {
                   step={0.5}
                   value={s.sideWidthM}
                   onChange={(e) => handleSideWidthChange(s.id, Math.max(0, parseFloat(e.target.value) || 0))}
+                  onClick={(e) => e.stopPropagation()}
                   className="cad-input cad-input-sm"
                   aria-label={`Ancho de vereda de ${s.name} en metros`}
                 />

@@ -3,6 +3,7 @@ import { Trash2 } from 'lucide-react';
 import { useDrawStore } from '../../../../store/map/drawStore';
 import { useStreetStore } from '../../../../store/entities/streetStore';
 import { useRoundaboutStore } from '../../../../store/entities/roundaboutStore';
+import { useLayersStore } from '../../../../store/entities/layersRegistryStore';
 import { useGenerateLotsProgressStore } from '../../../../store/ui/generateLotsProgressStore';
 import { recomputeManzanos, resetIncrementalRoadTracking } from '../../../../geo/recomputeManzanos';
 import { RibbonGroup, RibbonTool, RibbonToolDropdown } from '../RibbonPrimitives';
@@ -21,15 +22,13 @@ export default function UrbanDesignTab({ lotsBusy, onOpenSubdivision, onGenerate
   const mode = useDrawStore((s) => s.mode);
   const genLotsProgress = useGenerateLotsProgressStore();
 
-  const rbDefaultRadiusM = useRoundaboutStore((s) => s.defaultRadiusM);
-  const setRbDefaultRadius = useRoundaboutStore((s) => s.setDefaultRadius);
-  const defaultWidthM = useStreetStore((s) => s.defaultWidthM);
-  const setDefaultWidth = useStreetStore((s) => s.setDefaultWidth);
-  const defaultSideWidthM = useStreetStore((s) => s.defaultSideWidthM);
-  const setDefaultSideWidth = useStreetStore((s) => s.setDefaultSideWidth);
   const streets = useStreetStore((s) => s.streets);
   const clearStreets = useStreetStore((s) => s.clearStreets);
   const clearRoundabouts = useRoundaboutStore((s) => s.clearRoundabouts);
+
+  const layers = useLayersStore((s) => s.layers);
+  const activeLayerId = useLayersStore((s) => s.activeLayerId);
+  const setActiveLayer = useLayersStore((s) => s.setActiveLayer);
 
   const handleClearStreets = () => {
     clearStreets();
@@ -61,36 +60,38 @@ export default function UrbanDesignTab({ lotsBusy, onOpenSubdivision, onGenerate
       <RibbonGroup label="Vialidad">
         <RibbonTool mode="street" icon={<IconStreet />} label="Trazar calle" shortcut="S" active={mode === 'street'} />
         <RibbonTool mode="roundabout" icon={<IconRoundabout />} label="Rotonda" shortcut="O" active={mode === 'roundabout'} />
-        <div className="ribbon-inline-control">
-          <input
-            type="number" className="ribbon-inline-input" value={defaultWidthM} min={1} max={50} step={1}
-            onChange={(e) => setDefaultWidth(parseFloat(e.target.value) || 8)}
-            title="Ancho de calzada (m)" aria-label="Ancho de calzada en metros"
-          />
-          <span className="ribbon-inline-text">Calzada (m)</span>
-        </div>
-        <div className="ribbon-inline-control">
-          <input
-            type="number" className="ribbon-inline-input" value={defaultSideWidthM} min={0} max={30} step={0.5}
-            onChange={(e) => setDefaultSideWidth(Math.max(0, parseFloat(e.target.value) || 0))}
-            title="Ancho de vereda (m)" aria-label="Ancho de vereda en metros"
-          />
-          <span className="ribbon-inline-text">Vereda (m)</span>
-        </div>
-        <div className="ribbon-inline-control">
-          <input
-            type="number" className="ribbon-inline-input" value={rbDefaultRadiusM} min={3} max={200} step={1}
-            onChange={(e) => setRbDefaultRadius(parseFloat(e.target.value) || 12)}
-            title="Radio de rotonda (m)" aria-label="Radio de rotonda en metros"
-          />
-          <span className="ribbon-inline-text">Radio rot. (m) · {streets.length} trazadas</span>
-        </div>
         {streets.length > 0 && (
-          <button className="ribbon-tool small" onClick={handleClearStreets} style={{ color: 'var(--cad-accent-red)' }} data-tooltip="Limpiar todas las calles" title="Limpiar todas las calles">
+          <button
+            className="ribbon-tool small"
+            onClick={handleClearStreets}
+            style={{ color: 'var(--cad-accent-red)' }}
+            data-tooltip="Limpiar todas las calles"
+            title="Limpiar todas las calles"
+          >
             <Trash2 />
-            <span className="ribbon-tool-label">Limpiar</span>
+            <span className="ribbon-tool-label">Limpiar ({streets.length})</span>
           </button>
         )}
+      </RibbonGroup>
+
+      <RibbonGroup label="Capa activa">
+        <div className="ribbon-inline-control" style={{ minWidth: 160 }}>
+          <select
+            className="ribbon-inline-input"
+            value={activeLayerId ?? ''}
+            onChange={(e) => setActiveLayer(e.target.value || null)}
+            title="Capa activa — los nuevos trazos se asignan acá"
+            aria-label="Capa activa"
+          >
+            <option value="">— Sin capa activa —</option>
+            {layers.map((l) => (
+              <option key={l.id} value={l.id} disabled={l.locked}>
+                {l.name}{l.locked ? ' 🔒' : ''}
+              </option>
+            ))}
+          </select>
+          <span className="ribbon-inline-text">Capa activa</span>
+        </div>
       </RibbonGroup>
 
       <RibbonGroup label="Subdivisión">

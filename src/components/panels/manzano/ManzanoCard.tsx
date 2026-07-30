@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useManzanoStore, type ManzanoLoteMethod } from '../../../store/entities/manzanoStore';
+import { useSelectionStore } from '../../../store/map/selectionStore';
 import { formatMetricArea } from '../../../geo/metrics';
 import { SUBDIVISION_METHOD_INFO } from '../../../geo/subdivision/subdivisionMethodLabels';
 import { manzanoDisplayColor } from '../../../geo/manzanoColor';
@@ -34,6 +35,8 @@ export default function ManzanoCard({
   const hasGeomChanged = useManzanoStore((s) => s.hasGeomChanged);
   const rotatingId = useManzanoStore((s) => s.rotatingId);
   const cancelRotateLots = useManzanoStore((s) => s.cancelRotateLots);
+  const isSelected = useSelectionStore((s) => s.selectedIds.has(row.id));
+  const selectOnMap = useSelectionStore((s) => s.setSelection);
 
   const [lotsOpen, setLotsOpen] = useState(false);
   const [manualAngleOpen, setManualAngleOpen] = useState(false);
@@ -49,9 +52,25 @@ export default function ManzanoCard({
   const remLots = row.lots.filter((l) => l.isRemnant).length;
 
   return (
-    <div style={{ border: `1px solid ${color}55`, borderLeft: `3px solid ${color}`, borderRadius: 4, marginBottom: 6, background: row.isEquip ? 'rgba(77,208,196,0.08)' : `${color}14` }}>
-      <div onClick={() => toggleCardOpen(row.id)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 8px', cursor: 'pointer' }}>
-        <div style={{ minWidth: 0 }}>
+<div
+      style={{
+        border: `1px solid ${isSelected ? 'var(--cad-accent-amber)' : `${color}55`}`,
+        borderLeft: `3px solid ${color}`,
+        borderRadius: 4,
+        marginBottom: 6,
+        background: row.isEquip ? 'rgba(77,208,196,0.08)' : `${color}14`,
+        boxShadow: isSelected ? '0 0 0 1px var(--cad-accent-amber)' : 'none',
+        transition: 'box-shadow 120ms ease, border-color 120ms ease',
+      }}
+    >
+      <div
+        onClick={() => {
+          toggleCardOpen(row.id);
+          selectOnMap([row.id], row.id);
+        }}
+        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 8px', cursor: 'pointer' }}
+        title="Click: resalta este manzano en el mapa"
+      >        <div style={{ minWidth: 0 }}>
           <div style={{ fontWeight: 700, color }}>{row.isEquip ? '★ Equipamiento' : `Mzo. ${row.colorIdx + 1}`}</div>
           <div style={{ color: 'var(--cad-text-muted)', fontSize: '0.65rem' }}>
             {formatMetricArea(row.areaM2)}{row.lots.length ? ` · ${row.lots.length} lotes` : ''}

@@ -11,23 +11,17 @@ import { pointInPoly, segmentIntersectsPoly, type Pt } from '../../../geo/math/p
 import { getOrCreateRoadSnapSource } from '../../roadSnapSource';
 import type { ModeContext } from './ModeContext';
 
-export const SELECT_STYLE = new Style({
-  fill: new Fill({ color: 'rgba(0, 212, 255, 0.15)' }),
-  stroke: new Stroke({ color: '#00d4ff', width: 2.5 }),
-});
-
-function seedFromStore(ctx: ModeContext, select: HitTestSelect) {
-  useSelectionStore.getState().selectedIds.forEach((id) => {
-    const f = ctx.drawSource.getFeatureById(id) as Feature<Geometry> | null;
-    if (f) select.getFeatures().push(f);
-  });
-}
-
-function syncHighlight(ctx: ModeContext, select: HitTestSelect, style: Style) {
-  ctx.highlightLayer.setStyle(style);
-  ctx.highlightSource.clear();
-  ctx.highlightSource.addFeatures(select.getFeatures().getArray());
-}
+ export const SELECT_STYLE = new Style({
+   fill: new Fill({ color: 'rgba(0, 212, 255, 0.15)' }),
+   stroke: new Stroke({ color: '#00d4ff', width: 2.5 }),
+ });
+ 
+ function seedFromStore(ctx: ModeContext, select: HitTestSelect) {
+   useSelectionStore.getState().selectedIds.forEach((id) => {
+     const f = ctx.drawSource.getFeatureById(id) as Feature<Geometry> | null;
+     if (f) select.getFeatures().push(f);
+   });
+ }
 
 /** Crea y cablea el HitTestSelect compartido por 'select' y 'edit'. */
 export function activateSelect(ctx: ModeContext): HitTestSelect {
@@ -45,7 +39,6 @@ export function activateSelect(ctx: ModeContext): HitTestSelect {
   });
 
   seedFromStore(ctx, select);
-  syncHighlight(ctx, select, SELECT_STYLE);
 
   select.addEventListener('select', (evt) => {
     const e = evt as unknown as HitTestSelectEvent;
@@ -61,13 +54,17 @@ export function activateSelect(ctx: ModeContext): HitTestSelect {
       const primary = (justClickedId != null ? justClickedId : ids[ids.length - 1]) as string | number;
       useSelectionStore.getState().setSelection(ids, primary);
     }
-    syncHighlight(ctx, select, SELECT_STYLE);
     ctx.refreshLayers();
+  });
+  select.addEventListener('hover', (evt) => {
+
   });
 
   ctx.map.addInteraction(select);
   ctx.selectInteractionRef.current = select;
-  ctx.addCleanup(() => ctx.map.removeInteraction(select));
+  ctx.addCleanup(() => {
+    ctx.map.removeInteraction(select);
+  });
 
   const subMode = useSelectionStore.getState().selectMode;
   if (subMode === 'rect' || subMode === 'lasso') {
@@ -153,7 +150,6 @@ function activateLasso(ctx: ModeContext, select: HitTestSelect, lassoMode: Lasso
 
       select.getFeatures().clear();
       select.getFeatures().extend(candidates);
-      syncHighlight(ctx, select, SELECT_STYLE);
       ctx.refreshLayers();
     },
     onCancel: () => {
