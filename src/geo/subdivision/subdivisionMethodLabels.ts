@@ -36,7 +36,3 @@ export const SUBDIVISION_METHOD_INFO: Record<string, MethodLabelInfo> = {
     color: '#f59e0b',
   },
 };
-
-export function getMethodLabel(method: string): string {
-  return SUBDIVISION_METHOD_INFO[method]?.label ?? method;
-}

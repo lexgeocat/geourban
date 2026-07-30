@@ -40,6 +40,7 @@ interface ManzanoState {
   setTargetAreaM2: (v: number) => void;
   setFrontMinM: (v: number) => void;
   pruneToIds: (aliveIds: Set<string>) => void;
+  resetAll: () => void;
 }
 
 const MIN_DRAG_LEN = 0.5;
@@ -125,4 +126,15 @@ export const useManzanoStore = create<ManzanoState>()((set, get) => ({
         openCards: filterRecord(s.openCards),
       };
     }),
+
+  resetAll: () =>
+    set(() => ({
+      methods: {},
+      rotateDir: {},
+      geomSnapshots: {},
+      openCards: {},
+      rotatingId: null,
+      rotateAnchor: null,
+      rotateHandle: null,
+    })),
 }));

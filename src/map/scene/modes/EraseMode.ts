@@ -8,6 +8,7 @@ import { useStreetStore } from '../../../store/entities/streetStore';
 import { useRoundaboutStore } from '../../../store/entities/roundaboutStore';
 import { recomputeManzanos } from '../../../geo/recomputeManzanos';
 import { getOrCreateRoadSnapSource } from '../../roadSnapSource';
+import { toast } from '../../../store/ui/toastStore';
 import type { ModeContext } from './ModeContext';
 
 export const ERASE_STYLE = new Style({
@@ -48,7 +49,16 @@ export function activateErase(ctx: ModeContext): void {
       }
       ids.push(id as string | number);
     });
-    if (ids.length > 0) void runCommand(new DeleteFeaturesCommand(ids));
+    if (ids.length > 0) {
+      const cmd = new DeleteFeaturesCommand(ids);
+      void runCommand(cmd);
+      if (cmd.skippedCount > 0) {
+        toast(`${cmd.skippedCount} elemento(s) no se borraron por estar en una capa bloqueada.`, {
+          variant: 'warning',
+          durationMs: 5000,
+        });
+      }
+    }
     if (removedRoadEntity) void recomputeManzanos();
     select.getFeatures().clear();
     ctx.highlightSource.clear();

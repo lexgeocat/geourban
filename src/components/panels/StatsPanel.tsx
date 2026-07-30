@@ -1,14 +1,15 @@
-﻿import React, { useMemo, useState, useRef, useCallback, useEffect } from 'react';
+﻿import React, { useMemo } from 'react';
 import { useMapStore } from '../../store/map/mapStore';
 import { useStreetStore } from '../../store/entities/streetStore';
 import { useUiShellStore } from '../../store/ui/uiShellStore';
 import { useDrawSourceTick } from '../../hooks/useDrawSourceTick';
+import { useDraggablePanel } from '../../hooks/useDraggablePanel';
 import { polyArea, type Pt } from '../../geo/math/polygonEngine';
-import { formatMetricArea } from '../../geo/metrics';
+import { formatMetricArea, streetLengthMetricM } from '../../geo/metrics';
 import Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
 import Polygon from 'ol/geom/Polygon.js';
-import { getFeatureKind } from '../../core/objectModel';
+import { getFeatureKind, getLotStatus } from '../../core/objectModel';
 import { manzanoDisplayColor } from '../../geo/manzanoColor';
 
 interface ManzanoInfo {
@@ -56,6 +57,11 @@ function computeStats(drawSource: any, streets: any[]): StatsData {
     const kind = getFeatureKind(f);
     if (kind === 'perimetro') return; // referencia intacta — no forma parte de las métricas operativas
 
+    const isManzana = kind === 'manzana';
+    // Un manzano ya lotizado no aporta área propia: su superficie ya está
+    // representada por sus lotes hijos. Sumarlo acá duplica el área total.
+    if (isManzana && getLotStatus(f) === 'subdivided') return;
+
     const coords = (geom as Polygon).getCoordinates();
     if (!coords[0] || coords[0].length < 4) return;
     const pts: Pt[] = coords[0].map((c: number[]) => [c[0], c[1]]);
@@ -63,8 +69,7 @@ function computeStats(drawSource: any, streets: any[]): StatsData {
 
     result.totalAreaM2 += area;
 
-    const isManzana = kind === 'manzana';
-    const isLot = f.get('subdivision') || f.get('label')?.startsWith('Lote');
+    const isLot = kind === 'lote';
     const isEquip = kind === 'equipamiento';
 
     if (isManzana) {
@@ -89,9 +94,7 @@ function computeStats(drawSource: any, streets: any[]): StatsData {
 
   // Área vial = suma de (longitud * ancho) de cada calle
   for (const s of streets) {
-    const dx = s.end[0] - s.start[0];
-    const dy = s.end[1] - s.start[1];
-    const lenM = Math.hypot(dx, dy);
+    const lenM = streetLengthMetricM(s);
     result.streetAreaM2 += lenM * s.widthM;
   }
 
@@ -104,48 +107,15 @@ export default function StatsPanel() {
   const visible = useUiShellStore((s) => s.statsPanelVisible);
   const setStatsPanelVisible = useUiShellStore((s) => s.setStatsPanelVisible);
 
-  const [pos, setPos] = useState({ x: window.innerWidth - 250, y: window.innerHeight - 350 });
-  const dragRef = useRef<{ startX: number; startY: number; posX: number; posY: number } | null>(null);
+  const { position: pos, onDragHandleMouseDown } = useDraggablePanel({
+    initial: { top: Math.max(0, window.innerHeight - 350), left: Math.max(0, window.innerWidth - 250) },
+  });
 
   const tick = useDrawSourceTick(drawSource);
-
-  useEffect(() => {
-    const onResize = () => {
-      setPos((p) => ({
-        x: Math.min(p.x, window.innerWidth - 40),
-        y: Math.min(p.y, window.innerHeight - 40),
-      }));
-    };
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
-  }, []);
 
   const stats = useMemo(() => computeStats(drawSource, streets),
   // eslint-disable-next-line react-hooks/exhaustive-deps
   [drawSource, streets, tick]);
-
-  const onMouseDown = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    dragRef.current = { startX: e.clientX, startY: e.clientY, posX: pos.x, posY: pos.y };
-    const onMove = (ev: MouseEvent) => {
-      if (!dragRef.current) return;
-      const nextX = dragRef.current.posX + (ev.clientX - dragRef.current.startX);
-      const nextY = dragRef.current.posY + (ev.clientY - dragRef.current.startY);
-      const maxX = window.innerWidth - 40;
-      const maxY = window.innerHeight - 40;
-      setPos({
-        x: Math.min(Math.max(0, nextX), maxX),
-        y: Math.min(Math.max(0, nextY), maxY),
-      });
-    };
-    const onUp = () => {
-      dragRef.current = null;
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-    };
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
-  }, [pos.x, pos.y]);
 
   if (!visible) return null;
   if (stats.totalAreaM2 === 0 && stats.streetCount === 0) return null;
@@ -159,9 +129,9 @@ export default function StatsPanel() {
       className="cad-panel-glass"
       style={{
         position: 'fixed',
-        left: pos.x,
-        top: pos.y,
-        zIndex: 1000,
+        left: pos.left,
+        top: pos.top,
+        zIndex: 'var(--z-stats)',
         padding: '10px 14px',
         minWidth: 220,
         maxWidth: 300,
@@ -171,7 +141,7 @@ export default function StatsPanel() {
     >
       {/* Header */}
       <div
-        onMouseDown={onMouseDown}
+        onMouseDown={onDragHandleMouseDown}
         style={{
           fontWeight: 700,
           color: 'var(--cad-text)',

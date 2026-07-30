@@ -8,6 +8,8 @@ import { useStreetStore, type Street } from '../../../store/entities/streetStore
 import { runCommand } from '../../../commands/core/CommandStack';
 import { AddStreetCommand } from '../../../commands/roads/AddStreetCommand';
 import { requireLayerForKind } from '../../../store/ui/layerPickerStore';
+import { confirmAsync } from '../../../store/ui/confirmDialogStore';
+import { useStreetTracingSessionStore } from '../../../store/ui/streetTracingSessionStore';
 import type { ModeContext } from './ModeContext';
 
 function findNearbyStreetEndpointWarning(
@@ -37,6 +39,13 @@ export function activateStreet(ctx: ModeContext): void {
     }),
   });
 
+  // Cada trazo nuevo tiene su propio id de sesión, así dos calles consecutivas
+  // NO se fusionan en un único undo (el coalescing fusiona solo lo que se
+  // ejecuta dentro del MISMO trazo).
+  draw.on('drawstart', () => {
+    useStreetTracingSessionStore.getState().nextSession();
+  });
+
   draw.on('drawend', (event) => {
     const feature = event.feature as Feature<Geometry>;
     try {
@@ -54,15 +63,21 @@ export function activateStreet(ctx: ModeContext): void {
       const warning =
         findNearbyStreetEndpointWarning(start, streetStore.streets, TOL_M) ??
         findNearbyStreetEndpointWarning(end, streetStore.streets, TOL_M);
-      if (warning && !window.confirm(`${warning}\n\n¿Trazar de todos modos?`)) {
-        return;
-      }
 
       void (async () => {
+        if (warning) {
+          const proceed = await confirmAsync(`${warning}\n\n¿Trazar de todos modos?`, {
+            title: 'Extremo cercano a otra calle',
+            confirmLabel: 'Trazar igual',
+            cancelLabel: 'Cancelar',
+          });
+          if (!proceed) return;
+        }
+
         const layerId = await requireLayerForKind('calle');
         if (!layerId) return; // cancelado — no se traza la calle sin capa
-         await runCommand(new AddStreetCommand(start, end, streetStore.defaultWidthM, waypoints, streetStore.defaultSideWidthM, layerId));
-       })();
+        await runCommand(new AddStreetCommand(start, end, streetStore.defaultWidthM, waypoints, streetStore.defaultSideWidthM, layerId));
+      })();
     } finally {
       streetSource.removeFeature(feature);
       streetSource.changed();

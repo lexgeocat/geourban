@@ -1,6 +1,4 @@
 ﻿import type VectorSource from 'ol/source/Vector.js';
-import type Feature from 'ol/Feature.js';
-import type Geometry from 'ol/geom/Geometry.js';
 import type Map from 'ol/Map.js';
 import { useMapStore } from '../../store/map/mapStore';
 
@@ -28,8 +26,4 @@ export function getCommandContext(): CommandContext | null {
     drawSource,
     getMap: () => useMapStore.getState().mapInstance,
   };
-}
-
-export function featureIds(features: Array<Feature<Geometry>>): Array<string | number> {
-  return features.map((f) => f.getId()).filter((id): id is string | number => id !== undefined);
 }

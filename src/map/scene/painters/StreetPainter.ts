@@ -6,7 +6,6 @@ import { computeRoadNetworkNetInWorker } from '../../../workers/geoWorkerClient'
 import { type Pt } from '../../../geo/math/polygonEngine';
 import { measureCachedWidth } from '../../textMeasureCache';
 import { useLayersStore } from '../../../store/entities/layersRegistryStore';
-import { useDisplayLayersStore } from '../../../store/ui/displayLayersStore';
 import { withAlpha } from '../DrawLayerRenderer';
 import type { Layer } from '../../../core/objectModel';
 
@@ -411,7 +410,6 @@ export class StreetPainter {
     interacting: boolean,
   ): void {
     if (this.currentGroups.length === 0) return;
-    const display = useDisplayLayersStore.getState();
 
     for (const group of this.currentGroups) {
       const layer = group.layer;
@@ -448,7 +446,7 @@ export class StreetPainter {
       ctx.setLineDash([]);
       ctx.restore();
 
-      const labelOp = display.labelOpacity(layer.showLabel) * layerOp;
+      const labelOp = (layer.showLabel ? 1 : 0) * layerOp;
       if (!interacting && zoom > 12 && labelOp > 0.002) {
         const fs1 = Math.max(9, Math.min(13, (10 * zoom) / 18));
         const fs2 = Math.max(8, Math.min(11, (9 * zoom) / 18));

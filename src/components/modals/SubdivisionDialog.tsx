@@ -137,6 +137,7 @@ export default function SubdivisionDialog() {
         return;
       }
       useSubdivisionPreviewStore.getState().clear();
+      useDrawStore.getState().setLastDrawnLineId(null);
       close();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));

@@ -3,8 +3,6 @@ export const MZN_COLORS = [
   '#ec4899', '#14b8a6', '#f97316', '#06b6d4', '#84cc16',
 ] as const;
 
-export type ManzanoColorHex = (typeof MZN_COLORS)[number];
-
 export const MZN_COLOR_COUNT = MZN_COLORS.length;
 
 export function manzanoDisplayColor(colorIdx: number): string {

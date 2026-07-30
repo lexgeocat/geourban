@@ -28,15 +28,15 @@ export type FeatureMetrics = {
   metricsUpdatedAt: number;
 };
 
-function projectRingToMetricPlane(ring3857: number[][]): [number, number][] {
+export function projectPathToMetricPlane(path3857: Array<[number, number]>): [number, number][] {
   const crs = useProjectCrsStore.getState();
 
   if (crs.mode === 'utm') {
     const epsg = ensureUtmZoneRegistered(crs.utmZone, crs.utmHemisphere);
-    return ring3857.map((c) => transform(c, DISPLAY_PROJECTION, epsg) as [number, number]);
+    return path3857.map((c) => transform(c, DISPLAY_PROJECTION, epsg) as [number, number]);
   }
 
-  const lonLat = ring3857.map((c) => transform(c, DISPLAY_PROJECTION, GEOGRAPHIC_PROJECTION));
+  const lonLat = path3857.map((c) => transform(c, DISPLAY_PROJECTION, GEOGRAPHIC_PROJECTION));
   let sumLon = 0, sumLat = 0;
   for (const c of lonLat) { sumLon += c[0]; sumLat += c[1]; }
   const centerLon = sumLon / lonLat.length;
@@ -47,6 +47,10 @@ function projectRingToMetricPlane(ring3857: number[][]): [number, number][] {
     (c[0] - centerLon) * mPerDegLon,
     (c[1] - centerLat) * mPerDegLat,
   ] as [number, number]);
+}
+
+function projectRingToMetricPlane(ring3857: number[][]): [number, number][] {
+  return projectPathToMetricPlane(ring3857 as Array<[number, number]>);
 }
 
 function planarArea(ringMetric: [number, number][]): number {
@@ -231,6 +235,24 @@ export function updateFeatureMetrics(feature: Feature<Geometry>) {
 export function refreshSourceMetrics(source: VectorSource) {
   source.getFeatures().forEach((feature) => updateFeatureMetrics(feature as Feature<Geometry>));
   source.changed();
+}
+
+export type StreetPathLike = {
+  start: [number, number];
+  end: [number, number];
+  waypoints?: Array<[number, number]>;
+};
+
+/**
+ * Largo de una calle (eje) en metros sobre el plano métrico del proyecto
+ * (UTM si está configurado, o tangente local con corrección por latitud si no).
+ * Acepta waypoints intermedios: el camino recorrido es start → ...waypoints → end.
+ */
+export function streetLengthMetricM(street: StreetPathLike): number {
+  const path: [number, number][] = [street.start, ...(street.waypoints ?? []), street.end];
+  if (path.length < 2) return 0;
+  const metricPath = projectPathToMetricPlane(path);
+  return pathLength(metricPath);
 }
 
 export function formatMetricLength(valueM?: number) {

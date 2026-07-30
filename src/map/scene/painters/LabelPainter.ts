@@ -17,7 +17,6 @@ import { formatMetricLength, formatMetricArea, type SegmentMetric } from '../../
 import { manzanoDisplayColor } from '../../../geo/manzanoColor';
 import { measureCached, measureCachedWidth } from '../../textMeasureCache';
 import { getFeatureKind, getLotStatus } from '../../../core/objectModel';
-import { useDisplayLayersStore } from '../../../store/ui/displayLayersStore';
 import { useLayersStore } from '../../../store/entities/layersRegistryStore';
 import { useUiShellStore } from '../../../store/ui/uiShellStore';
 
@@ -178,16 +177,15 @@ export class LabelPainter {
     const cotaMaster = useUiShellStore.getState().measurementsVisible ? 1 : 0;
     const lodTier = computeLodTier(features.length);
 
-    const display = useDisplayLayersStore.getState();
     const registry = useLayersStore.getState();
     const manzanaLayer = registry.getLayerForKind('manzana');
     const loteLayer = registry.getLayerForKind('lote');
 
-    const manzanaLabelOp = display.labelOpacity(manzanaLayer?.showLabel ?? true);
-    const manzanaCotaOp = display.cotaOpacity(manzanaLayer?.showCota ?? true) * zoomFade * cotaMaster;
-    const loteLabelOp = display.labelOpacity(loteLayer?.showLabel ?? true);
-    const loteCotaOp = display.cotaOpacity(loteLayer?.showCota ?? true) * zoomFade * cotaMaster;
-    const genericCotaOp = display.cotaOpacity(true) * zoomFade * cotaMaster;
+    const manzanaLabelOp = (manzanaLayer?.showLabel ?? true) ? 1 : 0;
+    const manzanaCotaOp = (manzanaLayer?.showCota ?? true ? 1 : 0) * zoomFade * cotaMaster;
+    const loteLabelOp = (loteLayer?.showLabel ?? true) ? 1 : 0;
+    const loteCotaOp = (loteLayer?.showCota ?? true ? 1 : 0) * zoomFade * cotaMaster;
+    const genericCotaOp = zoomFade * cotaMaster;
 
     for (let fi = 0; fi < features.length; fi++) {
       const feature = features[fi];
@@ -307,7 +305,7 @@ export class LabelPainter {
   ): void {
     if (zoom < 12) return;
     const cotaMaster = useUiShellStore.getState().measurementsVisible ? 1 : 0;
-    const cotaOp = useDisplayLayersStore.getState().cotaOpacity(true) * cotaMaster;
+    const cotaOp = cotaMaster;
     if (cotaOp <= 0.002) return;
     const selectedIds = useSelectionStore.getState().selectedIds;
 

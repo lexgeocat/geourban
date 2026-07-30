@@ -44,7 +44,7 @@ export function Modal({
             inset: 0,
             background: 'rgba(0, 0, 0, 0.55)',
             backdropFilter: 'blur(4px)',
-            zIndex: 1000,
+            zIndex: 'var(--z-modal-overlay)',
           }}
         />
         <Dialog.Content
@@ -58,7 +58,7 @@ export function Modal({
             maxHeight: '90vh',
             overflow: 'auto',
             padding: '20px 22px',
-            zIndex: 1001,
+            zIndex: 'var(--z-modal)',
           }}
           onInteractOutside={disableOutsideClose ? (e) => e.preventDefault() : undefined}
           onEscapeKeyDown={disableOutsideClose ? (e) => e.preventDefault() : undefined}

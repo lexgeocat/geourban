@@ -26,29 +26,6 @@ const geometryFactory = new GeometryFactory();
 const reader = new GeoJSONReader(geometryFactory);
 const writer = new GeoJSONWriter();
 
-export type UnionRequest = {
-  type: 'union';
-  features: FeatureCollection;
-};
-export type MergeRequest = {
-  type: 'merge';
-  features: FeatureCollection;
-};
-export type SubtractRequest = {
-  type: 'subtract';
-  /** minuend: lo que queda */
-  minuend: FeatureCollection;
-  /** subtrahend: lo que se resta */
-  subtrahend: FeatureCollection;
-};
-export type IntersectRequest = {
-  type: 'intersect';
-  features: FeatureCollection;
-};
-export type ValidateRequest = {
-  type: 'validate';
-  features: FeatureCollection;
-};
 export type ComputeManzanosRequest = {
   type: 'computeManzanos';
   /** Cada feature = una parcela de origen (Polygon). */
@@ -103,11 +80,6 @@ export type MatchFragmentsBatchRequest = {
 };
 
 export type GeoWorkerRequest =
-  | UnionRequest
-  | MergeRequest
-  | SubtractRequest
-  | IntersectRequest
-  | ValidateRequest
   | ComputeManzanosRequest
   | SubdivideRequest
   | SubdivideManzanoRequest
@@ -201,132 +173,6 @@ function robustUnionRoadNetwork(roadNetwork: FeatureCollection): any {
   }
 }
 
-function writeToCollection(geom: any): FeatureCollection {
-  if (!geom) return { type: 'FeatureCollection', features: [] };
-  if (geom.isEmpty?.()) return { type: 'FeatureCollection', features: [] };
-  const geo = writer.write(geom);
-  return {
-    type: 'FeatureCollection',
-    features: [
-      { type: 'Feature', properties: { merged: true }, geometry: geo as GeoJsonPolygon },
-    ],
-  };
-}
-
-/* ---------- Operaciones ---------- */
-
-export function unionFeatures(collection: FeatureCollection): FeatureCollection {
-  const items = readAllGeometries(collection);
-  if (items.length === 0) {
-    return { type: 'FeatureCollection', features: [] };
-  }
-  let merged = items[0].geom;
-  for (let i = 1; i < items.length; i++) {
-    merged = OverlayOp.union(merged, items[i].geom);
-  }
-  return writeToCollection(merged);
-}
-
-export function mergeFeatures(collection: FeatureCollection): FeatureCollection {
-  // alias de union con semantica explicita
-  return unionFeatures(collection);
-}
-
-export function subtractFeatures(
-  minuend: FeatureCollection,
-  subtrahend: FeatureCollection
-): FeatureCollection {
-  const a = readAllGeometries(minuend);
-  const b = readAllGeometries(subtrahend);
-  if (a.length === 0) return { type: 'FeatureCollection', features: [] };
-  let result = a[0].geom;
-  for (let i = 1; i < a.length; i++) {
-    result = OverlayOp.union(result, a[i].geom);
-  }
-  for (const s of b) {
-    result = OverlayOp.difference(result, s.geom);
-  }
-  return writeToCollection(result);
-}
-
-export function intersectFeatures(collection: FeatureCollection): FeatureCollection {
-  const items = readAllGeometries(collection);
-  if (items.length === 0) return { type: 'FeatureCollection', features: [] };
-  let result = items[0].geom;
-  for (let i = 1; i < items.length; i++) {
-    result = OverlayOp.intersection(result, items[i].geom);
-  }
-  return writeToCollection(result);
-}
-
-export function validateTopology(collection: FeatureCollection): {
-  valid: boolean;
-  issues: string[];
-} {
-  const issues: string[] = [];
-
-  collection.features.forEach((feature, index) => {
-    if (!feature.geometry) {
-      issues.push(`Feature ${index}: sin geometría`);
-      return;
-    }
-    try {
-      const geom = reader.read(feature.geometry);
-      if (!geom.isValid()) {
-        issues.push(
-          `Feature ${index}: geometría inválida (${geom.getValidationError()?.toString() ?? 'desconocido'})`
-        );
-      }
-    } catch (err) {
-      issues.push(`Feature ${index}: error al leer geometría — ${String(err)}`);
-    }
-  });
-
-  return { valid: issues.length === 0, issues };
-}
-
-/* ---------- Overlaps & Gaps ---------- */
-
-interface BboxItem {
-  minX: number;
-  minY: number;
-  maxX: number;
-  maxY: number;
-  pos: number;
-}
-
-export function findGaps(collection: FeatureCollection): FeatureCollection {
-  // Unir todos los polígonos del mismo kind 'manzana'
-  const manzanaFeatures = collection.features.filter(f =>
-    (f.properties as Record<string, unknown>)?.type === 'manzana' ||
-    (f.properties as Record<string, unknown>)?.kind === 'manzana'
-  );
-  const filteredCollection: FeatureCollection = { type: 'FeatureCollection', features: manzanaFeatures };
-  const items = readAllGeometries(filteredCollection);
-
-  if (items.length === 0) {
-    return { type: 'FeatureCollection', features: [] };
-  }
-
-  // Unión de todos los manzanos
-  let union = items[0].geom;
-  for (let i = 1; i < items.length; i++) {
-    union = OverlayOp.union(union, items[i].geom);
-  }
-
-  // Envolvente convexa de la unión
-  const convexHull = union.convexHull();
-
-  // Huecos = envolvente - unión
-  const gaps = OverlayOp.difference(convexHull, union);
-
-  if (gaps.isEmpty()) {
-    return { type: 'FeatureCollection', features: [] };
-  }
-
-  return writeToCollection(gaps);
-}
-
 export function computeManzanos(
   parcels: FeatureCollection,
   roadNetwork: FeatureCollection,
@@ -412,20 +258,6 @@ function runMatchFragmentsBatch(request: MatchFragmentsBatchRequest): GeoWorkerR
 export function handleGeoWorkerRequest(request: GeoWorkerRequest): GeoWorkerResponse {
   try {
     switch (request.type) {
-      case 'union':
-        return { type: 'union', result: unionFeatures(request.features) };
-      case 'merge':
-        return { type: 'merge', result: mergeFeatures(request.features) };
-      case 'subtract': {
-        const r = subtractFeatures(request.minuend, request.subtrahend);
-        return { type: 'subtract', result: r };
-      }
-      case 'intersect':
-        return { type: 'intersect', result: intersectFeatures(request.features) };
-      case 'validate': {
-        const v = validateTopology(request.features);
-        return { type: 'validate', valid: v.valid, issues: v.issues };
-      }
       case 'computeManzanos':
         return { type: 'computeManzanos', manzanos: computeManzanos(request.parcels, request.roadNetwork) };
       case 'subdivide':
@@ -444,20 +276,6 @@ export function handleGeoWorkerRequest(request: GeoWorkerRequest): GeoWorkerResp
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     switch (request.type) {
-      case 'union':
-        return { type: 'union', result: { type: 'FeatureCollection', features: [] }, error: message };
-      case 'merge':
-        return { type: 'merge', result: { type: 'FeatureCollection', features: [] }, error: message };
-      case 'subtract':
-        return { type: 'subtract', result: { type: 'FeatureCollection', features: [] }, error: message };
-      case 'intersect':
-        return {
-          type: 'intersect',
-          result: { type: 'FeatureCollection', features: [] },
-          error: message,
-        };
-      case 'validate':
-        return { type: 'validate', valid: false, issues: [], error: message };
       case 'computeManzanos':
         return { type: 'computeManzanos', manzanos: { type: 'FeatureCollection', features: [] }, error: message };
       case 'subdivide':

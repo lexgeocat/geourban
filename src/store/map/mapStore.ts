@@ -7,10 +7,9 @@ import GeoJSON from 'ol/format/GeoJSON.js';
 import { extend as extendExtent, type Extent } from 'ol/extent.js';
 import { refreshSourceMetrics } from '../../geo/metrics';
 import { useSelectionStore } from './selectionStore';
-import { validateTopologyInWorker } from '../../workers/geoWorkerClient';
-import type { FeatureCollection } from 'geojson';
 import { runCommand } from '../../commands/core/CommandStack';
 import { DeleteFeaturesCommand } from '../../commands/features/DeleteFeaturesCommand';
+import { toast } from '../ui/toastStore';
 
 const geoJsonFormat = new GeoJSON();
 
@@ -38,7 +37,6 @@ type MapState = {
   zoomOut: () => void;
   deleteSelected: () => number;
   deleteFeatureById: (id: string | number) => boolean;
-  validateProjectTopology: () => Promise<{ valid: boolean; issues: string[] }>;
 };
 
 export const useMapStore = create<MapState>()(
@@ -117,26 +115,26 @@ export const useMapStore = create<MapState>()(
     deleteSelected: () => {
       const selectedIds = Array.from(useSelectionStore.getState().selectedIds);
       if (selectedIds.length === 0) return 0;
-      void runCommand(new DeleteFeaturesCommand(selectedIds));
-      return selectedIds.length;
+      const cmd = new DeleteFeaturesCommand(selectedIds);
+      void runCommand(cmd);
+      if (cmd.skippedCount > 0) {
+        toast(`${cmd.skippedCount} elemento(s) no se borraron por estar en una capa bloqueada.`, {
+          variant: 'warning',
+          durationMs: 5000,
+        });
+      }
+      return selectedIds.length - cmd.skippedCount;
     },
     deleteFeatureById: (id) => {
-      void runCommand(new DeleteFeaturesCommand([id]));
-      return true;
-    },
-    validateProjectTopology: async () => {
-      const src = get().drawSource;
-      if (!src) return { valid: true, issues: [] };
-      const collection: FeatureCollection = {
-        type: 'FeatureCollection',
-        features: src.getFeatures().map((f) =>
-          geoJsonFormat.writeFeatureObject(f, {
-            featureProjection: 'EPSG:3857',
-            dataProjection: 'EPSG:3857',
-          })
-        ),
-      };
-      return validateTopologyInWorker(collection);
+      const cmd = new DeleteFeaturesCommand([id]);
+      void runCommand(cmd);
+      if (cmd.skippedCount > 0) {
+        toast('El elemento no se borró: pertenece a una capa bloqueada.', {
+          variant: 'warning',
+          durationMs: 5000,
+        });
+      }
+      return cmd.skippedCount === 0;
     },
   }))
 );

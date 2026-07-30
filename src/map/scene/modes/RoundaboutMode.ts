@@ -4,10 +4,13 @@ import { AddRoundaboutCommand } from '../../../commands/roads/AddRoundaboutComma
 import { validateRoundaboutParams } from '../../../geo/roundabout/roundaboutEngine';
 import { RoundaboutDrawInteraction } from '../RoundaboutDrawInteraction';
 import { requireLayerForKind } from '../../../store/ui/layerPickerStore';
+import { toast } from '../../../store/ui/toastStore';
+import { useStreetTracingSessionStore } from '../../../store/ui/streetTracingSessionStore';
 import type { ModeContext } from './ModeContext';
 
 export function activateRoundabout(ctx: ModeContext): void {
   const { map } = ctx;
+  useStreetTracingSessionStore.getState().nextSession();
   const draw = new RoundaboutDrawInteraction({
     map,
     onComplete: (center, radiusM) => {
@@ -22,7 +25,7 @@ export function activateRoundabout(ctx: ModeContext): void {
       };
       const error = validateRoundaboutParams(params);
       if (error) {
-        alert(error);
+        toast(error, { variant: 'error', durationMs: 6000 });
         map.render();
         return;
       }

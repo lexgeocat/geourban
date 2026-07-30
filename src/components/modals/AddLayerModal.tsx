@@ -3,6 +3,7 @@ import { Modal } from '../ui/Modal';
 import type { LayerKind } from '../../core/objectModel';
 import { runCommand } from '../../commands/core/CommandStack';
 import { AddLayerCommand } from '../../commands/layers/AddLayerCommand';
+import { newId } from '../../lib/id';
 
 const KIND_OPTIONS: { value: LayerKind; label: string }[] = [
   { value: 'lote', label: 'Polígono' },
@@ -24,7 +25,7 @@ export default function AddLayerModal({ open, onOpenChange }: AddLayerModalProps
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
-    const id = `layer-${Date.now().toString(36)}`;
+    const id = newId('layer');
     void runCommand(new AddLayerCommand({
       id, name: name.trim(), kind,
       color, fillColor,

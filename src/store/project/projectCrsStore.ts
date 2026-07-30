@@ -71,8 +71,3 @@ export const useProjectCrsStore = create<ProjectCrsState>()(
     requestReconfigure: () => set((state) => { state.confirmed = false; }),
   }))
 );
-
-export function getProjectCrsConfig(): ProjectCrsConfig {
-  const { mode, utmZone, utmHemisphere } = useProjectCrsStore.getState();
-  return { mode, utmZone, utmHemisphere };
-}

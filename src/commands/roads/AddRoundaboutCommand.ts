@@ -1,5 +1,6 @@
 ﻿import { Command, type CommandContext } from '../core/Command';
 import { useRoundaboutStore } from '../../store/entities/roundaboutStore';
+import { useStreetTracingSessionStore } from '../../store/ui/streetTracingSessionStore';
 import { recomputeManzanos, waitForPendingRecompute } from '../../geo/recomputeManzanos';
 import { refreshSourceMetrics } from '../../geo/metrics';
 import {
@@ -16,7 +17,9 @@ interface RoundaboutEntry {
 
 export class AddRoundaboutCommand extends Command {
   readonly label = 'Trazar rotonda';
-  readonly coalesceKey = 'AddRoundaboutCommand';
+  /** Id por sesión de trazo (comparte store con AddStreetCommand). Dos rotondas
+   * consecutivas NO se fusionan en un único undo. */
+  readonly coalesceKey: string;
 
   private entries: RoundaboutEntry[];
   private before: DrawSourceSnapshot | null = null;
@@ -24,6 +27,7 @@ export class AddRoundaboutCommand extends Command {
 
   constructor(params: RoundaboutParams) {
     super();
+    this.coalesceKey = `roundabout:${useStreetTracingSessionStore.getState().currentSessionId}`;
     this.entries = [{ id: null, params }];
   }
 

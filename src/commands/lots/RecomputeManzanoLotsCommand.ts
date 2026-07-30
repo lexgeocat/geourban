@@ -18,6 +18,7 @@ import { subdivideManzanoInWorker } from '../../workers/geoWorkerClient';
 import { useManzanoStore } from '../../store/entities/manzanoStore';
 import { polyArea, ringPerimeter, centroid } from '../../geo/math/polygonEngine';
 import { estimateGeometryBytes } from '../core/memoryEstimate';
+import { newId } from '../../lib/id';
 
 const geoJsonFormat = new GeoJSON();
 
@@ -107,8 +108,8 @@ export class RecomputeManzanoLotsCommand extends Command {
       }
       const newGeom = new PolygonGeom([closedRing]);
       const newFeat = new FeatureOL({ geometry: newGeom });
-      const newId = `lot-${this.opts.manzanoId}-${Date.now()}-${i}`;
-      newFeat.setId(newId);
+      const lotId = newId(`lot-${this.opts.manzanoId}`);
+      newFeat.setId(lotId);
       newFeat.setProperties(
         ensureKind(
           {
@@ -127,7 +128,7 @@ export class RecomputeManzanoLotsCommand extends Command {
       const lid = resolveLayerId(this.opts.layerId, 'lote');
       if (lid) newFeat.set('layerId', lid);
       updateFeatureMetrics(newFeat as Feature<Geometry>);
-      this.newLotIds.push(newId);
+      this.newLotIds.push(lotId);
     });
 
     setLotStatus(mznFeat, this.newLotIds.length > 0 ? 'subdivided' : 'none');

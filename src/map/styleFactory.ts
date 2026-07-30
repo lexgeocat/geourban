@@ -1,7 +1,6 @@
 import type Feature from 'ol/Feature.js';
 import Point from 'ol/geom/Point.js';
 import type Geometry from 'ol/geom/Geometry.js';
-import type { StyleFunction } from 'ol/style/Style.js';
 import { Fill, Stroke, Style, Text } from 'ol/style.js';
 import type { SegmentMetric } from '../geo/metrics';
 import { measureCachedWidth } from './textMeasureCache';
@@ -316,14 +315,6 @@ export function drawMainMetricLabel(
     ctx.fillText(options!.extraLine!, px[0], y2);
     ctx.restore();
   }
-}
-
-export function createMeasurementStyle(): StyleFunction {
-  const hitStyle = new Style({
-    fill: new Fill({ color: 'rgba(0, 0, 0, 0.001)' }),
-    stroke: new Stroke({ color: 'rgba(0, 0, 0, 0.001)', width: 6 }),
-  });
-  return () => hitStyle;
 }
 
 export function createLiveDrawingLabelStyle(

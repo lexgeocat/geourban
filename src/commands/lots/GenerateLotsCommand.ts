@@ -13,6 +13,7 @@ import type { ManzanoLoteMethod } from '../../geo/subdivision/subdivisionAlgorit
 import { polyArea, ringPerimeter, centroid, type LotResult } from '../../geo/math/polygonEngine';
 import { useGenerateLotsProgressStore } from '../../store/ui/generateLotsProgressStore';
 import { estimateGeometryBytes } from '../core/memoryEstimate';
+import { newId } from '../../lib/id';
 
 const geoJsonFormat = new GeoJSON();
 
@@ -166,8 +167,8 @@ export class GenerateLotsCommand extends Command {
         }
         const newGeom = new PolygonGeom([closedRing]);
         const newFeat = new FeatureOL({ geometry: newGeom });
-        const newId = `lot-${id}-${Date.now()}-${this.newLotIds.length}-${i}`;
-        newFeat.setId(newId);
+        const lotId = newId(`lot-${id}`);
+        newFeat.setId(lotId);
         newFeat.setProperties(
           ensureKind(
             {
@@ -186,7 +187,7 @@ export class GenerateLotsCommand extends Command {
         const lid = resolveLayerId(this.opts.layerId, 'lote');
         if (lid) newFeat.set('layerId', lid);
         updateFeatureMetrics(newFeat as Feature<Geometry>);
-        this.newLotIds.push(newId);
+        this.newLotIds.push(lotId);
       }
 
       setLotStatus(mznFeat, 'subdivided');

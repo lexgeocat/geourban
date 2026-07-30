@@ -1,11 +1,12 @@
 ﻿// src/components/panels/ManzanoPanel.tsx
-import React, { useMemo, useEffect, useRef, useState, useCallback } from 'react';
+import React, { useMemo, useEffect, useRef } from 'react';
 import { useMapStore } from '../../store/map/mapStore';
 import { useManzanoStore } from '../../store/entities/manzanoStore';
 import { useIncrementalRender } from '../../hooks/useIncrementalRender';
 import { useDrawSourceTick } from '../../hooks/useDrawSourceTick';
 import { useViewportWidth } from '../../hooks/useViewportWidth';
 import { useManzanoActions } from '../../hooks/useManzanoActions';
+import { useDraggablePanel } from '../../hooks/useDraggablePanel';
 import { readManzanoRows } from '../../geo/selectors/manzanoRows';
 import { useSubdivisionPreviewStore } from '../../store/ui/subdivisionPreviewStore';
 import { formatMetricArea } from '../../geo/metrics';
@@ -33,51 +34,9 @@ export default function ManzanoPanel() {
   const actions = useManzanoActions(drawSource);
 
   // ─── Drag & drop (panel movible) ───────────────────────────────
-  const [position, setPosition] = useState(DEFAULT_POSITION);
-  const dragRef = useRef({ isDragging: false, startX: 0, startY: 0, startTop: 0, startLeft: 0 });
-
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    dragRef.current = {
-      isDragging: true,
-      startX: e.clientX,
-      startY: e.clientY,
-      startTop: position.top,
-      startLeft: position.left,
-    };
-    document.body.style.cursor = 'grabbing';
-    document.body.style.userSelect = 'none';
-    e.stopPropagation();
-  }, [position]);
-
-  const handleMouseMove = useCallback((e: MouseEvent) => {
-    if (!dragRef.current.isDragging) return;
-    const dx = e.clientX - dragRef.current.startX;
-    const dy = e.clientY - dragRef.current.startY;
-    const newTop = dragRef.current.startTop + dy;
-    const newLeft = dragRef.current.startLeft + dx;
-    // Mantener el panel dentro del viewport
-    const maxTop = window.innerHeight - 60;
-    const maxLeft = window.innerWidth - 60;
-    setPosition({
-      top: Math.max(0, Math.min(maxTop, newTop)),
-      left: Math.max(0, Math.min(maxLeft, newLeft)),
-    });
-  }, []);
-
-  const handleMouseUp = useCallback(() => {
-    dragRef.current.isDragging = false;
-    document.body.style.cursor = '';
-    document.body.style.userSelect = '';
-  }, []);
-
-  useEffect(() => {
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
-    return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
-    };
-  }, [handleMouseMove, handleMouseUp]);
+  const { position, onDragHandleMouseDown: handleMouseDown } = useDraggablePanel({
+    initial: DEFAULT_POSITION,
+  });
 
   useEffect(() => {
     if (!panelVisible) useSubdivisionPreviewStore.getState().clear();
@@ -99,7 +58,7 @@ export default function ManzanoPanel() {
         width: panelWidth,
         maxHeight: 'calc(100vh - 140px)',
         overflowY: 'auto',
-        zIndex: 900,
+        zIndex: 'var(--z-ribbon-dropdown)',
         padding: '10px 10px',
         fontSize: '0.72rem',
       }}

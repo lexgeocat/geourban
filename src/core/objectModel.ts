@@ -6,12 +6,9 @@ export type GeoUrbanFeatureKind =
   | 'manzana'
   | 'calle'
   | 'equipamiento'
-  | 'area_verde'
   | 'linea'
   | 'texto'
   | 'cota'
-  | 'urbanizacion'
-  | 'georreferenciado'
   | 'rotonda'
   | 'perimetro';
 
@@ -32,8 +29,6 @@ export interface Layer {
   colorMode: 'solid' | 'colorIdx';
 }
 
-export const DEFAULT_LAYERS: Layer[] = [];
-
 export interface LayerSuggestion {
   kind: GeoUrbanFeatureKind;
   name: string;
@@ -45,11 +40,8 @@ export interface LayerSuggestion {
 
 export const LAYER_SUGGESTIONS: LayerSuggestion[] = [
   { kind: 'perimetro', name: 'Perímetro', color: '#f0f6fc', fillColor: '#f0f6fc', colorMode: 'solid', geometryHint: 'polygon' },
-  { kind: 'urbanizacion', name: 'Urbanización', color: '#00d4ff', fillColor: '#00d4ff', colorMode: 'solid', geometryHint: 'polygon' },
-  { kind: 'georreferenciado', name: 'Georreferenciado', color: '#10b981', fillColor: '#10b981', colorMode: 'solid', geometryHint: 'polygon' },
   { kind: 'manzana', name: 'Manzano', color: '#f59e0b', fillColor: '#f59e0b', colorMode: 'colorIdx', geometryHint: 'polygon' },
   { kind: 'lote', name: 'Lote', color: '#58a6ff', fillColor: '#58a6ff', colorMode: 'solid', geometryHint: 'polygon' },
-  { kind: 'area_verde', name: 'Áreas verdes', color: '#3fb950', fillColor: '#3fb950', colorMode: 'solid', geometryHint: 'polygon' },
   { kind: 'equipamiento', name: 'Áreas de equipamientos', color: '#4dd0c4', fillColor: '#4dd0c4', colorMode: 'solid', geometryHint: 'polygon' },
   { kind: 'calle', name: 'Vías', color: '#8b5cf6', fillColor: '#8b5cf6', colorMode: 'solid', geometryHint: 'line' },
   { kind: 'rotonda', name: 'Rotonda', color: '#f78166', fillColor: '#f78166', colorMode: 'solid', geometryHint: 'line' },
@@ -115,11 +107,6 @@ export interface EquipamientoProps extends BaseFeatureProps {
   areaM2: number;
 }
 
-export interface AreaVerdeProps extends BaseFeatureProps {
-  kind: 'area_verde';
-  areaM2: number;
-}
-
 export interface LineaProps extends BaseFeatureProps {
   kind: 'linea';
 }
@@ -147,15 +134,14 @@ export type GeoUrbanFeatureProps =
   | ManzanaProps
   | CalleProps
   | EquipamientoProps
-  | AreaVerdeProps
   | LineaProps
   | TextoProps
   | CotaProps
   | PerimetroProps;
 
 const KNOWN_KINDS: ReadonlySet<GeoUrbanFeatureKind> = new Set<GeoUrbanFeatureKind>([
-  'lote', 'manzana', 'calle', 'equipamiento', 'area_verde', 'linea', 'texto', 'cota',
-  'urbanizacion', 'georreferenciado', 'rotonda', 'perimetro',
+  'lote', 'manzana', 'calle', 'equipamiento', 'linea', 'texto', 'cota',
+  'rotonda', 'perimetro',
 ]);
 
 export function isGeoUrbanFeatureKind(value: unknown): value is GeoUrbanFeatureKind {
@@ -183,7 +169,6 @@ export function getFeatureKind(feature: Feature<Geometry> | null | undefined): G
   if (legacy === 'lote' || (typeof legacy === 'string' && legacy.startsWith('Lote'))) return 'lote';
   if (legacy === 'calle') return 'calle';
   if (legacy === 'equipamiento') return 'equipamiento';
-  if (legacy === 'area_verde') return 'area_verde';
   if (legacy === 'linea') return 'linea';
   if (legacy === 'texto') return 'texto';
   if (legacy === 'cota') return 'cota';

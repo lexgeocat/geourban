@@ -176,22 +176,6 @@ function runWorker<T extends GeoWorkerResponse>(request: GeoWorkerRequest, timeo
 
 // ─── API pública ────────────────────────────────────────────────────────
 
-export async function mergePolygonsInWorker(features: FeatureCollection) {
-  const response = await runWorker<{ type: 'merge'; result: FeatureCollection }>({
-    type: 'merge',
-    features,
-  });
-  return response.result;
-}
-
-export async function validateTopologyInWorker(features: FeatureCollection) {
-  const response = await runWorker<{ type: 'validate'; valid: boolean; issues: string[] }>({
-    type: 'validate',
-    features,
-  });
-  return { valid: response.valid, issues: response.issues };
-}
-
 export async function computeManzanosInWorker(
   parcels: FeatureCollection,
   roadNetwork: FeatureCollection,
@@ -284,18 +268,4 @@ export async function matchFragmentsBatchInWorker(
     timeoutMs,
   );
   return response.results;
-}
-
-/** Solo para tests/depuración. */
-export function _resetGeoWorkersForTests(): void {
-  interactiveWorker?.terminate();
-  batchWorker?.terminate();
-  interactiveWorker = null;
-  batchWorker = null;
-  for (const [, entry] of pending) entry.reject(new Error('geoWorkerClient: reseteado para tests'));
-  pending.clear();
-}
-
-export function _debugPendingRequestCount(): number {
-  return pending.size;
 }

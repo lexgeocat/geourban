@@ -129,6 +129,36 @@ export function pointInPoly(x: number, y: number, poly: Pt[]): boolean {
   return inside;
 }
 
+/**
+ * Intersección segmento vs polígono (anillo abierto o cerrado).
+ * Devuelve true si el segmento toca el polígono — sea porque un extremo
+ * cae adentro, o porque una arista del polígono cruza el segmento.
+ * Pensado para tests de selección por lazo: una línea larga puede
+ * "atravesar" el lazo aunque ambos extremos queden afuera.
+ */
+export function segmentIntersectsPoly(a: Pt, b: Pt, poly: Pt[]): boolean {
+  if (pointInPoly(a[0], a[1], poly) || pointInPoly(b[0], b[1], poly)) return true;
+
+  const abx = b[0] - a[0];
+  const aby = b[1] - a[1];
+
+  const n = poly.length;
+  for (let i = 0, j = n - 1; i < n; j = i++) {
+    const xi = poly[i][0], yi = poly[i][1];
+    const xj = poly[j][0], yj = poly[j][1];
+    const dx = xj - xi;
+    const dy = yj - yi;
+    const denom = abx * dy - aby * dx;
+    if (denom === 0) continue; // paralelos
+    const qx = a[0] - xi;
+    const qy = a[1] - yi;
+    const t = (qx * dy - qy * dx) / denom;
+    const u = (qx * aby - qy * abx) / denom;
+    if (t >= 0 && t <= 1 && u >= 0 && u <= 1) return true;
+  }
+  return false;
+}
+
 export function buildCutPolys(
   wp: Pt[],
   hA: { segIdx: number; u: number; pt: Pt },

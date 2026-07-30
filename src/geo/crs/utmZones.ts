@@ -44,14 +44,3 @@ export function utmZoneFromLonLat(lon: number, lat: number): { zone: number; hem
 export function utmZoneLabel(zone: number, hemisphere: UtmHemisphere): string {
   return `UTM ${zone}${hemisphere}`;
 }
-
-/** Las 120 zonas (60 × N/S) — útil para poblar un <select>. */
-export function listAllUtmZones() {
-  const zones: Array<{ code: string; label: string; zone: number; hemisphere: UtmHemisphere }> = [];
-  for (const hemisphere of ['N', 'S'] as UtmHemisphere[]) {
-    for (let zone = 1; zone <= 60; zone++) {
-      zones.push({ code: utmEpsgCode(zone, hemisphere), label: utmZoneLabel(zone, hemisphere), zone, hemisphere });
-    }
-  }
-  return zones;
-}

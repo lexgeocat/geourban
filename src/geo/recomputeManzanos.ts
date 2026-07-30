@@ -1,5 +1,4 @@
 import { extend as extendExtent, intersects as extentIntersects, type Extent } from 'ol/extent.js';
-import GeoJSON from 'ol/format/GeoJSON.js';
 import Feature from 'ol/Feature.js';
 import PolygonGeom from 'ol/geom/Polygon.js';
 import type Geometry from 'ol/geom/Geometry.js';
@@ -28,13 +27,27 @@ import { roundRingReflex, pointOnRing } from './roads/ringFillet';
 import { matchFragmentsToMembers } from './roads/fragmentReconciliation';
 import { autoCreateLayerForKind, resolveOrCreateLayerForKind } from '../store/entities/layerAutoCreate';
 import { sanitizeFeatureCollectionRings } from './sanitizeGeoJson';
-
-const geoJsonFormat = new GeoJSON();
+import { newId } from '../lib/id';
 
 function closeGeoRing(ring: Pt[]): Pt[] {
   const f = ring[0], l = ring[ring.length - 1];
   if (Math.abs(f[0] - l[0]) > 1e-9 || Math.abs(f[1] - l[1]) > 1e-9) return [...ring, [f[0], f[1]]];
   return ring;
+}
+
+function restoreMemberToParcel(
+  member: Feature<Geometry>,
+  origPts: Pt[],
+  origId: string,
+  src: VectorSource,
+): void {
+  member.setGeometry(new PolygonGeom([closeGeoRing(origPts)]));
+  if (getFeatureKind(member) !== 'lote') member.set('kind', 'lote', true);
+  member.unset('lotStatus', true);
+  member.set('origParcelId', origId, true);
+  member.set('origPts', origPts, true);
+  src.addFeature(member);
+  updateFeatureMetrics(member);
 }
 
 function orientRingCcw(ring: Pt[]): Pt[] {
@@ -226,7 +239,7 @@ function collectOriginGroups(src: VectorSource): {
     }
     if (!origId) {
       const fid = feature.getId();
-      origId = fid != null ? String(fid) : `parcel-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      origId = fid != null ? String(fid) : newId('parcel');
     }
 
     let group = groups.get(origId);
@@ -267,7 +280,45 @@ async function recomputeManzanosImmediate(): Promise<void> {
 
   const streets = useStreetStore.getState().streets;
   const roundabouts = useRoundaboutStore.getState().roundabouts;
-  if (streets.length === 0 && roundabouts.length === 0) return;
+  const hasRoadNetwork = streets.length > 0 || roundabouts.length > 0;
+
+  if (!hasRoadNetwork) {
+    const { groups, lotsByGroupId } = collectOriginGroups(src);
+    for (const group of groups.values()) {
+      const manzanos = group.members.filter((m) => getFeatureKind(m) === 'manzana');
+      if (manzanos.length === 0) continue;
+
+      for (let i = 1; i < manzanos.length; i++) {
+        const m = manzanos[i] as Feature<Geometry>;
+        const mid = m.getId();
+        if (mid != null) {
+          const childLots = lotsByGroupId.get(String(mid));
+          if (childLots) {
+            for (const lot of childLots) {
+              if (src.getFeatureById(lot.getId() as string | number) != null) src.removeFeature(lot);
+            }
+          }
+        }
+        if (src.getFeatureById(m.getId() as string | number) != null) src.removeFeature(m);
+      }
+
+      const primary = manzanos[0] as Feature<Geometry>;
+      restoreMemberToParcel(primary, group.origPts, group.origId, src);
+    }
+
+    if (groups.size > 0) {
+      const alive = new Set<string>();
+      src.forEachFeature((f) => {
+        if (getFeatureKind(f as Feature<Geometry>) === 'manzana') {
+          const id = f.getId();
+          if (id != null) alive.add(String(id));
+        }
+      });
+      useManzanoStore.getState().pruneToIds(alive);
+      src.changed();
+    }
+    return;
+  }
 
   // Antes de tocar nada: aseguramos la copia de trabajo de cada perímetro.
   // De acá en adelante el pipeline solo ve/toca esas copias — el feature
@@ -515,14 +566,7 @@ let result: FeatureCollection;
 
     const untouched = fragments.length === 1 && polyArea(fragments[0]) >= polyArea(group.origPts) * 0.999;
     if (untouched) {
-      const orig = group.members[0];
-      orig.setGeometry(new PolygonGeom([closeGeoRing(fragments[0])]));
-      if (getFeatureKind(orig) !== 'lote') orig.set('kind', 'lote', true);
-      orig.unset('lotStatus', true);
-      orig.set('origParcelId', group.origId, true);
-      orig.set('origPts', group.origPts, true);
-      src.addFeature(orig);
-      updateFeatureMetrics(orig as Feature<Geometry>);
+      restoreMemberToParcel(group.members[0], fragments[0], group.origId, src);
       continue;
     }
 
@@ -661,7 +705,7 @@ let result: FeatureCollection;
           closedRing.push([closedRing[0][0], closedRing[0][1]]);
         }
         const lotFeat = new Feature({ geometry: new PolygonGeom([closedRing]) });
-        const lotId = `lot-${task.featureId}-${Date.now()}-${i}`;
+        const lotId = newId(`lot-${task.featureId}`);
         lotFeat.setId(lotId);
         lotFeat.setProperties(
           ensureKind(

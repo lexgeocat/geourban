@@ -60,15 +60,9 @@ function inSweep(ang: number, a: number, b: number): boolean {
   return rel <= sweep;
 }
 
-let filletMaxRadiusM = 8;
-
-export function setMaxFilletRadius(radiusM: number): void {
-  filletMaxRadiusM = Math.max(1, radiusM);
-}
-
-export function getMaxFilletRadius(): number {
-  return filletMaxRadiusM;
-}
+/** Radio máximo (m) que puede alcanzar un ochave de esquina. Constante por ahora;
+ * si en el futuro se expone UI para configurarlo, mover a un store Zustand. */
+const FILLET_MAX_RADIUS_M = 8;
 
 export function getFilletRadiusForAngle(angleDeg: number, roadHalfWidthM?: number): number {
   const tableValue = (() => {
@@ -77,13 +71,13 @@ export function getFilletRadiusForAngle(angleDeg: number, roadHalfWidthM?: numbe
     if (angleDeg <= 95) return 4;
     if (angleDeg <= 120) return 4.5;
     if (angleDeg <= 150) return 5;
-    return filletMaxRadiusM;
+    return FILLET_MAX_RADIUS_M;
   })();
 
-  const base = Math.min(tableValue, filletMaxRadiusM);
+  const base = Math.min(tableValue, FILLET_MAX_RADIUS_M);
   if (roadHalfWidthM == null) return base;
 
-  const scaledForWidth = Math.min(filletMaxRadiusM, roadHalfWidthM * 0.5);
+  const scaledForWidth = Math.min(FILLET_MAX_RADIUS_M, roadHalfWidthM * 0.5);
   return Math.max(base, scaledForWidth);
 }
 
@@ -183,41 +177,4 @@ export function computeStreetPairFillets(sA: Street, sB: Street): StreetFilletsB
   }
 
   return { inner, outer };
-}
-
-export function computeStreetFilletsBoth(streets: Street[]): StreetFilletsBundle {
-  const inner: StreetFillet[] = [];
-  const outer: StreetFillet[] = [];
-  for (let i = 0; i < streets.length; i++) {
-    for (let j = i + 1; j < streets.length; j++) {
-      const pair = computeStreetPairFillets(streets[i], streets[j]);
-      inner.push(...pair.inner);
-      outer.push(...pair.outer);
-    }
-  }
-  return { inner, outer };
-}
-
-export function filletArcPoints(fillet: StreetFillet, segments = 16): [number, number][] {
-  const { arcCenter, angA, angB, acw, radius } = fillet;
-  const points: [number, number][] = [];
-
-  let startAng = angA;
-  let endAng = angB;
-
-  if (acw) {
-    if (endAng <= startAng) endAng += Math.PI * 2;
-  } else {
-    if (startAng <= endAng) startAng += Math.PI * 2;
-  }
-
-  for (let i = 0; i <= segments; i++) {
-    const t = i / segments;
-    const ang = startAng + (endAng - startAng) * t;
-    points.push([
-      arcCenter[0] + Math.cos(ang) * radius,
-      arcCenter[1] + Math.sin(ang) * radius,
-    ]);
-  }
-  return points;
 }

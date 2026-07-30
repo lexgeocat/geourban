@@ -10,17 +10,6 @@ type PanelKey = 'properties';
 export type RibbonTabId = 'map' | 'edit' | 'view';
 
 
-/** Ids de paneles (subsecciones dentro del ribbon). */
-export type RibbonPanelId =
-  | 'navigation'
-  | 'draw'
-  | 'modify'
-  | 'edit'
-  | 'subdivision'
-  | 'layers'
-  | 'view';
-
-
 type UiShellState = {
   baseMap: BaseMapId;
   panelVisibility: Record<PanelKey, boolean>;

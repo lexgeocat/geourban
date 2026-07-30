@@ -13,6 +13,7 @@ import RoundaboutPanel from './components/panels/RoundaboutPanel';
 import StreetPanel from './components/panels/StreetPanel';
 import DebugPanel from './components/debug/DebugPanel';
 import ConfirmDialog from './components/modals/ConfirmDialog';
+import ToastStack from './components/ui/ToastStack';
 
 function App() {
   useKeyboardShortcuts();
@@ -56,6 +57,7 @@ function App() {
       <SubdivisionDialog />
       <LayerPanel />
       <ConfirmDialog />
+      <ToastStack />
 
       <StatusBar />
       <DebugPanel />

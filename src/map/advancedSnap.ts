@@ -1,6 +1,5 @@
 import VectorSource from 'ol/source/Vector.js';
 import Feature from 'ol/Feature.js';
-import Point from 'ol/geom/Point.js';
 import Polygon from 'ol/geom/Polygon.js';
 import LineString from 'ol/geom/LineString.js';
 import MultiPolygon from 'ol/geom/MultiPolygon.js';
@@ -17,8 +16,7 @@ export type SnapType =
   | 'apparentIntersection'
   | 'parallel'
   | 'center'
-  | 'tangent'
-  | 'grid';
+  | 'tangent';
 
 export interface SnapGuideVisual {
   dashedLine?: [number[], number[]];
@@ -48,13 +46,12 @@ export const DEFAULT_SNAP_SETTINGS: SnapSettings = {
   parallel: true,
   center: true,
   tangent: true,
-  grid: false,
 };
 
 /** Agrupación semántica — la usa la UI (SnapPanel) para organizar los toggles. */
 export const SNAP_GROUPS: { label: string; types: SnapType[] }[] = [
   { label: 'Geométricos', types: ['endpoint', 'midpoint', 'intersection', 'apparentIntersection', 'center', 'tangent'] },
-  { label: 'Construcción', types: ['perpendicular', 'parallel', 'extension', 'nearest', 'grid'] },
+  { label: 'Construcción', types: ['perpendicular', 'parallel', 'extension', 'nearest'] },
 ];
 
 /** Prioridad de resolución cuando varios snaps caen en tolerancia (menor = gana). */
@@ -69,7 +66,6 @@ export const SNAP_TYPE_PRIORITY: Record<SnapType, number> = {
   parallel: 6,
   tangent: 6,
   nearest: 7,
-  grid: 8,
 };
 
 /** Radio de captura por tipo, como multiplicador del pixelTolerance base. */
@@ -84,7 +80,6 @@ const TYPE_TOLERANCE_FACTOR: Record<SnapType, number> = {
   parallel: 1.0,
   tangent: 1.0,
   nearest: 0.85,
-  grid: 1.0,
 };
 
 /** Radio (px) del broad-phase para descartar segmentos irrelevantes. */
@@ -223,18 +218,6 @@ function getSegmentCoords(geom: { getType: () => string }): number[][][] {
   return [];
 }
 
-function collectSegments(src: VectorSource): Array<[number[], number[]]> {
-  const segments: Array<[number[], number[]]> = [];
-  src.forEachFeature((feat) => {
-    const geom = feat.getGeometry();
-    if (!geom) return;
-    for (const ring of getSegmentCoords(geom)) {
-      for (let i = 0; i < ring.length - 1; i++) segments.push([ring[i], ring[i + 1]]);
-    }
-  });
-  return segments;
-}
-
 // ─── Histéresis anti-parpadeo ────────────────────────────────────────
 
 function applySticky(
@@ -252,16 +235,6 @@ function applySticky(
   if (dist(best.point, previous.point) < stickyRadius * 0.5) return best;
   if (SNAP_TYPE_PRIORITY[previous.type] <= SNAP_TYPE_PRIORITY[best.type]) return previous;
   return best;
-}
-
-/** Compara dos resultados de fuentes distintas (ej. features vs. grilla) por prioridad y luego distancia. */
-export function pickBetterSnap(a: SnapResult | null, b: SnapResult | null): SnapResult | null {
-  if (!a) return b;
-  if (!b) return a;
-  const pa = SNAP_TYPE_PRIORITY[a.type];
-  const pb = SNAP_TYPE_PRIORITY[b.type];
-  if (pa !== pb) return pa < pb ? a : b;
-  return a.dist <= b.dist ? a : b;
 }
 
 // ─── findSnap principal ─────────────────────────────────────────────
@@ -500,22 +473,6 @@ export function findSnap(cursor: number[], src: VectorSource, options: FindSnapO
   return applySticky(result, previous, cursor, baseTolerance, resolution);
 }
 
-// ─── createSnapPoints (para OL native Snap interaction) ─────────────
-
-export function createSnapPoints(src: VectorSource): VectorSource {
-  const snapSrc = new VectorSource();
-  const seen = new Set<string>();
-  for (const [a, b] of collectSegments(src)) {
-    const mp = midpoint(a, b);
-    const key = `${mp[0].toFixed(4)},${mp[1].toFixed(4)}`;
-    if (!seen.has(key)) {
-      seen.add(key);
-      snapSrc.addFeature(new Feature({ geometry: new Point(mp) }));
-    }
-  }
-  return snapSrc;
-}
-
 // ─── Colores y etiquetas por tipo de snap ───────────────────────────
 
 export const SNAP_COLORS: Record<SnapType, string> = {
@@ -529,7 +486,6 @@ export const SNAP_COLORS: Record<SnapType, string> = {
   parallel: '#7c3aed',
   center: '#06b6d4',
   tangent: '#eab308',
-  grid: '#64748b',
 };
 
 export const SNAP_LABELS: Record<SnapType, string> = {
@@ -543,5 +499,4 @@ export const SNAP_LABELS: Record<SnapType, string> = {
   parallel: 'Paralelo',
   center: 'Centro',
   tangent: 'Tangente',
-  grid: 'Grilla',
 };

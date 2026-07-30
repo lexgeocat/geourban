@@ -7,6 +7,7 @@ import { useRoundaboutStore, type Roundabout } from '../store/entities/roundabou
 import { roundaboutGeometry } from '../geo/roundabout/roundaboutEngine';
 
 let source: VectorSource | null = null;
+/** Guardados para que un eventual `disposeRoadSnapSource` (HMR/tests) pueda liberarlos. */
 let unsubscribeStreets: (() => void) | null = null;
 let unsubscribeRoundabouts: (() => void) | null = null;
 
@@ -58,7 +59,7 @@ export function getOrCreateRoadSnapSource(): VectorSource {
   return source;
 }
 
-/** Solo para tests/HMR — libera las suscripciones y reinicia el singleton. */
+/** Libera los listeners y reinicia el singleton. Pensado para HMR/tests. */
 export function disposeRoadSnapSource(): void {
   unsubscribeStreets?.();
   unsubscribeStreets = null;

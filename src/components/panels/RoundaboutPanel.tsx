@@ -1,9 +1,10 @@
 ﻿// src/components/RoundaboutPanel.tsx
-import React, { useState, useRef, useCallback } from 'react';
+import React from 'react';
 import { useRoundaboutStore } from '../../store/entities/roundaboutStore';
 import { useDrawStore } from '../../store/map/drawStore';
 import { roundaboutRoadAreaM2 } from '../../geo/roundabout/roundaboutEngine';
 import { formatMetricArea } from '../../geo/metrics';
+import { useDraggablePanel } from '../../hooks/useDraggablePanel';
 
 const SIDES_OPTIONS: Array<{ value: number; label: string }> = [
   { value: 0, label: 'Círculo' },
@@ -33,31 +34,7 @@ export default function RoundaboutPanel() {
   const mode = useDrawStore((s) => s.mode);
   const setMode = useDrawStore((s) => s.setMode);
 
-  const [pos, setPos] = useState({ x: 280, y: 4 });
-  const dragRef = useRef<{ startX: number; startY: number; posX: number; posY: number } | null>(null);
-
-  const onHeaderMouseDown = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    dragRef.current = { startX: e.clientX, startY: e.clientY, posX: pos.x, posY: pos.y };
-    const onMove = (ev: MouseEvent) => {
-      if (!dragRef.current) return;
-      const nextX = dragRef.current.posX + (ev.clientX - dragRef.current.startX);
-      const nextY = dragRef.current.posY + (ev.clientY - dragRef.current.startY);
-      const maxX = window.innerWidth - 40;
-      const maxY = window.innerHeight - 40;
-      setPos({
-        x: Math.min(Math.max(0, nextX), maxX),
-        y: Math.min(Math.max(0, nextY), maxY),
-      });
-    };
-    const onUp = () => {
-      dragRef.current = null;
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-    };
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
-  }, [pos.x, pos.y]);
+  const { position: pos, onDragHandleMouseDown } = useDraggablePanel({ initial: { top: 4, left: 280 } });
 
   if (!panelVisible) return null;
 
@@ -66,11 +43,11 @@ export default function RoundaboutPanel() {
       className="cad-panel-glass animate-fade-in"
       style={{
         position: 'fixed',
-        left: pos.x,
-        top: pos.y,
+        left: pos.left,
+        top: pos.top,
         maxHeight: 'calc(100vh - 160px)',
         overflowY: 'auto',
-        zIndex: 110,
+        zIndex: 'var(--z-docked-panel)',
         padding: '10px 10px',
         fontSize: '0.72rem',
         minWidth: 260,
@@ -78,7 +55,7 @@ export default function RoundaboutPanel() {
       }}
     >
       <div
-        onMouseDown={onHeaderMouseDown}
+        onMouseDown={onDragHandleMouseDown}
         style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, borderBottom: '1px solid var(--cad-border)', paddingBottom: 6, cursor: 'grab', userSelect: 'none' }}
       >
         <span style={{ fontWeight: 700, color: 'var(--cad-text)', letterSpacing: '0.03em' }}>

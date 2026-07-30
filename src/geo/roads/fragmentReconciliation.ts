@@ -42,14 +42,6 @@ function ringIntersectionAreaRaw(a: Pt[], b: Pt[]): number {
   }
 }
 
-/** Intersección de dos anillos crudos (los sanea antes de llamar a polygon-clipping). */
-export function ringIntersectionArea(a: Pt[], b: Pt[]): number {
-  const sa = sanitizeRing(a, { context: 'fragmentReconciliation.ringIntersectionArea' });
-  const sb = sanitizeRing(b, { context: 'fragmentReconciliation.ringIntersectionArea' });
-  if (!sa || !sb) return 0;
-  return ringIntersectionAreaRaw(sa, sb);
-}
-
 const MATCH_MIN_RATIO = 0.35;
 
 export function matchFragmentsToMembers<T>(

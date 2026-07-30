@@ -22,6 +22,8 @@ type LayerState = {
   toggleLock: (id: string) => void;
   toggleVisibility: (id: string) => void;
   isolatedLayerId: string | null;
+  /** Snapshot de visibilidades previas al `isolate`, para restaurar al desaislar. */
+  isolatePrevVisibility: Record<string, boolean> | null;
   toggleIsolate: (id: string) => void;
   toggleKindsVisibility: (kinds: string[]) => void;
   setActiveLayer: (id: string | null) => void;
@@ -143,21 +145,21 @@ export const useLayersStore = create<LayerState>()(
     toggleIsolate: (id) =>
       set((state) => {
         if (state.isolatedLayerId === id) {
-          const prev = (state as any).isolatePrevVisibility as Record<string, boolean> | null;
+          const prev = state.isolatePrevVisibility;
           if (prev) {
             for (const layer of state.layers) {
               if (prev[layer.id] !== undefined) layer.visible = prev[layer.id];
             }
           }
           state.isolatedLayerId = null;
-          (state as any).isolatePrevVisibility = null;
+          state.isolatePrevVisibility = null;
           return;
         }
-        const existing = (state as any).isolatePrevVisibility as Record<string, boolean> | null;
+        const existing = state.isolatePrevVisibility;
         const snapshot = existing ?? Object.fromEntries(state.layers.map((l) => [l.id, l.visible]));
         for (const layer of state.layers) layer.visible = layer.id === id;
         state.isolatedLayerId = id;
-        (state as any).isolatePrevVisibility = snapshot;
+        state.isolatePrevVisibility = snapshot;
       }),
 
     toggleKindsVisibility: (kinds) =>

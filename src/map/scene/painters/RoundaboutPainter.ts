@@ -1,6 +1,5 @@
 import { useRoundaboutStore, type Roundabout } from '../../../store/entities/roundaboutStore';
 import { useLayersStore } from '../../../store/entities/layersRegistryStore';
-import { useDisplayLayersStore } from '../../../store/ui/displayLayersStore';
 import { roundaboutGeometry } from '../../../geo/roundabout/roundaboutEngine';
 import { formatMetricLength } from '../../../geo/metrics';
 import { withAlpha } from '../DrawLayerRenderer';
@@ -27,7 +26,6 @@ export class RoundaboutPainter {
   paint(ctx: CanvasRenderingContext2D, toPx: (c: number[]) => [number, number], resolution: number): void {
     const { roundabouts } = useRoundaboutStore.getState();
     const registry = useLayersStore.getState();
-    const display = useDisplayLayersStore.getState();
 
     for (const rb of roundabouts) {
       const layer = resolveRoundaboutLayer(rb, registry);
@@ -50,7 +48,7 @@ export class RoundaboutPainter {
       this.strokeRing(ctx, geom.centerAxis, toPx, withAlpha(color, 0.45 * op), 1);
       ctx.restore();
 
-      const labelOp = display.labelOpacity(layer.showLabel) * op;
+      const labelOp = (layer.showLabel ? 1 : 0) * op;
       if (labelOp > 0.002) {
         const [lx, ly] = toPx(rb.center);
         ctx.save();

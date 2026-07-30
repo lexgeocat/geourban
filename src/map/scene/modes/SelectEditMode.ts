@@ -7,7 +7,7 @@ import { LassoSelection, type LassoMode } from '../LassoSelection';
 import { useSelectionStore } from '../../../store/map/selectionStore';
 import { useDrawStore } from '../../../store/map/drawStore';
 import { hitTestCandidatesInExtent } from '../../hitTest';
-import { pointInPoly } from '../../../geo/math/polygonEngine';
+import { pointInPoly, segmentIntersectsPoly, type Pt } from '../../../geo/math/polygonEngine';
 import { getOrCreateRoadSnapSource } from '../../roadSnapSource';
 import type { ModeContext } from './ModeContext';
 
@@ -130,7 +130,20 @@ function activateLasso(ctx: ModeContext, select: HitTestSelect, lassoMode: Lasso
               if (pointInPoly(x, y, poly)) inside = true;
               return;
             }
-            if (Array.isArray(arr)) for (const c of arr) walk(c);
+            if (Array.isArray(arr)) {
+              // Para LineString: además del test por vértices, detecta
+              // segmentos que "atraviesan" el lazo (extremos afuera,
+              // trazo pasando por adentro).
+              if (arr.length >= 2 && typeof arr[0] === 'object' && arr[0] !== null && typeof (arr[0] as number[])[0] === 'number') {
+                for (let k = 0; k < (arr as unknown[]).length - 1 && !inside; k++) {
+                  const a = (arr as Pt[])[k];
+                  const b = (arr as Pt[])[k + 1];
+                  if (a && b && segmentIntersectsPoly([a[0], a[1]], [b[0], b[1]], poly)) inside = true;
+                }
+                return;
+              }
+              for (const c of arr) walk(c);
+            }
           };
           walk(coords);
           if (inside) candidates.push(f as Feature<Geometry>);

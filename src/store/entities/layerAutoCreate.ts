@@ -2,6 +2,7 @@ import { runCommand } from '../../commands/core/CommandStack';
 import { AddLayerCommand } from '../../commands/layers/AddLayerCommand';
 import { getLayerSuggestion, type GeoUrbanFeatureKind } from '../../core/objectModel';
 import { useLayersStore } from './layersRegistryStore';
+import { newId } from '../../lib/id';
 
 function uniqueAutoName(kind: GeoUrbanFeatureKind): string {
   const registry = useLayersStore.getState();
@@ -20,7 +21,7 @@ function uniqueAutoName(kind: GeoUrbanFeatureKind): string {
 
 export function autoCreateLayerForKind(kind: GeoUrbanFeatureKind): string {
   const suggestion = getLayerSuggestion(kind);
-  const id = `layer-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  const id = newId('layer');
   void runCommand(
     new AddLayerCommand(
       {

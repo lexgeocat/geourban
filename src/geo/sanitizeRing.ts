@@ -89,18 +89,6 @@ function removeCollinear(ring: Pt[], angleEps: number, closureEps: number): { ri
   return { ring: pts, removed };
 }
 
-/** Chequeo rápido y barato — sin limpieza — para descartar anillos claramente inválidos. */
-export function validateRing(ring: Pt[] | null | undefined, minArea = DEFAULT_MIN_AREA): boolean {
-  if (!ring || ring.length < 3) return false;
-  const isClosed = ring.length > 1 &&
-    Math.abs(ring[0][0] - ring[ring.length - 1][0]) < 1e-9 &&
-    Math.abs(ring[0][1] - ring[ring.length - 1][1]) < 1e-9;
-  const open = isClosed ? ring.slice(0, -1) : ring;
-  if (open.length < 3) return false;
-  const area = polyArea(open);
-  return Number.isFinite(area) && area > minArea;
-}
-
 export function sanitizeRing(ringIn: Pt[] | null | undefined, opts: SanitizeRingOptions = {}): Pt[] | null {
   const context = opts.context ?? 'unknown';
   if (!ringIn || ringIn.length < 3) return null;

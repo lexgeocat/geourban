@@ -11,6 +11,7 @@ import { recomputeManzanos } from '../geo/recomputeManzanos';
 import { DeleteFeaturesCommand } from '../commands/features/DeleteFeaturesCommand';
 import { runCommand } from '../commands/core/CommandStack';
 import { useDebugPanelStore } from '../store/debug/debugPanelStore';
+import { toast } from '../store/ui/toastStore';
 
 function isTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -92,7 +93,14 @@ export function useKeyboardShortcuts() {
         }
 
         if (regularIds.length > 0) {
-          void runCommand(new DeleteFeaturesCommand(regularIds));
+          const cmd = new DeleteFeaturesCommand(regularIds);
+          void runCommand(cmd);
+          if (cmd.skippedCount > 0) {
+            toast(`${cmd.skippedCount} elemento(s) no se borraron por estar en una capa bloqueada.`, {
+              variant: 'warning',
+              durationMs: 5000,
+            });
+          }
         }
         if (streetIds.length > 0 || roundaboutIds.length > 0) {
           streetIds.forEach((sid) => useStreetStore.getState().removeStreet(sid));

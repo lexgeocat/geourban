@@ -8,6 +8,8 @@ export class DeleteFeaturesCommand extends Command {
   readonly label = 'Borrar features';
   private readonly ids: Array<string | number>;
   private removed: Array<{ id: string | number; feature: Feature<Geometry> }> = [];
+  /** Cantidad de ids que se omitieron por estar en una capa bloqueada. */
+  skippedCount = 0;
 
   constructor(ids?: Array<string | number>) {
     super();
@@ -20,13 +22,17 @@ export class DeleteFeaturesCommand extends Command {
 
   execute(ctx: CommandContext): void {
     this.removed = [];
+    this.skippedCount = 0;
     for (const id of this.ids) {
       const f = ctx.drawSource.getFeatureById(id) as Feature<Geometry> | null;
       if (!f) continue;
       const layerId = f.get('layerId') as string | undefined;
       if (layerId) {
         const layer = useLayersStore.getState().getById(layerId);
-        if (layer?.locked) continue;
+        if (layer?.locked) {
+          this.skippedCount++;
+          continue;
+        }
       }
       this.removed.push({ id, feature: f });
       ctx.drawSource.removeFeature(f);

@@ -6,6 +6,7 @@ import { updateFeatureMetrics } from '../../geo/metrics';
 import { subdivideInWorker } from '../../workers/geoWorkerClient';
 import { ensureKind } from '../../core/objectModel';
 import { resolveLayerId } from '../features/AddFeatureCommand';
+import { newId } from '../../lib/id';
 import type { SubdivisionOptions } from '../../geo/subdivision/subdivisionAlgorithms';
 import type { Polygon as GeoJsonPolygon } from 'geojson';
 import { estimateGeometryBytes } from '../core/memoryEstimate';
@@ -75,8 +76,8 @@ export class SubdivideCommand extends Command {
         { featureProjection: 'EPSG:3857', dataProjection: 'EPSG:3857' },
       );
       const olFeat = new Feature({ geometry: geom3857 as Geometry });
-      const newId = `subdiv-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-      olFeat.setId(newId);
+      const subdividedId = newId('subdiv');
+      olFeat.setId(subdividedId);
       olFeat.setProperties(
         ensureKind(
           {
@@ -91,7 +92,7 @@ export class SubdivideCommand extends Command {
       const lid = resolveLayerId(this.opts.layerId, 'lote');
       if (lid) olFeat.set('layerId', lid);
       updateFeatureMetrics(olFeat as Feature<Geometry>);
-      this.newFeatureIds.push(newId);
+      this.newFeatureIds.push(subdividedId);
     });
 
     ctx.drawSource.changed();

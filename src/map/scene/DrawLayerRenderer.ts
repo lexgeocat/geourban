@@ -16,9 +16,6 @@ export type WorkVisibility = {
   measurements: boolean;
 };
 
-export const MZN_COLORS_22 = MZN_COLORS.map((c) => withAlpha(c, 0.13));
-export const MZN_COLORS_STR: readonly string[] = MZN_COLORS;
-
 export interface DrawLayers {
   webglRenderer: LayeredWebglRenderer;
   streetLayer: VectorLayer<VectorSource>;
@@ -37,57 +34,6 @@ export function withAlpha(color: string, alpha: number): string {
   const g = parseInt(h.slice(2, 4), 16);
   const b = parseInt(h.slice(4, 6), 16);
   return `rgba(${r},${g},${b},${alpha})`;
-}
-
-export function buildWebglStyle(layers: Layer[]): Record<string, any> {
-  const layerMap = new globalThis.Map<string, Layer>();
-  for (const l of layers) layerMap.set(l.id, l);
-
-  const colorForLayer = (layerId: string, property: 'fill' | 'stroke'): any => {
-    const layer = layerMap.get(layerId);
-    if (!layer || layer.colorMode !== 'colorIdx') {
-      const a = layer?.opacity ?? 1;
-      return property === 'fill'
-        ? withAlpha(layer?.fillColor ?? layer?.color ?? '#10b981', 0.30 * a)
-        : withAlpha(layer?.color ?? '#10b981', a);
-    }
-    const a = property === 'fill' ? 0.30 : 1;
-    const lo = layer?.opacity ?? 1;
-    const expr: any[] = ['match', ['get', 'colorIdx']];
-    for (let i = 0; i < MZN_COLOR_COUNT; i++) expr.push(i, withAlpha(MZN_COLORS[i], a * lo));
-    expr.push(withAlpha(MZN_COLORS[0], a * lo));
-    return expr;
-  };
-
-  const fillMatch: any[] = ['match', ['get', 'layerId']];
-  const strokeMatch: any[] = ['match', ['get', 'layerId']];
-
-  for (const l of layers) {
-    fillMatch.push(l.id, colorForLayer(l.id, 'fill'));
-    strokeMatch.push(l.id, colorForLayer(l.id, 'stroke'));
-  }
-  fillMatch.push('rgba(16,185,129,0.30)');
-  strokeMatch.push('#10b981');
-
-  return {
-    'fill-color': fillMatch,
-    'stroke-color': strokeMatch,
-    'stroke-width': 2,
-  };
-}
-
-export function buildLayerFilter(layers: Layer[]): any[] {
-  const hiddenIds = layers.filter((l) => !l.visible).map((l) => l.id);
-  if (hiddenIds.length === 0) return ['==', 1, 1];
-  return [
-    'all',
-    ['==', 1, 1],
-    [
-      'any',
-      ['==', ['get', 'layerId'], null],
-      ['!', ['in', ['get', 'layerId'], ['literal', hiddenIds]]],
-    ],
-  ];
 }
 
 function buildSingleLayerStyle(layer: Layer): Record<string, unknown> {

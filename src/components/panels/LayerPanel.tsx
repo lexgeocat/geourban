@@ -18,6 +18,9 @@ import { DuplicateLayerCommand } from '../../commands/layers/DuplicateLayerComma
 import { MoveFeaturesToLayerCommand } from '../../commands/layers/MoveFeaturesToLayerCommand';
 import { useStreetStore } from '../../store/entities/streetStore';
 import { useRoundaboutStore } from '../../store/entities/roundaboutStore';
+import { confirmAsync } from '../../store/ui/confirmDialogStore';
+import { toast } from '../../store/ui/toastStore';
+import { newId } from '../../lib/id';
 
 /* ─────────── Icons (decorativos — aria-hidden en su punto de uso) ─────────── */
 
@@ -585,10 +588,6 @@ function useRegistryRows(
   const layers = useLayersStore((s) => s.layers);
   const toggleIsolate = useLayersStore((s) => s.toggleIsolate);
   const duplicatedColorIds = useMemo(() => computeDuplicatedColorIds(layers), [layers]);
-  // Contador monotónico para IDs únicos de capas duplicadas — evita
-  // llamadas impuras (Date.now/Math.random) en scope de render.
-  const dupIdCounterRef = useRef(0);
-
   const handleZoomToLayer = (layerId: string) => {
     const map = useMapStore.getState().mapInstance;
     const drawSource = useMapStore.getState().drawSource;
@@ -599,11 +598,16 @@ function useRegistryRows(
   };
 
   const handleDuplicate = (layer: { id: string; name: string }) => {
-    const newName = window.prompt('Nombre para la copia:', `${layer.name} (copia)`);
-    if (!newName) return;
-    const duplicateFeatures = window.confirm('¿Duplicar también los elementos de esta capa?\n\nAceptar = copiar elementos · Cancelar = capa vacía');
-    const newId = `layer-dup-${(++dupIdCounterRef.current).toString(36)}`;
-    void runCommand(new DuplicateLayerCommand({ sourceLayerId: layer.id, newLayerId: newId, newName, duplicateFeatures }));
+    const newName = `${layer.name} (copia)`;
+    void (async () => {
+      const duplicateFeatures = await confirmAsync(
+        `¿Duplicar también los elementos de "${layer.name}" a la capa nueva?\n\nAceptar = copiar elementos · Cancelar = capa vacía`,
+        { title: 'Duplicar capa', confirmLabel: 'Copiar elementos', cancelLabel: 'Capa vacía' },
+      );
+      const newLayerId = newId('layer-dup');
+      await runCommand(new DuplicateLayerCommand({ sourceLayerId: layer.id, newLayerId, newName, duplicateFeatures }));
+      toast(`Capa "${newName}" creada.`, { variant: 'success' });
+    })();
   };
 
   const handleMoveSelectionHere = (layerId: string) => {

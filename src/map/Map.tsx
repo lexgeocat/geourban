@@ -218,7 +218,6 @@ const baseMapId = useUiShellStore((s) => s.baseMap);
       nearest:              { radius: 5 },                                                // Círculo
       center:               { radius: 7,  points: 4,               angle: Math.PI / 4 },  // Cuadrado pequeño (centro de círculo)
       tangent:              { radius: 7,  points: 3,               angle: -Math.PI / 2 }, // Triángulo (tangente)
-      grid:                 { radius: 4,  points: 4,               angle: Math.PI / 4 },  // Cuadrado chico
     };
     for (const [type, color] of Object.entries(SNAP_COLORS)) {
       const cfg = SNAP_SHAPES[type]!;

@@ -1,5 +1,6 @@
 ﻿import { Command, type CommandContext } from '../core/Command';
 import { useStreetStore } from '../../store/entities/streetStore';
+import { useStreetTracingSessionStore } from '../../store/ui/streetTracingSessionStore';
 import { recomputeManzanos, waitForPendingRecompute } from '../../geo/recomputeManzanos';
 import { refreshSourceMetrics } from '../../geo/metrics';
 import {
@@ -20,7 +21,9 @@ interface StreetEntry {
 
 export class AddStreetCommand extends Command {
   readonly label = 'Trazar calle';
-  readonly coalesceKey = 'AddStreetCommand';
+  /** Una key por sesión de trazo (cambia en cada `drawstart` de StreetMode).
+   * Garantiza que dos trazos consecutivos NO se fusionen en un único undo. */
+  readonly coalesceKey: string;
 
   private entries: StreetEntry[];
   private before: DrawSourceSnapshot | null = null;
@@ -35,6 +38,7 @@ export class AddStreetCommand extends Command {
     layerId?: string,
   ) {
     super();
+    this.coalesceKey = `street:${useStreetTracingSessionStore.getState().currentSessionId}`;
     this.entries = [{
       id: null,
       start,

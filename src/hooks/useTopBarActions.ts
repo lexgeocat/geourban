@@ -14,14 +14,17 @@ import { GenerateLotsCommand } from '../commands/lots/GenerateLotsCommand';
 import { refreshSourceMetrics } from '../geo/metrics';
 import { getFeatureKind } from '../core/objectModel';
 import { requireLayerForKind } from '../store/ui/layerPickerStore';
+import { confirmAsync } from '../store/ui/confirmDialogStore';
+import { toast } from '../store/ui/toastStore';
 
 export function useTopBarActions() {
   const [lotsBusy, setLotsBusy] = useState(false);
 
   const handleNewProject = async () => {
     const drawSource = useMapStore.getState().drawSource;
-    const ok = window.confirm(
+    const ok = await confirmAsync(
       '¿Crear un nuevo proyecto? Se borrarán todos los features del mapa actual.',
+      { title: 'Nuevo proyecto', confirmLabel: 'Crear', cancelLabel: 'Cancelar', danger: true },
     );
     if (!ok || !drawSource) return;
     await useCommandStack.getState().run(new ClearFeaturesCommand());
@@ -29,18 +32,27 @@ export function useTopBarActions() {
     useRoundaboutStore.getState().clearRoundabouts();
     resetIncrementalRoadTracking();
     useLayersStore.getState().resetToEmpty();
+    useManzanoStore.getState().resetAll();
+    useDrawStore.getState().setMode('select');
+    useDrawStore.getState().setAreaKind('lote');
+    useDrawStore.getState().setLastDrawnLineId(null);
     refreshSourceMetrics(drawSource);
     drawSource.changed();
     useSelectionStore.getState().clear();
+    toast('Proyecto nuevo creado.', { variant: 'success' });
   };
 
   const handleExit = () => {
-    window.alert('GeoUrban se ejecuta en el navegador. Para salir, cerrá la pestaña o la ventana.');
+    toast('GeoUrban se ejecuta en el navegador. Para salir, cerrá la pestaña o la ventana.', {
+      variant: 'info',
+      durationMs: 6000,
+    });
   };
 
   const handleAbout = () => {
-    window.alert(
-      'GeoUrban v0.1\n\nEditor CAD/GIS client-side para planificación urbana.\nConstruido con React + TypeScript + OpenLayers + Tauri.\n\n© 2026',
+    toast(
+      'GeoUrban v0.1 · Editor CAD/GIS client-side para planificación urbana.\nReact + TypeScript + OpenLayers + Tauri.\n© 2026',
+      { variant: 'info', durationMs: 8000 },
     );
   };
 
@@ -52,10 +64,10 @@ export function useTopBarActions() {
     }
   };
 
-  const handleOpenSubdivision = () => {
+  const handleOpenSubdivision = async () => {
     const primaryId = useSelectionStore.getState().primaryId;
     if (!primaryId) {
-      alert('Seleccioná un polígono para subdividir.');
+      toast('Seleccioná un polígono para subdividir.', { variant: 'warning' });
       return;
     }
     const src = useMapStore.getState().drawSource;
@@ -63,7 +75,10 @@ export function useTopBarActions() {
     const openSubdivision = useSubdivisionStore.getState().open;
     const kind = feat ? getFeatureKind(feat) : null;
     if (kind === 'perimetro') {
-      alert('El perímetro es la referencia intacta del sitio y no se subdivide directamente. Trazá calles para generar manzanos, o seleccioná un manzano.');
+      toast('El perímetro es la referencia intacta del sitio y no se subdivide directamente. Trazá calles para generar manzanos, o seleccioná un manzano.', {
+        variant: 'info',
+        durationMs: 6000,
+      });
       return;
     }
     if (feat && kind === 'manzana') {
@@ -83,18 +98,21 @@ export function useTopBarActions() {
       if (getFeatureKind(f as any) === 'manzana') manzanoCount++;
     });
     if (manzanoCount === 0) {
-      alert('No hay manzanos para subdividir. Trazá calles primero para generar manzanos.');
+      toast('No hay manzanos para subdividir. Trazá calles primero para generar manzanos.', {
+        variant: 'warning',
+      });
       return;
     }
     const layerId = await requireLayerForKind('lote');
     if (!layerId) return;
+    const { targetAreaM2, frontMinM } = useManzanoStore.getState();
     setLotsBusy(true);
     try {
       const result = await useCommandStack
         .getState()
-        .run(new GenerateLotsCommand({ targetAreaM2: 250, frontMinM: 12, layerId }));
+        .run(new GenerateLotsCommand({ targetAreaM2, frontMinM, layerId }));
       if (!result.ok) {
-        alert(result.error);
+        toast(result.error, { variant: 'error', durationMs: 6000 });
         return;
       }
       let newLotes = 0;
@@ -104,10 +122,18 @@ export function useTopBarActions() {
           newLotes++;
         }
       });
-      if (newLotes > 0) alert(`${newLotes} lotes generados automáticamente.`);
-      else alert('No se pudieron generar lotes. Verificá que los manzanos sean lo suficientemente grandes.');
+      if (newLotes > 0) {
+        toast(`${newLotes} lotes generados automáticamente.`, { variant: 'success' });
+      } else {
+        toast('No se pudieron generar lotes. Verificá que los manzanos sean lo suficientemente grandes.', {
+          variant: 'warning',
+        });
+      }
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Error al generar lotes');
+      toast(err instanceof Error ? err.message : 'Error al generar lotes', {
+        variant: 'error',
+        durationMs: 6000,
+      });
     } finally {
       setLotsBusy(false);
     }
@@ -121,7 +147,7 @@ export function useTopBarActions() {
     }
     const primaryId = useSelectionStore.getState().primaryId;
     if (!primaryId) {
-      alert('Seleccioná un polígono para editar sus vértices.');
+      toast('Seleccioná un polígono para editar sus vértices.', { variant: 'warning' });
       return;
     }
     useDrawStore.getState().setMode('edit');

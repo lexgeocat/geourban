@@ -2,6 +2,7 @@ import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
 import { Command, type CommandContext } from '../core/Command';
 import { useLayersStore } from '../../store/entities/layersRegistryStore';
+import { newId } from '../../lib/id';
 import type { Layer } from '../../core/objectModel';
 
 export interface DuplicateLayerOptions {
@@ -44,11 +45,11 @@ export class DuplicateLayerCommand extends Command {
       for (const f of toClone) {
         if (!f.getGeometry()) continue;
         const clone = f.clone();
-        const newId = `dup-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-        clone.setId(newId);
+        const clonedFeatureId = newId('dup');
+        clone.setId(clonedFeatureId);
         clone.set('layerId', this.opts.newLayerId, true);
         ctx.drawSource.addFeature(clone);
-        this.clonedFeatureIds.push(newId);
+        this.clonedFeatureIds.push(clonedFeatureId);
       }
       ctx.drawSource.changed();
     }
