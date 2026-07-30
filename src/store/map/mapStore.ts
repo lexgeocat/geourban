@@ -10,6 +10,7 @@ import { useSelectionStore } from './selectionStore';
 import { runCommand } from '../../commands/core/CommandStack';
 import { DeleteFeaturesCommand } from '../../commands/features/DeleteFeaturesCommand';
 import { toast } from '../ui/toastStore';
+import { recordProjectLoad, estimateGeoJsonBytes } from '../debug/perfTelemetry';
 
 const geoJsonFormat = new GeoJSON();
 
@@ -58,6 +59,7 @@ export const useMapStore = create<MapState>()(
     restoreDrawFeatures: (geojson) => {
       const src = get().drawSource;
       if (!src) return;
+      const t0 = performance.now();
       const features = geoJsonFormat.readFeatures(geojson, {
         featureProjection: 'EPSG:3857',
       });
@@ -65,7 +67,9 @@ export const useMapStore = create<MapState>()(
       src.addFeatures(features as any);
       refreshSourceMetrics(src);
       src.changed();
+      const elapsedMs = performance.now() - t0;
       useSelectionStore.getState().clear();
+      recordProjectLoad(elapsedMs, features.length, estimateGeoJsonBytes(geojson, features.length));
     },
     setCursorCoords: (coords) =>
       set((state) => {

@@ -1,14 +1,18 @@
 import GeoJSON from 'ol/format/GeoJSON.js';
 import type VectorSource from 'ol/source/Vector.js';
+import { recordUndoSnapshot } from '../../store/debug/perfTelemetry';
 
 const geoJsonFormat = new GeoJSON();
 
 export type DrawSourceSnapshot = string;
 
 export function snapshotDrawSource(source: VectorSource): DrawSourceSnapshot {
-  return geoJsonFormat.writeFeatures(source.getFeatures(), {
+  const t0 = performance.now();
+  const json = geoJsonFormat.writeFeatures(source.getFeatures(), {
     featureProjection: 'EPSG:3857',
   });
+  recordUndoSnapshot(json.length * 2, performance.now() - t0);
+  return json;
 }
 
 export function restoreDrawSourceSnapshot(source: VectorSource, snapshot: DrawSourceSnapshot): void {

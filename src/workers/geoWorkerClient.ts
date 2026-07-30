@@ -8,6 +8,7 @@ import type { CornerMode } from '../geo/roads/ringFillet';
 import type { RoadNetworkNet } from '../geo/roads/roadNetworkNet';
 import type { Pt } from '../geo/math/polygonEngine';
 import { recordGeometrySanitizeEvent } from '../store/debug/geometryTelemetry';
+import { recordWorkerRoundtrip } from '../store/debug/perfTelemetry';
 
 interface PendingEntry {
   type: GeoWorkerRequest['type'];
@@ -123,6 +124,7 @@ const DEFAULT_WORKER_TIMEOUT_MS = 15000;
 function runWorker<T extends GeoWorkerResponse>(request: GeoWorkerRequest, timeoutMs?: number): Promise<T> {
   const w = pickWorker(request.type);
   const requestId = nextRequestId++;
+  const startedAt = performance.now();
 
   return new Promise<T>((resolvePromise, rejectPromise) => {
     let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
@@ -138,8 +140,14 @@ function runWorker<T extends GeoWorkerResponse>(request: GeoWorkerRequest, timeo
     pending.set(requestId, {
       type: request.type,
       worker: w,
-      resolve: (data) => finish(() => resolvePromise(data as T)),
-      reject: (reason) => finish(() => rejectPromise(reason)),
+      resolve: (data) => finish(() => {
+        recordWorkerRoundtrip(request.type, performance.now() - startedAt);
+        resolvePromise(data as T);
+      }),
+      reject: (reason) => finish(() => {
+        recordWorkerRoundtrip(request.type, performance.now() - startedAt);
+        rejectPromise(reason);
+      }),
     });
 
     const effectiveTimeout = timeoutMs ?? DEFAULT_WORKER_TIMEOUT_MS;
@@ -160,6 +168,7 @@ function runWorker<T extends GeoWorkerResponse>(request: GeoWorkerRequest, timeo
         if (bucket === 'interactive' && interactiveWorker === w) interactiveWorker = null;
         if (bucket === 'batch' && batchWorker === w) batchWorker = null;
 
+        recordWorkerRoundtrip(request.type, performance.now() - startedAt);
         rejectPromise(new Error(`geoWorkerClient: timeout (${effectiveTimeout}ms) esperando respuesta de "${request.type}"`));
       }, effectiveTimeout);
     }
