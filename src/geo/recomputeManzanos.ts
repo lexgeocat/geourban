@@ -254,10 +254,17 @@ function collectOriginGroups(src: VectorSource): {
 }
 
 function resolveManzanaLayerId(): string {
-  // Los manzanos SIEMPRE van a su propia capa independiente — nunca se
-  // reutiliza la capa del perímetro/parcela de origen que los generó
-  // (antes se copiaba el layerId de `group.members`, que era el perímetro).
   return resolveOrCreateLayerForKind('manzana');
+}
+function syncPerimeterLayersVisibility(hasRoadNetwork: boolean): void {
+  const registry = useLayersStore.getState();
+  const shouldBeVisible = !hasRoadNetwork;
+  for (const layer of registry.layers) {
+    if (layer.kind !== 'perimetro') continue;
+    if (layer.visible !== shouldBeVisible) {
+      registry.update({ id: layer.id, visible: shouldBeVisible });
+    }
+  }
 }
 function resolveLoteLayerId(preferredLayerId?: string): string {
   const reg = useLayersStore.getState();
@@ -281,6 +288,8 @@ async function recomputeManzanosImmediate(): Promise<void> {
   const streets = useStreetStore.getState().streets;
   const roundabouts = useRoundaboutStore.getState().roundabouts;
   const hasRoadNetwork = streets.length > 0 || roundabouts.length > 0;
+
+  syncPerimeterLayersVisibility(hasRoadNetwork); // ← agregar esta línea
 
   if (!hasRoadNetwork) {
     const { groups, lotsByGroupId } = collectOriginGroups(src);
@@ -444,12 +453,6 @@ let result: FeatureCollection;
   const memberAreaByRefPerGroup = new globalThis.Map<number, globalThis.Map<Feature<Geometry>, number>>();
   const relotCandidates: Array<{ featureId: string; method: ManzanoLoteMethod; dirPref?: { ax: number; ay: number } }> = [];
 
-
-  // ─── Fase 3 ───────────────────────────────────────────────────────
-  // matchFragmentsToMembers (polygonClipping.intersection, O(fragmentos×
-  // miembros)) ya NO corre en el hilo principal: se batchea en un único
-  // viaje al worker. Primero juntamos los "casos a resolver" (solo
-  // anillos + índices — nunca el Feature de OL, que no es serializable).
   interface ReconTask {
     idx: number;
     fragments: Pt[][];
@@ -858,9 +861,6 @@ export async function reapplyRoadCornerMode(): Promise<void> {
 
     const cornerMode = useRoadCornerStore.getState().mode;
 
-    // Fase 3: igual que en recomputeManzanosImmediate, la reconciliación
-    // fragmento↔manzano se batchea en el worker en vez de correr
-    // sincrónicamente acá.
     interface ReconTask {
       groupIdx: number;
       fragments: Pt[][];

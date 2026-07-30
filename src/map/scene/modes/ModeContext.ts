@@ -27,4 +27,5 @@ export interface ModeContext {
   addCleanup: (fn: () => void) => void;
   refreshLayers: () => void;
   isLayerLocked: (f: Feature<Geometry>) => boolean;
+  isLayerVisible: (f: Feature<Geometry>) => boolean;
 }

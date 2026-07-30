@@ -30,7 +30,7 @@ export default function AddLayerModal({ open, onOpenChange }: AddLayerModalProps
       id, name: name.trim(), kind,
       color, fillColor,
       visible: true, locked: false, opacity: 1,
-      showLabel: true, showCota: true,
+      showLabel: false, showCota: false, // ← antes true, true
       colorMode: kind === 'manzana' ? 'colorIdx' : 'solid',
     }));
     setName('');

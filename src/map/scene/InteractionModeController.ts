@@ -86,6 +86,12 @@ export class InteractionModeController {
         const layer = useLayersStore.getState().getById(layerId);
         return !!layer?.locked;
       },
+      isLayerVisible: (f: Feature<Geometry>) => {
+        const layerId = f.get('layerId') as string | undefined;
+        if (!layerId) return true; // feature huérfano: no bloquear
+        const layer = useLayersStore.getState().getById(layerId);
+        return layer ? layer.visible : true;
+      },
     };
 
     switch (mode) {

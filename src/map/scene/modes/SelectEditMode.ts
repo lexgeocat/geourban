@@ -37,11 +37,7 @@ export function activateSelect(ctx: ModeContext): HitTestSelect {
     spatialIndex: ctx.spatialIndex,
     pixelTolerance: 6,
     multi: true,
-    filter: (feature) => !ctx.isLayerLocked(feature),
-    // Calles/rotondas (fuera de drawSource, ver roadSnapSource.ts) se
-    // pueden clickear/resaltar en 'select', pero no en 'edit': su
-    // geometría no vive en drawSource y Modify/Translate no tendrían
-    // forma de persistir un arrastre sobre ellas.
+    filter: (feature) => !ctx.isLayerLocked(feature) && ctx.isLayerVisible(feature),
     getExtraFeatures: () => {
       if (useDrawStore.getState().mode === 'edit') return [];
       return getOrCreateRoadSnapSource().getFeatures() as Feature<Geometry>[];
@@ -110,7 +106,7 @@ function activateLasso(ctx: ModeContext, select: HitTestSelect, lassoMode: Lasso
       for (const f of pool) {
         const id = f.getId();
         if (id == null) continue;
-        if (ctx.isLayerLocked(f)) continue;
+        if (ctx.isLayerLocked(f) || !ctx.isLayerVisible(f)) continue; // ← agregado
         const g = f.getGeometry();
         if (!g) continue;
         if (result.kind === 'rect') {

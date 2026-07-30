@@ -55,8 +55,8 @@ export const useLayersStore = create<LayerState>()(
           ...layer,
           kind: safeKind,
           fillColor: layer.fillColor ?? layer.color,
-          showLabel: layer.showLabel ?? true,
-          showCota: layer.showCota ?? true,
+          showLabel: layer.showLabel ?? false, // ← antes ?? true
+          showCota: layer.showCota ?? false,   // ← antes ?? true
           colorMode: (layer as any).colorMode ?? (safeKind === 'manzana' ? 'colorIdx' : 'solid'),
           zIndex: newZIndex,
         };

@@ -23,7 +23,7 @@ export function activateErase(ctx: ModeContext): void {
     spatialIndex: ctx.spatialIndex,
     pixelTolerance: 6,
     multi: false,
-    // Permite click-to-erase también sobre calles/rotondas.
+    filter: (feature) => !ctx.isLayerLocked(feature) && ctx.isLayerVisible(feature),
     getExtraFeatures: () => getOrCreateRoadSnapSource().getFeatures() as Feature<Geometry>[],
   });
   ctx.highlightLayer.setStyle(ERASE_STYLE);

@@ -38,7 +38,7 @@ export const useUiShellStore = create<UiShellState>()(
     },
     gridOrigin: [0, 0],
     statsPanelVisible: false,
-    measurementsVisible: true,
+    measurementsVisible: false, // ← antes true (master switch de cotas)
     activeTab: 'map',
     ribbonCollapsed: false,
     setBaseMap: (id) =>

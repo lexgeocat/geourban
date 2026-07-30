@@ -64,8 +64,8 @@ export function createUnassignedLayer(zIndex: number): Layer {
     visible: true,
     locked: false,
     opacity: 1,
-    showLabel: true,
-    showCota: true,
+    showLabel: false, // ← antes true
+    showCota: false,  // ← antes true
     colorMode: 'solid',
   };
 }

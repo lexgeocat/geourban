@@ -63,6 +63,7 @@ export function useKeyboardShortcuts() {
           if (layerId) {
             const layer = getLayer(layerId);
             if (layer?.locked) return;
+            if (layer && !layer.visible) return; // ← agregado
           }
           ids.push(id as string | number);
         });
