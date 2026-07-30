@@ -12,6 +12,7 @@ import { DeleteFeaturesCommand } from '../commands/features/DeleteFeaturesComman
 import { runCommand } from '../commands/core/CommandStack';
 import { useDebugPanelStore } from '../store/debug/debugPanelStore';
 import { toast } from '../store/ui/toastStore';
+import { useProjectFileStore } from '../store/ui/projectFileStore';
 
 function isTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -123,7 +124,16 @@ export function useKeyboardShortcuts() {
         useSnapSettingsStore.getState().toggleEnabled();
         return;
       }
-
+if (ctrlOrCmd && (key === 's' || key === 'S')) {
+        e.preventDefault();
+        useProjectFileStore.getState().setSaveModalOpen(true);
+        return;
+      }
+      if (ctrlOrCmd && (key === 'o' || key === 'O')) {
+        e.preventDefault();
+        useProjectFileStore.getState().setOpenModalOpen(true);
+        return;
+      }
       if (ctrlOrCmd) return;
       const lower = key.toLowerCase();
       const map: Record<string, DrawMode> = {

@@ -1,8 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { FilePlus, LogOut, Info } from 'lucide-react';
+import { FilePlus, FolderOpen, Save, LogOut, Info } from 'lucide-react';
 
 export interface AppMenuActions {
   onNewProject: () => void;
+  onSaveProject: () => void;
+  onOpenProject: () => void;
   onAbout: () => void;
   onExit: () => void;
 }
@@ -49,6 +51,16 @@ export default function AppMenu({ actions }: { actions: AppMenuActions }) {
             <FilePlus />
             <span>Nuevo proyecto</span>
             <span className="app-menu-shortcut">Ctrl+N</span>
+          </button>
+          <button role="menuitem" className="app-menu-item" onClick={() => runAndClose(actions.onOpenProject)}>
+            <FolderOpen />
+            <span>Abrir proyecto…</span>
+            <span className="app-menu-shortcut">Ctrl+O</span>
+          </button>
+          <button role="menuitem" className="app-menu-item" onClick={() => runAndClose(actions.onSaveProject)}>
+            <Save />
+            <span>Guardar proyecto…</span>
+            <span className="app-menu-shortcut">Ctrl+S</span>
           </button>
 
           <div className="app-menu-divider" />

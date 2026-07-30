@@ -14,6 +14,8 @@ import StreetPanel from './components/panels/StreetPanel';
 import DebugPanel from './components/debug/DebugPanel';
 import ConfirmDialog from './components/modals/ConfirmDialog';
 import ToastStack from './components/ui/ToastStack';
+import SaveProjectModal from './components/modals/SaveProjectModal';
+import OpenProjectModal from './components/modals/OpenProjectModal';
 
 function App() {
   useKeyboardShortcuts();
@@ -57,6 +59,8 @@ function App() {
       <SubdivisionDialog />
       <LayerPanel />
       <ConfirmDialog />
+      <SaveProjectModal />
+      <OpenProjectModal />
       <ToastStack />
 
       <StatusBar />

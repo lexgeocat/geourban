@@ -16,6 +16,7 @@ import { getFeatureKind } from '../core/objectModel';
 import { requireLayerForKind } from '../store/ui/layerPickerStore';
 import { confirmAsync } from '../store/ui/confirmDialogStore';
 import { toast } from '../store/ui/toastStore';
+import { useProjectFileStore } from '../store/ui/projectFileStore';
 
 export function useTopBarActions() {
   const [lotsBusy, setLotsBusy] = useState(false);
@@ -153,9 +154,19 @@ export function useTopBarActions() {
     useDrawStore.getState().setMode('edit');
   };
 
+  const handleSaveProject = () => {
+    useProjectFileStore.getState().setSaveModalOpen(true);
+  };
+
+  const handleOpenProject = () => {
+    useProjectFileStore.getState().setOpenModalOpen(true);
+  };
+
   return {
     lotsBusy,
     handleNewProject,
+    handleSaveProject,
+    handleOpenProject,
     handleExit,
     handleAbout,
     handleDeleteSelected,

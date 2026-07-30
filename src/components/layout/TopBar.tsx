@@ -32,6 +32,8 @@ export default function TopBar() {
         <AppMenu
           actions={{
             onNewProject: actions.handleNewProject,
+            onSaveProject: actions.handleSaveProject,
+            onOpenProject: actions.handleOpenProject,
             onAbout: actions.handleAbout,
             onExit: actions.handleExit,
           }}
