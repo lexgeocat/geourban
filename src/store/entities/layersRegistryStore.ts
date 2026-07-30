@@ -25,7 +25,6 @@ type LayerState = {
   /** Snapshot de visibilidades previas al `isolate`, para restaurar al desaislar. */
   isolatePrevVisibility: Record<string, boolean> | null;
   toggleIsolate: (id: string) => void;
-  toggleKindsVisibility: (kinds: string[]) => void;
   setActiveLayer: (id: string | null) => void;
   loadLayers: (layers: Layer[], activeLayerId?: string | null) => void;
   resetToEmpty: () => void;
@@ -55,8 +54,8 @@ export const useLayersStore = create<LayerState>()(
           ...layer,
           kind: safeKind,
           fillColor: layer.fillColor ?? layer.color,
-          showLabel: layer.showLabel ?? false, // ← antes ?? true
-          showCota: layer.showCota ?? false,   // ← antes ?? true
+          showLabel: layer.showLabel ?? false,
+          showCota: layer.showCota ?? false,
           colorMode: (layer as any).colorMode ?? (safeKind === 'manzana' ? 'colorIdx' : 'solid'),
           zIndex: newZIndex,
         };
@@ -160,16 +159,6 @@ export const useLayersStore = create<LayerState>()(
         for (const layer of state.layers) layer.visible = layer.id === id;
         state.isolatedLayerId = id;
         state.isolatePrevVisibility = snapshot;
-      }),
-
-    toggleKindsVisibility: (kinds) =>
-      set((state) => {
-        const kindSet = new Set(kinds);
-        const anyVisible = state.layers.some((l) => kindSet.has(l.kind) && l.visible);
-        const next = !anyVisible;
-        state.layers.forEach((l) => {
-          if (kindSet.has(l.kind)) l.visible = next;
-        });
       }),
 
     setActiveLayer: (id) =>

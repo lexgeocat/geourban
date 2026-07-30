@@ -1,5 +1,5 @@
 import React from 'react';
-import { Layers as LayersIcon, Settings2, BarChart3 } from 'lucide-react';
+import { BarChart3 } from 'lucide-react';
 import { useUiShellStore } from '../../../../store/ui/uiShellStore';
 import { useLayersStore } from '../../../../store/entities/layersRegistryStore';
 import { useManzanoStore } from '../../../../store/entities/manzanoStore';
@@ -12,14 +12,9 @@ import { IconGrid, IconSat, IconRoad, IconStreet, IconLots, IconRoundabout, Icon
 export default function ViewTab() {
   const baseMap = useUiShellStore((s) => s.baseMap);
   const setBaseMap = useUiShellStore((s) => s.setBaseMap);
-  const lotsVisible = useLayersStore((s) => s.hasKindVisible('lote') || s.hasKindVisible('manzana'));
-  const streetsVisible = useLayersStore((s) => s.hasKindVisible('calle'));
-  const toggleKindsVisibility = useLayersStore((s) => s.toggleKindsVisibility);
   const layers = useLayersStore((s) => s.layers);
   const activeLayerId = useLayersStore((s) => s.activeLayerId);
   const setActiveLayer = useLayersStore((s) => s.setActiveLayer);
-  const measurementsVisible = useUiShellStore((s) => s.measurementsVisible);
-  const setMeasurementsVisible = useUiShellStore((s) => s.setMeasurementsVisible);
   const statsPanelVisible = useUiShellStore((s) => s.statsPanelVisible);
   const setStatsPanelVisible = useUiShellStore((s) => s.setStatsPanelVisible);
   const propsPanelVisible = useUiShellStore((s) => s.panelVisibility.properties);
@@ -44,11 +39,6 @@ export default function ViewTab() {
             <RibbonTool key={def.id} icon={icon} label={def.label} active={baseMap === def.id} onClick={() => setBaseMap(def.id)} />
           );
         })}
-      </RibbonGroup>
-      <RibbonGroup label="Capas">
-        <RibbonTool icon={<LayersIcon />} label="Lotes" active={lotsVisible} onClick={() => toggleKindsVisibility(['lote', 'manzana'])} />
-        <RibbonTool icon={<IconStreet />} label="Calles" active={streetsVisible} onClick={() => toggleKindsVisibility(['calle'])} />
-        <RibbonTool icon={<Settings2 />} label="Cotas" active={measurementsVisible} onClick={() => setMeasurementsVisible(!measurementsVisible)} />
       </RibbonGroup>
 
       <RibbonGroup label="Capa activa">

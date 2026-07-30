@@ -15,10 +15,9 @@ import {
 } from '../../styleFactory';
 import { formatMetricLength, formatMetricArea, type SegmentMetric } from '../../../geo/metrics';
 import { manzanoDisplayColor } from '../../../geo/manzanoColor';
-import { measureCached, measureCachedWidth } from '../../textMeasureCache';
+import { measureCached } from '../../textMeasureCache';
 import { getFeatureKind, getLotStatus } from '../../../core/objectModel';
 import { useLayersStore } from '../../../store/entities/layersRegistryStore';
-import { useUiShellStore } from '../../../store/ui/uiShellStore';
 
 interface PlacedBox { x: number; y: number; w: number; h: number; }
 
@@ -76,7 +75,6 @@ class LabelCollisionGrid {
   }
 }
 
-/** "Lote 5" → "5", "Remanente 2" → "2" — número compacto para el badge. */
 function extractLotNumberText(label: string | undefined): string {
   if (!label) return '?';
   const match = label.match(/(\d+)/);
@@ -136,9 +134,8 @@ export class LabelPainter {
     toPx: (c: number[]) => [number, number],
     interacting: boolean,
   ): void {
-    if (interacting) return; // antes solo protegía paintFeatureLabels, no paintManualCotaz
+    if (interacting) return;
     this.paintFeatureLabels(ctx, features, zoom, resolution, toPx);
-    this.paintManualCotaz(ctx, features, zoom, toPx);
   }
 
   /** Mismo criterio de bucket que geo/math/lod.ts, por consistencia. */
@@ -174,15 +171,13 @@ export class LabelPainter {
     const selectedIds = useSelectionStore.getState().selectedIds;
     this.collisionGrid.clear();
     const zoomFade = computeCotaOpacity(zoom);
-    const cotaMaster = useUiShellStore.getState().measurementsVisible ? 1 : 0;
     const lodTier = computeLodTier(features.length);
-
     const registry = useLayersStore.getState();
 
     for (let fi = 0; fi < features.length; fi++) {
       const feature = features[fi];
-      const kind = feature.get('kind') as string | undefined;
-      if (kind === 'cota') continue;
+      const rawKind = feature.get('kind') as string | undefined;
+      if (rawKind === 'cota') continue;
       const geometry = feature.getGeometry();
       if (!geometry) continue;
 
@@ -201,8 +196,8 @@ export class LabelPainter {
       const allowSegmentCotas = lodTier === 0 || isSelected;
       const allowLabels = lodTier < 2 || isSelected;
 
-      const labelOp = (featureLayer?.showLabel ?? true) ? 1 : 0;
-      const cotaOp = (featureLayer?.showCota ?? true ? 1 : 0) * zoomFade * cotaMaster;
+      const labelOp = (featureLayer?.showLabel ?? false) ? 1 : 0;
+      const cotaOp = (featureLayer?.showCota ?? false ? 1 : 0) * zoomFade;
 
       const orientation = resolveDimensionOrientation(feature, this.lotGroupCounts);
       const labelPoint = feature.get('labelPoint') as [number, number] | undefined;
@@ -292,116 +287,6 @@ export class LabelPainter {
           );
         }
       }
-    }
-  }
-
-  private paintManualCotaz(
-    ctx: CanvasRenderingContext2D,
-    features: Array<Feature<Geometry>>,
-    zoom: number,
-    toPx: (c: number[]) => [number, number],
-  ): void {
-    if (zoom < 12) return;
-    const cotaMaster = useUiShellStore.getState().measurementsVisible ? 1 : 0;
-    const cotaOp = cotaMaster;
-    if (cotaOp <= 0.002) return;
-    const selectedIds = useSelectionStore.getState().selectedIds;
-    const registry = useLayersStore.getState();
-
-    for (let fi = 0; fi < features.length; fi++) {
-      const feature = features[fi];
-      if (feature.get('kind') !== 'cota') continue;
-
-      const layerId = feature.get('layerId') as string | undefined;
-      const featureLayer = layerId ? registry.getById(layerId) : undefined;
-      if (featureLayer && !featureLayer.visible) continue; // ← agregado
-
-      ctx.save();
-      ctx.globalAlpha *= cotaOp;
-      const geom = feature.getGeometry();
-      if (!(geom instanceof LineString)) continue;
-
-      const originStart = feature.get('originStart') as [number, number] | undefined;
-      const originEnd = feature.get('originEnd') as [number, number] | undefined;
-      const value = feature.get('value') as number | undefined;
-      if (!originStart || !originEnd || value == null) continue;
-
-      const featureId = feature.getId();
-      const isSelected = featureId != null && selectedIds.has(featureId as string | number);
-
-      const dimCoords = geom.getCoordinates();
-      if (dimCoords.length < 2) continue;
-      const dimStart = dimCoords[0] as [number, number];
-      const dimEnd = dimCoords[dimCoords.length - 1] as [number, number];
-
-      const dsPx = toPx(dimStart);
-      const dePx = toPx(dimEnd);
-      const osPx = toPx(originStart);
-      const oePx = toPx(originEnd);
-
-      ctx.save();
-      ctx.strokeStyle = isSelected ? 'rgba(0, 200, 255, 0.85)' : 'rgba(0, 180, 255, 0.45)';
-      ctx.lineWidth = 1;
-      ctx.setLineDash([4, 3]);
-      ctx.beginPath();
-      ctx.moveTo(osPx[0], osPx[1]);
-      ctx.lineTo(dsPx[0], dsPx[1]);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(oePx[0], oePx[1]);
-      ctx.lineTo(dePx[0], dePx[1]);
-      ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.restore();
-
-      ctx.save();
-      ctx.strokeStyle = isSelected ? 'rgba(0, 200, 255, 0.95)' : 'rgba(0, 180, 255, 0.75)';
-      ctx.lineWidth = isSelected ? 2.5 : 1.5;
-      ctx.beginPath();
-      ctx.moveTo(dsPx[0], dsPx[1]);
-      ctx.lineTo(dePx[0], dePx[1]);
-      ctx.stroke();
-      ctx.restore();
-
-      const tdx = dePx[0] - dsPx[0], tdy = dePx[1] - dsPx[1];
-      const tlen = Math.hypot(tdx, tdy);
-      if (tlen > 1) {
-        const tux = tdx / tlen, tuy = tdy / tlen;
-        const tickSize = 6;
-        ctx.save();
-        ctx.strokeStyle = isSelected ? 'rgba(0, 200, 255, 0.95)' : 'rgba(0, 180, 255, 0.75)';
-        ctx.lineWidth = 1.5;
-        ctx.beginPath();
-        ctx.moveTo(dsPx[0] + (tux - tuy) * tickSize, dsPx[1] + (tuy + tux) * tickSize);
-        ctx.lineTo(dsPx[0] - (tux - tuy) * tickSize, dsPx[1] - (tuy + tux) * tickSize);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(dePx[0] - (tux + tuy) * tickSize, dePx[1] - (tuy - tux) * tickSize);
-        ctx.lineTo(dePx[0] + (tux + tuy) * tickSize, dePx[1] + (tuy - tux) * tickSize);
-        ctx.stroke();
-        ctx.restore();
-      }
-
-      if (zoom > 13) {
-        const midPx: [number, number] = [(dsPx[0] + dePx[0]) / 2, (dsPx[1] + dePx[1]) / 2];
-        let ang = Math.atan2(tdy, tdx);
-        if (ang > Math.PI / 2 || ang < -Math.PI / 2) ang += Math.PI;
-        const fs = Math.max(9, Math.min(13, 10 * zoom / 18));
-        const text = formatMetricLength(value);
-        ctx.save();
-        ctx.translate(midPx[0], midPx[1]);
-        ctx.rotate(ang);
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'bottom';
-        ctx.font = `bold ${fs}px Courier New`;
-        const tw = measureCachedWidth(ctx, text);
-        ctx.fillStyle = 'rgba(13, 17, 23, 0.72)';
-        ctx.fillRect(-tw / 2 - 4, -fs - 4, tw + 8, fs + 6);
-        ctx.fillStyle = isSelected ? '#00ccff' : '#00b4ff';
-        ctx.fillText(text, 0, -4);
-        ctx.restore();
-      }
-    ctx.restore();
     }
   }
 }

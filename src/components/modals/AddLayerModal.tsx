@@ -8,7 +8,6 @@ import { newId } from '../../lib/id';
 const KIND_OPTIONS: { value: LayerKind; label: string }[] = [
   { value: 'lote', label: 'Polígono' },
   { value: 'linea', label: 'Línea' },
-
 ];
 
 export interface AddLayerModalProps {
@@ -20,7 +19,6 @@ export default function AddLayerModal({ open, onOpenChange }: AddLayerModalProps
   const [name, setName] = useState('');
   const [kind, setKind] = useState<LayerKind>('lote');
   const [color, setColor] = useState('#58a6ff');
-  const [fillColor, setFillColor] = useState('#58a6ff');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -28,9 +26,9 @@ export default function AddLayerModal({ open, onOpenChange }: AddLayerModalProps
     const id = newId('layer');
     void runCommand(new AddLayerCommand({
       id, name: name.trim(), kind,
-      color, fillColor,
+      color, fillColor: color,
       visible: true, locked: false, opacity: 1,
-      showLabel: false, showCota: false, // ← antes true, true
+      showLabel: false, showCota: false,
       colorMode: kind === 'manzana' ? 'colorIdx' : 'solid',
     }));
     setName('');
@@ -71,26 +69,15 @@ export default function AddLayerModal({ open, onOpenChange }: AddLayerModalProps
           </select>
         </label>
 
-        <div style={{ display: 'flex', gap: 12 }}>
-          <label style={{ fontSize: '0.72rem', color: 'var(--cad-text-dim)', display: 'flex', flexDirection: 'column', gap: 4, flex: 1 }}>
-            Color de contorno
-            <input
-              type="color"
-              value={color}
-              onChange={(e) => setColor(e.target.value)}
-              style={{ width: '100%', height: 32, background: 'none', border: '1px solid var(--cad-border)', borderRadius: 4, cursor: 'pointer' }}
-            />
-          </label>
-          <label style={{ fontSize: '0.72rem', color: 'var(--cad-text-dim)', display: 'flex', flexDirection: 'column', gap: 4, flex: 1 }}>
-            Color de relleno
-            <input
-              type="color"
-              value={fillColor}
-              onChange={(e) => setFillColor(e.target.value)}
-              style={{ width: '100%', height: 32, background: 'none', border: '1px solid var(--cad-border)', borderRadius: 4, cursor: 'pointer' }}
-            />
-          </label>
-        </div>
+        <label style={{ fontSize: '0.72rem', color: 'var(--cad-text-dim)', display: 'flex', flexDirection: 'column', gap: 4 }}>
+          Color de capa (contorno + relleno)
+          <input
+            type="color"
+            value={color}
+            onChange={(e) => setColor(e.target.value)}
+            style={{ width: '100%', height: 32, background: 'none', border: '1px solid var(--cad-border)', borderRadius: 4, cursor: 'pointer' }}
+          />
+        </label>
 
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
           <button

@@ -8,7 +8,6 @@ export type GeoUrbanFeatureKind =
   | 'equipamiento'
   | 'linea'
   | 'texto'
-  | 'cota'
   | 'rotonda'
   | 'perimetro';
 
@@ -64,8 +63,8 @@ export function createUnassignedLayer(zIndex: number): Layer {
     visible: true,
     locked: false,
     opacity: 1,
-    showLabel: false, // ← antes true
-    showCota: false,  // ← antes true
+    showLabel: false,
+    showCota: false,
     colorMode: 'solid',
   };
 }
@@ -123,12 +122,6 @@ export interface TextoProps extends BaseFeatureProps {
   size?: number;
 }
 
-export interface CotaProps extends BaseFeatureProps {
-  kind: 'cota';
-  value: number;
-  unit: 'm' | 'm2' | 'deg';
-}
-
 export type GeoUrbanFeatureProps =
   | LoteProps
   | ManzanaProps
@@ -136,11 +129,10 @@ export type GeoUrbanFeatureProps =
   | EquipamientoProps
   | LineaProps
   | TextoProps
-  | CotaProps
   | PerimetroProps;
 
 const KNOWN_KINDS: ReadonlySet<GeoUrbanFeatureKind> = new Set<GeoUrbanFeatureKind>([
-  'lote', 'manzana', 'calle', 'equipamiento', 'linea', 'texto', 'cota',
+  'lote', 'manzana', 'calle', 'equipamiento', 'linea', 'texto',
   'rotonda', 'perimetro',
 ]);
 
@@ -148,7 +140,6 @@ export function isGeoUrbanFeatureKind(value: unknown): value is GeoUrbanFeatureK
   return typeof value === 'string' && (KNOWN_KINDS as Set<string>).has(value);
 }
 
-/** Guard para LayerKind (alias de GeoUrbanFeatureKind). */
 export function isLayerKind(value: unknown): value is LayerKind {
   return isGeoUrbanFeatureKind(value);
 }
@@ -171,7 +162,6 @@ export function getFeatureKind(feature: Feature<Geometry> | null | undefined): G
   if (legacy === 'equipamiento') return 'equipamiento';
   if (legacy === 'linea') return 'linea';
   if (legacy === 'texto') return 'texto';
-  if (legacy === 'cota') return 'cota';
   return null;
 }
 

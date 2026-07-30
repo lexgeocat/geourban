@@ -109,13 +109,13 @@ const IconPointKind = () => (
 );
 
 function geometryIconForKind(kind: LayerKind) {
-  if (kind === 'calle' || kind === 'linea' || kind === 'cota' || kind === 'rotonda') return <IconLineKind />;
+  if (kind === 'calle' || kind === 'linea' || kind === 'rotonda') return <IconLineKind />;
   if (kind === 'texto') return <IconPointKind />;
   return <IconPolygonKind />;
 }
 
 function geometryLabelForKind(kind: LayerKind): string {
-  if (kind === 'calle' || kind === 'linea' || kind === 'cota' || kind === 'rotonda') return 'línea';
+  if (kind === 'calle' || kind === 'linea' || kind === 'rotonda') return 'línea';
   if (kind === 'texto') return 'punto';
   return 'polígono';
 }
@@ -145,7 +145,23 @@ const IconMoveToLayer = () => (
   </svg>
 );
 
-/* ─────────── Color Picker (Fase 8: botón real, no span) ─────────── */
+/** Icono de etiquetas (nombre/número de la entidad). */
+const IconLabelTag = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" style={{ width: 12, height: 12 }} aria-hidden="true">
+    <path d="M12 2H4a2 2 0 0 0-2 2v6l10 10a2 2 0 0 0 2.83 0l6.17-6.17a2 2 0 0 0 0-2.83L12 2Z" />
+    <circle cx="7.5" cy="7.5" r="1.15" fill="currentColor" stroke="none" />
+  </svg>
+);
+
+/** Icono de acotaciones (cotas de segmentos/área). */
+const IconRuler = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" style={{ width: 12, height: 12 }} aria-hidden="true">
+    <rect x="3" y="8" width="18" height="8" rx="1.5" />
+    <path d="M7 8v3M11 8v3M15 8v3M19 8v3" />
+  </svg>
+);
+
+/* ─────────── Color Picker (un solo swatch: setea contorno + relleno) ─────────── */
 
 function ColorDot({ color, onChange, title, warn }: { color: string; onChange: (c: string) => void; title?: string; warn?: boolean }) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -157,7 +173,7 @@ function ColorDot({ color, onChange, title, warn }: { color: string; onChange: (
     if (!draggingRef.current) setLocalColor(color);
   }, [color]);
 
-  const label = `${title ?? 'Color'}: ${localColor}${warn ? ' — atención: similar al de otra capa' : ''}`;
+  const label = `${title ?? 'Color de capa'}: ${localColor}${warn ? ' — atención: similar al de otra capa' : ''}`;
 
   const scheduleCommit = (c: string) => {
     if (commitTimer.current) clearTimeout(commitTimer.current);
@@ -176,7 +192,7 @@ function ColorDot({ color, onChange, title, warn }: { color: string; onChange: (
         aria-label={label}
         title={label}
         style={{
-          width: 12, height: 12, borderRadius: 3, background: localColor,
+          width: 14, height: 14, borderRadius: 3, background: localColor,
           border: '1.5px solid rgba(255,255,255,0.25)',
         }}
       />
@@ -208,7 +224,7 @@ function ColorDot({ color, onChange, title, warn }: { color: string; onChange: (
   );
 }
 
-function OpacitySlider({ value, onChange, layerName }: { value: number; onChange: (v: number) => void; layerName: string }) {
+function OpacitySlider({ value, onChange, layerName, full }: { value: number; onChange: (v: number) => void; layerName: string; full?: boolean }) {
   const [localValue, setLocalValue] = useState(value);
   const commitTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const draggingRef = useRef(false);
@@ -228,23 +244,21 @@ function OpacitySlider({ value, onChange, layerName }: { value: number; onChange
   };
 
   return (
-    <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-      <input
-        type="range" min={0} max={1} step={0.05} value={localValue}
-        onChange={(e) => {
-          e.stopPropagation();
-          draggingRef.current = true;
-          const v = Number.parseFloat(e.target.value);
-          setLocalValue(v);
-          scheduleCommit(v);
-        }}
-        onClick={(e) => e.stopPropagation()}
-        aria-label={`Opacidad de la capa ${layerName}`}
-        aria-valuetext={`${pct}%`}
-        title={`Opacidad: ${pct}%`}
-        style={{ width: 52, height: 3, accentColor: 'var(--cad-accent)', cursor: 'pointer', opacity: 0.8 }}
-      />
-    </span>
+    <input
+      type="range" min={0} max={1} step={0.05} value={localValue}
+      onChange={(e) => {
+        e.stopPropagation();
+        draggingRef.current = true;
+        const v = Number.parseFloat(e.target.value);
+        setLocalValue(v);
+        scheduleCommit(v);
+      }}
+      onClick={(e) => e.stopPropagation()}
+      aria-label={`Opacidad de la capa ${layerName}`}
+      aria-valuetext={`${pct}%`}
+      title={`Opacidad: ${pct}%`}
+      style={{ width: full ? '100%' : 52, height: 4, accentColor: 'var(--cad-accent)', cursor: 'pointer' }}
+    />
   );
 }
 
@@ -255,7 +269,9 @@ interface LayerRowData {
   name: string;
   visible: boolean;
   opacity: number;
-  strokeColor: string;
+  /** Color único (contorno + relleno derivado en render). */
+  color: string;
+  /** Solo lectura, para el swatch del listado inferior. */
   fillColor: string;
   showLabel: boolean;
   showCota: boolean;
@@ -263,7 +279,6 @@ interface LayerRowData {
   removable: boolean;
   lockable: boolean;
   locked?: boolean;
-  hideCota?: boolean;
   kind: LayerKind;
   colorMode: 'solid' | 'colorIdx';
   reorderable: boolean;
@@ -273,10 +288,9 @@ interface LayerRowData {
   isIsolated?: boolean;
   onToggleVisible: () => void;
   onOpacity: (v: number) => void;
-  onStrokeColor: (c: string) => void;
-  onFillColor: (c: string) => void;
-  onShowLabel: (v: boolean) => void;
-  onShowCota: (v: boolean) => void;
+  onColor: (c: string) => void;
+  onToggleLabel: () => void;
+  onToggleCota: () => void;
   onSetColorMode: (mode: 'solid' | 'colorIdx') => void;
   onRename?: (name: string) => void;
   onToggleLock?: () => void;
@@ -292,12 +306,16 @@ const gearLabelStyle: React.CSSProperties = {
   fontSize: '0.68rem', color: 'var(--cad-text-dim)', cursor: 'pointer', whiteSpace: 'nowrap',
 };
 
+const gearActionStyle: React.CSSProperties = {
+  display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '6px 4px',
+  fontSize: '0.68rem', color: 'var(--cad-text-dim)', cursor: 'pointer', textAlign: 'left', borderRadius: 4,
+};
+
 function LayerRow({
-  data, isActive, onToggleActive, onMoveUp, onMoveDown, canMoveUp, canMoveDown, hasSelection,
+  data, isActive, onMoveUp, onMoveDown, canMoveUp, canMoveDown, hasSelection,
 }: {
   data: LayerRowData;
   isActive?: boolean;
-  onToggleActive?: () => void;
   onMoveUp?: () => void;
   onMoveDown?: () => void;
   canMoveUp?: boolean;
@@ -321,12 +339,9 @@ function LayerRow({
   const startEditing = () => { setNameDraft(data.name); setEditingName(true); };
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '4px 6px', borderRadius: 4 }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '4px 6px', borderRadius: 4, flexWrap: 'wrap' }}>
       {data.reorderable && (
-        <div
-          style={{ display: 'flex', flexDirection: 'column' }}
-          title="Usá las flechas para reordenar la capa"
-        >
+        <div style={{ display: 'flex', flexDirection: 'column' }} title="Usá las flechas para reordenar la capa">
           <button
             type="button"
             className="cad-a11y-btn"
@@ -362,34 +377,11 @@ function LayerRow({
         <IconEye visible={data.visible} />
       </button>
 
-      {onToggleActive && (() => {
-        const activationBlocked = !isActive && !!data.locked;
-        return (
-          <button
-            type="button"
-            className="cad-a11y-btn"
-            onClick={(e) => { e.stopPropagation(); if (!activationBlocked) onToggleActive(); }}
-            disabled={activationBlocked}
-            title={activationBlocked ? 'Capa bloqueada — desbloqueala para activarla' : (isActive ? 'Quitar como capa activa' : 'Usar como capa activa (los nuevos trazos van acá)')}
-            aria-label={activationBlocked ? `${data.name}: capa bloqueada, no se puede activar` : (isActive ? `${data.name}: capa activa — click para quitar` : `Activar capa ${data.name}`)}
-            aria-pressed={!!isActive}
-            style={{
-              width: 16, height: 16,
-              color: isActive ? 'var(--cad-accent)' : 'var(--cad-text-muted)',
-              opacity: activationBlocked ? 0.35 : 1,
-            }}
-          >
-            <IconTarget filled={!!isActive} />
-          </button>
-        );
-      })()}
-
       <span title={`Geometría: ${geometryLabelForKind(data.kind)}`} aria-hidden="true" style={{ display: 'flex', color: 'var(--cad-text-muted)', flexShrink: 0 }}>
         {geometryIconForKind(data.kind)}
       </span>
 
-      <ColorDot color={data.strokeColor} onChange={data.onStrokeColor} title="Color de contorno" warn={data.colorDuplicated} />
-      <ColorDot color={data.fillColor} onChange={data.onFillColor} title="Color de relleno" />
+      <ColorDot color={data.color} onChange={data.onColor} title="Color de capa (contorno + relleno)" warn={data.colorDuplicated} />
 
       {data.editableName && editingName ? (
         <input
@@ -403,7 +395,7 @@ function LayerRow({
           }}
           onClick={(e) => e.stopPropagation()}
           aria-label={`Nuevo nombre para la capa ${data.name}`}
-          style={{ flex: 1, fontSize: '0.72rem', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--cad-border)', borderRadius: 3, padding: '1px 4px', color: 'var(--cad-text)', outline: 'none', minWidth: 0 }}
+          style={{ flex: '1 1 120px', fontSize: '0.72rem', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--cad-border)', borderRadius: 3, padding: '1px 4px', color: 'var(--cad-text)', outline: 'none', minWidth: 80 }}
         />
       ) : data.editableName ? (
         <button
@@ -412,10 +404,10 @@ function LayerRow({
           onDoubleClick={startEditing}
           onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); startEditing(); } }}
           aria-label={`Renombrar capa ${data.name} (doble click o Enter)`}
-          style={{ flex: 1, justifyContent: 'flex-start', fontSize: '0.72rem', color: data.visible ? 'var(--cad-text)' : 'var(--cad-text-dim)', minWidth: 0, textAlign: 'left' }}
+          style={{ flex: '1 1 140px', justifyContent: 'flex-start', fontSize: '0.72rem', color: data.visible ? 'var(--cad-text)' : 'var(--cad-text-dim)', minWidth: 80, textAlign: 'left' }}
         >
-          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 5, width: '100%' }}>
-            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{data.name}</span>
+          <span style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 5, width: '100%' }}>
+            <span style={{ whiteSpace: 'normal', overflowWrap: 'anywhere', wordBreak: 'break-word' }}>{data.name}</span>
             {isActive && (
               <span aria-hidden="true" style={{ fontSize: '0.55rem', fontWeight: 700, letterSpacing: '0.04em', color: 'var(--cad-accent)', border: '1px solid var(--cad-accent)', borderRadius: 3, padding: '0 4px', flexShrink: 0 }}>
                 ACTIVA
@@ -433,12 +425,34 @@ function LayerRow({
           </span>
         </button>
       ) : (
-        <span style={{ flex: 1, fontSize: '0.72rem', color: data.visible ? 'var(--cad-text)' : 'var(--cad-text-dim)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <span style={{ flex: '1 1 140px', fontSize: '0.72rem', color: data.visible ? 'var(--cad-text)' : 'var(--cad-text-dim)', whiteSpace: 'normal', overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
           {data.name}
         </span>
       )}
 
-      <OpacitySlider value={data.opacity} onChange={data.onOpacity} layerName={data.name} />
+      <button
+        type="button"
+        className="cad-a11y-btn"
+        onClick={(e) => { e.stopPropagation(); data.onToggleLabel(); }}
+        aria-pressed={data.showLabel}
+        aria-label={`${data.showLabel ? 'Ocultar' : 'Mostrar'} etiquetas de ${data.name}`}
+        title="Etiquetas"
+        style={{ color: data.showLabel ? 'var(--cad-accent)' : 'var(--cad-text-muted)', opacity: data.showLabel ? 1 : 0.5 }}
+      >
+        <IconLabelTag />
+      </button>
+
+      <button
+        type="button"
+        className="cad-a11y-btn"
+        onClick={(e) => { e.stopPropagation(); data.onToggleCota(); }}
+        aria-pressed={data.showCota}
+        aria-label={`${data.showCota ? 'Ocultar' : 'Mostrar'} acotaciones de ${data.name}`}
+        title="Acotaciones"
+        style={{ color: data.showCota ? 'var(--cad-accent)' : 'var(--cad-text-muted)', opacity: data.showCota ? 1 : 0.5 }}
+      >
+        <IconRuler />
+      </button>
 
       {data.isDataLayer && data.onIsolate && (
         <button
@@ -451,30 +465,6 @@ function LayerRow({
           style={{ color: data.isIsolated ? 'var(--cad-accent)' : 'var(--cad-text-muted)' }}
         >
           <IconIsolate />
-        </button>
-      )}
-      {data.isDataLayer && data.onZoomToExtent && (data.featureCount ?? 0) > 0 && (
-        <button
-          type="button"
-          className="cad-a11y-btn"
-          onClick={(e) => { e.stopPropagation(); data.onZoomToExtent?.(); }}
-          aria-label={`Zoom a la extensión de la capa ${data.name}`}
-          title="Zoom a extensión de la capa"
-          style={{ color: 'var(--cad-text-muted)' }}
-        >
-          <IconZoomTo />
-        </button>
-      )}
-      {data.isDataLayer && data.onDuplicate && (
-        <button
-          type="button"
-          className="cad-a11y-btn"
-          onClick={(e) => { e.stopPropagation(); data.onDuplicate?.(); }}
-          aria-label={`Duplicar capa ${data.name}`}
-          title="Duplicar capa"
-          style={{ color: 'var(--cad-text-muted)' }}
-        >
-          <IconDuplicate />
         </button>
       )}
       {data.isDataLayer && data.onMoveSelectionHere && hasSelection && !data.locked && (
@@ -507,24 +497,23 @@ function LayerRow({
             className="cad-panel-glass animate-fade-in"
             role="menu"
             aria-label={`Opciones de ${data.name}`}
-            style={{ position: 'absolute', top: '100%', right: 0, marginTop: 4, minWidth: 190, padding: 8, borderRadius: 6, zIndex: 300 }}
+            style={{ position: 'absolute', top: '100%', right: 0, marginTop: 4, minWidth: 200, padding: 8, borderRadius: 6, zIndex: 300, display: 'flex', flexDirection: 'column', gap: 2 }}
           >
-            <label style={gearLabelStyle}>
-              <input type="checkbox" className="cad-toggle" checked={data.showLabel} onChange={(e) => data.onShowLabel(e.target.checked)} />
-              Mostrar etiqueta
-            </label>
-            {!data.hideCota && (
-              <label style={gearLabelStyle}>
-                <input type="checkbox" className="cad-toggle" checked={data.showCota} onChange={(e) => data.onShowCota(e.target.checked)} />
-                Mostrar acotación
-              </label>
-            )}
+            <div style={{ padding: '4px 2px 8px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.62rem', color: 'var(--cad-text-dim)', marginBottom: 4 }}>
+                <span>Opacidad</span>
+                <span style={{ fontFamily: 'JetBrains Mono, monospace' }}>{Math.round(data.opacity * 100)}%</span>
+              </div>
+              <OpacitySlider value={data.opacity} onChange={data.onOpacity} layerName={data.name} full />
+            </div>
+
             {data.kind === 'manzana' && (
-              <div style={{ borderTop: '1px solid var(--cad-border)', marginTop: 6, paddingTop: 6 }}>
+              <>
+                <div style={{ height: 1, background: 'var(--cad-border)', margin: '2px 0 6px' }} />
                 <div style={{ fontSize: '0.62rem', color: 'var(--cad-text-dim)', marginBottom: 4 }}>Color de manzanos</div>
                 <label style={{ ...gearLabelStyle, padding: '2px 0' }}>
                   <input type="radio" name={`cm-${data.id}`} className="cad-toggle" checked={data.colorMode === 'solid'} onChange={() => data.onSetColorMode('solid')} />
-                  <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 2, background: data.strokeColor, flexShrink: 0 }} />
+                  <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 2, background: data.color, flexShrink: 0 }} />
                   Sólido (capa)
                 </label>
                 <label style={{ ...gearLabelStyle, padding: '2px 0' }}>
@@ -532,34 +521,36 @@ function LayerRow({
                   <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 2, background: manzanoDisplayColor(0), flexShrink: 0 }} />
                   Por manzano
                 </label>
-              </div>
+              </>
+            )}
+
+            {(data.onZoomToExtent || data.onDuplicate || data.lockable || data.removable) && (
+              <div style={{ height: 1, background: 'var(--cad-border)', margin: '6px 0 2px' }} />
+            )}
+
+            {data.isDataLayer && data.onZoomToExtent && (data.featureCount ?? 0) > 0 && (
+              <button type="button" className="cad-a11y-btn" onClick={() => data.onZoomToExtent?.()} style={gearActionStyle}>
+                <IconZoomTo /> Zoom a extensión
+              </button>
+            )}
+            {data.isDataLayer && data.onDuplicate && (
+              <button type="button" className="cad-a11y-btn" onClick={() => data.onDuplicate?.()} style={gearActionStyle}>
+                <IconDuplicate /> Duplicar capa
+              </button>
+            )}
+            {data.lockable && (
+              <button type="button" className="cad-a11y-btn" onClick={() => data.onToggleLock?.()} style={gearActionStyle}>
+                <IconLock locked={!!data.locked} /> {data.locked ? 'Desbloquear' : 'Bloquear'}
+              </button>
+            )}
+            {data.removable && (
+              <button type="button" className="cad-a11y-btn" onClick={() => data.onRemove?.()} style={{ ...gearActionStyle, color: 'var(--cad-accent-red)' }}>
+                <IconTrash /> Eliminar capa
+              </button>
             )}
           </div>
         )}
       </div>
-
-      {data.lockable && (
-        <button
-          type="button"
-          className="cad-a11y-btn"
-          onClick={(e) => { e.stopPropagation(); data.onToggleLock?.(); }}
-          aria-pressed={!!data.locked}
-          aria-label={`${data.locked ? 'Desbloquear' : 'Bloquear'} capa ${data.name}`}
-        >
-          <IconLock locked={!!data.locked} />
-        </button>
-      )}
-      {data.removable && (
-        <button
-          type="button"
-          className="cad-a11y-btn"
-          onClick={(e) => { e.stopPropagation(); data.onRemove?.(); }}
-          aria-label={`Eliminar capa ${data.name}`}
-          style={{ opacity: 0.4 }}
-        >
-          <IconTrash />
-        </button>
-      )}
     </div>
   );
 }
@@ -621,7 +612,7 @@ function useRegistryRows(
     name: l.name,
     visible: l.visible,
     opacity: l.opacity,
-    strokeColor: l.color,
+    color: l.color,
     fillColor: l.fillColor ?? l.color,
     showLabel: l.showLabel,
     showCota: l.showCota,
@@ -639,10 +630,9 @@ function useRegistryRows(
     zIndex: l.zIndex,
     onToggleVisible: () => void runCommand(new UpdateLayerCommand(l.id, { visible: !l.visible }, 'Visibilidad de capa')),
     onOpacity: (v) => void runCommand(new UpdateLayerCommand(l.id, { opacity: v }, 'Opacidad de capa')),
-    onStrokeColor: (c) => void runCommand(new UpdateLayerCommand(l.id, { color: c }, 'Color de capa')),
-    onFillColor: (c) => void runCommand(new UpdateLayerCommand(l.id, { fillColor: c }, 'Color de relleno de capa')),
-    onShowLabel: (v) => void runCommand(new UpdateLayerCommand(l.id, { showLabel: v }, 'Mostrar etiqueta de capa')),
-    onShowCota: (v) => void runCommand(new UpdateLayerCommand(l.id, { showCota: v }, 'Mostrar acotación de capa')),
+    onColor: (c) => void runCommand(new UpdateLayerCommand(l.id, { color: c, fillColor: c }, 'Color de capa')),
+    onToggleLabel: () => void runCommand(new UpdateLayerCommand(l.id, { showLabel: !l.showLabel }, 'Mostrar etiqueta de capa')),
+    onToggleCota: () => void runCommand(new UpdateLayerCommand(l.id, { showCota: !l.showCota }, 'Mostrar acotación de capa')),
     onSetColorMode: (mode) => void runCommand(new UpdateLayerCommand(l.id, { colorMode: mode }, 'Modo de color de capa')),
     onRename: (name) => void runCommand(new UpdateLayerCommand(l.id, { name }, 'Renombrar capa')),
     onToggleLock: () => void runCommand(new UpdateLayerCommand(l.id, { locked: !l.locked }, 'Bloqueo de capa')),
@@ -686,7 +676,6 @@ export default function LayerPanel() {
 
   const [deleteRequest, setDeleteRequest] = useState<LayerDeleteRequest | null>(null);
 
-  const setActiveLayer = useLayersStore((s) => s.setActiveLayer);
   const activeLayerId = useLayersStore((s) => s.activeLayerId);
   const isolatedLayerId = useLayersStore((s) => s.isolatedLayerId);
 
@@ -762,7 +751,6 @@ export default function LayerPanel() {
           data={row}
           isActive={isActive}
           hasSelection={selectedCount > 0}
-          onToggleActive={isRegistryRow ? () => setActiveLayer(isActive ? null : row.id) : undefined}
           onMoveUp={canMoveUp ? () => moveLayer(row.id, 'up') : undefined}
           onMoveDown={canMoveDown ? () => moveLayer(row.id, 'down') : undefined}
           canMoveUp={canMoveUp}
@@ -794,7 +782,20 @@ export default function LayerPanel() {
       </button>
 
       {open && (
-        <div ref={panelRef} className="cad-panel-glass animate-fade-in" role="region" aria-label="Panel de capas" style={{ padding: '10px 12px', minWidth: panelMinWidth, maxWidth: Math.min(340, viewportWidth - 20), maxHeight: '65vh', overflowY: 'auto' }}>
+        <div
+          ref={panelRef}
+          className="cad-panel-glass animate-fade-in"
+          role="region"
+          aria-label="Panel de capas"
+          style={{
+            padding: '10px 12px',
+            minWidth: panelMinWidth,
+            maxWidth: Math.min(340, viewportWidth - 20),
+            maxHeight: '65vh',
+            overflowY: 'auto',
+            overflowX: 'auto',
+          }}
+        >
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6, paddingBottom: 6, borderBottom: '1px solid var(--cad-border)' }}>
             <span style={{ fontSize: '0.6rem', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--cad-text-dim)' }}>
               Capas
@@ -819,27 +820,19 @@ export default function LayerPanel() {
             </div>
           )}
 
+          {/* Readout informativo — la asignación real de capa activa se hace
+              desde Vista → Capa activa; acá solo se muestra cuál es. */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 8px', marginBottom: 8, borderRadius: 6, background: 'var(--cad-bg-surface)', border: '1px solid var(--cad-border)', fontSize: '0.65rem' }}>
             <IconTarget filled={activeLayerId != null} />
             <span style={{ color: 'var(--cad-text-dim)', flexShrink: 0 }}>Capa activa:</span>
             {activeLayerId ? (
-              <span style={{ color: 'var(--cad-accent)', fontWeight: 700, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <span style={{ color: 'var(--cad-accent)', fontWeight: 700, flex: 1, whiteSpace: 'normal', overflowWrap: 'anywhere' }}>
                 {registryRows.find((r) => r.id === activeLayerId)?.name ?? activeLayerId}
               </span>
             ) : (
               <span style={{ color: 'var(--cad-text-dim)', fontStyle: 'italic', flex: 1 }}>
-                Ninguna (se asigna por tipo)
+                Ninguna — elegí una en Vista → Capa activa
               </span>
-            )}
-            {activeLayerId && (
-              <button
-                onClick={() => setActiveLayer(null)}
-                className="cad-icon-btn"
-                aria-label="Quitar capa activa"
-                style={{ width: 'auto', height: 'auto', padding: '2px 6px', fontSize: '0.58rem', color: 'var(--cad-text-dim)' }}
-              >
-                Quitar
-              </button>
             )}
           </div>
 
@@ -868,7 +861,7 @@ export default function LayerPanel() {
             {registryRows.filter((r) => r.visible).map((r) => (
               <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 2 }}>
                 <span aria-hidden="true" style={{ width: 8, height: 8, background: r.fillColor, borderRadius: 2, flexShrink: 0 }} />
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</span>
+                <span style={{ whiteSpace: 'normal', overflowWrap: 'anywhere' }}>{r.name}</span>
                 {r.locked && <span aria-hidden="true" style={{ fontSize: '0.55rem', opacity: 0.5, marginLeft: 'auto' }}>🔒</span>}
               </div>
             ))}
