@@ -102,6 +102,8 @@ Este es un **parche defensivo para una condición de carrera que el propio equip
 
 `sql.js` (SQLite compilado a WASM, corriendo _dentro del navegador_) y `dexie` (wrapper de IndexedDB) como dependencias en una app **que corre en Tauri, con acceso a SQLite nativo vía `@tauri-apps/plugin-sql`**, es una contradicción de arquitectura. Estás pagando el costo de un motor SQL compilado a WASM en el hilo del navegador cuando tenés SQLite nativo a un `invoke()` de distancia. Y ninguno de los tres está siendo usado para lo que en teoría existen para hacer: no hay comando de guardar/cargar proyecto visible en ningún componente (`App.tsx` no lo tiene, no hay `ProjectFileMenu` ni equivalente). Con "carga instantánea <500ms" como requisito no negociable, este es el segundo agujero — junto con 2.1 — que hay que tapar primero, no al final.
 
+> **Nota de estado (actualizado):** las Fases 0 y 1 del plan de implementación (§5) ya están completadas — instrumentación/línea base y persistencia nativa vía `rusqlite` respectivamente. §2.6 queda documentado como diagnóstico histórico; ver §5 para el estado real de `sql.js`/`dexie`.
+
 ---
 
 ## 3. Veredicto sobre tus dos apuestas
@@ -177,20 +179,96 @@ No tires `LayeredWebglRenderer`. Los cambios concretos:
 
 Estimaciones para 1-2 ingenieros senior dedicados. Cada fase entrega algo funcional y medible — no hay una fase de "big bang" al final.
 
-### Fase 0 — Instrumentación y línea base (1 semana)
+### Fase 0 — Instrumentación y línea base (1 semana) ✅ COMPLETADA
 
 **Entregable:** el `DebugPanel.tsx` que ya tenés (FPS, features, tiempos de postrender) extendido con: tiempo de carga de proyecto, tamaño de snapshot de undo, tiempo de roundtrip de cada tipo de request al worker, memoria del heap de JS bajo carga sintética.
 **Por qué primero:** no vas a poder demostrar que el 10x de Rust es real si no tenés el número de JS documentado con el mismo dataset sintético. Generá un dataset sintético de 100k/500k/1M lotes para usar en todas las fases siguientes como vara de medir.
 
-### Fase 1 — Persistencia nativa (2-3 semanas)
+### Fase 1 — Persistencia nativa (2-3 semanas) ✅ COMPLETADA
 
 **Entregable:** comando de guardar/cargar proyecto funcionando end-to-end, esquema SQLite (tablas: `layers`, `features` con geometría en WKB + `kind` + propiedades JSON solo para lo no geométrico, `streets`, `roundabouts`), vía `rusqlite`. Elimina `sql.js` y `dexie` del `package.json`.
 **Criterio de éxito:** cargar el dataset sintético de 500k features en menos de 500ms desde disco hasta `drawSource` poblado.
 
-### Fase 2 — Motor de geometría en Rust (4-5 semanas, la fase más grande)
+### Fase 2 — Motor de geometría en Rust (5-6 semanas, la fase más grande) — EN CURSO
 
-**Entregable:** puerto de `geoOperations.ts` completo a comandos Tauri con la misma superficie de API que `geoWorkerClient.ts` (para minimizar el churn en los call-sites de React/commands — cambian los `invoke`, no la lógica de negocio alrededor). Incluye: unión/diferencia de red vial, `computeManzanos`, los 3 algoritmos de subdivisión, `matchFragmentsToMembers`.
-**Criterio de éxito:** unión de red vial con 5.000 segmentos de calle en menos de 100ms (hoy tenés tu propio warning en 300ms para casos mucho más chicos).
+Esta es la fase de mayor riesgo y mayor impacto del plan completo, así que conviene desglosarla en sub-fases con dependencias explícitas en vez de atacarla como un bloque monolítico. La regla de secuenciación es: **primero lo que no depende de una librería de booleanas (bajo riesgo, testeable con `cargo test` puro), después la capa que sí la necesita (alto riesgo, requiere fuzzing).** Cada sub-fase tiene su propio criterio de éxito verificable antes de pasar a la siguiente — nadie debería avanzar a 2.3 sin que 2.1 y 2.2 ya estén dando paridad numérica con JS.
+
+#### 2.0 — Decisión de librería de booleanas + scaffolding del crate (3-4 días)
+
+Antes de portar una sola línea, hay que resolver la pregunta que condiciona todo lo demás: **¿`geos` (bindings a GEOS C++) o el crate `geo` puro-Rust con sus boolean ops?**
+
+- `geos` es más maduro/robusto en geometría degenerada (mismo motor que JSTS portó, pero nativo) — mayor fricción de build (necesita GEOS instalado o vendored) pero menos sorpresas de comportamiento.
+- `geo` puro-Rust compila más simple y encaja mejor con Tauri cross-compile, pero sus boolean ops son más jóvenes que GEOS.
+
+Dado que el código actual ya tiene mitigaciones propias contra fallos de `polygon-clipping` (los try/catch con auto-limpieza en cascada en `roadNetworkNet.ts` y `geoOperations.ts::robustUnionRoadNetwork`), la recomendación es `geos`, para no heredar esa fragilidad también en Rust. Esta decisión condiciona el diseño de 2.3, así que se toma acá, no después.
+
+**Entregable:** crate `geourban-geo` dentro de `src-tauri/`, tipos compartidos (`Pt = (f64, f64)`, `LotResult`, etc. — mismo shape que `polygonEngine.ts`), y decisión de serialización IPC (arrancar con `serde` + JSON; migrar a bincode/postcard en 2.7 si el perfil lo pide — no optimizar la serialización antes de tener el motor portado).
+
+#### 2.1 — Primitivas puras, sin booleanas (1 semana)
+
+El bloque de menor riesgo de toda la Fase 2. Todo esto es aritmética cerrada, sin `polygon-clipping` ni JSTS de por medio. Se porta casi 1:1 y se testea con casos unitarios comparando output contra la versión JS:
+
+- `src/geo/math/polygonEngine.ts` completo: `polyArea`, `centroid`, `convexHull`, `clipHalfPlane`, `clipToStrip`, `principalAxis`, `projectExtents`, `pointInPoly`, `segmentIntersectsPoly`, `buildCutPolys`.
+- `src/geo/sanitizeRing.ts` / `sanitizeGeoJson.ts`: dedupe, colinealidad, área mínima. Importante portarlo temprano porque **todo lo demás depende de recibir anillos ya saneados** — dejarlo para el final duplicaría la lógica de limpieza en cada algoritmo posterior.
+- `src/geo/roads/roadNetworkEngine.ts`: `offsetPolylineMiter`, `buildRing` (offset de polilíneas con límite de miter).
+- `src/geo/roads/ringFillet.ts`: `roundRingReflex`, fillet/chamfer de esquinas.
+- `src/geo/math/lod.ts`, `src/geo/roundabout/roundaboutEngine.ts`: geometría de rotondas, también pura.
+
+**Criterio de éxito:** correr el mismo set de polígonos de prueba por ambos lados (JS y Rust) y que área/perímetro coincidan dentro de tolerancia. Nada de esto necesita `invoke` todavía — es una librería Rust standalone testeable con `cargo test` antes de exponer nada a Tauri.
+
+#### 2.2 — Motor de subdivisión (1-1.5 semanas) — depende de 2.1
+
+El corazón de tu motor y, buena noticia, **no toca JSTS ni polygon-clipping en absoluto** — `subdivisionCabeceraCuerpo.ts` resuelve sus propios clips por semiplano (`hbClipPolyHalf`) igual que `polygonEngine.ts`. Candidato ideal para portar segundo:
+
+- `src/geo/subdivision/subdivisionAlgorithms.ts`: `subdivideManzanoAuto` (modo2/PCA), `subdivideManzanoExact`, `sliceBisectManzano` (manual-slice), y el dispatcher `subdivideManzano`/`subdivide`.
+- `src/geo/subdivision/subdivisionCabeceraCuerpo.ts`: el algoritmo `auto` (cabecera+cuerpo), el más usado por default.
+
+Con esto ya se pueden exponer **3 de los 6 tipos de request** del worker actual sin haber tocado la parte booleana: `subdivide`, `subdivideManzano`, `subdivideManzanoBatch`. Es un hito real y demostrable a mitad de la Fase 2, no un entregable parcial invisible.
+
+**Criterio de éxito:** las 200 iteraciones de bisección de `subdivideHalf`/`computeCuts` dando el mismo resultado (mismo criterio de remanentes, mismo `frontM`/`depthM`) que hoy en JS, sobre manzanos reales del dataset sintético.
+
+#### 2.3 — Capa de booleanas (1.5-2 semanas) — el bloque de mayor riesgo
+
+Acá entra `geos`/`geo` en serio. Dos consumidores concretos:
+
+- `unionRings` en `src/geo/roads/roadNetworkNet.ts` — reemplaza `polygonClipping.union`. Ojo con portar también la lógica de reintentos (`selfCleaned`, auto-limpieza por polígono individual cuando la unión directa falla) — no es cosmética, es la razón por la que la unión no explota con geometría real.
+- `robustUnionRoadNetwork` + `computeManzanos` en `src/workers/geoOperations.ts` — reemplaza JSTS `OverlayOp.difference`. Esta es la pieza que hoy tiene el `console.warn` a los 300ms — el criterio de éxito de toda la Fase 2 (unión de 5.000 segmentos en <100ms) se decide acá.
+
+También hay que portar los límites de seguridad ya existentes (`MAX_UNION_POINTS`, `MAX_UNION_SHAPES`, `UNION_TIME_WARNING_MS`) — no descartarlos pensando que "Rust es rápido, no van a hacer falta". Van a seguir haciendo falta como guardrail contra geometría patológica, solo que con umbrales más altos.
+
+**Criterio de éxito:** unión de red vial con 5.000 segmentos de calle en menos de 100ms, sin regresión en los casos de auto-limpieza que hoy dispara `roadNetworkNet.ts` con geometría real.
+
+#### 2.4 — Reconciliación de fragmentos (3-4 días) — depende de 2.3
+
+`src/geo/roads/fragmentReconciliation.ts::matchFragmentsToMembers` usa `polygonClipping.intersection` para `ringIntersectionAreaRaw`. Se porta rápido una vez que 2.3 ya da intersección de anillos funcionando. Esto desbloquea los dos tipos de request que faltaban: `computeRoadNetworkNet` y `matchFragmentsBatch`.
+
+**Criterio de éxito:** mismas asignaciones fragmento↔miembro (`MATCH_MIN_RATIO = 0.35`) que la versión JS sobre el corpus de reconciliación del dataset sintético.
+
+#### 2.5 — Cableado de comandos Tauri + reemplazo de `geoWorkerClient.ts` (1 semana)
+
+Con las 4 sub-fases anteriores ya está el motor completo compilando. Ahora:
+
+- Comandos Tauri espejando 1:1 la firma de `computeManzanosInWorker`, `subdivideInWorker`, `subdivideManzanoInWorker`, `subdivideManzanoBatchInWorker`, `computeRoadNetworkNetInWorker`, `matchFragmentsBatchInWorker` — así los call-sites en `useManzanoActions.ts`, `RecomputeManzanoLotsCommand.ts`, `SubdivideCommand.ts`, etc. cambian solo el `import` y el `await`, no la lógica de negocio alrededor.
+- El split interactive/batch worker de hoy (`INTERACTIVE_TYPES`, dos Workers separados para no bloquear el hilo interactivo con trabajo batch) se traduce a: comandos Tauri `async` + `rayon` para paralelizar internamente en Rust (por ejemplo `subdivideManzanoBatch` paralelizando por manzano). Ya no hacen falta dos "workers" separados — el runtime async de Tauri + un thread pool de Rayon da eso gratis.
+- Mantener el timeout/retry pattern de `runWorker()` en el lado cliente (el manejo actual de `DEFAULT_WORKER_TIMEOUT_MS` con reject-all-pending) — sigue siendo válido como defensa contra un comando Rust que se cuelgue con geometría patológica.
+
+**Criterio de éxito:** los 6 tipos de request funcionando end-to-end desde React sin cambiar lógica de negocio en los call-sites, solo el transporte.
+
+#### 2.6 — Paridad y fuzzing (3-4 días, en paralelo con 2.5)
+
+Correr el mismo corpus de geometría degenerada que hoy dispara `sanitizeRing.ts`/`recordGeometrySanitizeEvent` contra ambos motores y comparar resultados. Esto es lo que evita un bug sutil de redondeo o de orientación de anillo (CW vs CCW) que no aparece hasta producción.
+
+**Criterio de éxito:** cero divergencias no explicadas entre JS y Rust sobre el corpus de fuzzing, o divergencias documentadas y aceptadas explícitamente (p. ej. tolerancia de punto flotante).
+
+#### 2.7 — Validación de performance + limpieza (2-3 días)
+
+Correr el criterio de éxito oficial de la Fase 2 (unión de red vial con 5.000 segmentos <100ms) con el instrumental de la Fase 0 ya construido (`DebugPanel.tsx`, `perfTelemetry.ts`). Si pasa: borrar `jsts`, `polygon-clipping`, `src/workers/geoWorker.ts` y `geoOperations.ts` del bundle JS.
+
+**Criterio de éxito:** métrica oficial de Fase 2 confirmada + bundle JS liberado de las tres dependencias de geometría pesada.
+
+---
+
+**Orden de ejecución recomendado dentro de la Fase 2:** 2.0 → 2.1 → 2.2 (acá ya hay un hito demostrable sin haber tocado booleanas) → 2.3 → 2.4 → 2.5 → 2.6/2.7 en paralelo al cierre.
 
 ### Fase 3 — Undo/redo estructural (2 semanas)
 
@@ -211,7 +289,7 @@ Estimaciones para 1-2 ingenieros senior dedicados. Cada fase entrega algo funcio
 
 Dataset sintético de 1M+ features, perfiles de memoria (objetivo <2GB confirmado con herramientas nativas, no estimado), fuzzing de geometría degenerada contra el nuevo motor Rust (reutilizando los mismos casos límite que hoy dispara `sanitizeRing.ts`).
 
-**Total: ~15-16 semanas para la migración core**, con valor entregado incrementalmente desde la semana 3 (persistencia funcionando es ya una mejora de UX enorme sobre "no existe").
+**Total: ~16-17 semanas para la migración core**, con valor entregado incrementalmente desde la semana 3 (persistencia funcionando, ya completada, fue una mejora de UX enorme sobre "no existe").
 
 ---
 
@@ -248,6 +326,7 @@ Si después de la Fase 4 seguís con presión de rendimiento en las miles de bad
 4. **No sigas usando `sql.js`/`dexie` "porque ya están instalados".** Son redundancia arquitectónica activa en un contexto Tauri con SQLite nativo disponible — cada semana que pasan sin usarse es deuda que alguien va a tener que justificar o borrar.
 5. **No optimices el pipeline de labels/SDF (§6.7) antes de tener el dato de que lo necesitás.** Medí primero (Fase 0), después optimizá lo que el perfil real te diga, no lo que "suena" a cuello de botella.
 6. **No parchees la race condition del índice espacial (§2.3) con más `console.warn`.** Arreglá el orden de inicialización de raíz; el auto-heal silencioso en producción es un bug disfrazado de feature.
+7. **No avances de una sub-fase de la Fase 2 a la siguiente sin su criterio de éxito verificado.** En particular, no empieces 2.3 (booleanas) sin que 2.1/2.2 ya tengan paridad numérica confirmada contra JS — es la sub-fase de mayor riesgo y necesita una base sólida debajo.
 
 ---
 
@@ -257,7 +336,7 @@ Criterios binarios, medidos con el instrumental de la Fase 0, sobre el dataset s
 
 | Métrica                                     | Hoy (estimado por evidencia de código)                    | Objetivo post-migración               |
 | ------------------------------------------- | --------------------------------------------------------- | ------------------------------------- |
-| Carga de proyecto urbano completo           | No existe la función                                      | < 500ms                               |
+| Carga de proyecto urbano completo           | Resuelto en Fase 1 ✅                                     | < 500ms                               |
 | Trazar 1 calle en proyecto de 200k features | O(n) por snapshot GeoJSON completo                        | O(cambios reales), independiente de n |
 | Unión de red vial, 5.000 segmentos          | Con warning propio a partir de 300ms hoy en casos menores | < 100ms                               |
 | FPS con 200k features en viewport           | Degradado por diseño desde 350-900 features (LOD tiers)   | 60fps sostenidos                      |
@@ -266,4 +345,4 @@ Criterios binarios, medidos con el instrumental de la Fase 0, sobre el dataset s
 
 ---
 
-Esto es una hoja de ruta, no una promesa: cada fase tiene un criterio de éxito medible y un dataset sintético común, así que en ningún punto vas a estar "confiando" en que la migración funcionó — lo vas a poder demostrar con el mismo panel de debug que ya empezaste a construir.
+Esto es una hoja de ruta, no una promesa: cada fase (y, dentro de la Fase 2, cada sub-fase) tiene un criterio de éxito medible y un dataset sintético común, así que en ningún punto vas a estar "confiando" en que la migración funcionó — lo vas a poder demostrar con el mismo panel de debug que ya empezaste a construir.
