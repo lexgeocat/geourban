@@ -152,8 +152,11 @@ export function segmentIntersectsPoly(a: Pt, b: Pt, poly: Pt[]): boolean {
     if (denom === 0) continue; // paralelos
     const qx = a[0] - xi;
     const qy = a[1] - yi;
-    const t = (qx * dy - qy * dx) / denom;
-    const u = (qx * aby - qy * abx) / denom;
+    // q = A - C, por lo que las formulas estandar t = cross(C-A, d)/cross(ab, d)
+    // y u = cross(C-A, ab)/cross(ab, d) quedan con signo invertido (cross(C-A,·) = -cross(q,·)).
+    // Sin la negacion, las intersecciones validas caen en [-1, 0] y se descartan.
+    const t = -(qx * dy - qy * dx) / denom;
+    const u = -(qx * aby - qy * abx) / denom;
     if (t >= 0 && t <= 1 && u >= 0 && u <= 1) return true;
   }
   return false;
