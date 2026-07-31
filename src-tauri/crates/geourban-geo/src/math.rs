@@ -1,83 +1,28 @@
-//! Fase 2.1 (punto 1) — puerto **completo** de `src/geo/math/polygonEngine.ts`.
-//!
-//! Reemplaza el stub original de este archivo. Todo lo de abajo es
-//! aritmética pura — sin GEOS, sin `crate::boolean_ops`, sin ninguna
-//! dependencia externa más allá de `std` — exactamente como pedía el orden
-//! de sub-fases de `auditoria-para-mejora.md` (§Fase 2 / 2.1): esto va
-//! primero porque `subdivision.rs` (Fase 2.2) y la mitad de `roads.rs`
-//! dependen de estas primitivas.
-//!
-//! Mapeo 1:1 con el archivo TS original (mismo orden):
-//!
-//! | Rust                        | TypeScript              |
-//! |------------------------------|--------------------------|
-//! | [`poly_area`]                 | `polyArea`               |
-//! | [`centroid`]                  | `centroid`                |
-//! | [`convex_hull`]               | `convexHull`               |
-//! | [`ring_perimeter`]            | `ringPerimeter`             |
-//! | [`path_length`]               | `pathLength`                 |
-//! | `side` (privada)              | `side` (privada)              |
-//! | [`clip_half_plane`]           | `clipHalfPlane`                |
-//! | `line_line_intersect` (privada) | `lineLineIntersect` (privada) |
-//! | [`point_in_poly`]             | `pointInPoly`                    |
-//! | [`segment_intersects_poly`]   | `segmentIntersectsPoly`           |
-//! | [`build_cut_polys`]           | `buildCutPolys`                    |
-//! | [`clip_to_strip`]             | `clipToStrip`                        |
-//! | [`principal_axis`]            | `principalAxis`                       |
-//! | [`project_extents`]           | `projectExtents`                       |
-//!
-//! Ninguna función cambia de algoritmo respecto al original — mismas
-//! tolerancias (`1e-9`, `1e-10`, `1e-12`), mismo orden de operaciones, para
-//! que la Fase 2.6 (paridad/fuzzing) pueda comparar output byte-a-byte
-//! dentro de tolerancia de punto flotante sin sorpresas de redondeo por
-//! reordenar sumas.
-//!
-//! `Extent1D`, `PrincipalAxis`, `PolyHit` y `CutPolys` son tipos de
-//! resultado nuevos (el TS los devolvía como object literals anónimos).
-//! Quedan `pub` acá; si en Fase 2.2 `subdivision.rs` los necesita también,
-//! es un `pub use` de una línea moverlos a `crate::types` — no hace falta
-//! decidirlo ahora.
-
 use std::collections::HashMap;
 
 use crate::types::Pt;
 
 // ─── Tipos de resultado ─────────────────────────────────────────────
 
-/// Rango `[min, max]` de la proyección de un anillo sobre un eje.
-/// Espeja el `{ min: number; max: number }` que devolvía `projectExtents`.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Extent1D {
     pub min: f64,
     pub max: f64,
 }
 
-/// Eje principal (PCA) de un polígono, ya normalizado a versor unitario
-/// con `ux >= 0` (mismo criterio de canonicalización que `principalAxis`
-/// en TS). Espeja `{ ux: number; uy: number }`.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PrincipalAxis {
     pub ux: f64,
     pub uy: f64,
 }
 
-/// Punto de corte sobre una arista del anillo — insumo de
-/// [`build_cut_polys`]. Espeja el objeto anónimo `{ segIdx, u, pt }` que
-/// usaba `buildCutPolys` en TS (y que `sliceBisectManzano`, en
-/// `subdivisionAlgorithms.ts`, construye a mano antes de llamarla).
 #[derive(Debug, Clone, Copy)]
 pub struct PolyHit {
-    /// Índice de la arista `(wp[segIdx], wp[(segIdx+1) % n])` sobre la que
-    /// cae el punto de corte.
     pub seg_idx: usize,
-    /// Parámetro `[0,1]` a lo largo de esa arista (se clampa igual que en TS).
     pub u: f64,
-    /// Coordenada del punto de corte.
     pub pt: Pt,
 }
 
-/// Resultado de partir un anillo en dos por dos puntos de corte. Espeja
-/// `{ poly1, poly2, cutA, cutB }`.
 #[derive(Debug, Clone)]
 pub struct CutPolys {
     pub poly1: Vec<Pt>,
@@ -86,10 +31,6 @@ pub struct CutPolys {
     pub cut_b: Pt,
 }
 
-/// Marca interna de qué punto de corte (`A` o `B`) es un vértice insertado
-/// en `build_cut_polys`. No tiene equivalente `pub` en TS — ahí se usaba
-/// un `role: string` ('orig' | 'A' | 'B') sobre el mismo array; acá se
-/// modela con `Option<PolyHitRole>` (`None` = vértice original del anillo).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PolyHitRole {
     A,
@@ -98,8 +39,6 @@ enum PolyHitRole {
 
 // ─── Primitivas geométricas ─────────────────────────────────────────
 
-/// Área de un polígono en unidades internas (fórmula de Shoelace).
-/// <- `polyArea`
 pub fn poly_area(pts: &[Pt]) -> f64 {
     let n = pts.len();
     let mut a = 0.0;
@@ -110,8 +49,6 @@ pub fn poly_area(pts: &[Pt]) -> f64 {
     (a / 2.0).abs()
 }
 
-/// Centroide (promedio simple de vértices) de un polígono.
-/// <- `centroid`
 pub fn centroid(pts: &[Pt]) -> Pt {
     let mut cx = 0.0;
     let mut cy = 0.0;
@@ -123,8 +60,6 @@ pub fn centroid(pts: &[Pt]) -> Pt {
     (cx / n, cy / n)
 }
 
-/// Envolvente convexa vía Andrew's monotone chain.
-/// <- `convexHull`
 pub fn convex_hull(pts: &[Pt]) -> Vec<Pt> {
     let mut arr: Vec<Pt> = pts.to_vec();
     arr.sort_by(|a, b| {
@@ -162,8 +97,6 @@ pub fn convex_hull(pts: &[Pt]) -> Vec<Pt> {
     lower
 }
 
-/// Perímetro de un anillo cerrado (conecta el último vértice con el primero).
-/// <- `ringPerimeter`
 pub fn ring_perimeter(pts: &[Pt]) -> f64 {
     let n = pts.len();
     if n == 0 {
@@ -178,9 +111,6 @@ pub fn ring_perimeter(pts: &[Pt]) -> f64 {
     per
 }
 
-/// Longitud de una polilínea abierta (NO conecta el último vértice con el
-/// primero — a diferencia de [`ring_perimeter`]).
-/// <- `pathLength`
 pub fn path_length(pts: &[Pt]) -> f64 {
     if pts.is_empty() {
         return 0.0;
@@ -194,15 +124,10 @@ pub fn path_length(pts: &[Pt]) -> f64 {
     total
 }
 
-/// Cross product para determinar de qué lado de la recta `lp1 -> lp2` está `pt`.
-/// <- `side` (privada en TS)
 fn side(pt: Pt, lp1: Pt, lp2: Pt) -> f64 {
     (lp2.0 - lp1.0) * (pt.1 - lp1.1) - (lp2.1 - lp1.1) * (pt.0 - lp1.0)
 }
 
-/// Intersección de dos rectas infinitas definidas por `a->b` y `c->d`.
-/// `None` si son (casi) paralelas.
-/// <- `lineLineIntersect` (privada en TS)
 fn line_line_intersect(a: Pt, b: Pt, c: Pt, d: Pt) -> Option<Pt> {
     let dx1 = b.0 - a.0;
     let dy1 = b.1 - a.1;
@@ -216,11 +141,6 @@ fn line_line_intersect(a: Pt, b: Pt, c: Pt, d: Pt) -> Option<Pt> {
     Some((a.0 + t * dx1, a.1 + t * dy1))
 }
 
-/// Clip de polígono contra un semiplano definido por `lp1 -> lp2`.
-/// `keep_side > 0` conserva el lado donde `side(pt, lp1, lp2) >= -1e-9`;
-/// de lo contrario conserva `side(pt, lp1, lp2) <= 1e-9`. Devuelve `[]` si
-/// el resultado queda con menos de 3 vértices (igual que en TS).
-/// <- `clipHalfPlane`
 pub fn clip_half_plane(pts: &[Pt], lp1: Pt, lp2: Pt, keep_side: i32) -> Vec<Pt> {
     if pts.len() < 3 {
         return Vec::new();
@@ -250,8 +170,6 @@ pub fn clip_half_plane(pts: &[Pt], lp1: Pt, lp2: Pt, keep_side: i32) -> Vec<Pt> 
     }
 }
 
-/// Punto-en-polígono (ray casting).
-/// <- `pointInPoly`
 pub fn point_in_poly(x: f64, y: f64, poly: &[Pt]) -> bool {
     let n = poly.len();
     if n == 0 {
@@ -270,11 +188,6 @@ pub fn point_in_poly(x: f64, y: f64, poly: &[Pt]) -> bool {
     inside
 }
 
-/// Intersección segmento vs. polígono (anillo abierto o cerrado).
-/// `true` si un extremo del segmento cae adentro, o si alguna arista del
-/// polígono cruza el segmento (para detectar un segmento que "atraviesa"
-/// el polígono con ambos extremos afuera).
-/// <- `segmentIntersectsPoly`
 pub fn segment_intersects_poly(a: Pt, b: Pt, poly: &[Pt]) -> bool {
     if point_in_poly(a.0, a.1, poly) || point_in_poly(b.0, b.1, poly) {
         return true;
@@ -301,9 +214,6 @@ pub fn segment_intersects_poly(a: Pt, b: Pt, poly: &[Pt]) -> bool {
         }
         let qx = a.0 - xi;
         let qy = a.1 - yi;
-        // q = A - C, por lo que las formulas estandar t = cross(C-A, d)/cross(ab, d)
-        // y u = cross(C-A, ab)/cross(ab, d) quedan con signo invertido (cross(C-A,·) = -cross(q,·)).
-        // Sin la negacion, las intersecciones validas caen en [-1, 0] y se descartan.
         let t = -(qx * dy - qy * dx) / denom;
         let u = -(qx * aby - qy * abx) / denom;
         if (0.0..=1.0).contains(&t) && (0.0..=1.0).contains(&u) {
@@ -313,11 +223,6 @@ pub fn segment_intersects_poly(a: Pt, b: Pt, poly: &[Pt]) -> bool {
     false
 }
 
-/// Parte un anillo `wp` en dos polígonos usando dos puntos de corte sobre
-/// su contorno (`h_a`, `h_b`). Devuelve `None` si no se pudo ubicar alguno
-/// de los dos puntos entre los vértices, o si algún fragmento resultante
-/// queda con menos de 3 vértices.
-/// <- `buildCutPolys`
 pub fn build_cut_polys(wp: &[Pt], h_a: PolyHit, h_b: PolyHit) -> Option<CutPolys> {
     let n = wp.len();
     if n == 0 {
@@ -401,9 +306,6 @@ pub fn build_cut_polys(wp: &[Pt], h_a: PolyHit, h_b: PolyHit) -> Option<CutPolys
 
 // ─── Operaciones sobre strips ───────────────────────────────────────
 
-/// Clip de polígono a una franja entre `min_t` y `max_t` a lo largo del
-/// eje `(ax, ay)`.
-/// <- `clipToStrip`
 pub fn clip_to_strip(pts: &[Pt], ax: f64, ay: f64, min_t: f64, max_t: f64) -> Vec<Pt> {
     if pts.len() < 3 {
         return Vec::new();
@@ -433,10 +335,6 @@ pub fn clip_to_strip(pts: &[Pt], ax: f64, ay: f64, min_t: f64, max_t: f64) -> Ve
 
 // ─── Eje principal (PCA) ────────────────────────────────────────────
 
-/// Eje principal del polígono vía análisis de componentes principales,
-/// normalizado a versor unitario con `ux >= 0` (o, si `ux` es
-/// (casi) cero, con `uy >= 0`).
-/// <- `principalAxis`
 pub fn principal_axis(pts: &[Pt]) -> PrincipalAxis {
     let n = pts.len() as f64;
     let mut mx = 0.0;
@@ -489,8 +387,6 @@ pub fn principal_axis(pts: &[Pt]) -> PrincipalAxis {
     PrincipalAxis { ux, uy }
 }
 
-/// Proyecta los vértices sobre el eje `(ax, ay)` y retorna `[min, max]`.
-/// <- `projectExtents`
 pub fn project_extents(pts: &[Pt], ax: f64, ay: f64) -> Extent1D {
     let mut mn = f64::INFINITY;
     let mut mx = f64::NEG_INFINITY;
@@ -505,15 +401,26 @@ pub fn project_extents(pts: &[Pt], ax: f64, ay: f64) -> Extent1D {
     }
     Extent1D { min: mn, max: mx }
 }
+// ─── LOD (src/geo/math/lod.ts) ──────────────────────────────────────
 
+const LOD_MIN_SEGMENTS: u32 = 8;
+const LOD_MAX_SEGMENTS: u32 = 160;
+
+/// <- `resolutionAwareSegments`
+pub fn resolution_aware_segments(radius_map_units: f64, resolution: f64, px_error: f64) -> u32 {
+    if !(radius_map_units > 0.0) || !(resolution > 0.0) {
+        return LOD_MIN_SEGMENTS;
+    }
+    let error_map_units = px_error * resolution;
+    let ratio = (error_map_units / radius_map_units).min(1.0);
+    let max_angle = 2.0 * (1.0 - ratio).acos();
+    if !(max_angle > 0.0) || !max_angle.is_finite() {
+        return LOD_MAX_SEGMENTS;
+    }
+    let needed = ((2.0 * std::f64::consts::PI) / max_angle).ceil() as u32;
+    needed.max(LOD_MIN_SEGMENTS).min(LOD_MAX_SEGMENTS)
+}
 // ─── Tests ───────────────────────────────────────────────────────────
-//
-// Cada test fija un caso calculado a mano (no solo "no explota") para que
-// sirva como vara de paridad JS/Rust en la Fase 2.6, tal como pide el
-// criterio de éxito de 2.1 en auditoria-para-mejora.md: "correr el mismo
-// set de polígonos de prueba por ambos lados y que área/perímetro
-// coincidan dentro de tolerancia".
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -536,8 +443,6 @@ mod tests {
 
     #[test]
     fn poly_area_orientation_independent() {
-        // Mismo cuadrado, sentido horario: el área sigue siendo positiva
-        // (se toma valor absoluto), igual que en TS.
         let sq_cw = vec![(0.0, 0.0), (0.0, 4.0), (4.0, 4.0), (4.0, 0.0)];
         assert!(approx(poly_area(&sq_cw), 16.0));
     }
@@ -611,8 +516,6 @@ mod tests {
 
     #[test]
     fn principal_axis_axis_aligned_wide_rectangle() {
-        // Rectángulo más ancho que alto: el eje principal debe alinearse
-        // con el eje X exactamente (cxy = 0 por simetría → rama del else-if).
         let rect = vec![(0.0, 0.0), (10.0, 0.0), (10.0, 2.0), (0.0, 2.0)];
         let axis = principal_axis(&rect);
         assert!(approx(axis.ux, 1.0));
@@ -675,11 +578,7 @@ mod tests {
 
     #[test]
     fn build_cut_polys_returns_none_when_a_fragment_is_degenerate() {
-        // Triángulo simple; los dos puntos de corte caen sobre la MISMA
-        // arista (seg_idx 0), muy cerca entre sí. Entre A y B, recorriendo
-        // el anillo, no queda ningún vértice original en el medio — el
-        // fragmento p1 = [A, B] tiene solo 2 puntos, y build_cut_polys
-        // debe descartarlo devolviendo None (igual que en TS).
+
         let wp = vec![(0.0, 0.0), (4.0, 0.0), (0.0, 4.0)];
         let h_a = PolyHit { seg_idx: 0, u: 0.3, pt: (1.2, 0.0) };
         let h_b = PolyHit { seg_idx: 0, u: 0.6, pt: (2.4, 0.0) };

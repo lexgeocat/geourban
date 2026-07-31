@@ -14,20 +14,8 @@ crate-type = ["rlib"]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "1"
+log = "0.4"
 
-# Backend de booleanas (union/difference/intersection robustas) — decision
-# tomada en Fase 2.0 (ver auditoria-para-mejora.md, §Fase 2 / 2.0): GEOS,
-# no el crate `geo` puro-Rust, porque tu codigo actual ya tiene mitigaciones
-# propias (reintentos, auto-limpieza) contra fallos de `polygon-clipping`,
-# y GEOS es el motor maduro que JSTS porto en su momento — menos sorpresas
-# de comportamiento en geometria degenerada real.
-#
-# Detras de un feature flag a proposito: activarlo requiere GEOS instalado
-# en el sistema (via pkg-config) o compilarlo vendored (revisar el nombre
-# exacto de la feature "static"/"vendored" segun la version que resuelva
-# `cargo add geos` — el crate la viene renombrando entre versiones).
-# La version de abajo es orientativa — confirmar la ultima disponible
-# antes de fijarla en un lockfile real.
 geos = { version = "8", optional = true }
 
 [features]

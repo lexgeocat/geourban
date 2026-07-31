@@ -1,16 +1,5 @@
-//! Tipos compartidos entre el motor nativo y el resto del proyecto.
-//!
-//! El "shape" de cada tipo espeja deliberadamente a su contraparte en
-//! `src/geo/**/*.ts` para que la serializacion JSON (decision de Fase 2.0:
-//! serde + JSON sobre el limite Tauri<->React — ver auditoria-para-mejora.md
-//! §Fase 2 / 2.0) no necesite tablas de traduccion en ninguno de los dos
-//! lados. Si cambia un campo aca, cambia tambien en el .ts correspondiente
-//! — y viceversa.
-
 use serde::{Deserialize, Serialize};
 
-/// Espeja `Pt` en `polygonEngine.ts` (`[number, number]`). Un tuple de f64
-/// serializa como array JSON de 2 elementos, igual que el lado TS.
 pub type Pt = (f64, f64);
 
 /// Espeja `LotResult` (polygonEngine.ts).
@@ -24,8 +13,6 @@ pub struct LotResult {
     pub area_m2: f64,
 }
 
-/// Espeja `CutResult` (polygonEngine.ts) — usado internamente por
-/// `computeCuts`/`subdivideHalf` en subdivisionAlgorithms.ts.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CutResult {
@@ -33,8 +20,6 @@ pub struct CutResult {
     pub is_remnant: bool,
 }
 
-/// Espeja `SliceResult` (polygonEngine.ts) — resultado de
-/// `sliceBisectManzano` (metodo `manual-slice`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SliceResult {
@@ -43,8 +28,6 @@ pub struct SliceResult {
     pub area_m2: f64,
 }
 
-/// Espeja `SubdivisionMethod` (subdivisionAlgorithms.ts):
-/// `'auto' | 'modo2' | 'exact' | 'manual-slice'`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum SubdivisionMethod {
@@ -54,11 +37,6 @@ pub enum SubdivisionMethod {
     ManualSlice,
 }
 
-/// Espeja `ManzanoLoteMethod` (subdivisionAlgorithms.ts):
-/// `'auto' | 'exact' | 'modo2'`. Subconjunto de `SubdivisionMethod` sin la
-/// variante manual — se mantiene como tipo separado para conservar la
-/// misma distincion que hace el TS (RecomputeManzanoLotsCommand,
-/// GenerateLotsCommand, etc. nunca reciben `'manual-slice'`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ManzanoLoteMethod {
@@ -67,8 +45,7 @@ pub enum ManzanoLoteMethod {
     Modo2,
 }
 
-/// Direccion preferida de corte (`dirPref` en subdivisionAlgorithms.ts /
-/// `RotateDir` en manzanoStore.ts).
+
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DirPref {
@@ -93,9 +70,7 @@ pub struct CutLine {
     pub p2: Pt,
 }
 
-/// Espeja `SubdivisionOptions` (subdivisionAlgorithms.ts). Los campos
-/// opcionales lo son porque distintos metodos usan distintos subconjuntos,
-/// igual que en TS.
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SubdivisionOptions {
@@ -110,11 +85,6 @@ pub struct SubdivisionOptions {
 }
 
 /// Espeja `SubdivisionResult` (subdivisionAlgorithms.ts).
-///
-/// El campo `features` queda como `serde_json::Value` hasta Fase 2.2:
-/// recien ahi se define el tipo GeoJSON `Feature<Polygon | MultiPolygon>`
-/// del lado Rust (a evaluar si conviene el crate `geojson` o un struct
-/// propio — decision de esa fase, no de esta).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SubdivisionResult {
@@ -148,8 +118,6 @@ pub struct RoundaboutParams {
     pub layer_id: Option<String>,
 }
 
-/// Espeja `RoundaboutGeometry` (roundaboutEngine.ts) — anillos ya
-/// resueltos, listos para pintar/exportar.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RoundaboutGeometry {
@@ -159,9 +127,6 @@ pub struct RoundaboutGeometry {
     pub center_axis: Vec<Pt>,
 }
 
-/// Espeja `Street` (store/entities/streetStore.ts). Se define aca desde ya
-/// (aunque recien se use a partir de Fase 2.3, union de red vial) porque es
-/// un tipo de dominio compartido, no una particularidad de un modulo.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Street {
@@ -181,10 +146,6 @@ pub struct Street {
 mod tests {
     use super::*;
 
-    /// Fija el contrato de serializacion: un `Pt` tiene que viajar como
-    /// array JSON de 2 numeros, no como objeto `{"0": x, "1": y}`. Test de
-    /// regresion — si algun cambio de serde/versionado lo rompe, esto
-    /// avisa antes de que se note del lado TS.
     #[test]
     fn pt_serializa_como_array_json() {
         let p: Pt = (1.5, -2.25);
@@ -209,12 +170,6 @@ mod tests {
         let json = serde_json::to_string(&CornerMode::None).unwrap();
         assert_eq!(json, "\"none\"");
     }
-
-    /// SubdivisionOptions con solo `method` fijado tiene que serializar los
-    /// opcionales como `null`, igual que TS con campos `undefined` — no se
-    /// omiten (a diferencia de `error` en SubdivisionResult, que si usa
-    /// `skip_serializing_if`). Esto importa porque el lado TS de
-    /// `SubdivisionOptions` no marca esos campos como omitibles.
     #[test]
     fn subdivision_options_minimas_serializan_opcionales_como_null() {
         let opts = SubdivisionOptions {
