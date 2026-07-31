@@ -7,6 +7,7 @@ pub mod sanitize;
 pub mod roundabout;
 pub mod roads;
 pub mod subdivision;
+pub mod subdivision_cabecera_cuerpo;
 pub mod boolean_ops;
 
 pub use error::{GeoError, GeoResult};
