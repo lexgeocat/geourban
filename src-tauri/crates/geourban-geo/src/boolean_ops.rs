@@ -1,21 +1,516 @@
-#[cfg(feature = "geos-backend")]
+#![cfg(feature = "geos-backend")]
+
+use std::time::Instant;
+
+use geos::{CoordDimensions, CoordSeq, Geom, Geometry, GeometryTypes};
+use serde::Serialize;
+
+use crate::math::orient_ring_ccw;
+use crate::roads::{
+    build_road_network_rings, build_road_only_rings, round_ring_reflex, ExtraM, ForceTreat,
+};
+use crate::sanitize::{sanitize_ring, sanitize_rings, SanitizeRingOptions};
+use crate::types::{CornerMode, Pt, RoundaboutParams, Street};
+
+// ─── Constantes de seguridad (mismos valores que roadNetworkNet.ts) ────
+
+/// <- `MAX_UNION_POINTS` (roadNetworkNet.ts).
+pub const MAX_UNION_POINTS: usize = 15_000;
+/// <- `MAX_UNION_SHAPES` (roadNetworkNet.ts).
+pub const MAX_UNION_SHAPES: usize = 800;
+/// <- `UNION_TIME_WARNING_MS` (roadNetworkNet.ts).
+pub const UNION_TIME_WARNING_MS: u64 = 300;
+/// <- `UNION_PRECISION` (roadNetworkNet.ts) / `ROAD_UNION_PRECISION` (geoOperations.ts).
+const UNION_PRECISION: f64 = 1e6;
+
+fn round_for_union(v: f64) -> f64 {
+    (v * UNION_PRECISION).round() / UNION_PRECISION
+}
+
+fn round_ring_for_union(ring: &[Pt]) -> Vec<Pt> {
+    ring.iter().map(|&(x, y)| (round_for_union(x), round_for_union(y))).collect()
+}
+
+fn close_ring(ring: &[Pt]) -> Vec<Pt> {
+    if ring.is_empty() {
+        return ring.to_vec();
+    }
+    let f = ring[0];
+    let l = *ring.last().unwrap();
+    if (f.0 - l.0).abs() > 1e-9 || (f.1 - l.1).abs() > 1e-9 {
+        let mut out = ring.to_vec();
+        out.push(f);
+        out
+    } else {
+        ring.to_vec()
+    }
+}
+
+// ─── Conversión Pt <-> GEOS ─────────────────────────────────────────────
+
+fn ring_to_linear_ring(ring: &[Pt]) -> Result<Geometry, geos::Error> {
+    let closed = close_ring(ring);
+    let n = closed.len();
+    let mut cs = CoordSeq::new(n as u32, CoordDimensions::TwoD)?;
+    for (i, &(x, y)) in closed.iter().enumerate() {
+        cs.set_x(i, x)?;
+        cs.set_y(i, y)?;
+    }
+    Geometry::create_linear_ring(cs)
+}
+
+/// Construye un polígono GEOS a partir de un único anillo (sin huecos).
+fn ring_to_polygon(ring: &[Pt]) -> Result<Geometry, geos::Error> {
+    let shell = ring_to_linear_ring(ring)?;
+    Geometry::create_polygon(shell, vec![])
+}
+
+fn rings_to_polygon(rings: &[Vec<Pt>]) -> Result<Geometry, geos::Error> {
+    let shell = ring_to_linear_ring(&rings[0])?;
+    let mut holes = Vec::with_capacity(rings.len().saturating_sub(1));
+    for hole in rings.iter().skip(1) {
+        holes.push(ring_to_linear_ring(hole)?);
+    }
+    Geometry::create_polygon(shell, holes)
+}
+
+fn coord_seq_to_ring(cs: &CoordSeq) -> Result<Vec<Pt>, geos::Error> {
+    let n = cs.size()? as usize;
+    let mut out = Vec::with_capacity(n);
+    for i in 0..n {
+        out.push((cs.get_x(i)?, cs.get_y(i)?));
+    }
+    Ok(out)
+}
+
+fn polygon_to_rings(poly: &Geometry) -> Result<Vec<Vec<Pt>>, geos::Error> {
+    let mut rings = Vec::new();
+    let exterior = poly.get_exterior_ring()?;
+    rings.push(coord_seq_to_ring(&exterior.get_coord_seq()?)?);
+
+    let n_holes = poly.get_num_interior_rings()? as usize;
+    for i in 0..n_holes {
+        let hole = poly.get_interior_ring_n(i as u32)?;
+        rings.push(coord_seq_to_ring(&hole.get_coord_seq()?)?);
+    }
+    Ok(rings)
+}
+
+fn split_into_polygon_geoms(geom: &Geometry) -> Result<Vec<Geometry>, geos::Error> {
+    let geom_type = geom.geometry_type()?;
+    match geom_type {
+        GeometryTypes::Polygon => {
+            if geom.is_empty()? {
+                Ok(Vec::new())
+            } else {
+                let rings = polygon_to_rings(geom)?;
+                Ok(vec![rings_to_polygon(&rings)?])
+            }
+        }
+        GeometryTypes::MultiPolygon | GeometryTypes::GeometryCollection => {
+            let n = geom.get_num_geometries()? as usize;
+            let mut out = Vec::with_capacity(n);
+            for i in 0..n {
+                let part = geom.get_geometry_n(i)?;
+                if part.geometry_type()? == GeometryTypes::Polygon && !part.is_empty()? {
+                    let rings = polygon_to_rings(&part)?;
+                    out.push(rings_to_polygon(&rings)?);
+                }
+            }
+            Ok(out)
+        }
+        _ => Ok(Vec::new()),
+    }
+}
+
+fn geometry_to_polygons(geom: &Geometry) -> Result<Vec<Vec<Vec<Pt>>>, geos::Error> {
+    let geom_type = geom.geometry_type()?;
+    match geom_type {
+        GeometryTypes::Polygon => {
+            if geom.is_empty()? {
+                Ok(Vec::new())
+            } else {
+                Ok(vec![polygon_to_rings(geom)?])
+            }
+        }
+        GeometryTypes::MultiPolygon | GeometryTypes::GeometryCollection => {
+            let n = geom.get_num_geometries()? as usize;
+            let mut out = Vec::with_capacity(n);
+            for i in 0..n {
+                let part = geom.get_geometry_n(i)?;
+                if part.geometry_type()? == GeometryTypes::Polygon && !part.is_empty()? {
+                    out.push(polygon_to_rings(&part)?);
+                }
+            }
+            Ok(out)
+        }
+        _ => Ok(Vec::new()),
+    }
+}
+
+// ─── Unión con reintento por auto-limpieza ─────────────────────────────
+
+fn union_polygons_with_retry(polygons: &[Vec<Vec<Pt>>], warn_prefix: &str) -> Option<Geometry> {
+    let base: Vec<Geometry> =
+        polygons.iter().filter_map(|rings| rings_to_polygon(rings).ok()).collect();
+    if base.is_empty() {
+        return None;
+    }
+
+    match unary_union_of_geoms(base) {
+        Ok(unioned) => Some(unioned),
+        Err(err1) => {
+            log::warn!(
+                "{warn_prefix}: unión directa falló, reintentando con auto-limpieza por polígono individual. {err1:?}"
+            );
+
+            let retry_base: Vec<Geometry> =
+                polygons.iter().filter_map(|rings| rings_to_polygon(rings).ok()).collect();
+
+            let mut self_cleaned: Vec<Geometry> = Vec::new();
+            for g in &retry_base {
+                match g.unary_union() {
+                    Ok(cleaned) => match split_into_polygon_geoms(&cleaned) {
+                        Ok(parts) => self_cleaned.extend(parts),
+                        Err(err_split) => log::warn!(
+                            "{warn_prefix}: no se pudieron separar los componentes de un polígono auto-limpiado — se descarta. {err_split:?}"
+                        ),
+                    },
+                    Err(err_self) => log::warn!(
+                        "{warn_prefix}: auto-limpieza de un polígono individual también falló — se descarta. {err_self:?}"
+                    ),
+                }
+            }
+
+            if self_cleaned.is_empty() {
+                return None;
+            }
+
+            match unary_union_of_geoms(self_cleaned) {
+                Ok(unioned) => Some(unioned),
+                Err(err2) => {
+                    log::warn!(
+                        "{warn_prefix}: unión falló sin recuperación (revisá si alguna vía tiene una curva muy cerrada para su ancho/offset): {err2:?}"
+                    );
+                    None
+                }
+            }
+        }
+    }
+}
+
+fn unary_union_of_geoms(polys: Vec<Geometry>) -> Result<Geometry, geos::Error> {
+    let mut it = polys.into_iter();
+    let first = it.next().expect("unary_union_of_geoms: llamar solo con `polys` no vacío");
+    match it.next() {
+        None => first.unary_union(),
+        Some(second) => {
+            let mut rest = vec![first, second];
+            rest.extend(it);
+            let collection = Geometry::create_geometry_collection(rest)?;
+            collection.unary_union()
+        }
+    }
+}
+
+// ─── unionRings (roadNetworkNet.ts) ─────────────────────────────────────
+
+pub fn union_rings(rings: &[Vec<Pt>], context: &str) -> Vec<Vec<Vec<Pt>>> {
+    if rings.is_empty() {
+        return Vec::new();
+    }
+
+    let sanitized = sanitize_rings(rings, SanitizeRingOptions::default(), context);
+    if sanitized.is_empty() {
+        return Vec::new();
+    }
+
+    let total_points: usize = sanitized.iter().map(|r| r.len()).sum();
+    if total_points > MAX_UNION_POINTS || sanitized.len() > MAX_UNION_SHAPES {
+        log::warn!(
+            "roadNetworkNet: unión omitida — {} anillo(s) / {} punto(s) totales supera el límite de seguridad \
+             (shapes: {MAX_UNION_SHAPES}, points: {MAX_UNION_POINTS}). Se dibuja cada calle sin fusionar. \
+             Revisá geometría de vías por segmentos degenerados o duplicados.",
+            sanitized.len(),
+            total_points,
+        );
+        return sanitized.into_iter().map(|r| vec![r]).collect();
+    }
+
+    let rounded_polys: Vec<Vec<Vec<Pt>>> = sanitized
+        .iter()
+        .filter(|r| r.len() >= 3)
+        .map(|r| vec![round_ring_for_union(r)])
+        .collect();
+
+    let t0 = Instant::now();
+    let unioned = union_polygons_with_retry(&rounded_polys, "roadNetworkNet");
+    let elapsed_ms = t0.elapsed().as_secs_f64() * 1000.0;
+    if elapsed_ms > UNION_TIME_WARNING_MS as f64 {
+        log::warn!(
+            "roadNetworkNet: unión de {} polígono(s) ({} pts) tardó {:.0}ms. Si esto se repite seguido, es indicio \
+             de geometría degenerada o de una red vial demasiado densa.",
+            rounded_polys.len(),
+            total_points,
+            elapsed_ms,
+        );
+    }
+
+    match unioned.and_then(|g| geometry_to_polygons(&g).ok()) {
+        Some(polys) if !polys.is_empty() => polys,
+        _ => sanitized.into_iter().map(|r| vec![r]).collect(),
+    }
+}
+
+// ─── robustUnionRoadNetwork + computeManzanos (geoOperations.ts) ───────
+
+pub fn robust_union_road_network(road_network: &[Vec<Vec<Pt>>]) -> Option<Geometry> {
+    let mut polys: Vec<Vec<Vec<Pt>>> = Vec::new();
+
+    for rings in road_network {
+        if rings.is_empty() {
+            continue;
+        }
+        let mut sanitized_rings: Vec<Vec<Pt>> = Vec::new();
+        for (ring_idx, ring) in rings.iter().enumerate() {
+            let ctx = if ring_idx == 0 {
+                "geoOperations.robustUnionRoadNetwork.outer"
+            } else {
+                "geoOperations.robustUnionRoadNetwork.hole"
+            };
+            if let Some(clean) = sanitize_ring(Some(ring.as_slice()), SanitizeRingOptions::default(), ctx) {
+                sanitized_rings.push(clean);
+            }
+        }
+        if sanitized_rings.is_empty() {
+            continue;
+        }
+        let rounded: Vec<Vec<Pt>> = sanitized_rings.iter().map(|r| round_ring_for_union(r)).collect();
+        if rounded[0].len() >= 4 {
+            polys.push(rounded);
+        }
+    }
+
+    if polys.is_empty() {
+        return None;
+    }
+
+    let total_points: usize = polys.iter().map(|p| p.iter().map(|r| r.len()).sum::<usize>()).sum();
+    let t0 = Instant::now();
+    let result = union_polygons_with_retry(&polys, "computeManzanos");
+    let elapsed_ms = t0.elapsed().as_secs_f64() * 1000.0;
+    if elapsed_ms > UNION_TIME_WARNING_MS as f64 {
+        log::warn!(
+            "computeManzanos: unión de red vial ({} polígono(s), {} pts) tardó {:.0}ms — si esto se repite seguido, \
+             revisá geometría de vías por segmentos degenerados o duplicados.",
+            polys.len(),
+            total_points,
+            elapsed_ms,
+        );
+    }
+    result
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ManzanoFragment {
+    /// <- `origParcelIndex`.
+    pub orig_parcel_index: usize,
+    /// Anillos del polígono resultante: `rings[0]` = exterior, resto = huecos.
+    pub rings: Vec<Vec<Pt>>,
+}
+
+/// <- `computeManzanos` (src/workers/geoOperations.ts).
+pub fn compute_manzanos(parcels: &[Vec<Vec<Pt>>], road_network: &[Vec<Pt>]) -> Vec<ManzanoFragment> {
+    let road_network_polys: Vec<Vec<Vec<Pt>>> = road_network
+        .iter()
+        .filter(|r| r.len() >= 3)
+        .map(|r| vec![r.clone()])
+        .collect();
+    let road_union = robust_union_road_network(&road_network_polys);
+
+    let mut out: Vec<ManzanoFragment> = Vec::new();
+
+    for (index, parcel_rings) in parcels.iter().enumerate() {
+        if parcel_rings.is_empty() {
+            continue;
+        }
+        let parcel_geom = match rings_to_polygon(parcel_rings) {
+            Ok(g) => g,
+            Err(err) => {
+                log::warn!("computeManzanos: parcela {index} con geometría inválida, se descarta. {err:?}");
+                continue;
+            }
+        };
+
+        let diff_geom = match &road_union {
+            Some(ru) => match parcel_geom.difference(ru) {
+                Ok(d) => d,
+                Err(err) => {
+                    log::warn!("computeManzanos: difference() falló para la parcela {index}: {err:?}");
+                    continue;
+                }
+            },
+            None => parcel_geom,
+        };
+
+        if diff_geom.is_empty().unwrap_or(true) {
+            continue;
+        }
+
+        let sub_polygons = match split_into_polygon_geoms(&diff_geom) {
+            Ok(v) => v,
+            Err(err) => {
+                log::warn!(
+                    "computeManzanos: no se pudieron separar los sub-polígonos de la parcela {index}: {err:?}"
+                );
+                continue;
+            }
+        };
+
+        for sub in &sub_polygons {
+            if sub.is_empty().unwrap_or(true) {
+                continue;
+            }
+            let area = sub.area().unwrap_or(0.0);
+            if area < 0.5 {
+                continue;
+            }
+            match polygon_to_rings(sub) {
+                Ok(rings) => out.push(ManzanoFragment { orig_parcel_index: index, rings }),
+                Err(err) => log::warn!(
+                    "computeManzanos: no se pudieron extraer los anillos de un sub-polígono de la parcela {index}: {err:?}"
+                ),
+            }
+        }
+    }
+
+    out
+}
+
+// ─── computeRoadNetworkNet (roadNetworkNet.ts) ─────────────────────────
+
+#[derive(Debug, Clone, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RoadNetworkNet {
+    pub road: Vec<Vec<Vec<Pt>>>,
+    pub outer: Vec<Vec<Vec<Pt>>>,
+}
+
+fn dist_to_segment(p: Pt, a: Pt, b: Pt) -> f64 {
+    let dx = b.0 - a.0;
+    let dy = b.1 - a.1;
+    let len_sq = dx * dx + dy * dy;
+    if len_sq < 1e-9 {
+        return (p.0 - a.0).hypot(p.1 - a.1);
+    }
+    let t = (((p.0 - a.0) * dx + (p.1 - a.1) * dy) / len_sq).clamp(0.0, 1.0);
+    (p.0 - (a.0 + t * dx)).hypot(p.1 - (a.1 + t * dy))
+}
+
+/// <- `makeSideExtraProbe` (roadNetworkNet.ts), ya evaluado en un punto.
+fn side_extra_at(pt: Pt, streets: &[Street], roundabouts: &[RoundaboutParams]) -> f64 {
+    let mut best = 0.0_f64;
+
+    for s in streets {
+        let sw = s.side_width_m.max(0.0);
+        if sw <= best {
+            continue;
+        }
+        let mut pts = vec![s.start];
+        if let Some(wp) = &s.waypoints {
+            pts.extend(wp.iter().copied());
+        }
+        pts.push(s.end);
+        let reach = s.width_m / 2.0 + sw + 3.0;
+        for i in 0..pts.len().saturating_sub(1) {
+            if dist_to_segment(pt, pts[i], pts[i + 1]) < reach {
+                best = best.max(sw);
+                break;
+            }
+        }
+    }
+
+    for rb in roundabouts {
+        let sw = rb.sidewalk_width_m.max(0.0);
+        if sw <= best {
+            continue;
+        }
+        let d = (pt.0 - rb.center.0).hypot(pt.1 - rb.center.1);
+        if (d - (rb.radius_m + rb.road_width_m / 2.0)).abs() < rb.road_width_m + sw + 3.0 {
+            best = best.max(sw);
+        }
+    }
+
+    best
+}
+
+fn process_polygons(
+    polygons: &[Vec<Vec<Pt>>],
+    extra: &dyn Fn(Pt) -> f64,
+    corner_mode: CornerMode,
+) -> Vec<Vec<Vec<Pt>>> {
+    polygons
+        .iter()
+        .map(|rings| {
+            rings
+                .iter()
+                .enumerate()
+                .map(|(idx, ring)| {
+                    let oriented = orient_ring_ccw(ring);
+                    round_ring_reflex(&oriented, ExtraM::Fn(extra), idx > 0, corner_mode, ForceTreat::Fixed(false))
+                })
+                .collect()
+        })
+        .collect()
+}
+
+pub fn compute_road_network_net(
+    streets: &[Street],
+    roundabouts: &[RoundaboutParams],
+    corner_mode: CornerMode,
+) -> RoadNetworkNet {
+    let road_rings_raw = build_road_only_rings(streets, roundabouts);
+    let outer_rings_raw = build_road_network_rings(streets, roundabouts);
+
+    let road_union = union_rings(&road_rings_raw, "roadNetworkNet.unionRings.road");
+    let outer_union = union_rings(&outer_rings_raw, "roadNetworkNet.unionRings.outer");
+
+    let side_extra = |pt: Pt| side_extra_at(pt, streets, roundabouts);
+    let zero_extra = |_pt: Pt| 0.0_f64;
+
+    RoadNetworkNet {
+        road: process_polygons(&road_union, &side_extra, corner_mode),
+        outer: process_polygons(&outer_union, &zero_extra, corner_mode),
+    }
+}
+
+// ─── Smoke tests (Fase 2.0, preservado + extendido) ─────────────────────
+
+#[cfg(test)]
 mod geos_smoke {
     use geos::{Geom, Geometry};
 
-    #[cfg(test)]
     #[test]
     fn geos_union_basico() {
-        let a = Geometry::new_from_wkt("POLYGON((0 0, 10 0, 10 10, 0 10, 0 0))")
-            .expect("wkt valido");
-        let b = Geometry::new_from_wkt("POLYGON((5 0, 15 0, 15 10, 5 10, 5 0))")
-            .expect("wkt valido");
+        let a = Geometry::new_from_wkt("POLYGON((0 0, 10 0, 10 10, 0 10, 0 0))").expect("wkt valido");
+        let b = Geometry::new_from_wkt("POLYGON((5 0, 15 0, 15 10, 5 10, 5 0))").expect("wkt valido");
 
         let union = a.union(&b).expect("la union deberia resolver sin error");
         let area = union.area().expect("area deberia ser calculable");
 
-        assert!(
-            (area - 150.0).abs() < 1e-6,
-            "area de union esperada 150.0, obtenida {area}"
-        );
+        assert!((area - 150.0).abs() < 1e-6, "area de union esperada 150.0, obtenida {area}");
+    }
+
+    #[test]
+    fn geos_difference_basico() {
+        let a = Geometry::new_from_wkt("POLYGON((0 0, 10 0, 10 10, 0 10, 0 0))").expect("wkt valido");
+        let b = Geometry::new_from_wkt("POLYGON((4 -5, 6 -5, 6 15, 4 15, 4 -5))").expect("wkt valido");
+
+        let diff = a.difference(&b).expect("la diferencia deberia resolver sin error");
+        let area = diff.area().expect("area deberia ser calculable");
+
+        // Cuadrado de 10x10 (100) menos una franja vertical de 2x10 (20) = 80.
+        assert!((area - 80.0).abs() < 1e-6, "area de diferencia esperada 80.0, obtenida {area}");
     }
 }
