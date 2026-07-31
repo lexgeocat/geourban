@@ -1,3 +1,6 @@
+[workspace]
+members = ["crates/geourban-geo"]
+
 [package]
 name = "geourban"
 version = "0.1.0"
@@ -25,3 +28,8 @@ tauri = { version = "2.11.3", features = [] }
 tauri-plugin-log = "2"
 rusqlite = { version = "0.31", features = ["bundled"] }
 base64 = "0.22"
+
+# Fase 2.0 — motor de geometria nativo (auditoria-para-mejora.md, §Fase 2).
+# Sin la feature "geos-backend" activada (default), compila en cualquier
+# maquina sin GEOS instalado — esa feature recien se activa en Fase 2.3.
+geourban-geo = { path = "crates/geourban-geo" }

@@ -1,3 +1,4 @@
+mod geo_bridge;
 mod project_store;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -18,6 +19,7 @@ pub fn run() {
       project_store::project_load,
       project_store::project_list,
       project_store::project_delete,
+      geo_bridge::geo_engine_version,
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");
