@@ -1,6 +1,7 @@
 use serde::Serialize;
 use serde_json::{json, Map, Value};
 
+use crate::geojson::{ring_from_json, ring_to_json};
 use crate::math::poly_area;
 use crate::types::Pt;
 
@@ -252,36 +253,19 @@ pub fn sanitize_rings(rings: &[Vec<Pt>], opts: SanitizeRingOptions, context: &st
         .collect()
 }
 
-fn value_to_ring(v: &Value) -> Option<Vec<Pt>> {
-    let arr = v.as_array()?;
-    let mut out = Vec::with_capacity(arr.len());
-    for coord in arr {
-        let c = coord.as_array()?;
-        if c.len() < 2 {
-            return None;
-        }
-        out.push((c[0].as_f64()?, c[1].as_f64()?));
-    }
-    Some(out)
-}
-
-fn ring_to_value(ring: &[Pt]) -> Value {
-    Value::Array(ring.iter().map(|p| json!([p.0, p.1])).collect())
-}
-
 /// <- `sanitizePolygonRings`
 fn sanitize_polygon_rings(coords: &Value, context: &str, opts: SanitizeRingOptions) -> Option<Vec<Vec<Pt>>> {
     let rings_val = coords.as_array()?;
     if rings_val.is_empty() {
         return None;
     }
-    let outer_ring = value_to_ring(&rings_val[0])?;
+    let outer_ring = ring_from_json(&rings_val[0])?;
     let outer = sanitize_ring(Some(outer_ring.as_slice()), opts, &format!("{context}.outer"))?;
 
     let mut rings = vec![outer];
     for hole_val in &rings_val[1..] {
         // Un hueco degenerado se descarta solo — no invalida el contorno exterior.
-        if let Some(hole_ring) = value_to_ring(hole_val) {
+        if let Some(hole_ring) = ring_from_json(hole_val) {
             if let Some(hole) = sanitize_ring(Some(hole_ring.as_slice()), opts, &format!("{context}.hole")) {
                 rings.push(hole);
             }
@@ -299,7 +283,7 @@ fn sanitize_geometry(geom: &Value, context: &str, opts: SanitizeRingOptions) -> 
             let rings = sanitize_polygon_rings(coords, context, opts)?;
             Some(json!({
                 "type": "Polygon",
-                "coordinates": rings.iter().map(|r| ring_to_value(r)).collect::<Vec<_>>(),
+                "coordinates": rings.iter().map(|r| ring_to_json(r)).collect::<Vec<_>>(),
             }))
         }
         "MultiPolygon" => {
@@ -317,7 +301,7 @@ fn sanitize_geometry(geom: &Value, context: &str, opts: SanitizeRingOptions) -> 
                 "type": "MultiPolygon",
                 "coordinates": polys
                     .iter()
-                    .map(|p| Value::Array(p.iter().map(|r| ring_to_value(r)).collect()))
+                    .map(|p| Value::Array(p.iter().map(|r| ring_to_json(r)).collect()))
                     .collect::<Vec<_>>(),
             }))
         }

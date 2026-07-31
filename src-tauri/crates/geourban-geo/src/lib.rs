@@ -1,11 +1,12 @@
 pub mod error;
 pub mod types;
 
-pub mod math; 
-pub mod sanitize; 
-pub mod roundabout; 
-pub mod roads; 
-pub mod subdivision; 
+pub mod geojson;
+pub mod math;
+pub mod sanitize;
+pub mod roundabout;
+pub mod roads;
+pub mod subdivision;
 pub mod boolean_ops;
 
 pub use error::{GeoError, GeoResult};

@@ -124,6 +124,23 @@ pub fn path_length(pts: &[Pt]) -> f64 {
     total
 }
 
+pub fn orient_ring_ccw(ring: &[Pt]) -> Vec<Pt> {
+    let n = ring.len();
+    let mut area = 0.0;
+    for i in 0..n {
+        let p = ring[i];
+        let q = ring[(i + 1) % n];
+        area += p.0 * q.1 - q.0 * p.1;
+    }
+    if area >= 0.0 {
+        ring.to_vec()
+    } else {
+        let mut rev = ring.to_vec();
+        rev.reverse();
+        rev
+    }
+}
+
 fn side(pt: Pt, lp1: Pt, lp2: Pt) -> f64 {
     (lp2.0 - lp1.0) * (pt.1 - lp1.1) - (lp2.1 - lp1.1) * (pt.0 - lp1.0)
 }
