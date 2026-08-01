@@ -44,6 +44,7 @@
     "@tauri-apps/cli": "^2.11.4",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "@types/node": "^20.14.10",
     "@vitejs/plugin-react": "^4.3.0",
     "autoprefixer": "^10.5.2",
     "eslint": "^10.6.0",

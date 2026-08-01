@@ -116,6 +116,39 @@ function readAllGeometries(
 }
 const ROAD_UNION_PRECISION = 1e6;
 
+// OverlayOp.difference de JSTS no tiene cota propia de complejidad — con
+// topología casi-degenerada (calles muy anchas/superpuestas redondeadas a
+// 1e6) puede volverse extremadamente lenta. No hay forma de "timeout-earla"
+// desde afuera porque es síncrona; la única defensa real es no llamarla
+// sobre geometría combinada demasiado compleja, y capturar cualquier
+// excepción que igual tire (geometría inválida) sin tumbar el pipeline.
+const MANZANOS_DIFF_MAX_COMPLEXITY = 4000;
+
+function geometryComplexity(geom: any): number {
+  try {
+    return geom?.getNumPoints?.() ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
+function safeDifference(geom: any, roadUnion: any, parcelIndex: number): any {
+  const complexity = geometryComplexity(geom) + geometryComplexity(roadUnion);
+  if (complexity > MANZANOS_DIFF_MAX_COMPLEXITY) {
+    console.warn(
+      `computeManzanos: parcela ${parcelIndex} omitida de la diferencia — complejidad combinada ` +
+      `${complexity} supera el límite de seguridad (${MANZANOS_DIFF_MAX_COMPLEXITY}). Se conserva intacta.`,
+    );
+    return geom;
+  }
+  try {
+    return OverlayOp.difference(geom, roadUnion);
+  } catch (err) {
+    console.warn(`computeManzanos: OverlayOp.difference falló para la parcela ${parcelIndex} — se conserva intacta.`, err);
+    return geom;
+  }
+}
+
 function robustUnionRoadNetwork(roadNetwork: FeatureCollection): any {
   const polys: ClipPolygon[] = [];
   for (const f of roadNetwork.features) {
@@ -183,7 +216,7 @@ export function computeManzanos(
   const outFeatures: GeoJsonFeature[] = [];
 
   for (const { geom, index } of parcelItems) {
-    const diffGeom = roadUnion ? OverlayOp.difference(geom, roadUnion) : geom;
+    const diffGeom = roadUnion ? safeDifference(geom, roadUnion, index) : geom;
     if (!diffGeom || diffGeom.isEmpty?.()) continue;
 
     const geomType = diffGeom.getGeometryType?.();

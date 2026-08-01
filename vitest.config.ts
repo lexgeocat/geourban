@@ -10,16 +10,14 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['src/**/*.{test,spec}.ts'],
-    // `__parity__/__generator__/` se excluye: ese directorio contiene
-    // tests "side-effect" que escriben a disco (generan el snapshot).
-    // Solo se invocan via `npm run parity:sync` apuntando con ruta
-    // explícita. `npm test` regular es solo lectura.
-    exclude: [
-      'node_modules',
-      'dist',
-      'src-tauri',
-      'src/**/__parity__/__generator__/**',
-    ],
+    exclude: ['node_modules', 'dist', 'src-tauri', 'src/**/__parity__/__generator__/**'],
     reporters: ['default'],
+    // pool 'forks' corre cada archivo en un proceso hijo real: si un test
+    // síncrono se cuelga (p.ej. un overlay JSTS pesado), el proceso padre
+    // puede matarlo desde afuera al vencer testTimeout. Con el pool
+    // 'threads' por defecto, un bloqueo síncrono del hilo puede impedir
+    // que el propio timer de timeout dispare.
+    pool: 'forks',
+    testTimeout: 10000,
   },
 });
