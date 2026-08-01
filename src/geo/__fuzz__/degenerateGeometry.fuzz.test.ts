@@ -1,11 +1,18 @@
+// ─────────────────────────────────────────────────────────────────────
 // src/geo/__fuzz__/degenerateGeometry.fuzz.test.ts
+// (archivo completo — reemplaza al existente)
 //
-// (archivo completo — reemplaza al existente. Único cambio funcional:
-// la sección "computeManzanos" usa computeManzanosGuarded en vez de
-// invocar computeManzanos directo, para no depender únicamente del
-// filtro ad-hoc de un solo par de calles que tenía el harness original.)
+// Único cambio funcional respecto a la versión anterior: la sección
+// "computeManzanos" corre cada caso en un worker_thread real con
+// timeout duro (runInWorkerWithTimeout). Si un caso cuelga JSTS/
+// polygon-clipping, el worker se mata desde afuera y el test FALLA con
+// diagnóstico (en vez de colgar el proceso entero hasta que el watchdog
+// externo lo mate a los 90s+ sin decir cuál caso fue el culpable).
+// ─────────────────────────────────────────────────────────────────────
 
 import { describe, expect, it } from 'vitest';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
 import { sanitizeRing, sanitizeRings } from '../sanitizeRing';
 import { subdivideManzano, type ManzanoLoteMethod } from '../subdivision/subdivisionAlgorithms';
 import { computeRoadNetworkNet, type RoadNetworkNet } from '../roads/roadNetworkNet';
@@ -13,7 +20,12 @@ import { matchFragmentsToMembers } from '../roads/fragmentReconciliation';
 import { polyArea, type Pt, type LotResult } from '../math/polygonEngine';
 import type { Street } from '../../store/entities/streetStore';
 import type { CornerMode } from '../roads/ringFillet';
-import { computeManzanosGuarded, _totalAreaOf } from './computeManzanosGuarded';
+import { runInWorkerWithTimeout } from './workerTimeoutHarness';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const COMPUTE_MANZANOS_ENTRY = path.join(__dirname, 'computeManzanosWorkerEntry.ts');
+const COMPUTE_MANZANOS_TIMEOUT_MS = 5_000;
 
 function mulberry32(seed: number): () => number {
   let a = seed >>> 0;
@@ -311,6 +323,25 @@ describe('fuzz: matchFragmentsToMembers nunca lanza y respeta asignación 1:1', 
   }
 });
 
+// ─────────────────────────────────────────────────────────────────────
+// Reemplazo del bloque final de degenerateGeometry.fuzz.test.ts
+// (el describe 'fuzz: computeManzanos...'), evitando genéricos
+// multilínea inline que rompen el parser de esbuild.
+// ─────────────────────────────────────────────────────────────────────
+
+interface ComputeManzanosWorkerInput {
+  parcelRing: Pt[];
+  streets: Street[];
+}
+
+interface ComputeManzanosWorkerOutput {
+  fragmentCount: number;
+  totalArea: number;
+  hasNonFinite: boolean;
+  skipped: boolean;
+  reason: string | null;
+}
+
 describe('fuzz: computeManzanos nunca lanza, nunca se cuelga y no genera más área de la que entra', () => {
   function safeRandomStreets(count: number, bbox: number, parcelSize: number, depth = 0): Street[] {
     const MAX_ATTEMPTS = 20;
@@ -326,9 +357,6 @@ describe('fuzz: computeManzanos nunca lanza, nunca se cuelga y no genera más á
         streets.push(street);
       }
       if (streets.length < 2) return streets;
-      // Chequeo entre TODOS los pares, no solo el primero — el harness
-      // original solo comparaba streets[0] vs streets[1], dejando pasar
-      // combinaciones riesgosas cuando count > 2.
       let allAnglesOk = true;
       for (let i = 0; i < streets.length && allAnglesOk; i++) {
         for (let j = i + 1; j < streets.length; j++) {
@@ -355,18 +383,35 @@ describe('fuzz: computeManzanos nunca lanza, nunca se cuelga y no genera más á
     const streetCount = irand(1, 2);
     const streets = safeRandomStreets(streetCount, 80, parcelSize);
 
-    it(`computeManzanos fuzz #${i} (parcela ${parcelArea.toFixed(0)}m², ${streets.length} calles)`, () => {
-      let out: ReturnType<typeof computeManzanosGuarded> | null = null;
-      expect(() => {
-        out = computeManzanosGuarded(parcelRing, streets);
-      }).not.toThrow();
+    it(
+      `computeManzanos fuzz #${i} (parcela ${parcelArea.toFixed(0)}m², ${streets.length} calles)`,
+      async () => {
+        const input: ComputeManzanosWorkerInput = { parcelRing, streets };
+        const res = await runInWorkerWithTimeout<ComputeManzanosWorkerInput, ComputeManzanosWorkerOutput>(
+          COMPUTE_MANZANOS_ENTRY,
+          input,
+          COMPUTE_MANZANOS_TIMEOUT_MS,
+        );
 
-      const totalArea = _totalAreaOf(out!.result);
-      for (const f of out!.result.features) {
-        if (f.geometry?.type !== 'Polygon') continue;
-        expect(hasNonFinite(f.geometry.coordinates[0] as Pt[])).toBe(false);
-      }
-      expect(totalArea).toBeLessThanOrEqual(parcelArea * 1.01 + 1);
-    });
+        if (res.status === 'timeout') {
+          throw new Error(
+            `computeManzanos colgó (>${COMPUTE_MANZANOS_TIMEOUT_MS}ms).\n` +
+            `parcelRing=${JSON.stringify(parcelRing)}\n` +
+            `streets=${JSON.stringify(streets)}\n` +
+            'Caso patológico real para JSTS/polygon-clipping — revisar computeManzanosGuarded ' +
+            '(pairIsRisky/makeStreetSetOverlaySafe) o los límites de robustUnionRoadNetwork/safeDifference ' +
+            'en geoOperations.ts.',
+          );
+        }
+        if (res.status === 'error') {
+          throw new Error(`computeManzanos lanzó dentro del worker: ${res.error}`);
+        }
+
+        const value = res.value as ComputeManzanosWorkerOutput;
+        expect(value.hasNonFinite).toBe(false);
+        expect(value.totalArea).toBeLessThanOrEqual(parcelArea * 1.01 + 1);
+      },
+      COMPUTE_MANZANOS_TIMEOUT_MS + 3_000,
+    );
   }
 });
