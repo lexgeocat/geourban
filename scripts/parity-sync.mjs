@@ -1,92 +1,122 @@
-// Sincroniza el snapshot de paridad TS <-> Rust.
+#!/usr/bin/env node
+// scripts/parity-sync.mjs
 //
-// Que hace:
-//   1) Ejecuta vitest apuntando solo al archivo generador
-//      (`src/geo/subdivision/__parity__/__generator__/buildSnapshot.test.ts`).
-//      Ese archivo esta excluido de `npm test` regular, asi que vitest
-//      no carga el reader de paridad (que fallaria con "snapshot ausente"
-//      y mataria el proceso).
-//   2) Espera a que vitest termine via el evento `close` del child process
-//      (no `spawnSync`, que sufria SIGTERM raro en Windows + PowerShell).
-//   3) Verifica que el snapshot se escribio y lo copia a la ruta de Rust.
+// Regenera el snapshot de paridad TS <-> Rust usado por:
+//   - src/geo/subdivision/__parity__/subdivisionCabeceraCuerpo.parity.test.ts
+//   - src-tauri/crates/geourban-geo/tests/parity_cabecera_cuerpo.rs
 //
-// Uso:
-//   npm run parity:sync
+// Pasos:
+//   1. Corre el test generador (buildSnapshot.test.ts) con una config de
+//      vitest dedicada (vitest.parity-sync.config.mjs), que lo incluye
+//      explícitamente sin depender del `exclude` del vitest.config.ts
+//      principal.
+//   2. Copia el `paritySnapshot.json` resultante a
+//      src-tauri/crates/geourban-geo/tests/fixtures/, donde lo lee
+//      `cargo test -p geourban-geo --test parity_cabecera_cuerpo`.
 //
-// Despues:
-//   npm test
-//   cargo test -p geourban-geo --test parity_cabecera_cuerpo
+// ─── Sobre el bug que este archivo reemplaza ───────────────────────────
+// La versión anterior invocaba `spawn('npx', [...])` directo. En Windows
+// esto revienta con `Error: spawn npx ENOENT` porque ahí `npx` no es un
+// ejecutable nativo sino un shim `npx.cmd`/`npx.ps1`, y
+// `child_process.spawn()` SIN `shell: true` no lo resuelve vía PATHEXT
+// (comportamiento documentado de Node en Windows — el mismo patrón de bug
+// afecta a cualquier spawn directo de `npm`/`yarn`/`npx` sin shell). Este
+// archivo lo evita en dos capas:
+//   (a) resuelve y ejecuta el binario local de vitest directamente
+//       (node_modules/.bin/vitest[.cmd]), sin pasar por npx en absoluto;
+//   (b) igual usa `shell: true` en el spawn — que es el fix real de fondo
+//       del bug — por si algún día hace falta caer al fallback de npx
+//       (p. ej. en un checkout sin `node_modules` todavía instalado).
 
-import { copyFileSync, existsSync, mkdirSync } from 'node:fs';
-import { spawn } from 'node:child_process';
-import { dirname, resolve } from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { existsSync, mkdirSync, copyFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const root = resolve(__dirname, '..');
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const ROOT = join(__dirname, '..');
 
-const tsSnapshot = resolve(
-  root,
-  'src/geo/subdivision/__parity__/paritySnapshot.json',
-);
-const rustFixtureDir = resolve(
-  root,
-  'src-tauri/crates/geourban-geo/tests/fixtures',
-);
-const rustSnapshot = resolve(rustFixtureDir, 'paritySnapshot.json');
+const VITEST_CONFIG = join(ROOT, 'vitest.parity-sync.config.mjs');
 
-const generatorPath = resolve(
-  root,
-  'src/geo/subdivision/__parity__/__generator__/buildSnapshot.test.ts',
-);
+const SRC_SNAPSHOT = join(ROOT, 'src', 'geo', 'subdivision', '__parity__', 'paritySnapshot.json');
+const DEST_DIR = join(ROOT, 'src-tauri', 'crates', 'geourban-geo', 'tests', 'fixtures');
+const DEST_SNAPSHOT = join(DEST_DIR, 'paritySnapshot.json');
 
-function runGenerator() {
-  return new Promise((resolveP, rejectP) => {
-    console.log('[parity:sync] Generando snapshot desde el motor TS (vitest)...');
-    const child = spawn(
-      'npx',
-      ['--no-install', 'vitest', 'run', generatorPath, '--reporter=basic'],
-      {
-        cwd: root,
-        stdio: 'inherit',
-        env: { ...process.env, NODE_OPTIONS: '' },
-      },
-    );
-    child.on('error', (err) => rejectP(err));
-    child.on('close', (code, signal) => {
-      if (signal) {
-        rejectP(new Error(`vitest termino por señal ${signal}`));
-        return;
-      }
-      if (code !== 0) {
-        rejectP(new Error(`vitest salio con codigo ${code}`));
-        return;
-      }
-      resolveP();
-    });
-  });
+/** Busca el binario local de `name` en node_modules/.bin — nunca toca PATH ni npx. */
+function resolveLocalBin(name) {
+  const binDir = join(ROOT, 'node_modules', '.bin');
+  const candidates =
+    process.platform === 'win32' ? [`${name}.cmd`, `${name}.ps1`, `${name}.exe`, name] : [name];
+  for (const candidate of candidates) {
+    const full = join(binDir, candidate);
+    if (existsSync(full)) return full;
+  }
+  return null;
 }
 
-async function main() {
-  await runGenerator();
+/**
+ * Corre `command args` mostrando stdout/stderr en vivo.
+ * `shell: true` es la parte que realmente arregla "spawn ENOENT" con
+ * shims .cmd/.ps1 en Windows: deja que el sistema operativo resuelva la
+ * extensión vía PATHEXT en vez de que Node intente un exec directo del
+ * archivo (que en Windows falla para .cmd/.ps1 sin pasar por un shell).
+ */
+function run(command, args) {
+  const result = spawnSync(command, args, {
+    cwd: ROOT,
+    stdio: 'inherit',
+    shell: true,
+  });
+  if (result.error) {
+    console.error(`[parity:sync] No se pudo ejecutar "${command}":`, result.error.message);
+    return 1;
+  }
+  return result.status ?? 1;
+}
 
-  if (!existsSync(tsSnapshot)) {
-    console.error(
-      `[parity:sync] vitest no escribio ${tsSnapshot}.\n` +
-        '         El test generador corrio OK pero no produjo el JSON. Bug del generador.',
+function generateSnapshot() {
+  console.log('[parity:sync] Generando snapshot desde el motor TS (vitest)...');
+
+  const localVitest = resolveLocalBin('vitest');
+  const args = ['run', '--config', VITEST_CONFIG];
+
+  let exitCode;
+  if (localVitest) {
+    exitCode = run(localVitest, args);
+  } else {
+    console.warn(
+      '[parity:sync] No se encontró node_modules/.bin/vitest — ¿corriste `npm install`? ' +
+        'Intentando con npx como último recurso…'
     );
-    process.exit(1);
+    exitCode = run(process.platform === 'win32' ? 'npx.cmd' : 'npx', ['vitest', ...args]);
   }
 
-  mkdirSync(rustFixtureDir, { recursive: true });
-  copyFileSync(tsSnapshot, rustSnapshot);
-  console.log(`[parity:sync] Copiado a ${rustSnapshot}`);
-  console.log('[parity:sync] Listo. Ahora corre:');
-  console.log('  npm test');
-  console.log('  cargo test -p geourban-geo --test parity_cabecera_cuerpo');
+  if (exitCode !== 0) {
+    throw new Error(`La generación del snapshot falló (exit code ${exitCode}).`);
+  }
 }
 
-main().catch((err) => {
-  console.error(`[parity:sync] Error: ${err.message}`);
+function syncToRustFixtures() {
+  if (!existsSync(SRC_SNAPSHOT)) {
+    throw new Error(
+      `Se esperaba encontrar ${SRC_SNAPSHOT} después de correr el generador, pero no está.\n` +
+        'Revisá la salida de vitest de arriba — probablemente buildSnapshot.test.ts no llegó a escribirlo.'
+    );
+  }
+  mkdirSync(DEST_DIR, { recursive: true });
+  copyFileSync(SRC_SNAPSHOT, DEST_SNAPSHOT);
+  console.log(`[parity:sync] Snapshot copiado a ${DEST_SNAPSHOT}`);
+}
+
+try {
+  generateSnapshot();
+  syncToRustFixtures();
+  console.log(
+    '[parity:sync] Listo. Corré `npm test` y ' +
+      '`cargo test -p geourban-geo --test parity_cabecera_cuerpo` (desde src-tauri/) para validar paridad.'
+  );
+} catch (err) {
+  console.error('[parity:sync] Falló:', err instanceof Error ? err.message : err);
   process.exit(1);
-});
+}
