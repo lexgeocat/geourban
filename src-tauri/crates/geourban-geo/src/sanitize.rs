@@ -143,7 +143,11 @@ fn record_geometry_sanitize_event(context: &str, mut detail: Map<String, Value>)
 }
 
 /// <- `sanitizeRing`
-pub fn sanitize_ring(ring_in: Option<&[Pt]>, opts: SanitizeRingOptions, context: &str) -> Option<Vec<Pt>> {
+pub fn sanitize_ring(
+    ring_in: Option<&[Pt]>,
+    opts: SanitizeRingOptions,
+    context: &str,
+) -> Option<Vec<Pt>> {
     let ring_in = ring_in?;
     if ring_in.len() < 3 {
         return None;
@@ -254,19 +258,29 @@ pub fn sanitize_rings(rings: &[Vec<Pt>], opts: SanitizeRingOptions, context: &st
 }
 
 /// <- `sanitizePolygonRings`
-fn sanitize_polygon_rings(coords: &Value, context: &str, opts: SanitizeRingOptions) -> Option<Vec<Vec<Pt>>> {
+fn sanitize_polygon_rings(
+    coords: &Value,
+    context: &str,
+    opts: SanitizeRingOptions,
+) -> Option<Vec<Vec<Pt>>> {
     let rings_val = coords.as_array()?;
     if rings_val.is_empty() {
         return None;
     }
     let outer_ring = ring_from_json(&rings_val[0])?;
-    let outer = sanitize_ring(Some(outer_ring.as_slice()), opts, &format!("{context}.outer"))?;
+    let outer = sanitize_ring(
+        Some(outer_ring.as_slice()),
+        opts,
+        &format!("{context}.outer"),
+    )?;
 
     let mut rings = vec![outer];
     for hole_val in &rings_val[1..] {
         // Un hueco degenerado se descarta solo — no invalida el contorno exterior.
         if let Some(hole_ring) = ring_from_json(hole_val) {
-            if let Some(hole) = sanitize_ring(Some(hole_ring.as_slice()), opts, &format!("{context}.hole")) {
+            if let Some(hole) =
+                sanitize_ring(Some(hole_ring.as_slice()), opts, &format!("{context}.hole"))
+            {
                 rings.push(hole);
             }
         }
@@ -290,7 +304,9 @@ fn sanitize_geometry(geom: &Value, context: &str, opts: SanitizeRingOptions) -> 
             let polys_val = geom.get("coordinates")?.as_array()?;
             let mut polys: Vec<Vec<Vec<Pt>>> = Vec::new();
             for (i, poly_coords) in polys_val.iter().enumerate() {
-                if let Some(rings) = sanitize_polygon_rings(poly_coords, &format!("{context}[{i}]"), opts) {
+                if let Some(rings) =
+                    sanitize_polygon_rings(poly_coords, &format!("{context}[{i}]"), opts)
+                {
                     polys.push(rings);
                 }
             }
@@ -317,7 +333,10 @@ pub struct SanitizeFeatureCollectionResult {
 }
 
 /// <- `sanitizeFeatureCollectionRings`
-pub fn sanitize_feature_collection_rings(fc: &Value, context: &str) -> SanitizeFeatureCollectionResult {
+pub fn sanitize_feature_collection_rings(
+    fc: &Value,
+    context: &str,
+) -> SanitizeFeatureCollectionResult {
     sanitize_feature_collection_rings_with_opts(fc, context, SanitizeRingOptions::default())
 }
 
@@ -327,7 +346,10 @@ pub fn sanitize_feature_collection_rings_with_opts(
     opts: SanitizeRingOptions,
 ) -> SanitizeFeatureCollectionResult {
     let empty: Vec<Value> = Vec::new();
-    let features = fc.get("features").and_then(Value::as_array).unwrap_or(&empty);
+    let features = fc
+        .get("features")
+        .and_then(Value::as_array)
+        .unwrap_or(&empty);
     let mut out_features = Vec::with_capacity(features.len());
     let mut dropped = 0usize;
 
@@ -356,5 +378,162 @@ pub fn sanitize_feature_collection_rings_with_opts(
     SanitizeFeatureCollectionResult {
         collection: json!({ "type": "FeatureCollection", "features": out_features }),
         dropped_count: dropped,
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn square() -> Vec<Pt> {
+        vec![(0.0, 0.0), (4.0, 0.0), (4.0, 4.0), (0.0, 4.0)]
+    }
+
+    #[test]
+    fn sanitize_ring_accepts_clean_square_and_closes_it() {
+        let ring = square();
+        let out = sanitize_ring(
+            Some(ring.as_slice()),
+            SanitizeRingOptions::default(),
+            "test",
+        )
+        .unwrap();
+        assert_eq!(out.len(), 5); // cerrado: primer punto repetido al final
+        assert_eq!(out[0], out[4]);
+    }
+
+    #[test]
+    fn sanitize_ring_rejects_fewer_than_three_points() {
+        let ring = vec![(0.0, 0.0), (1.0, 1.0)];
+        assert!(sanitize_ring(
+            Some(ring.as_slice()),
+            SanitizeRingOptions::default(),
+            "test"
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn sanitize_ring_rejects_non_finite_points() {
+        let ring = vec![(0.0, 0.0), (f64::NAN, 1.0), (1.0, 1.0), (0.0, 1.0)];
+        // Tras filtrar el NaN quedan 3 puntos validos -> deberia sobrevivir.
+        let out = sanitize_ring(
+            Some(ring.as_slice()),
+            SanitizeRingOptions::default(),
+            "test",
+        );
+        assert!(out.is_some());
+        assert_eq!(out.unwrap().len() - 1, 3);
+    }
+
+    #[test]
+    fn sanitize_ring_drops_when_all_points_collapse_after_dedupe() {
+        let ring = vec![(0.0, 0.0), (1e-6, 0.0), (0.0, 1e-6)];
+        assert!(sanitize_ring(
+            Some(ring.as_slice()),
+            SanitizeRingOptions::default(),
+            "test"
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn sanitize_ring_removes_spurious_collinear_vertex() {
+        let ring = vec![(0.0, 0.0), (2.0, 0.0), (4.0, 0.0), (4.0, 4.0), (0.0, 4.0)];
+        let out = sanitize_ring(
+            Some(ring.as_slice()),
+            SanitizeRingOptions::default(),
+            "test",
+        )
+        .unwrap();
+        let open: Vec<Pt> = out[..out.len() - 1].to_vec();
+        assert_eq!(open.len(), 4);
+        assert!(!open.contains(&(2.0, 0.0)));
+    }
+
+    #[test]
+    fn sanitize_ring_rejects_area_below_threshold() {
+        let sliver = vec![(0.0, 0.0), (1e-4, 0.0), (1e-4, 1e-4)];
+        let opts = SanitizeRingOptions {
+            min_area: 1.0,
+            ..SanitizeRingOptions::default()
+        };
+        assert!(sanitize_ring(Some(sliver.as_slice()), opts, "test").is_none());
+    }
+
+    #[test]
+    fn sanitize_ring_none_input_returns_none() {
+        assert!(sanitize_ring(None, SanitizeRingOptions::default(), "test").is_none());
+    }
+
+    #[test]
+    fn sanitize_rings_batch_discards_invalid_and_keeps_valid() {
+        let good = square();
+        let bad = vec![(0.0, 0.0), (1.0, 1.0)];
+        let out = sanitize_rings(&[good, bad], SanitizeRingOptions::default(), "test");
+        assert_eq!(out.len(), 1);
+    }
+
+    #[test]
+    fn sanitize_feature_collection_rings_cleans_polygon_and_passes_through_others() {
+        let fc = json!({
+            "type": "FeatureCollection",
+            "features": [
+                {
+                    "type": "Feature",
+                    "properties": {},
+                    "geometry": {
+                        "type": "Polygon",
+                        "coordinates": [[[0.0,0.0],[2.0,0.0],[4.0,0.0],[4.0,4.0],[0.0,4.0],[0.0,0.0]]]
+                    }
+                },
+                {
+                    "type": "Feature",
+                    "properties": {},
+                    "geometry": { "type": "LineString", "coordinates": [[0.0,0.0],[1.0,1.0]] }
+                }
+            ]
+        });
+        let result = sanitize_feature_collection_rings(&fc, "test");
+        assert_eq!(result.dropped_count, 0);
+        let features = result
+            .collection
+            .get("features")
+            .unwrap()
+            .as_array()
+            .unwrap();
+        assert_eq!(features.len(), 2);
+        let poly_ring = features[0]["geometry"]["coordinates"][0]
+            .as_array()
+            .unwrap();
+        // El vertice colineal (2,0) debe haber sido eliminado por el saneo.
+        assert_eq!(poly_ring.len(), 5);
+        assert_eq!(
+            features[1]["geometry"]["type"].as_str().unwrap(),
+            "LineString"
+        );
+    }
+
+    #[test]
+    fn sanitize_feature_collection_rings_drops_degenerate_polygon() {
+        let fc = json!({
+            "type": "FeatureCollection",
+            "features": [
+                {
+                    "type": "Feature",
+                    "properties": {},
+                    "geometry": { "type": "Polygon", "coordinates": [[[0.0,0.0],[1.0,1.0]]] }
+                }
+            ]
+        });
+        let result = sanitize_feature_collection_rings(&fc, "test");
+        assert_eq!(result.dropped_count, 1);
+        let features = result
+            .collection
+            .get("features")
+            .unwrap()
+            .as_array()
+            .unwrap();
+        assert_eq!(features.len(), 0);
     }
 }

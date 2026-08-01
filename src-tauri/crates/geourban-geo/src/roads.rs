@@ -96,7 +96,10 @@ fn build_roundabout_road_ring(rb: &RoundaboutParams) -> Vec<Pt> {
 }
 
 /// <- `buildRoadNetworkRings`
-pub fn build_road_network_rings(streets: &[Street], roundabouts: &[RoundaboutParams]) -> Vec<Vec<Pt>> {
+pub fn build_road_network_rings(
+    streets: &[Street],
+    roundabouts: &[RoundaboutParams],
+) -> Vec<Vec<Pt>> {
     let mut rings = Vec::new();
     for s in streets {
         if s.width_m <= 0.0 {
@@ -257,7 +260,14 @@ fn compute_corner_tangents(prev: Pt, cur: Pt, next: Pt, r: f64) -> Option<Corner
     let a0 = (ta.1 - center.1).atan2(ta.0 - center.0);
     let a1 = (tb.1 - center.1).atan2(tb.0 - center.0);
 
-    Some(CornerTangents { ta, tb, center, reff, a0, a1 })
+    Some(CornerTangents {
+        ta,
+        tb,
+        center,
+        reff,
+        a0,
+        a1,
+    })
 }
 
 fn corner_fillet_arc(prev: Pt, cur: Pt, next: Pt, r: f64) -> Option<Vec<Pt>> {
@@ -275,7 +285,10 @@ fn corner_fillet_arc(prev: Pt, cur: Pt, next: Pt, r: f64) -> Option<Vec<Pt>> {
     let mut pts = vec![tg.ta];
     for k in 1..steps {
         let aa = tg.a0 + (da * k as f64) / steps as f64;
-        pts.push((tg.center.0 + aa.cos() * tg.reff, tg.center.1 + aa.sin() * tg.reff));
+        pts.push((
+            tg.center.0 + aa.cos() * tg.reff,
+            tg.center.1 + aa.sin() * tg.reff,
+        ));
     }
     pts.push(tg.tb);
     Some(pts)
@@ -385,4 +398,181 @@ pub fn round_ring_reflex(
     }
 
     close_ring(out)
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn approx(a: f64, b: f64) -> bool {
+        (a - b).abs() < 1e-6
+    }
+
+    fn street(id: &str, start: Pt, end: Pt, width_m: f64, side_width_m: f64) -> Street {
+        Street {
+            id: id.to_string(),
+            start,
+            end,
+            width_m,
+            side_width_m,
+            waypoints: None,
+            name: id.to_string(),
+            layer_id: None,
+        }
+    }
+
+    #[test]
+    fn offset_polyline_miter_straight_line_offsets_perpendicular() {
+        let pts = vec![(0.0, 0.0), (10.0, 0.0)];
+        let out = offset_polyline_miter(&pts, 2.0);
+        assert_eq!(out.len(), 2);
+        assert!(approx(out[0].0, 0.0) && approx(out[0].1, 2.0));
+        assert!(approx(out[1].0, 10.0) && approx(out[1].1, 2.0));
+    }
+
+    #[test]
+    fn offset_polyline_miter_single_point_returns_as_is() {
+        let pts = vec![(5.0, 5.0)];
+        assert_eq!(offset_polyline_miter(&pts, 3.0), pts);
+    }
+
+    #[test]
+    fn offset_polyline_miter_right_angle_uses_miter_join() {
+        let pts = vec![(0.0, 0.0), (10.0, 0.0), (10.0, 10.0)];
+        let out = offset_polyline_miter(&pts, 1.0);
+        assert_eq!(out.len(), 3);
+        let miter_dist = (out[1].0 - 10.0).hypot(out[1].1 - 0.0);
+        assert!(miter_dist > 1.0 && miter_dist < 2.0);
+    }
+
+    #[test]
+    fn build_road_network_rings_skips_zero_width_streets() {
+        let streets = vec![street("s1", (0.0, 0.0), (10.0, 0.0), 0.0, 0.0)];
+        assert!(build_road_network_rings(&streets, &[]).is_empty());
+    }
+
+    #[test]
+    fn build_road_network_rings_produces_ring_for_valid_street() {
+        let streets = vec![street("s1", (0.0, 0.0), (10.0, 0.0), 6.0, 2.0)];
+        let rings = build_road_network_rings(&streets, &[]);
+        assert_eq!(rings.len(), 1);
+        assert!(rings[0].len() >= 3);
+    }
+
+    #[test]
+    fn build_road_only_rings_is_narrower_than_outer_rings() {
+        let streets = vec![street("s1", (0.0, 0.0), (10.0, 0.0), 6.0, 2.0)];
+        let outer = build_road_network_rings(&streets, &[]);
+        let road = build_road_only_rings(&streets, &[]);
+        let area_outer = crate::math::poly_area(&outer[0]);
+        let area_road = crate::math::poly_area(&road[0]);
+        assert!(area_outer > area_road);
+    }
+
+    #[test]
+    fn build_road_network_rings_includes_roundabouts() {
+        let rb = RoundaboutParams {
+            center: (0.0, 0.0),
+            radius_m: 10.0,
+            sides: 0,
+            rotation: 0.0,
+            road_width_m: 6.0,
+            sidewalk_width_m: 2.0,
+            layer_id: None,
+        };
+        let rings = build_road_network_rings(&[], &[rb]);
+        assert_eq!(rings.len(), 1);
+        assert!(rings[0].len() >= 8);
+    }
+
+    #[test]
+    fn fillet_radius_grows_with_angle_and_is_capped() {
+        let r_narrow = get_fillet_radius_for_angle(20.0, None);
+        let r_wide = get_fillet_radius_for_angle(160.0, None);
+        assert!(r_wide >= r_narrow);
+        assert!(r_wide <= 8.0);
+    }
+
+    #[test]
+    fn fillet_radius_scales_up_for_wide_roads() {
+        let base = get_fillet_radius_for_angle(30.0, None);
+        let scaled = get_fillet_radius_for_angle(30.0, Some(20.0));
+        assert!(scaled >= base);
+        assert!(scaled <= 8.0);
+    }
+
+    #[test]
+    fn point_on_ring_detects_point_on_edge_and_off_edge() {
+        let ring = vec![(0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0)];
+        assert!(point_on_ring((5.0, 0.0), &ring, 0.05));
+        assert!(!point_on_ring((5.0, 5.0), &ring, 0.05));
+    }
+
+    #[test]
+    fn round_ring_reflex_none_mode_returns_ring_unchanged_but_closed() {
+        let ring = vec![
+            (0.0, 0.0),
+            (4.0, 0.0),
+            (4.0, 2.0),
+            (2.0, 2.0),
+            (2.0, 4.0),
+            (0.0, 4.0),
+        ];
+        let out = round_ring_reflex(
+            &ring,
+            ExtraM::Fixed(0.0),
+            false,
+            CornerMode::None,
+            ForceTreat::Fixed(false),
+        );
+        assert_eq!(out.len(), ring.len() + 1);
+    }
+
+    #[test]
+    fn round_ring_reflex_fillet_mode_rounds_reflex_corner_of_l_shape() {
+        // Forma en L, orientada CCW: el vertice (2,2) es reflex y debe
+        // reemplazarse por un arco de varios puntos.
+        let ring = vec![
+            (0.0, 0.0),
+            (4.0, 0.0),
+            (4.0, 2.0),
+            (2.0, 2.0),
+            (2.0, 4.0),
+            (0.0, 4.0),
+        ];
+        let out = round_ring_reflex(
+            &ring,
+            ExtraM::Fixed(0.0),
+            false,
+            CornerMode::Fillet,
+            ForceTreat::Fixed(false),
+        );
+        assert!(out.len() > ring.len());
+    }
+
+    #[test]
+    fn round_ring_reflex_chamfer_mode_cuts_corner_with_fewer_points_than_fillet() {
+        let ring = vec![
+            (0.0, 0.0),
+            (4.0, 0.0),
+            (4.0, 2.0),
+            (2.0, 2.0),
+            (2.0, 4.0),
+            (0.0, 4.0),
+        ];
+        let fillet_out = round_ring_reflex(
+            &ring,
+            ExtraM::Fixed(0.0),
+            false,
+            CornerMode::Fillet,
+            ForceTreat::Fixed(false),
+        );
+        let chamfer_out = round_ring_reflex(
+            &ring,
+            ExtraM::Fixed(0.0),
+            false,
+            CornerMode::Chamfer,
+            ForceTreat::Fixed(false),
+        );
+        assert!(chamfer_out.len() < fillet_out.len());
+    }
 }
