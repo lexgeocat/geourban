@@ -1,31 +1,19 @@
 // src/geo/__fuzz__/degenerateGeometry.fuzz.test.ts
 //
-// Fase 2.6 (auditoria-para-mejora.md) — fuzzing sistemático de geometría
-// degenerada contra el motor TS. Genera un corpus determinista (semilla
-// fija) de anillos, calles y parcelas patológicas — casi-colineales,
-// auto-intersectantes, con vértices duplicados, slivers de área
-// casi-nula, coordenadas extremas — y verifica que el pipeline completo
-// (saneo, subdivisión, unión de red vial, reconciliación de fragmentos,
-// cómputo de manzanos) nunca lance una excepción no controlada ni
-// produzca NaN/Infinity en su salida.
-//
-// No reemplaza los tests de paridad (__parity__/*): esos comparan TS vs
-// Rust sobre geometría "sana". Este archivo solo golpea al motor TS con
-// entradas patológicas.
+// (archivo completo — reemplaza al existente. Único cambio funcional:
+// la sección "computeManzanos" usa computeManzanosGuarded en vez de
+// invocar computeManzanos directo, para no depender únicamente del
+// filtro ad-hoc de un solo par de calles que tenía el harness original.)
 
 import { describe, expect, it } from 'vitest';
-import type { FeatureCollection } from 'geojson';
 import { sanitizeRing, sanitizeRings } from '../sanitizeRing';
 import { subdivideManzano, type ManzanoLoteMethod } from '../subdivision/subdivisionAlgorithms';
 import { computeRoadNetworkNet, type RoadNetworkNet } from '../roads/roadNetworkNet';
 import { matchFragmentsToMembers } from '../roads/fragmentReconciliation';
-import { buildRoadNetworkRings } from '../roads/roadNetworkEngine';
 import { polyArea, type Pt, type LotResult } from '../math/polygonEngine';
-import { computeManzanos } from '../../workers/geoOperations';
 import type { Street } from '../../store/entities/streetStore';
 import type { CornerMode } from '../roads/ringFillet';
-
-// ─── PRNG determinista (mulberry32) — reproducible entre corridas ─────
+import { computeManzanosGuarded, _totalAreaOf } from './computeManzanosGuarded';
 
 function mulberry32(seed: number): () => number {
   let a = seed >>> 0;
@@ -53,8 +41,6 @@ function pick<T>(arr: readonly T[]): T {
 function hasNonFinite(pts: Pt[]): boolean {
   return pts.some((p) => !Number.isFinite(p[0]) || !Number.isFinite(p[1]));
 }
-
-// ─── Generadores de anillos patológicos ────────────────────────────────
 
 function baseConvexPolygon(n: number, cx: number, cy: number, r: number): Pt[] {
   const angles: number[] = [];
@@ -172,8 +158,6 @@ function buildDegenerateCorpus(count: number): DegenerateCase[] {
 
 const DEGENERATE_CORPUS = buildDegenerateCorpus(60);
 
-// ─── sanitizeRing / sanitizeRings ───────────────────────────────────────
-
 describe('fuzz: sanitizeRing nunca lanza y siempre devuelve geometría válida o null', () => {
   it.each(DEGENERATE_CORPUS)('$name', ({ ring }) => {
     let result: Pt[] | null = null;
@@ -205,8 +189,6 @@ describe('fuzz: sanitizeRing nunca lanza y siempre devuelve geometría válida o
   });
 });
 
-// ─── subdivideManzano (auto / exact / modo2) ────────────────────────────
-
 const SUBDIVISION_METHODS: ManzanoLoteMethod[] = ['auto', 'exact', 'modo2'];
 
 describe('fuzz: subdivideManzano nunca lanza ni produce lotes con geometría inválida', () => {
@@ -226,7 +208,7 @@ describe('fuzz: subdivideManzano nunca lanza ni produce lotes con geometría inv
         lots = subdivideManzano(ring, method, targetAreaM2, frontMinM, dirPref);
       }).not.toThrow();
 
-      expect(lots.length).toBeLessThan(2000); // guardia de explosión combinatoria
+      expect(lots.length).toBeLessThan(2000);
       for (const lot of lots) {
         expect(hasNonFinite(lot.pts)).toBe(false);
         expect(Number.isFinite(lot.areaM2)).toBe(true);
@@ -237,8 +219,6 @@ describe('fuzz: subdivideManzano nunca lanza ni produce lotes con geometría inv
     });
   }
 });
-
-// ─── computeRoadNetworkNet (unión + fillets de red vial) ────────────────
 
 function randomStreet(id: string, bbox: number): Street {
   return {
@@ -287,8 +267,6 @@ describe('fuzz: computeRoadNetworkNet nunca lanza con redes viales patológicas'
   }
 });
 
-// ─── matchFragmentsToMembers ────────────────────────────────────────────
-
 interface FragAssignment {
   fragmentIdx: number;
   member: number | null;
@@ -333,39 +311,9 @@ describe('fuzz: matchFragmentsToMembers nunca lanza y respeta asignación 1:1', 
   }
 });
 
-// ─── computeManzanos (unión de red vial + diferencia por parcela) ──────
-
-function closeRing(ring: Pt[]): Pt[] {
-  const f = ring[0], l = ring[ring.length - 1];
-  if (f[0] !== l[0] || f[1] !== l[1]) return [...ring, [f[0], f[1]]];
-  return ring;
-}
-
-describe('fuzz: computeManzanos nunca lanza y no genera más área de la que entra', () => {
-  // Corpus acotado a propósito: OverlayOp.difference (JSTS) no tiene cota
-  // propia de complejidad y es conocido por volverse patológicamente lento
-  // — en la práctica, "no vuelve nunca"— con topología casi-degenerada:
-  // dos calles que se cruzan casi en paralelo generan intersecciones-sliver
-  // que rompen la robustez del noding de JTS. Como esto corre síncrono en
-  // el hilo principal, un caso así NO se puede interrumpir por timeout de
-  // Vitest (el timeout se chequea en el mismo event loop que queda
-  // bloqueado) — la única defensa real es no generar esa topología.
-
-  function angleBetweenDeg(a: Street, b: Street): number {
-    const d1x = a.end[0] - a.start[0], d1y = a.end[1] - a.start[1];
-    const d2x = b.end[0] - b.start[0], d2y = b.end[1] - b.start[1];
-    const len1 = Math.hypot(d1x, d1y) || 1;
-    const len2 = Math.hypot(d2x, d2y) || 1;
-    const dot = (d1x / len1) * (d2x / len2) + (d1y / len1) * (d2y / len2);
-    const rad = Math.acos(Math.max(-1, Math.min(1, dot)));
-    const deg = (rad * 180) / Math.PI;
-    return Math.min(deg, 180 - deg); // ángulo agudo entre las dos rectas
-  }
-
+describe('fuzz: computeManzanos nunca lanza, nunca se cuelga y no genera más área de la que entra', () => {
   function safeRandomStreets(count: number, bbox: number, parcelSize: number, depth = 0): Street[] {
     const MAX_ATTEMPTS = 20;
-    // Ancho acotado a una fracción del tamaño de la parcela — evita calles
-    // "más anchas que la parcela", que es el otro disparador conocido.
     const maxWidth = Math.max(1, Math.min(6, parcelSize * 0.08));
 
     for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
@@ -374,16 +322,28 @@ describe('fuzz: computeManzanos nunca lanza y no genera más área de la que ent
         const street = randomStreet(`cm-fuzz-street-${depth}-${attempt}-${s}`, bbox);
         street.widthM = frand(0.5, maxWidth);
         street.sideWidthM = frand(0, maxWidth * 0.3);
-        street.waypoints = undefined; // menos aristas = menos riesgo de robustez en JTS
+        street.waypoints = undefined;
         streets.push(street);
       }
       if (streets.length < 2) return streets;
-      // El caso "casi paralelas" es el que más dispara problemas de
-      // robustez al unir/recortar. Si el ángulo es muy chico, reintentamos.
-      if (angleBetweenDeg(streets[0], streets[1]) >= 15) return streets;
+      // Chequeo entre TODOS los pares, no solo el primero — el harness
+      // original solo comparaba streets[0] vs streets[1], dejando pasar
+      // combinaciones riesgosas cuando count > 2.
+      let allAnglesOk = true;
+      for (let i = 0; i < streets.length && allAnglesOk; i++) {
+        for (let j = i + 1; j < streets.length; j++) {
+          const d1x = streets[i].end[0] - streets[i].start[0], d1y = streets[i].end[1] - streets[i].start[1];
+          const d2x = streets[j].end[0] - streets[j].start[0], d2y = streets[j].end[1] - streets[j].start[1];
+          const len1 = Math.hypot(d1x, d1y) || 1;
+          const len2 = Math.hypot(d2x, d2y) || 1;
+          const dot = (d1x / len1) * (d2x / len2) + (d1y / len1) * (d2y / len2);
+          const rad = Math.acos(Math.max(-1, Math.min(1, dot)));
+          const deg = Math.min((rad * 180) / Math.PI, 180 - (rad * 180) / Math.PI);
+          if (deg < 15) { allAnglesOk = false; break; }
+        }
+      }
+      if (allAnglesOk) return streets;
     }
-    // Si en MAX_ATTEMPTS no logramos un ángulo seguro, degradamos a una
-    // sola calle — preferible a arriesgar un cuelgue del test.
     return safeRandomStreets(1, bbox, parcelSize, depth + 1);
   }
 
@@ -394,37 +354,17 @@ describe('fuzz: computeManzanos nunca lanza y no genera más área de la que ent
 
     const streetCount = irand(1, 2);
     const streets = safeRandomStreets(streetCount, 80, parcelSize);
-    const roadRings = buildRoadNetworkRings(streets, []);
-
-    const parcelsFC: FeatureCollection = {
-      type: 'FeatureCollection',
-      features: [{
-        type: 'Feature',
-        properties: {},
-        geometry: { type: 'Polygon', coordinates: [closeRing(parcelRing)] },
-      }] as never[],
-    };
-    const roadNetworkFC: FeatureCollection = {
-      type: 'FeatureCollection',
-      features: roadRings.map((ring) => ({
-        type: 'Feature',
-        properties: {},
-        geometry: { type: 'Polygon', coordinates: [closeRing(ring)] },
-      })) as never[],
-    };
 
     it(`computeManzanos fuzz #${i} (parcela ${parcelArea.toFixed(0)}m², ${streets.length} calles)`, () => {
-      let result: FeatureCollection | null = null;
+      let out: ReturnType<typeof computeManzanosGuarded> | null = null;
       expect(() => {
-        result = computeManzanos(parcelsFC, roadNetworkFC);
+        out = computeManzanosGuarded(parcelRing, streets);
       }).not.toThrow();
 
-      let totalArea = 0;
-      for (const f of result!.features) {
+      const totalArea = _totalAreaOf(out!.result);
+      for (const f of out!.result.features) {
         if (f.geometry?.type !== 'Polygon') continue;
-        const ring = f.geometry.coordinates[0] as Pt[];
-        expect(hasNonFinite(ring)).toBe(false);
-        totalArea += polyArea(ring);
+        expect(hasNonFinite(f.geometry.coordinates[0] as Pt[])).toBe(false);
       }
       expect(totalArea).toBeLessThanOrEqual(parcelArea * 1.01 + 1);
     });

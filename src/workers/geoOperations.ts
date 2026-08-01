@@ -1,7 +1,10 @@
-﻿import GeoJSONReader from 'jsts/org/locationtech/jts/io/GeoJSONReader.js';
+﻿// src/workers/geoOperations.ts
+import GeoJSONReader from 'jsts/org/locationtech/jts/io/GeoJSONReader.js';
 import GeoJSONWriter from 'jsts/org/locationtech/jts/io/GeoJSONWriter.js';
 import GeometryFactory from 'jsts/org/locationtech/jts/geom/GeometryFactory.js';
 import OverlayOp from 'jsts/org/locationtech/jts/operation/overlay/OverlayOp.js';
+import PrecisionModel from 'jsts/org/locationtech/jts/geom/PrecisionModel.js';
+import GeometryPrecisionReducer from 'jsts/org/locationtech/jts/precision/GeometryPrecisionReducer.js';
 import polygonClipping, {
   type Polygon as ClipPolygon,
   type MultiPolygon as ClipMultiPolygon,
@@ -28,9 +31,7 @@ const writer = new GeoJSONWriter();
 
 export type ComputeManzanosRequest = {
   type: 'computeManzanos';
-  /** Cada feature = una parcela de origen (Polygon). */
   parcels: FeatureCollection;
-  /** Anillos "outer" de calles/rotondas, SIN unir todavía. */
   roadNetwork: FeatureCollection;
 };
 
@@ -116,13 +117,56 @@ function readAllGeometries(
 }
 const ROAD_UNION_PRECISION = 1e6;
 
+// ─── Robustez anti-cuelgue (Fase 2.6/2.7) ──────────────────────────────
+//
+// JSTS (OverlayOp.difference/union) y polygon-clipping (martinez) no
+// tienen cota propia de tiempo/complejidad frente a topología casi
+// degenerada (vértices casi-coincidentes, aristas casi-paralelas,
+// self-intersections producidas por el offset de calles casi-paralelas).
+// Como ambas corren síncrono en un solo hilo, no se pueden interrumpir
+// desde afuera una vez arrancadas — la única defensa real es no dejar
+// que la geometría entre en ese estado: se snapea a una grilla fija
+// (GeometryPrecisionReducer) y se repara con buffer(0) ANTES de pasar
+// por cualquier operación booleana. Esto es la mitigación estándar para
+// fallos de robustez de noding en JTS/GEOS.
+
+const OVERLAY_PRECISION_SCALE = 1e4; // grilla de 0.1mm — suficiente para CAD/GIS, elimina ambigüedad de punto flotante
+const overlayPrecisionModel = new PrecisionModel(OVERLAY_PRECISION_SCALE);
+
+function reducePrecisionSafe(geom: any): any {
+  if (!geom) return geom;
+  try {
+    const reduced = GeometryPrecisionReducer.reduce(geom, overlayPrecisionModel);
+    if (reduced && !reduced.isEmpty?.()) return reduced;
+  } catch (err) {
+    console.warn('geoOperations: GeometryPrecisionReducer falló — se usa la geometría original.', err);
+  }
+  return geom;
+}
+
+function repairWithZeroBuffer(geom: any): any {
+  if (!geom) return geom;
+  try {
+    const buffered = geom.buffer(0);
+    if (buffered && !buffered.isEmpty?.() && (buffered.getArea?.() ?? 0) > 0) return buffered;
+  } catch (err) {
+    console.warn('geoOperations: buffer(0) de reparación falló — se usa la geometría sin reparar.', err);
+  }
+  return geom;
+}
+
+function makeOverlaySafe(geom: any): any {
+  return repairWithZeroBuffer(reducePrecisionSafe(geom));
+}
+
 // OverlayOp.difference de JSTS no tiene cota propia de complejidad — con
 // topología casi-degenerada (calles muy anchas/superpuestas redondeadas a
-// 1e6) puede volverse extremadamente lenta. No hay forma de "timeout-earla"
-// desde afuera porque es síncrona; la única defensa real es no llamarla
-// sobre geometría combinada demasiado compleja, y capturar cualquier
-// excepción que igual tire (geometría inválida) sin tumbar el pipeline.
-const MANZANOS_DIFF_MAX_COMPLEXITY = 4000;
+// 1e6) puede volverse extremadamente lenta o directamente colgarse. No hay
+// forma de "timeout-earla" desde afuera porque es síncrona; la defensa
+// real es (a) no llamarla sobre geometría combinada demasiado compleja, y
+// (b) snapear/reparar la geometría antes de dársela (ver arriba).
+const MANZANOS_DIFF_MAX_COMPLEXITY = 3000;
+const MANZANOS_DIFF_MAX_SIDE_COMPLEXITY = 1500;
 
 function geometryComplexity(geom: any): number {
   try {
@@ -133,18 +177,30 @@ function geometryComplexity(geom: any): number {
 }
 
 function safeDifference(geom: any, roadUnion: any, parcelIndex: number): any {
-  const complexity = geometryComplexity(geom) + geometryComplexity(roadUnion);
-  if (complexity > MANZANOS_DIFF_MAX_COMPLEXITY) {
+  const rawComplexity = geometryComplexity(geom) + geometryComplexity(roadUnion);
+  if (rawComplexity > MANZANOS_DIFF_MAX_COMPLEXITY) {
     console.warn(
       `computeManzanos: parcela ${parcelIndex} omitida de la diferencia — complejidad combinada ` +
-      `${complexity} supera el límite de seguridad (${MANZANOS_DIFF_MAX_COMPLEXITY}). Se conserva intacta.`,
+      `${rawComplexity} supera el límite de seguridad (${MANZANOS_DIFF_MAX_COMPLEXITY}). Se conserva intacta.`,
     );
     return geom;
   }
+
+  const safeGeom = makeOverlaySafe(geom);
+  const safeRoad = makeOverlaySafe(roadUnion);
+
+  const safeComplexity = geometryComplexity(safeGeom) + geometryComplexity(safeRoad);
+  if (safeComplexity === 0 || safeComplexity > MANZANOS_DIFF_MAX_SIDE_COMPLEXITY * 2) {
+    console.warn(
+      `computeManzanos: parcela ${parcelIndex} omitida tras el saneo (complejidad ${safeComplexity}) — se conserva intacta.`,
+    );
+    return geom;
+  }
+
   try {
-    return OverlayOp.difference(geom, roadUnion);
+    return OverlayOp.difference(safeGeom, safeRoad);
   } catch (err) {
-    console.warn(`computeManzanos: OverlayOp.difference falló para la parcela ${parcelIndex} — se conserva intacta.`, err);
+    console.warn(`computeManzanos: OverlayOp.difference falló para la parcela ${parcelIndex} (incluso saneada) — se conserva intacta.`, err);
     return geom;
   }
 }
@@ -153,7 +209,6 @@ function robustUnionRoadNetwork(roadNetwork: FeatureCollection): any {
   const polys: ClipPolygon[] = [];
   for (const f of roadNetwork.features) {
     if (!f.geometry || f.geometry.type !== 'Polygon') continue;
-
 
     const sanitizedRings: [number, number][][] = [];
     (f.geometry as GeoJsonPolygon).coordinates.forEach((ring, idx) => {
@@ -164,7 +219,6 @@ function robustUnionRoadNetwork(roadNetwork: FeatureCollection): any {
     });
     if (sanitizedRings.length === 0) continue;
 
-
     const rounded = sanitizedRings.map((ring) =>
       ring.map(([x, y]) => [
         Math.round(x * ROAD_UNION_PRECISION) / ROAD_UNION_PRECISION,
@@ -174,6 +228,20 @@ function robustUnionRoadNetwork(roadNetwork: FeatureCollection): any {
     if (rounded[0] && rounded[0].length >= 4) polys.push(rounded as unknown as ClipPolygon);
   }
   if (polys.length === 0) return null;
+
+  // Cota dura contra explosión combinatoria de la unión — si esto se
+  // dispara con datos reales, es indicio de red vial patológicamente
+  // densa, no un caso a "arreglar" dejándolo correr sin límite.
+  const MAX_UNION_SHAPES = 800;
+  const MAX_UNION_POINTS = 20000;
+  const totalPoints = polys.reduce((sum, p) => sum + (p[0]?.length ?? 0), 0);
+  if (polys.length > MAX_UNION_SHAPES || totalPoints > MAX_UNION_POINTS) {
+    console.warn(
+      `computeManzanos: unión de red vial omitida — ${polys.length} polígono(s)/${totalPoints} punto(s) supera ` +
+      `el límite de seguridad (shapes: ${MAX_UNION_SHAPES}, points: ${MAX_UNION_POINTS}).`,
+    );
+    return null;
+  }
 
   let mp: ClipMultiPolygon;
   try {
@@ -199,7 +267,8 @@ function robustUnionRoadNetwork(roadNetwork: FeatureCollection): any {
   if (!mp || mp.length === 0) return null;
   const gj = mp.length === 1 ? { type: 'Polygon', coordinates: mp[0] } : { type: 'MultiPolygon', coordinates: mp };
   try {
-    return reader.read(gj as any);
+    const raw = reader.read(gj as any);
+    return makeOverlaySafe(raw);
   } catch (errRead) {
     console.warn('computeManzanos: JSTS GeoJSONReader no pudo leer el resultado de la unión — se descarta.', errRead);
     return null;
