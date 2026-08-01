@@ -4,345 +4,405 @@
 
 **Autor:** Revisión técnica senior (arquitectura GIS desktop)
 **Alcance:** Auditoría del repositorio real (`geourban`), no de una descripción abstracta del stack.
+**Revisión:** 31 de julio de 2026 — actualización de estado contra el código actual del repo (no contra lo que el documento original _asumía_ que se había hecho).
+
+> **Cómo leer este documento:** es la misma auditoría original, con tres cambios: (1) cada fase tiene ahora su estado real verificado línea por línea contra el código, no una casilla optimista; (2) las Fases 3 a 6 quedan desglosadas en sub-fases con el mismo nivel de detalle que ya tenía la Fase 2; (3) se agrega una sección nueva (§5) con los bugs y la deuda técnica que esta revisión encontró leyendo el código — incluido uno que la auditoría original ya había señalado y que **sigue sin resolverse**.
 
 ---
 
 ## 0. Antes de nada: tu "stack actual" no es el que describís
+
+_(Sin cambios respecto a la versión original — este diagnóstico de partida sigue siendo válido.)_
 
 Lo primero que tengo que decirte, porque cambia todo el diagnóstico: **`deck.gl` no está en tu `package.json`, y `MapLibre GL` tampoco**. Lo que hay en el repo es:
 
 - `ol` (OpenLayers 10) como motor de mapa e interacción.
 - Un renderer WebGL **artesanal**, propio, construido sobre `ol/layer/WebGLVector` (`src/map/scene/DrawLayerRenderer.ts`), no deck.gl.
 - Un pipeline de **Canvas2D en postrender** (`src/map/scene/PostrenderPainter.ts` + 6 "painters" especializados) para todo lo que WebGL no cubre: cotas, calles, rotondas, snap guides, selección pulsante, previews de subdivisión.
-- Web Workers con **JSTS** (puerto JS de una librería Java) y **polygon-clipping** (puro JS) para booleanas y uniones.
+- Web Workers con **JSTS** (puerto JS de una librería Java) y **polygon-clipping** (puro JS) para booleanas y uniones. **Esto sigue siendo así hoy** — ver §5 y §6.2 para el detalle de por qué el motor Rust que se empezó a construir todavía no reemplaza nada de esto en producción.
 - Un **Command pattern** con undo/redo propio, bastante más sofisticado que lo que se ve en proyectos GIS típicos.
-- `sql.js`, `dexie` y `@tauri-apps/plugin-sql` como dependencias — pero **no hay una sola línea de persistencia real de proyecto visible en el código**. No existe un `save project` / `load project`. Esto es un agujero, no un detalle.
+- Persistencia nativa vía `rusqlite` (esto sí cambió desde la versión original del documento — ver Fase 1, ya completada).
 
-Esto importa porque tu pregunta ("¿deck.gl + MapLibre o Rust?") parte de una premisa incorrecta. Lo que tenés hoy **no es un stack "genérico de mapas"** — es un **motor CAD/GIS de edición vectorial vivo**, con snapping avanzado (10 tipos de snap con histéresis anti-parpadeo), undo/redo transaccional, recálculo incremental de red vial, reconciliación de fragmentos entre ediciones, y un motor de subdivisión de lotes con 4 algoritmos propios. Eso es mucho más difícil de construir que un visor de mapas, y ya está construido. El error de un arquitecto junior acá sería tirarlo por la ventana para perseguir un logo de moda. No lo vamos a hacer.
+Esto importa porque tu pregunta original ("¿deck.gl + MapLibre o Rust?") partía de una premisa incorrecta. Lo que tenés **no es un stack "genérico de mapas"** — es un **motor CAD/GIS de edición vectorial vivo**. El veredicto de la auditoría original (Rust sí, MapLibre no) sigue siendo correcto y esta revisión no le encuentra motivos para cambiarlo — pero la ejecución de ese veredicto está **a mitad de camino**, y el hallazgo más importante de esta revisión es que **"a mitad de camino" en este caso específico significa que el motor nuevo todavía no le entrega ningún beneficio real al usuario**, porque no está conectado. Ver §5.2.
 
 ---
 
 ## 1. Lo que funciona — no lo toques
 
-Un diagnóstico serio empieza reconociendo qué NO está roto, porque el 80% del "cámbialo todo" que te va a proponer cualquier respuesta genérica destruiría trabajo que ya está bien resuelto.
+_(Sin cambios — sigue siendo una descripción precisa de las partes sanas del código.)_
 
 **1.1 — El motor de interacción/edición (OpenLayers como capa de interacción)**
-`safeTranslate.ts`, `advancedSnap.ts`, `RotateLotsInteraction.ts`, `HitTestSelect.ts`, `LassoSelection.ts`, `roadNetworkEngine.ts` (offset de polilíneas con límite de miter propio). Esto es tooling de nivel CAD real: snapping con prioridad por tipo (`SNAP_TYPE_PRIORITY`), tolerancia por tipo (`TYPE_TOLERANCE_FACTOR`), histéresis (`applySticky`) para que el snap no "parpadee" cuando el cursor está en el límite. Migrar esto a MapLibre significaría **reescribir de cero 3.000+ líneas de lógica de interacción** que hoy funcionan, para ganar... nada, porque MapLibre no tiene ni pretende tener un framework de edición vectorial. MapLibre es un renderer de basemap/tiles, no un editor. Es la herramienta equivocada para el 70% de lo que tu app hace.
+`safeTranslate.ts`, `advancedSnap.ts`, `RotateLotsInteraction.ts`, `HitTestSelect.ts`, `LassoSelection.ts`, `roadNetworkEngine.ts`. Tooling de nivel CAD real. No migrar a MapLibre.
 
 **1.2 — El pipeline de recómputo incremental de manzanos** (`src/geo/recomputeManzanos.ts`)
-Esto es, honestamente, la parte más impresionante del código. No recalculás todo el proyecto en cada edición de calle: usás _fingerprinting_ por elemento vial (`streetFingerprint`, `roundaboutFingerprint`) para detectar exactamente qué segmentos cambiaron, filtrás las parcelas afectadas por intersección de extent (`changedExtent`), y reconciliás fragmentos nuevos contra manzanos existentes por **área de solapamiento** (`matchFragmentsToMembers`) para preservar identidad (id, lotes hijos, método de subdivisión) a través de ediciones. Esto es exactamente el patrón correcto para escalar edición interactiva sobre datasets grandes. No lo reinventes — solo hay que sacarlo de JS/JSTS y ponerlo en un runtime más rápido (ver §4).
+Sigue siendo la parte más impresionante del código: fingerprinting por elemento vial, filtrado por intersección de extent, reconciliación de fragmentos por área de solapamiento. No se tocó ni se rompió en el trabajo hecho hasta ahora.
 
 **1.3 — El renderer WebGL por capas (mirror sources)**
-`LayeredWebglRenderer` en `DrawLayerRenderer.ts`. La técnica de "espejar" cada feature a un `VectorSource` por capa (`mirrors: Map<string, MirrorEntry>`) para poder tener z-order y estilo por capa dentro del modelo de OL, con `WeakMap` de ubicación para mover features entre mirrors sin duplicar geometría, y **gating de `setStyle()` por firma** (`layerSignature`) para no recompilar shaders en cada tick del store — es una solución elegante a un problema real (OL no te deja expresar "z-order + estilo por capa" nativamente en un solo layer WebGL fácilmente). Consciente, deliberada, bien hecha.
+`LayeredWebglRenderer` en `DrawLayerRenderer.ts`. Sigue intacto y sigue siendo la solución correcta.
 
-**1.4 — Los detalles finos que solo un equipo senior deja en el código**
-
-- `rafThrottle` usado consistentemente (cursor, índice espacial, cursor coords).
-- `SelectionHighlightPainter` limitando su propio loop de pulso a 24fps explícitamente (`PULSE_RENDER_FPS = 24`) — _"no necesita 60fps para verse fluido; así se ahorra CPU/GPU"_ dice el comentario. Correcto. No tocar.
-- Coalescing de comandos con ventana de 250ms y `coalesceKey` para que un drag de 200 eventos de mouse genere **un** entry de undo, no 200.
-- `MAX_STACK_BYTES` con estimación de memoria por comando para podar el stack de undo.
+**1.4 — Los detalles finos**
+`rafThrottle`, el pulso de `SelectionHighlightPainter` limitado a 24fps, el coalescing de comandos con ventana de 250ms, `MAX_STACK_BYTES` con poda por memoria. Todo esto sigue en el código, sin regresiones detectadas en esta revisión.
 
 ---
 
-## 2. Los cuellos de botella reales — con evidencia, no intuición
+## 2. Los cuellos de botella reales — estado actualizado
 
-Acá está lo que realmente te va a matar a la escala que decís que necesitás (1M+ habitantes, <500ms de carga, 60fps constantes). No son los sospechosos habituales genéricos — son problemas específicos que encontré leyendo tu código.
+Misma numeración que el documento original, con el estado real de cada punto agregado.
 
 ### 2.1 — CRÍTICO: el undo/redo de calles serializa el proyecto ENTERO en cada edición
 
-Mirá `src/commands/core/drawSourceSnapshot.ts` y cómo lo usan `AddStreetCommand.ts` / `AddRoundaboutCommand.ts`:
-
-```ts
-export function snapshotDrawSource(source: VectorSource): DrawSourceSnapshot {
-  return geoJsonFormat.writeFeatures(source.getFeatures(), { featureProjection: 'EPSG:3857' });
-}
-```
-
-Cada vez que el usuario traza **una sola calle**, el comando serializa **todas las features del proyecto** a GeoJSON, dos veces (antes y después). En un proyecto con 50.000 lotes, eso son dos `JSON.stringify` de un objeto masivo, en el hilo principal, en cada trazo de calle. Esto no es un detalle — es un muro de rendimiento que se activa exactamente en el flujo de trabajo más común de tu app (trazar vías). El `MAX_STACK_BYTES` (24MB) que limita el stack de undo es, de hecho, una admisión implícita de que este patrón genera snapshots pesados.
-
-**Esto rompe tu requisito de "sin jank, sin delays perceptibles" de forma directa y medible.**
+**Estado: SIN RESOLVER.** `src/commands/core/drawSourceSnapshot.ts` sigue serializando `source.getFeatures()` completo a GeoJSON en cada `AddStreetCommand`/`AddRoundaboutCommand`, dos veces (antes y después). No hubo trabajo en la Fase 3 todavía — ver el desglose ampliado en §6, Fase 3.
 
 ### 2.2 — El motor de geometría corre en JS puro, interpretado, en el hilo del navegador
 
-`src/workers/geoOperations.ts` usa **JSTS** (`GeoJSONReader`, `OverlayOp.difference`) y **polygon-clipping** para:
+**Estado: PARCIALMENTE ATENDIDO EN CÓDIGO, CERO IMPACTO EN PRODUCCIÓN TODAVÍA.** Existe un crate Rust (`geourban-geo`) con una porción sustancial del motor ya portada (ver Fase 2 en §6). Pero:
 
-- Unión de red vial (`robustUnionRoadNetwork`, con precisión redondeada a 1e6 y reintentos de auto-limpieza en cascada cuando la unión falla — señal de que la geometría booleana en JS es frágil).
-- Diferencia parcela-menos-vías (`computeManzanos`).
-- El motor de subdivisión completo (`subdivisionAlgorithms.ts`, `subdivisionCabeceraCuerpo.ts`) con búsquedas por bisección de hasta 160-200 iteraciones, cada una llamando `clipToStrip`/`polyArea` sobre el polígono completo.
-- `matchFragmentsToMembers` — intersección de área par a par entre fragmentos y miembros, con advertencia propia en el código si supera 20.000 pares (`MATCH_COMPLEXITY_WARNING`).
+- `src/workers/geoOperations.ts` sigue importando `jsts` y `polygon-clipping` y sigue siendo el único código que efectivamente corre cuando el usuario dibuja algo.
+- El crate Rust **no tiene un solo comando de Tauri** que lo exponga al frontend, salvo `geo_engine_version` (un ping de diagnóstico). `src-tauri/src/geo_bridge.rs` lo dice explícitamente en su propio comentario: _"Las Fases 2.1-2.5 van a ir agregando acá los comandos reales"_ — y esos comandos todavía no están.
+- El feature flag `geos-backend` (que habilita la parte de uniones/booleanas del crate) está **apagado por defecto** en `src-tauri/Cargo.toml`. Es intencional según `README-fase-2.0.md`, pero el efecto práctico es que `boolean_ops.rs` ni siquiera se compila dentro del binario que corre hoy.
 
-JSTS es un puerto directo de una librería Java de 2003, sin las optimizaciones de memoria de GEOS (C++) ni acceso a SIMD. `polygon-clipping` es puro JS sin aceleración nativa. Están corriendo en Web Workers — bien, eso saca el trabajo del hilo de render — pero siguen siendo **JS interpretado haciendo aritmética de punto flotante intensiva**, y ya tenés en el código mensajes de `console.warn` propios avisando cuando esto tarda más de 300ms (`UNION_TIME_WARNING_MS`) o cuando se aborta la unión por exceder `MAX_UNION_POINTS` (15.000) o `MAX_UNION_SHAPES` (800). **Tu propio código ya está confesando el límite de escala del motor actual.** A la escala de "ciudad de 1M de habitantes" (que implica cientos de miles de lotes y decenas de miles de segmentos de vía), estos límites se van a alcanzar en el uso normal, no en un caso extremo.
+En criollo: escribiste una porción real del motor nuevo, pero el usuario de la app de hoy sigue ejecutando exactamente el mismo JSTS/polygon-clipping que describía la auditoría original, con los mismos límites de seguridad (`MAX_UNION_POINTS`, `console.warn` a los 300ms, etc.) actuando de la misma manera que antes. Cero regresión, pero también cero mejora medible todavía.
 
 ### 2.3 — Índice espacial: bien diseñado, mal sincronizado
 
-`src/map/spatialIndex.ts` es un wrapper RBush correcto (bulk `load()`, `insert`/`remove`/`update` incrementales). Pero mirá esto en `PostrenderPainter.ts`:
+**Estado: BUG CONFIRMADO, SIGUE ACTIVO.** El parche defensivo que la auditoría original señalaba como anti-patrón ("no lo arregles con más `console.warn`") **sigue exactamente igual** en `src/map/scene/PostrenderPainter.ts`:
 
 ```ts
 if (index.size === 0 && all.length > 0) {
   if (import.meta.env.DEV) {
     console.warn(
-      'PostrenderPainter: índice espacial vacío con N feature(s) presentes — reconstruyendo. Esto no debería pasar en uso normal...'
+      'PostrenderPainter: índice espacial vacío con N feature(s) presentes — reconstruyendo...'
     );
   }
   index.load(all as unknown as Feature<Polygon>[]);
 }
 ```
 
-Este es un **parche defensivo para una condición de carrera que el propio equipo detectó y no resolvió de raíz** (probablemente orden de `subscribe` vs. carga inicial entre `Map.tsx` y quien sea que puebla `drawSource` al cargar un proyecto). Un self-healing silencioso en producción (fuera de DEV) esconde el síntoma. Con un backend Rust y un índice espacial nativo (`rstar`) que vive del lado del backend y se consulta por IPC, esta clase de race condition de sincronización cliente-índice desaparece estructuralmente, porque el índice deja de vivir en el mismo hilo que dispara los eventos de mutación de la fuente OL.
+Esto es un bug real de causa-raíz no resuelta, no cosmético — ver el detalle y la propuesta de arreglo en §5.1, es el hallazgo más accionable de esta revisión.
 
 ### 2.4 — El pipeline de etiquetas/cotas es Canvas2D puro, recalculado cada frame
 
-`LabelPainter.ts`: `collisionGrid.clear()` y reconstrucción completa de la grilla de colisión **en cada llamada a `paint()`**, es decir, en cada frame de postrender no interactivo. Hay un sistema de LOD por umbral de cantidad de features (`LOD_TIER1_FEATURE_THRESHOLD = 350`, `LOD_TIER2_FEATURE_THRESHOLD = 900`) que **ya está degradando la experiencia a partir de 350 features visibles** ocultando cotas de segmento, y a partir de 900 ocultando etiquetas salvo que estén seleccionadas. Para una ciudad real con decenas de miles de lotes visibles en pantalla en un zoom-out moderado, este sistema ya está en su régimen degradado por diseño. Esto no es un bug — es el techo de lo que Canvas2D con recálculo de colisión por CPU puede sostener a 60fps. Necesitás el equivalente a lo que MapLibre/Mapbox GL hacen con sus symbol layers: colisión de etiquetas resuelta en un hilo aparte (o en GPU vía SDF), no recalculada por frame en el hilo principal.
+**Estado: SIN CAMBIOS.** `LabelPainter.ts` sigue reconstruyendo `collisionGrid` en cada `paint()`, y los umbrales de degradación (`LOD_TIER1_FEATURE_THRESHOLD = 350`, `LOD_TIER2_FEATURE_THRESHOLD = 900`) siguen siendo los mismos. Fase 4 no iniciada.
 
 ### 2.5 — Transformaciones de proyección (CRS) por vértice, por edición
 
-`src/geo/metrics.ts` — `projectPathToMetricPlane` llama `transform()` de proj4 **por cada punto**, y esto se dispara en `updateFeatureMetrics()` cada vez que se edita una geometría (incluyendo durante un drag de vértice, aunque ahí está mitigado por el throttle de 150ms en `useDrawSourceTick`). Para un manzano con esquinas redondeadas (los fillets de `ringFillet.ts` generan hasta ~17 puntos por esquina en giros de 180°), esto es una cantidad no trivial de llamadas a la pipeline completa de Transverse Mercator de proj4, repetidas en cada edición. Es corregible con álgebra simple (ver §6.1) sin tocar una sola línea de UI.
+**Estado: SIN CAMBIOS.** `projectPathToMetricPlane` en `src/geo/metrics.ts` sigue llamando `transform()` de proj4 por cada punto. Fase 5 no iniciada.
 
-### 2.6 — Persistencia: no existe
+### 2.6 — Persistencia: no existía
 
-`sql.js` (SQLite compilado a WASM, corriendo _dentro del navegador_) y `dexie` (wrapper de IndexedDB) como dependencias en una app **que corre en Tauri, con acceso a SQLite nativo vía `@tauri-apps/plugin-sql`**, es una contradicción de arquitectura. Estás pagando el costo de un motor SQL compilado a WASM en el hilo del navegador cuando tenés SQLite nativo a un `invoke()` de distancia. Y ninguno de los tres está siendo usado para lo que en teoría existen para hacer: no hay comando de guardar/cargar proyecto visible en ningún componente (`App.tsx` no lo tiene, no hay `ProjectFileMenu` ni equivalente). Con "carga instantánea <500ms" como requisito no negociable, este es el segundo agujero — junto con 2.1 — que hay que tapar primero, no al final.
-
-> **Nota de estado (actualizado):** las Fases 0 y 1 del plan de implementación (§5) ya están completadas — instrumentación/línea base y persistencia nativa vía `rusqlite` respectivamente. §2.6 queda documentado como diagnóstico histórico; ver §5 para el estado real de `sql.js`/`dexie`.
+**Estado: ✅ RESUELTO — Fase 1 completada y verificada.** Se confirmó contra el `package.json` actual que `sql.js` y `dexie` ya no están entre las dependencias, y que `src-tauri/src/project_store.rs` implementa guardado/carga real vía `rusqlite`, con geometría en WKB (`src/persistence/wkb.ts` del lado JS, tablas `layers`/`features`/`streets`/`roundabouts`/`project_meta` del lado Rust). Hay modales reales (`SaveProjectModal.tsx`, `OpenProjectModal.tsx`) conectados a `Ctrl+S`/`Ctrl+O`. Este punto de la auditoría original queda cerrado.
 
 ---
 
 ## 3. Veredicto sobre tus dos apuestas
 
-Pediste opinión seria, no "depende". Acá la tenés, sin cobertura.
+_(Sin cambios en la recomendación — se confirma que fue la decisión correcta y que el trabajo hecho hasta ahora no la contradice.)_
 
-### ✅ Rust como backend nativo — SÍ, y es la decisión correcta de mayor impacto que podés tomar
+### ✅ Rust como backend nativo — SÍ, confirmado como la decisión correcta
 
-No como "un lindo agregado" sino como **reemplazo del motor de geometría completo**: JSTS, polygon-clipping, y toda la lógica de `subdivisionAlgorithms.ts`/`roadNetworkNet.ts`/`fragmentReconciliation.ts` deberían migrar a Rust, expuestos vía comandos de Tauri. Las razones concretas, no genéricas:
+El trabajo hecho en Fase 2.0-2.2 (ver §6) confirma en la práctica lo que la auditoría original predecía: las primitivas geométricas y el motor de subdivisión se portan casi 1:1 a Rust sin fricción, con tests que dan paridad exacta contra los casos conocidos. No hay nada en el código nuevo que sugiera revertir esta decisión.
 
-- Estás en Tauri, **no en un navegador puro**. El worker-based architecture actual (`interactiveWorker`/`batchWorker` en `geoWorkerClient.ts`) es, con altísima probabilidad, un artefacto de una etapa anterior del proyecto donde correr en navegador puro era un requisito (o de una decisión de portabilidad que ya no aplica dado que hoy tenés `src-tauri/`). Mantener el motor de geometría en JS cuando tenés un runtime nativo disponible es dejar sobre la mesa un salto de rendimiento de un orden de magnitud en las operaciones booleanas (unión/diferencia con GEOS vía el crate `geos`, que es la librería C++ madura que JSTS portó y quedó atrás — no hay comparación real de rendimiento entre ambas a la escala de miles de vértices).
-- El motor de subdivisión (bisecciones, `clipToStrip`, todo `polygonEngine.ts`) es aritmética pura sin dependencias de DOM/React — es **exactamente** el tipo de código que se porta a Rust casi 1:1 y gana 10-30x de rendimiento solo por dejar de ser interpretado.
-- El índice espacial puede vivir del lado Rust (`rstar`, R-tree con bulk-load STR igual que RBush pero nativo) y responder consultas de viewport/hit-test sin cruzar el límite JS en absoluto para las partes de solo-lectura.
-- La persistencia (§2.6) se resuelve gratis una vez que tenés un backend Rust con SQLite nativo — es el mismo binario, no una pieza nueva de infraestructura.
+Lo que **sí** cambia respecto al documento original es la urgencia de terminar el cableado (Fase 2.5): tener el motor escrito y no conectado es, en la práctica, el peor de los dos mundos — mantenés dos implementaciones del mismo algoritmo (la JS que corre y la Rust que no) y pagás el costo de mantenimiento de ambas sin cobrar ningún beneficio de rendimiento todavía. Ver §7, ítem nuevo "8."
 
-### ❌ MapLibre GL — NO, y sugerirlo sería un error de arquitecto
+### ❌ MapLibre GL — NO, sin cambios en el veredicto
 
-MapLibre es un renderer de basemap/tiles vectoriales de solo lectura con un modelo de estilo declarativo (expresiones tipo Mapbox Style Spec). No tiene, ni pretende tener, un framework de **edición interactiva de geometría con undo/redo, snapping, vértices arrastrables y comandos transaccionales**. Todo lo que hoy resuelve OpenLayers en tu capa de interacción (§1.1) tendrías que reconstruirlo desde cero sobre MapLibre — y MapLibre no te da ni un punto de partida para eso, porque no es su dominio de problema. La única superficie donde MapLibre "ganaría" es el renderizado del mapa base (tiles), y ahí tu necesidad real es trivial: OSM/Google XYZ tiles y una grilla CAD generada por canvas — cosas que OpenLayers ya resuelve sin fricción (`baseMaps.ts`, `cadGridLayer.ts`). No hay problema que resolver ahí. Cambiar de motor de mapa para ganar cero funcionalidad y perder meses de trabajo de interacción ya construido es la clase de "cambio drástico" que un junior propone porque suena moderno, no porque el problema lo pida. Mi veredicto: **descartalo por completo.**
+_(Sin cambios — el razonamiento original sigue siendo válido: MapLibre no tiene ni pretende tener un framework de edición interactiva de geometría.)_
 
 ### deck.gl — ni lo tenés, ni lo necesitás
 
-Como mencioné en §0, no está en tu stack real. Si en algún momento alguien te lo sugirió: deck.gl brilla en visualización de datos masivos de **solo lectura** (agregación GPU, binning, heatmaps sobre millones de puntos estáticos). Tu problema es edición vectorial interactiva con estado transaccional — el dominio opuesto. No lo sumes.
+_(Sin cambios.)_
 
 ---
 
-## 4. Arquitectura objetivo
+## 4. Arquitectura objetivo — estado de la implementación
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
 │  FRONTEND (React + OpenLayers)                                       │
-│  ─────────────────────────────                                       │
-│  • Interacción y edición: Draw/Modify/Translate/Snap (OL) — SIN      │
-│    CAMBIOS respecto a hoy. Es tu ventaja competitiva ya construida.  │
-│  • Render base: WebGL mirror-per-layer (evolucionado, ver 4.2)       │
-│  • Render "vivo" transitorio: Canvas2D (sketch de dibujo, snap       │
-│    guides, gizmo de rotación, lasso) — SIN CAMBIOS, es correcto.     │
-│  • Estado: Zustand (sin cambios) — la capa de UI está bien resuelta. │
-│  • Cliente delgado hacia Rust vía Tauri `invoke` + eventos.          │
+│  • Interacción y edición: OL — SIN CAMBIOS, como siempre.             │
+│  • Render base WebGL / Canvas2D transitorio — SIN CAMBIOS.           │
+│  • Estado: Zustand — SIN CAMBIOS.                                     │
+│  • Cliente hacia Rust vía Tauri `invoke`:                              │
+│      - project_save/project_load/project_list/project_delete  ✅ USADO│
+│      - geo_engine_version                                     ✅ USADO│
+│      - subdivide / computeManzanos / subdivideManzanoBatch /          │
+│        computeRoadNetworkNet / matchFragmentsBatch          ❌ NO EXISTEN│
+│    → el frontend sigue hablando 100% con geoWorkerClient.ts (JS)       │
+│      para todo lo geométrico.                                          │
 └───────────────────────────┬────────────────────────────────────────┘
-                             │ IPC binario (bincode/postcard, NO JSON)
+                             │ IPC (hoy: JSON vía serde_json; sin definir aún si se migra a binario)
 ┌───────────────────────────▼────────────────────────────────────────┐
 │  BACKEND NATIVO (Rust, dentro del mismo binario Tauri)                │
-│  ────────────────────────────────────────────────────                │
-│  • Motor de geometría: crate `geo` + `geos` (bindings a GEOS)         │
-│    → reemplaza JSTS y polygon-clipping                                │
-│  • Motor de subdivisión: port directo de subdivisionAlgorithms.ts     │
-│  • Índice espacial: `rstar` (R-tree, bulk-load STR)                   │
-│  • Recómputo incremental de red vial/manzanos: mismo algoritmo de     │
-│    fingerprint+extent que hoy, pero en Rust con `rayon` para          │
-│    paralelizar por parcela                                            │
-│  • Persistencia: SQLite nativo vía `rusqlite`/`sqlx`, geometría en    │
-│    WKB (no GeoJSON texto), con streaming de resultados grandes        │
-│  • Progreso de operaciones largas: eventos Tauri (`app.emit`) en vez  │
-│    de un store de progreso alimentado por postMessage                │
+│  • Persistencia SQLite nativa (rusqlite, WKB)              ✅ COMPLETO │
+│  • Primitivas geométricas puras (math.rs, sanitize.rs,                │
+│    roundabout.rs, roads.rs)                                ✅ COMPLETO │
+│  • Motor de subdivisión (subdivision.rs,                               │
+│    subdivision_cabecera_cuerpo.rs)               🟡 PORTADO, SIN TESTS │
+│  • Booleanas (boolean_ops.rs, union/difference vía GEOS)   🟡 ESCRITO, │
+│    INACTIVO (feature `geos-backend` off, sin bridge Tauri)            │
+│  • Reconciliación de fragmentos (matchFragmentsToMembers)   ❌ NO EXISTE│
+│  • Índice espacial nativo (rstar)                           ❌ NO EXISTE│
+│  • Comandos Tauri de geometría (los 5 que faltan)           ❌ NO EXISTEN│
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
-### 4.1 — Qué cruza el límite JS↔Rust y qué no
-
-Regla dura, no ambigua: **todo lo que sea agregado/batch sobre N features cruza a Rust vía `invoke`. Todo lo que sea feedback continuo de 60fps (posición de cursor, snap candidato bajo el mouse, gizmo arrastrándose) se queda en JS**, exactamente como hoy. El error que cometen equipos que migran a Rust a medias es meter _todo_ detrás de IPC, incluyendo cosas latencia-críticas — el roundtrip de IPC de Tauri, aunque rápido, no es gratis, y para un candidato de snap que se recalcula en cada `pointermove` querés cero cruces de proceso. Tu `advancedSnap.ts` actual, corriendo en JS contra un índice espacial **JS** local (no el de Rust) para el subconjunto visible en viewport, es correcto tal cual está — no lo migres.
-
-### 4.2 — Evolución del renderer WebGL, no reemplazo
-
-No tires `LayeredWebglRenderer`. Los cambios concretos:
-
-1. **Presupuesto de capas físicas.** Si un proyecto tiene más de ~32 capas de usuario, dejá de crear un `WebGLVectorLayer` físico por capa y pasá a un modelo de N capas físicas con un atributo `layerColorId`/`layerZ` resuelto por expresión de estilo (el mismo patrón que ya usás para `colorIdx` de manzanos, generalizado). Esto evita agotar contextos/programas WebGL en proyectos grandes con muchas capas.
-2. **Etiquetas/cotas a un pipeline separado con caché persistente.** Sacá el recálculo de `LabelPainter` de "cada frame" a "cada vez que cambia algo relevante en viewport" con un caché de layout invalidado por dirty-flag (ya tenés la primitiva — `metricsUpdatedAt` — solo falta usarla también para gatear la reconstrucción de la grilla de colisión, no solo el caché de área en pantalla).
-3. **Índice espacial para culling de viewport consultado a Rust** cuando el dataset supera un umbral (configurable, p. ej. 50.000 features), con un caché local JS del resultado por viewport-hash para no repetir la consulta en paneos pequeños.
+**Lectura honesta del diagrama:** la mitad inferior (backend Rust) tiene más código escrito de lo que un vistazo rápido al plan original sugeriría, pero la mitad superior (frontend) todavía no tiene ningún cable conectado a esa mitad inferior salvo para persistencia. El "motor de geometría nativo" existe como librería Rust standalone, testeable con `cargo test`, pero no como parte del producto que corre.
 
 ---
 
-## 5. Plan de implementación por fases
+## 5. Hallazgos de esta revisión: bugs y deuda técnica
 
-Estimaciones para 1-2 ingenieros senior dedicados. Cada fase entrega algo funcional y medible — no hay una fase de "big bang" al final.
+Esta sección es nueva respecto al documento original. Son hallazgos de lectura de código, no suposiciones.
 
-### Fase 0 — Instrumentación y línea base (1 semana) ✅ COMPLETADA
+### 5.1 — BUG activo: la reconstrucción silenciosa del índice espacial sigue sin arreglarse
 
-**Entregable:** el `DebugPanel.tsx` que ya tenés (FPS, features, tiempos de postrender) extendido con: tiempo de carga de proyecto, tamaño de snapshot de undo, tiempo de roundtrip de cada tipo de request al worker, memoria del heap de JS bajo carga sintética.
-**Por qué primero:** no vas a poder demostrar que el 10x de Rust es real si no tenés el número de JS documentado con el mismo dataset sintético. Generá un dataset sintético de 100k/500k/1M lotes para usar en todas las fases siguientes como vara de medir.
+**Dónde:** `src/map/scene/PostrenderPainter.ts`, método `getVisibleFeatures`.
 
-### Fase 1 — Persistencia nativa (2-3 semanas) ✅ COMPLETADA
+**Qué pasa:** si el índice espacial (`RBush`, singleton vía `getOrCreateSpatialIndex()`) aparece vacío en un frame donde `drawSource` ya tiene features, el código lo reconstruye entero (`index.load(all...)`) dentro del propio callback de `postrender`, y solo deja un rastro (`console.warn`) cuando `import.meta.env.DEV` es verdadero. **En producción esto sucede en absoluto silencio.**
 
-**Entregable:** comando de guardar/cargar proyecto funcionando end-to-end, esquema SQLite (tablas: `layers`, `features` con geometría en WKB + `kind` + propiedades JSON solo para lo no geométrico, `streets`, `roundabouts`), vía `rusqlite`. Elimina `sql.js` y `dexie` del `package.json`.
-**Criterio de éxito:** cargar el dataset sintético de 500k features en menos de 500ms desde disco hasta `drawSource` poblado.
+**Por qué importa:** un `index.load()` completo dentro de `postrender` es, por definición, un recálculo O(n log n) disparado desde el hilo de render — exactamente el tipo de trabajo que no debería aparecer ahí. Si esto se dispara con cierta frecuencia en proyectos grandes (algo que hoy nadie puede saber, porque no hay telemetría de producción para este evento), es un causante silencioso de jank intermitente que ningún usuario va a poder reportar de forma útil ("a veces el mapa tiene un tirón").
 
-### Fase 2 — Motor de geometría en Rust (5-6 semanas, la fase más grande) — EN CURSO
+**Hipótesis de causa raíz (igual que la auditoría original la planteaba, sin resolver):** un desorden entre el momento en que se instala el listener `addfeature`/`removefeature`/`changefeature` sobre `drawSource` (en `Map.tsx`) y el momento en que algo puebla `drawSource` en volumen (`restoreDrawFeatures` en `mapStore.ts`, o `loadProject` en `persistence/projectFile.ts`, que llama `drawSource.addFeatures(features)` directamente). En React 18/19 con Strict Mode, los efectos se montan/desmontan/remontan una vez extra en desarrollo — si `getOrCreateSpatialIndex()` devuelve el mismo singleton pero los listeners de un montaje anterior ya fueron limpiados por el `return () => {...}` del `useEffect`, podés terminar con features en `drawSource` pero sin ningún listener activo escuchándolas hasta el remount.
 
-Esta es la fase de mayor riesgo y mayor impacto del plan completo, así que conviene desglosarla en sub-fases con dependencias explícitas en vez de atacarla como un bloque monolítico. La regla de secuenciación es: **primero lo que no depende de una librería de booleanas (bajo riesgo, testeable con `cargo test` puro), después la capa que sí la necesita (alto riesgo, requiere fuzzing).** Cada sub-fase tiene su propio criterio de éxito verificable antes de pasar a la siguiente — nadie debería avanzar a 2.3 sin que 2.1 y 2.2 ya estén dando paridad numérica con JS.
+**Cómo se arregla (dos pasos concretos, no otro parche):**
 
-#### 2.0 — Decisión de librería de booleanas + scaffolding del crate (3-4 días)
+1. **Hacer explícita la carga del índice en cada punto de entrada masivo**, en vez de confiar en que los eventos incrementales lo mantengan sincronizado. Tanto `restoreDrawFeatures` (`mapStore.ts`) como `loadProject` (`persistence/projectFile.ts`) deberían llamar `getOrCreateSpatialIndex().load(features)` explícitamente después de poblar `drawSource`, en vez de depender de que `addfeature` dispare `spatialIndex.insert()` feature por feature. Es más barato (`load()` es bulk, `insert()` repetido no) y elimina la ambigüedad de orden.
+2. **Convertir el `console.warn` en una métrica real**, incluso fuera de DEV (`recordGeometrySanitizeEvent`-style, ya existe el patrón en `store/debug/geometryTelemetry.ts` — reusarlo), para poder confirmar en producción si esto sigue pasando después del paso 1, en vez de asumir que ya quedó resuelto.
 
-Antes de portar una sola línea, hay que resolver la pregunta que condiciona todo lo demás: **¿`geos` (bindings a GEOS C++) o el crate `geo` puro-Rust con sus boolean ops?**
+Este es, de los hallazgos de esta revisión, el que tiene mejor relación costo/beneficio: es un arreglo acotado (dos call sites) contra un bug que ya lleva documentado desde la versión anterior de este mismo informe.
 
-- `geos` es más maduro/robusto en geometría degenerada (mismo motor que JSTS portó, pero nativo) — mayor fricción de build (necesita GEOS instalado o vendored) pero menos sorpresas de comportamiento.
-- `geo` puro-Rust compila más simple y encaja mejor con Tauri cross-compile, pero sus boolean ops son más jóvenes que GEOS.
+### 5.2 — El motor Rust existe pero está desconectado: riesgo de deuda duplicada
 
-Dado que el código actual ya tiene mitigaciones propias contra fallos de `polygon-clipping` (los try/catch con auto-limpieza en cascada en `roadNetworkNet.ts` y `geoOperations.ts::robustUnionRoadNetwork`), la recomendación es `geos`, para no heredar esa fragilidad también en Rust. Esta decisión condiciona el diseño de 2.3, así que se toma acá, no después.
+No es un bug de comportamiento (el usuario no nota nada raro), pero sí un riesgo de arquitectura: hoy hay **dos** implementaciones del motor de subdivisión y de geometría de rotondas/calles — la de `src/geo/**.ts` (activa) y la de `src-tauri/crates/geourban-geo/src/**.rs` (inactiva). Mientras la Fase 2.5 no cierre:
 
-**Entregable:** crate `geourban-geo` dentro de `src-tauri/`, tipos compartidos (`Pt = (f64, f64)`, `LotResult`, etc. — mismo shape que `polygonEngine.ts`), y decisión de serialización IPC (arrancar con `serde` + JSON; migrar a bincode/postcard en 2.7 si el perfil lo pide — no optimizar la serialización antes de tener el motor portado).
+- Cualquier corrección de bug o cambio de comportamiento en el algoritmo de subdivisión (`subdivisionCabeceraCuerpo.ts`, por ejemplo) tiene que aplicarse **dos veces** para no generar divergencia silenciosa el día que finalmente se conecte el puente.
+- No hay ningún test que compare automáticamente el output de ambos motores sobre el mismo input — ver 5.3.
 
-#### 2.1 — Primitivas puras, sin booleanas (1 semana)
+**Recomendación:** tratar el cierre de la Fase 2.5 (cableado de comandos Tauri) como bloqueante de alta prioridad, no como "una fase más" — cada semana que pasa con el motor Rust escrito pero inactivo es una semana de mantenimiento doble sin contrapartida.
 
-El bloque de menor riesgo de toda la Fase 2. Todo esto es aritmética cerrada, sin `polygon-clipping` ni JSTS de por medio. Se porta casi 1:1 y se testea con casos unitarios comparando output contra la versión JS:
+### 5.3 — Cobertura de tests desigual dentro del propio crate Rust
 
-- `src/geo/math/polygonEngine.ts` completo: `polyArea`, `centroid`, `convexHull`, `clipHalfPlane`, `clipToStrip`, `principalAxis`, `projectExtents`, `pointInPoly`, `segmentIntersectsPoly`, `buildCutPolys`.
-- `src/geo/sanitizeRing.ts` / `sanitizeGeoJson.ts`: dedupe, colinealidad, área mínima. Importante portarlo temprano porque **todo lo demás depende de recibir anillos ya saneados** — dejarlo para el final duplicaría la lógica de limpieza en cada algoritmo posterior.
-- `src/geo/roads/roadNetworkEngine.ts`: `offsetPolylineMiter`, `buildRing` (offset de polilíneas con límite de miter).
-- `src/geo/roads/ringFillet.ts`: `roundRingReflex`, fillet/chamfer de esquinas.
-- `src/geo/math/lod.ts`, `src/geo/roundabout/roundaboutEngine.ts`: geometría de rotondas, también pura.
+Verificado archivo por archivo:
 
-**Criterio de éxito:** correr el mismo set de polígonos de prueba por ambos lados (JS y Rust) y que área/perímetro coincidan dentro de tolerancia. Nada de esto necesita `invoke` todavía — es una librería Rust standalone testeable con `cargo test` antes de exponer nada a Tauri.
+| Archivo                          | Tiene tests unitarios propios                                                                              |
+| -------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `math.rs`                        | ✅ Sí — extensos, con casos concretos y tolerancias                                                        |
+| `types.rs`                       | ✅ Sí — serialización/formato                                                                              |
+| `geojson.rs`                     | ✅ Sí — roundtrip básico                                                                                   |
+| `boolean_ops.rs`                 | 🟡 Solo 2 smoke tests triviales (unión y diferencia de dos rectángulos), detrás del feature `geos-backend` |
+| `roads.rs`                       | ❌ Ninguno                                                                                                 |
+| `roundabout.rs`                  | ❌ Ninguno                                                                                                 |
+| `sanitize.rs`                    | ❌ Ninguno                                                                                                 |
+| `subdivision.rs`                 | ❌ Ninguno                                                                                                 |
+| `subdivision_cabecera_cuerpo.rs` | ❌ Ninguno                                                                                                 |
 
-#### 2.2 — Motor de subdivisión (1-1.5 semanas) — depende de 2.1
+Esto significa que el criterio de éxito que la Fase 2.1/2.2 originales se proponían ("correr el mismo set de polígonos de prueba por ambos lados y que área/perímetro coincidan dentro de tolerancia") **está cumplido solo para `math.rs`**. El resto del motor de subdivisión (que es, según el propio documento original, "el corazón de tu motor") fue traducido con cuidado manual visible en el código, pero no tiene ninguna prueba automatizada que lo confirme. No es lo mismo "está portado" que "está probado" — ver Fase 2.2/2.6 actualizadas en §6.
 
-El corazón de tu motor y, buena noticia, **no toca JSTS ni polygon-clipping en absoluto** — `subdivisionCabeceraCuerpo.ts` resuelve sus propios clips por semiplano (`hbClipPolyHalf`) igual que `polygonEngine.ts`. Candidato ideal para portar segundo:
+### 5.4 — Reconciliación de fragmentos: no iniciada, y es la dependencia que bloquea el resto
 
-- `src/geo/subdivision/subdivisionAlgorithms.ts`: `subdivideManzanoAuto` (modo2/PCA), `subdivideManzanoExact`, `sliceBisectManzano` (manual-slice), y el dispatcher `subdivideManzano`/`subdivide`.
-- `src/geo/subdivision/subdivisionCabeceraCuerpo.ts`: el algoritmo `auto` (cabecera+cuerpo), el más usado por default.
+`src/geo/roads/fragmentReconciliation.ts` (`matchFragmentsToMembers`, basado en `polygonClipping.intersection`) no tiene ningún equivalente en el crate Rust. Esto importa porque **es la pieza que le da identidad estable a un manzano a través de ediciones** (mantener su id, sus lotes hijos, su método de subdivisión cuando una calle nueva lo recorta) — sin ella, exponer `computeRoadNetworkNet`/`matchFragmentsBatch` como comandos Tauri no tiene sentido, porque el resultado no se podría reconciliar contra el estado existente del proyecto. Es, en la práctica, el ítem que bloquea el cierre de la Fase 2 completa (ver Fase 2.4 en §6).
 
-Con esto ya se pueden exponer **3 de los 6 tipos de request** del worker actual sin haber tocado la parte booleana: `subdivide`, `subdivideManzano`, `subdivideManzanoBatch`. Es un hito real y demostrable a mitad de la Fase 2, no un entregable parcial invisible.
+### 5.5 — Inconsistencia menor: dos funciones casi-idénticas de resolución de capa con semántica distinta
 
-**Criterio de éxito:** las 200 iteraciones de bisección de `subdivideHalf`/`computeCuts` dando el mismo resultado (mismo criterio de remanentes, mismo `frontM`/`depthM`) que hoy en JS, sobre manzanos reales del dataset sintético.
+`src/store/ui/layerPickerStore.ts::requireLayerForKind` y `src/store/entities/layerAutoCreate.ts::resolveOrCreateLayerForKind` hacen lo mismo (resolver o crear una capa para un `kind` de feature) pero difieren en un detalle que puede ser intencional o puede ser un descuido:
 
-#### 2.3 — Capa de booleanas (1.5-2 semanas) — el bloque de mayor riesgo
+- `requireLayerForKind` reutiliza la capa activa **sin verificar que su `kind` coincida** con el que se está pidiendo.
+- `resolveOrCreateLayerForKind` sí exige `active.kind === kind` antes de reutilizarla.
 
-Acá entra `geos`/`geo` en serio. Dos consumidores concretos:
+Si es intencional (p. ej. "la capa activa es una elección explícita del usuario y debe ganar siempre"), documentarlo en el código evitaría que alguien "corrija" una de las dos funciones sin darse cuenta de que rompe la otra semántica en algún call site. Si no es intencional, el efecto práctico es que dibujar, por ejemplo, un polígono de "equipamiento" con una capa de tipo "lote" activa lo asigna silenciosamente a esa capa de lote. Prioridad baja, pero barata de aclarar.
 
-- `unionRings` en `src/geo/roads/roadNetworkNet.ts` — reemplaza `polygonClipping.union`. Ojo con portar también la lógica de reintentos (`selfCleaned`, auto-limpieza por polígono individual cuando la unión directa falla) — no es cosmética, es la razón por la que la unión no explota con geometría real.
-- `robustUnionRoadNetwork` + `computeManzanos` en `src/workers/geoOperations.ts` — reemplaza JSTS `OverlayOp.difference`. Esta es la pieza que hoy tiene el `console.warn` a los 300ms — el criterio de éxito de toda la Fase 2 (unión de 5.000 segmentos en <100ms) se decide acá.
+### 5.6 — Nota menor de UI: `useDraggablePanel` no considera el tamaño del panel al acotar posición
 
-También hay que portar los límites de seguridad ya existentes (`MAX_UNION_POINTS`, `MAX_UNION_SHAPES`, `UNION_TIME_WARNING_MS`) — no descartarlos pensando que "Rust es rápido, no van a hacer falta". Van a seguir haciendo falta como guardrail contra geometría patológica, solo que con umbrales más altos.
-
-**Criterio de éxito:** unión de red vial con 5.000 segmentos de calle en menos de 100ms, sin regresión en los casos de auto-limpieza que hoy dispara `roadNetworkNet.ts` con geometría real.
-
-#### 2.4 — Reconciliación de fragmentos (3-4 días) — depende de 2.3
-
-`src/geo/roads/fragmentReconciliation.ts::matchFragmentsToMembers` usa `polygonClipping.intersection` para `ringIntersectionAreaRaw`. Se porta rápido una vez que 2.3 ya da intersección de anillos funcionando. Esto desbloquea los dos tipos de request que faltaban: `computeRoadNetworkNet` y `matchFragmentsBatch`.
-
-**Criterio de éxito:** mismas asignaciones fragmento↔miembro (`MATCH_MIN_RATIO = 0.35`) que la versión JS sobre el corpus de reconciliación del dataset sintético.
-
-#### 2.5 — Cableado de comandos Tauri + reemplazo de `geoWorkerClient.ts` (1 semana)
-
-Con las 4 sub-fases anteriores ya está el motor completo compilando. Ahora:
-
-- Comandos Tauri espejando 1:1 la firma de `computeManzanosInWorker`, `subdivideInWorker`, `subdivideManzanoInWorker`, `subdivideManzanoBatchInWorker`, `computeRoadNetworkNetInWorker`, `matchFragmentsBatchInWorker` — así los call-sites en `useManzanoActions.ts`, `RecomputeManzanoLotsCommand.ts`, `SubdivideCommand.ts`, etc. cambian solo el `import` y el `await`, no la lógica de negocio alrededor.
-- El split interactive/batch worker de hoy (`INTERACTIVE_TYPES`, dos Workers separados para no bloquear el hilo interactivo con trabajo batch) se traduce a: comandos Tauri `async` + `rayon` para paralelizar internamente en Rust (por ejemplo `subdivideManzanoBatch` paralelizando por manzano). Ya no hacen falta dos "workers" separados — el runtime async de Tauri + un thread pool de Rayon da eso gratis.
-- Mantener el timeout/retry pattern de `runWorker()` en el lado cliente (el manejo actual de `DEFAULT_WORKER_TIMEOUT_MS` con reject-all-pending) — sigue siendo válido como defensa contra un comando Rust que se cuelgue con geometría patológica.
-
-**Criterio de éxito:** los 6 tipos de request funcionando end-to-end desde React sin cambiar lógica de negocio en los call-sites, solo el transporte.
-
-#### 2.6 — Paridad y fuzzing (3-4 días, en paralelo con 2.5)
-
-Correr el mismo corpus de geometría degenerada que hoy dispara `sanitizeRing.ts`/`recordGeometrySanitizeEvent` contra ambos motores y comparar resultados. Esto es lo que evita un bug sutil de redondeo o de orientación de anillo (CW vs CCW) que no aparece hasta producción.
-
-**Criterio de éxito:** cero divergencias no explicadas entre JS y Rust sobre el corpus de fuzzing, o divergencias documentadas y aceptadas explícitamente (p. ej. tolerancia de punto flotante).
-
-#### 2.7 — Validación de performance + limpieza (2-3 días)
-
-Correr el criterio de éxito oficial de la Fase 2 (unión de red vial con 5.000 segmentos <100ms) con el instrumental de la Fase 0 ya construido (`DebugPanel.tsx`, `perfTelemetry.ts`). Si pasa: borrar `jsts`, `polygon-clipping`, `src/workers/geoWorker.ts` y `geoOperations.ts` del bundle JS.
-
-**Criterio de éxito:** métrica oficial de Fase 2 confirmada + bundle JS liberado de las tres dependencias de geometría pesada.
+`clamp()` en `src/hooks/useDraggablePanel.ts` acota la esquina superior-izquierda del panel a `[edgePadding, innerWidth - edgePadding]`, pero no resta el ancho/alto real del panel. En ventanas muy angostas (o paneles muy anchos) el panel puede quedar parcialmente fuera de la vista tras un resize. No relacionado con el motor de geometría — se documenta acá porque apareció en la revisión, prioridad cosmética.
 
 ---
 
-**Orden de ejecución recomendado dentro de la Fase 2:** 2.0 → 2.1 → 2.2 (acá ya hay un hito demostrable sin haber tocado booleanas) → 2.3 → 2.4 → 2.5 → 2.6/2.7 en paralelo al cierre.
+## 6. Plan de implementación por fases — estado real y detalle ampliado
 
-### Fase 3 — Undo/redo estructural (2 semanas)
+### Fase 0 — Instrumentación y línea base (1 semana) — ✅ COMPLETADA
 
-**Entregable:** reemplazo de `snapshotDrawSource`/`restoreDrawSourceSnapshot` (GeoJSON completo) por diffs estructurales — reutilizando el mismo patrón que ya usa `ModifyGeometryCommand` (clonar solo las geometrías tocadas) extendido a `AddStreetCommand`/`AddRoundaboutCommand`, apoyado en el `changedExtent` que `recomputeManzanosImmediate` ya calcula para saber exactamente qué manzanos tocar.
-**Criterio de éxito:** trazar una calle en un proyecto de 200.000 features no debe generar una asignación de memoria proporcional al tamaño total del proyecto.
+Confirmado: `DebugPanel.tsx` con FPS, features, tiempos de postrender, memoria de heap, stats de worker roundtrip, y el generador de dataset sintético (`src/geo/debug/syntheticDataset.ts`, hoy solo genera lotes rectangulares en grilla — ver Fase 6.1 para su ampliación pendiente).
 
-### Fase 4 — Índice espacial y render a escala (3 semanas)
+### Fase 1 — Persistencia nativa (2-3 semanas) — ✅ COMPLETADA
 
-**Entregable:** `rstar` del lado Rust para culling de viewport en proyectos grandes, con fallback al RBush JS actual para proyectos chicos (no pagues el costo de IPC si el dataset entra cómodo en el hilo JS — esto es una decisión de umbral, no ambigüedad: medilo en Fase 0 y fijá el número). Rediseño del pipeline de `LabelPainter` con caché persistente por dirty-flag.
-**Criterio de éxito:** 60fps sostenidos con 200.000 features en viewport a zoom urbano típico, medido con el instrumental de Fase 0.
+Confirmado contra `package.json` (sin `sql.js`/`dexie`) y `src-tauri/src/project_store.rs` (`rusqlite`, WKB, transaccional). `SaveProjectModal.tsx`/`OpenProjectModal.tsx` conectados a `Ctrl+S`/`Ctrl+O`. Sin pendientes conocidos en esta fase.
 
-### Fase 5 — CRS y métricas de alto rendimiento (1-2 semanas)
+### Fase 2 — Motor de geometría en Rust — 🟡 EN CURSO (≈40% del valor entregado, no del código escrito)
 
-**Entregable:** linealización afín local de la proyección UTM activa (ver §6.1), reemplazando las llamadas por-vértice a `proj4.transform()` en el hot path de `updateFeatureMetrics`.
-**Criterio de éxito:** recómputo de métricas de 10.000 features editadas en batch en menos de 50ms.
+Sub-fases con estado verificado:
 
-### Fase 6 — Endurecimiento y pruebas de estrés (2 semanas, continuo después)
+#### 2.0 — Decisión de librería + scaffolding — ✅ COMPLETADA
 
-Dataset sintético de 1M+ features, perfiles de memoria (objetivo <2GB confirmado con herramientas nativas, no estimado), fuzzing de geometría degenerada contra el nuevo motor Rust (reutilizando los mismos casos límite que hoy dispara `sanitizeRing.ts`).
+Crate `geourban-geo` creado, tipos compartidos definidos (`types.rs`), decisión tomada: GEOS vía crate `geos`, detrás de `geos-backend` (apagado por defecto). Comando de diagnóstico `geo_engine_version` cableado y funcional.
 
-**Total: ~16-17 semanas para la migración core**, con valor entregado incrementalmente desde la semana 3 (persistencia funcionando, ya completada, fue una mejora de UX enorme sobre "no existe").
+#### 2.1 — Primitivas puras, sin booleanas — ✅ COMPLETADA (con matiz de cobertura)
 
----
+`math.rs`, `sanitize.rs`, `roads.rs` (offset de polilíneas + fillet/chamfer), `roundabout.rs` portados. `math.rs` tiene tests con paridad numérica confirmada; `sanitize.rs`/`roads.rs`/`roundabout.rs` no tienen test propio pero la traducción es fiel línea a línea contra el TS (revisión manual). **Pendiente real:** agregar los tests que faltan antes de dar por cerrado el criterio de éxito original de esta sub-fase.
 
-## 6. Trucos de nivel senior (los que no vas a encontrar en un tutorial)
+#### 2.2 — Motor de subdivisión — 🟡 CÓDIGO PORTADO, CRITERIO DE ÉXITO NO VERIFICADO
 
-**6.1 — Linealización afín de la proyección UTM por proyecto**
-UTM es casi lineal dentro del extent de un proyecto urbano (unos pocos km²). En vez de evaluar la serie completa de Transverse Mercator de proj4 por cada vértice en cada edición, calculá **una sola vez** (al fijar la zona UTM, o cuando el centro del proyecto se mueve significativamente) una matriz afín 2×2 + offset que aproxima la transformación dentro del bounding box del proyecto, y usá esa matriz para todo el trabajo por-vértice caliente (`getSegmentMetrics`, cálculo de área). Error subm-milimétrico a escala urbana, y un salto de rendimiento de uno o dos órdenes de magnitud frente a evaluar la proyección completa por punto. Esto es exactamente el mismo truco que usan los motores CAD georreferenciados profesionales para no pagar el costo de una proyección conforme completa en el hot path.
+`subdivision.rs` (`subdivideManzanoAuto`/`Exact`, `sliceBisectManzano`, dispatcher) y `subdivision_cabecera_cuerpo.rs` (el algoritmo `auto`, el usado por default) están escritos y — a juzgar por la lectura — son una traducción cuidadosa del TS, incluyendo las heurísticas de remanente y fusión de cabeceras. **Lo que falta específicamente:**
 
-**6.2 — WKB, no GeoJSON, en cualquier límite de serialización**
-GeoJSON de texto es humano-legible y pésimo para rendimiento: `JSON.parse`/`stringify` de arrays de coordenadas es lento y genera basura de GC proporcional al número de vértices. Cualquier cruce de límite (IPC Rust↔JS, almacenamiento en SQLite, snapshot de undo si alguna vez lo necesitás binario) debería usar WKB (Well-Known Binary) o, mejor aún, un layout de buffer plano (`Float64Array` de pares x/y con un índice de anillos) que se pueda mapear casi sin copia hacia las estructuras de OpenLayers.
+- Ningún test unitario compara su output contra el TS sobre manzanos reales.
+- No hay ningún comando Tauri que lo exponga (eso es Fase 2.5).
+- **Nuevo criterio de éxito explícito para cerrar esta sub-fase:** tomar 20-30 manzanos reales del dataset sintético (una vez ampliado en Fase 6.1 para incluir calles/rotondas, no solo lotes en grilla), correr `subdivideManzano` en TS y `subdivide_manzano` en Rust sobre los mismos anillos, y aserция automática de que `areaM2`/`frontM`/`depthM`/cantidad de lotes coinciden dentro de tolerancia. Esto se puede hacer **sin esperar a la Fase 2.5** — alcanza con un `cargo test` que embeba unos cuantos anillos de ejemplo como fixtures, algo que ya podría empezar hoy mismo con bajo esfuerzo.
 
-**6.3 — Transferables, no clonado estructurado, mientras JS siga en el camino**
-Mientras migrás por fases, un quick win de una tarde: `geoWorkerClient.ts` hoy hace `postMessage` de objetos anidados sin `transferList`, lo que fuerza una copia profunda estructurada en cada mensaje. Empaquetar las coordenadas como `Float64Array` y pasarlas con `transferList` elimina esa copia mientras el worker sigue vivo (útil como mitigación durante la Fase 2, antes de que el worker desaparezca del todo).
+#### 2.3 — Capa de booleanas — 🟡 ESCRITO, INACTIVO EN EL BINARIO
 
-**6.4 — Bulk-load STR, no inserción incremental, para cargas grandes**
-Tu RBush ya usa `load()` para carga masiva (correcto) — asegurate de que el equivalente en `rstar` (`RTree::bulk_load`) se use de la misma forma al hidratar un proyecto grande desde SQLite, no un loop de `insert()` uno por uno. La diferencia entre O(n log n) bulk-load y n inserciones incrementales es la diferencia entre milisegundos y segundos en 500k features.
+`boolean_ops.rs` implementa `union_rings` (con la misma lógica de reintento/auto-limpieza que `roadNetworkNet.ts`), `robust_union_road_network`/`compute_manzanos` (equivalente de `geoOperations.ts`), y — adelantado respecto al orden original del plan — **también `compute_road_network_net`** (que el documento original ubicaba recién como consecuencia de cerrar 2.4; resulta que no depende de la reconciliación de fragmentos, solo de `union_rings` + `round_ring_reflex`, ambos ya disponibles). Tiene 2 smoke tests de GEOS (unión y diferencia de rectángulos).
+**Bloqueadores para cerrar esta sub-fase:**
 
-**6.5 — Progreso vía eventos del backend, no polling de un store JS**
-Tu `useGenerateLotsProgressStore` hoy se alimenta desde el hilo principal que orquesta chunks de 8 manzanos contra el worker. Cuando el trabajo pesado viva en Rust con `rayon`, emitilo como eventos Tauri (`app.emit("lots:progress", ...)`) consumidos con `listen()` en React — el backend informa su propio avance real en paralelo, en vez de que el frontend infiera el progreso trocenado artificialmente para poder mostrar una barra.
+- El feature `geos-backend` sigue apagado por defecto — nadie ha validado que compile y corra con GEOS realmente instalado/vendored en un entorno de build limpio.
+- Cero comparación de paridad contra el JS con geometría real (solo casos sintéticos triviales).
+- Versión del crate `geos` fijada en `"8"` sin revisar si sigue vigente — el propio `README-fase-2.0.md` ya señalaba esto como pendiente de verificar.
 
-**6.6 — Preserva el patrón de "firma para gatear trabajo caro"**
-Ya lo hacés bien en `LayeredWebglRenderer.layerSignature` (no llamar `setStyle()` — caro, recompila shaders — salvo que algo relevante cambió) y en `streetsHash`/`streetPairHash` de `StreetPainter.ts`. Generalizá explícitamente este patrón como norma de equipo: **antes de cualquier operación GPU o de recómputo geométrico caro, comparar una firma barata primero.** Es la diferencia entre un sistema que escala y uno que no, y ya tenés el instinto correcto en el código — falta aplicarlo de forma consistente (p. ej., en `LabelPainter`, donde falta, ver §2.4).
+#### 2.4 — Reconciliación de fragmentos — ❌ NO INICIADA
 
-**6.7 — SDF (Signed Distance Fields) si algún día las badges de lote se vuelven el cuello de botella**
-Si después de la Fase 4 seguís con presión de rendimiento en las miles de badges de número de lote/cotas, la técnica que usan MapLibre/Mapbox internamente para renderizar texto a 60fps con miles de labels es un atlas de glifos SDF renderizado como sprites WebGL instanciados, no `fillText` de Canvas2D por label. Es una pieza de trabajo no trivial (generación de atlas, shader de SDF) — no la hagas antes de necesitarla, pero sabé que existe como el siguiente escalón si el caché de la Fase 4 no alcanza.
+Sin ningún puerto de `matchFragmentsToMembers`/`ringIntersectionAreaRaw` (`fragmentReconciliation.ts`). Es la pieza que falta para que `computeRoadNetworkNet` y `matchFragmentsBatch` tengan sentido de punta a punta (ver §5.4). Sub-tareas concretas para arrancarla:
 
----
+- 2.4.a: puerto de `ringIntersectionAreaRaw` usando GEOS `intersection()` + `area()` (mismo patrón que `boolean_ops.rs` ya usa para union/difference — reutilizable casi 1:1).
+- 2.4.b: puerto del algoritmo de asignación greedy por mejor solapamiento (`MATCH_MIN_RATIO = 0.35`), que es aritmética pura sin GEOS de por medio, portable independientemente de 2.4.a si se quiere paralelizar el trabajo.
+- 2.4.c: test de paridad sobre el corpus de reconciliación real (parcelas con manzanos ya lotizados, recortadas por una calle nueva).
 
-## 7. Lo que NO vas a hacer (anti-patrones a evitar activamente)
+#### 2.5 — Cableado de comandos Tauri + reemplazo de `geoWorkerClient.ts` — ❌ NO INICIADA
 
-1. **No reescribas la capa de interacción de OpenLayers.** Es tu activo más valioso y menos reemplazable.
-2. **No adoptes MapLibre.** Resuelve un problema que no tenés y no resuelve ninguno que sí tenés.
-3. **No muevas todo detrás de IPC de Tauri sin distinguir hot-path de batch.** Vas a cambiar un cuello de botella de CPU por uno de latencia de IPC si sos indiscriminado.
-4. **No sigas usando `sql.js`/`dexie` "porque ya están instalados".** Son redundancia arquitectónica activa en un contexto Tauri con SQLite nativo disponible — cada semana que pasan sin usarse es deuda que alguien va a tener que justificar o borrar.
-5. **No optimices el pipeline de labels/SDF (§6.7) antes de tener el dato de que lo necesitás.** Medí primero (Fase 0), después optimizá lo que el perfil real te diga, no lo que "suena" a cuello de botella.
-6. **No parchees la race condition del índice espacial (§2.3) con más `console.warn`.** Arreglá el orden de inicialización de raíz; el auto-heal silencioso en producción es un bug disfrazado de feature.
-7. **No avances de una sub-fase de la Fase 2 a la siguiente sin su criterio de éxito verificado.** En particular, no empieces 2.3 (booleanas) sin que 2.1/2.2 ya tengan paridad numérica confirmada contra JS — es la sub-fase de mayor riesgo y necesita una base sólida debajo.
+Verificado en `src-tauri/src/lib.rs`: el único comando geométrico registrado es `geo_engine_version`. Ninguno de los 6 tipos de request que resuelve hoy `geoWorker.ts` (`subdivide`, `subdivideManzano`, `subdivideManzanoBatch`, `computeManzanos`, `computeRoadNetworkNet`, `matchFragmentsBatch`) tiene comando Tauri equivalente. Esta sub-fase depende de que 2.4 cierre (para los dos últimos tipos) pero **`subdivide`/`subdivideManzano`/`subdivideManzanoBatch`/`computeManzanos` ya podrían cablearse hoy** sin esperar nada más — es la ganancia más rápida disponible ahora mismo. Sugerencia de secuencia interna:
 
----
+- 2.5.a: cablear primero `subdivide`/`subdivideManzano`/`subdivideManzanoBatch` (dependen solo de 2.1+2.2, ya escritos) detrás de un flag de "usar motor nativo" opcional, para poder hacer A/B en la propia app antes de sacar el JS.
+- 2.5.b: cablear `computeManzanos` (depende de 2.3, requiere activar `geos-backend` en el build real).
+- 2.5.c: cablear `computeRoadNetworkNet`/`matchFragmentsBatch` una vez cerrada 2.4.
+- 2.5.d: recién ahí, reemplazar los call-sites de `geoWorkerClient.ts` uno por uno.
 
-## 8. Cómo vas a saber que funcionó
+#### 2.6 — Paridad y fuzzing — ❌ NO INICIADA (bloqueada por 2.4/2.5, pero el fuzzing de math.rs/subdivision podría adelantarse, ver 2.2)
 
-Criterios binarios, medidos con el instrumental de la Fase 0, sobre el dataset sintético de 1M features — no "se siente más rápido":
+#### 2.7 — Validación de performance + limpieza — ❌ NO INICIADA
 
-| Métrica                                     | Hoy (estimado por evidencia de código)                    | Objetivo post-migración               |
-| ------------------------------------------- | --------------------------------------------------------- | ------------------------------------- |
-| Carga de proyecto urbano completo           | Resuelto en Fase 1 ✅                                     | < 500ms                               |
-| Trazar 1 calle en proyecto de 200k features | O(n) por snapshot GeoJSON completo                        | O(cambios reales), independiente de n |
-| Unión de red vial, 5.000 segmentos          | Con warning propio a partir de 300ms hoy en casos menores | < 100ms                               |
-| FPS con 200k features en viewport           | Degradado por diseño desde 350-900 features (LOD tiers)   | 60fps sostenidos                      |
-| Memoria con dataset de 1M features          | Sin medir hoy                                             | < 2GB confirmado con profiler nativo  |
-| Motor de geometría                          | JSTS + polygon-clipping, JS interpretado                  | GEOS/`geo` nativo vía Rust            |
+`jsts` y `polygon-clipping` siguen en `package.json` y siguen siendo importados activamente por `geoOperations.ts`/`roadNetworkNet.ts`/`fragmentReconciliation.ts`. No se puede borrar nada de esto hasta que 2.5 termine.
+
+**Resumen de Fase 2 en una frase:** el trabajo de "traducir el algoritmo" (2.0-2.2, y buena parte de 2.3) está más avanzado de lo que el criterio de éxito formal puede confirmar todavía; el trabajo de "conectarlo al producto" (2.4, 2.5) prácticamente no empezó. Priorizar 2.5.a (cableado de lo que ya está listo) sobre seguir escribiendo más Rust sin conectar nada es la recomendación de mayor impacto de esta revisión.
 
 ---
 
-Esto es una hoja de ruta, no una promesa: cada fase (y, dentro de la Fase 2, cada sub-fase) tiene un criterio de éxito medible y un dataset sintético común, así que en ningún punto vas a estar "confiando" en que la migración funcionó — lo vas a poder demostrar con el mismo panel de debug que ya empezaste a construir.
+### Fase 3 — Undo/redo estructural — ❌ NO INICIADA
+
+Desglose ampliado (el documento original la trataba como bloque único de 2 semanas; se abre en sub-fases):
+
+- **3.0 — Prerrequisito:** no diseñar el diff estructural en el vacío — reusar exactamente el mismo cálculo de `changedExtent`/grupos de manzanos afectados que `recomputeManzanosImmediate` ya hace en `recomputeManzanos.ts` para saber qué tocó una calle nueva. Es la misma información que necesita el undo estructural para saber qué manzanos/lotes registrar como "antes/después", así que no debería calcularse dos veces.
+- **3.1 — Diseño del formato de diff** (2-3 días): decidir si se registra por comando `{ manzanosAfectados: [{id, geomAntes, geomDespues}], lotesCreados: [...], lotesEliminados: [...] }` o algo más granular. Debe cubrir tanto `AddStreetCommand`/`AddRoundaboutCommand` como cualquier comando futuro que hoy use snapshot completo.
+- **3.2 — Port de `AddStreetCommand`/`AddRoundaboutCommand`** (1 semana): reemplazar `snapshotDrawSource`/`restoreDrawSourceSnapshot` por el diff de 3.1. Es el comando más usado (cada trazo de calle) y el de mayor impacto medible.
+- **3.3 — Auditoría de otros call-sites** (2-3 días): confirmar que no queden otros comandos apoyándose en snapshot completo por comodidad (revisar `SubdivideCommand.ts`, `GenerateLotsCommand.ts` — estos ya trabajan por id individual, probablemente no necesiten cambios, pero hay que confirmarlo explícitamente, no asumirlo).
+- **3.4 — Medición de regresión** (2-3 días): correr el dataset sintético de 200k features, trazar una calle, confirmar que la asignación de memoria del comando ya no es proporcional al tamaño total del proyecto (criterio de éxito original, sin cambios).
+
+**Total estimado:** 2-2.5 semanas, similar al original, con el trabajo mejor secuenciado.
+
+---
+
+### Fase 4 — Índice espacial y render a escala — ❌ NO INICIADA
+
+- **4.0 — Arreglar primero el bug de §5.1** (2-3 días): antes de construir un índice nuevo (`rstar`) encima de la sincronización actual, hay que resolver la causa raíz de por qué el índice JS a veces aparece vacío. Si no se resuelve acá, el índice Rust va a heredar el mismo síntoma bajo una forma distinta (p. ej. una consulta de viewport contra un índice Rust desactualizado, ahora sin ningún `console.warn` que lo delate porque cruza un `invoke`).
+- **4.1 — `rstar` del lado Rust + comando de consulta de viewport** (1.5 semanas): bulk-load (`RTree::bulk_load`, no inserción incremental — ver §7.4) al hidratar un proyecto grande desde SQLite.
+- **4.2 — Umbral de decisión medido** (2-3 días): usar el instrumental de Fase 0 para fijar el número real de features a partir del cual conviene pagar el costo de un `invoke` en vez de resolver en RBush JS local. No adivinar el umbral — medirlo con el dataset sintético.
+- **4.3 — Rediseño de `LabelPainter` con caché por dirty-flag** (1 semana): usar `metricsUpdatedAt` (que ya existe en el modelo de feature) para gatear la reconstrucción de `collisionGrid`, no solo el caché de área en pantalla que ya tiene.
+- **4.4 — Presupuesto de capas físicas WebGL** (3-4 días): por encima de ~32 capas de usuario, pasar a un modelo de N capas físicas con atributo `layerColorId` resuelto por expresión de estilo, generalizando el patrón que ya existe para `colorIdx` de manzanos.
+
+**Total estimado:** 3-3.5 semanas.
+
+---
+
+### Fase 5 — CRS y métricas de alto rendimiento — ❌ NO INICIADA
+
+- **5.1 — Cálculo de matriz afín** (3-4 días): al fijar la zona UTM (o cuando el centro del proyecto se mueve más de cierto umbral), calcular una matriz afín 2×2 + offset que aproxime la transformación dentro del bounding box del proyecto.
+- **5.2 — Invalidación de la matriz** (2 días): recalcular solo cuando cambia la zona UTM o el centro se mueve significativamente — no en cada edición.
+- **5.3 — Reemplazo del hot path** (3-4 días): `getSegmentMetrics`/cálculo de área en `src/geo/metrics.ts` pasan a usar la matriz en vez de `transform()` de proj4 por vértice.
+- **5.4 — Validación de error acumulado** (2 días): confirmar que el error introducido por la aproximación afín es submilimétrico a escala urbana, comparando contra proj4 completo sobre el dataset sintético.
+
+**Total estimado:** 1.5-2 semanas, sin cambios respecto al original, con el trabajo desglosado.
+
+---
+
+### Fase 6 — Endurecimiento y pruebas de estrés — ❌ NO INICIADA (salvo el generador de dataset de Fase 0, que es insuficiente tal cual está)
+
+- **6.1 — Ampliar el dataset sintético** (3-4 días): `src/geo/debug/syntheticDataset.ts` hoy **solo genera lotes rectangulares en grilla** — no genera calles, rotondas, ni manzanos con geometría irregular. Esto es una limitación real: ni la Fase 2.2 (paridad de subdivisión) ni la Fase 2.3/2.4 (uniones y reconciliación de red vial) tienen con qué probarse a escala hoy mismo. Ampliarlo para generar una grilla de calles con anchos variables + algunas rotondas + manzanos resultantes debería ser, en la práctica, uno de los primeros pasos de esta fase, y podría adelantarse para desbloquear los tests de paridad de 2.2/2.4 antes de lo planeado.
+- **6.2 — Profiling de memoria nativo** (3-4 días): confirmar el objetivo de <2GB con 1M features usando herramientas nativas (no el `performance.memory` de Chrome, que ya se usa en `DebugPanel.tsx` pero solo cubre el heap de JS, no la memoria del proceso Rust).
+- **6.3 — Fuzzing de geometría degenerada contra el motor Rust activo** (1 semana, depende de que 2.5 esté cerrada): reusar el mismo corpus que hoy dispara `sanitizeRing.ts`/`recordGeometrySanitizeEvent` del lado JS.
+- **6.4 — Pruebas de carga concurrente** (3-4 días): varios comandos Tauri geométricos en paralelo (p. ej. `subdivideManzanoBatch` corriendo mientras el usuario sigue paneando/dibujando) para confirmar que el runtime async de Tauri + `rayon` no compite de forma visible con la interacción en curso.
+
+**Total estimado:** 2.5-3 semanas.
+
+---
+
+### Resumen de tiempos restantes
+
+| Fase                               | Estado                                               | Trabajo restante estimado                          |
+| ---------------------------------- | ---------------------------------------------------- | -------------------------------------------------- |
+| 0 — Instrumentación                | ✅ Completa                                          | —                                                  |
+| 1 — Persistencia                   | ✅ Completa                                          | —                                                  |
+| 2.0-2.1 — Scaffolding + primitivas | ✅ Completa (falta cobertura de tests en 3 archivos) | 2-3 días                                           |
+| 2.2 — Subdivisión                  | 🟡 Portado, sin verificar                            | 3-5 días (tests de paridad)                        |
+| 2.3 — Booleanas                    | 🟡 Escrito, inactivo                                 | 1 semana (activar feature, validar build, paridad) |
+| 2.4 — Reconciliación de fragmentos | ❌ No iniciada                                       | 1-1.5 semanas                                      |
+| 2.5 — Cableado Tauri               | ❌ No iniciada                                       | 1-1.5 semanas                                      |
+| 2.6 — Fuzzing/paridad              | ❌ No iniciada                                       | 3-4 días                                           |
+| 2.7 — Limpieza JS                  | ❌ No iniciada                                       | 2-3 días                                           |
+| 3 — Undo/redo estructural          | ❌ No iniciada                                       | 2-2.5 semanas                                      |
+| 4 — Índice espacial + render       | ❌ No iniciada (bug 5.1 pendiente)                   | 3-3.5 semanas                                      |
+| 5 — CRS afín                       | ❌ No iniciada                                       | 1.5-2 semanas                                      |
+| 6 — Estrés                         | ❌ No iniciada                                       | 2.5-3 semanas                                      |
+
+**Total restante estimado: ~14-16 semanas** desde hoy, asumiendo 1-2 ingenieros senior dedicados — muy similar al remanente que ya proyectaba el documento original, porque el trabajo de Fase 2 que se hizo (código escrito) todavía no descontó tiempo de la parte que faltaba (cableado + validación), que sigue de punta a punta.
+
+---
+
+## 7. Trucos de nivel senior — estado
+
+_(Preservados del original, con nota de estado agregada a cada uno.)_
+
+**7.1 — Linealización afín de la proyección UTM** — ❌ pendiente (Fase 5).
+
+**7.2 — WKB, no GeoJSON, en cualquier límite de serialización** — ✅ parcialmente aplicado: la persistencia (Fase 1) ya usa WKB. **Pendiente:** el snapshot de undo (Fase 3) y el IPC de geometría (Fase 2.5, hoy usaría `serde_json` por decisión explícita de 2.0, "optimizar después") todavía no.
+
+**7.3 — Transferables, no clonado estructurado, en `postMessage`** — ❌ sin cambios, sigue pendiente en `geoWorkerClient.ts` mientras siga en uso.
+
+**7.4 — Bulk-load STR, no inserción incremental** — el lado JS (`RBush.load()`) ya lo hace bien y sigue así. El lado Rust (`rstar`) todavía no existe — cuando se construya (Fase 4.1), aplicar el mismo criterio desde el día uno.
+
+**7.5 — Progreso vía eventos del backend** — ❌ sin cambios, sigue pendiente de que exista trabajo pesado corriendo en Rust para que tenga sentido.
+
+**7.6 — Preservar el patrón de "firma para gatear trabajo caro"** — el patrón sigue vivo donde ya estaba (`layerSignature`, `streetsHash`), pero **sigue sin aplicarse en `LabelPainter`**, que es justo el ejemplo que el documento original señalaba como pendiente. Sin cambios ahí — ver Fase 4.3.
+
+**7.7 — SDF para labels** — sin cambios, sigue siendo "no lo hagas antes de necesitarlo".
+
+**7.8 — Nuevo, agregado en esta revisión: no dejes crecer motor Rust sin consumidores reales.** Ver §5.2. La regla concreta: por cada sub-fase de Fase 2 que se cierre de ahora en más, cerrarla debería incluir _como mínimo_ un test de paridad contra el TS — no basta con que compile. Escribir Rust sin verificarlo contra el comportamiento real que reemplaza es acumular la misma clase de riesgo que "migrar todo de una" (§8 del documento original), solo que distribuido en el tiempo en vez de concentrado en un big-bang.
+
+---
+
+## 8. Lo que NO vas a hacer (anti-patrones a evitar activamente)
+
+_(Preservado del original, con un ítem nuevo al final.)_
+
+1. No reescribas la capa de interacción de OpenLayers.
+2. No adoptes MapLibre.
+3. No muevas todo detrás de IPC de Tauri sin distinguir hot-path de batch.
+4. No sigas usando `sql.js`/`dexie` — **ya resuelto, este ítem queda cerrado.**
+5. No optimices el pipeline de labels/SDF antes de tener el dato de que lo necesitás.
+6. No parchees la race condition del índice espacial con más `console.warn` — **sigue sin resolverse, ver §5.1. Este es el ítem más urgente de toda la lista de anti-patrones, porque es el único que ya lleva dos revisiones señalado sin acción.**
+7. No avances de una sub-fase de la Fase 2 a la siguiente sin su criterio de éxito verificado — **matizado por esta revisión:** en la práctica sí se avanzó de 2.1/2.2 a escribir 2.3 sin haber cerrado los tests de paridad de las anteriores. No es catastrófico todavía (el código nuevo no está en producción), pero es la razón exacta por la que §5.3 encuentra cobertura de tests desigual. Corregir el hábito antes de la Fase 2.4/2.5, no después.
+8. **Nuevo:** no sigas escribiendo más código Rust nuevo (2.4 en adelante) mientras 2.5.a (cablear lo que YA está listo: `subdivide`/`subdivideManzano`/`subdivideManzanoBatch`) siga sin hacerse. Es la ganancia disponible más barata hoy y seguir posponiéndola es la forma más segura de que esta fase se estire indefinidamente sin que nadie pueda demostrar el beneficio.
+
+---
+
+## 9. Cómo vas a saber que funcionó — métricas actualizadas
+
+| Métrica                                     | Estado hoy (esta revisión)                                                               | Objetivo post-migración                                                      |
+| ------------------------------------------- | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| Carga de proyecto urbano completo           | ✅ Resuelto en Fase 1, confirmado en código                                              | < 500ms                                                                      |
+| Trazar 1 calle en proyecto de 200k features | ❌ Sin cambios — sigue siendo O(n) por snapshot GeoJSON completo                         | O(cambios reales), independiente de n                                        |
+| Unión de red vial, 5.000 segmentos          | ⏸ No medible todavía — motor Rust escrito pero inactivo (feature off, sin comando Tauri) | < 100ms                                                                      |
+| FPS con 200k features en viewport           | ❌ Sin cambios — LOD tiers degradan desde 350-900 features                               | 60fps sostenidos                                                             |
+| Memoria con dataset de 1M features          | ⏸ Sin medir (heap de JS sí se mide; memoria nativa del proceso, no)                      | < 2GB confirmado con profiler nativo                                         |
+| Motor de geometría en producción            | JS interpretado (JSTS + polygon-clipping) — sin cambios, es lo único que corre hoy       | GEOS/`geo` nativo vía Rust, con comandos Tauri reales                        |
+| Índice espacial                             | RBush JS, con bug de resincronización activo (§5.1) sin resolver                         | RBush JS + `rstar` nativo, con causa raíz del bug corregida antes de escalar |
+| Cobertura de tests de paridad JS↔Rust       | 1 de 9 módulos del crate (`math.rs`) con paridad numérica confirmada                     | Los 9 módulos, antes de retirar el motor JS equivalente                      |
+
+---
+
+Esta sigue siendo una hoja de ruta, no una promesa — la diferencia con la versión anterior de este documento es que ahora cada casilla de "completado" está respaldada por una lectura real del código, no por la expectativa de que el plan se ejecutó tal como se escribió. El hallazgo central de esta revisión, si hay que quedarse con uno solo: **el trabajo más difícil de estimar (portar el algoritmo) ya está bastante avanzado; el trabajo más fácil de subestimar (conectarlo, probarlo, y borrar lo viejo) todavía no arrancó, y es ahí donde está el resto del cronograma.**

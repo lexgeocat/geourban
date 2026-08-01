@@ -1049,3 +1049,89 @@ pub fn subdivide_manzano_cabecera_cuerpo(
         })
         .collect()
 }
+
+// ─── Self-check mínimo (la paridad real está en tests/parity_cabecera_cuerpo.rs) ─
+//
+// Este bloque es solo un smoke test barato: confirma que el motor corre
+// sin panic sobre entradas razonables y devuelve lotes con area > 0. La
+// paridad TS↔Rust (auditoria-para-mejora.md §6 Fase 2.2) se valida contra
+// el snapshot JSON versionado en `src/geo/subdivision/__parity__/paritySnapshot.json`
+// desde el integration test `tests/parity_cabecera_cuerpo.rs`.
+
+#[cfg(test)]
+mod smoke_tests {
+    use super::*;
+
+    #[test]
+    fn subdivide_manzano_cabecera_cuerpo_devuelve_lotes_en_rectangulo_simple() {
+        let ring: Vec<Pt> = vec![(0.0, 0.0), (100.0, 0.0), (100.0, 60.0), (0.0, 60.0)];
+        let lots = subdivide_manzano_cabecera_cuerpo(&ring, 600.0, 10.0, None);
+        assert!(!lots.is_empty(), "no devolvio lotes");
+        for l in &lots {
+            assert!(l.area_m2 > 0.0, "lote con area <= 0: {:?}", l);
+            assert!(l.front_m >= 0.0, "lote con front_m < 0: {:?}", l);
+            assert!(l.depth_m >= 0.0, "lote con depth_m < 0: {:?}", l);
+        }
+    }
+
+    #[test]
+    fn subdivide_manzano_cabecera_cuerpo_idempotente_sobre_5_manzanos() {
+        // Idempotencia: misma entrada -> mismo count y misma suma de areas.
+        // Si el motor introdujera orden aleatorio entre llamadas, fallaria.
+        let rings: &[(&str, Vec<Pt>, f64, f64, Option<(f64, f64)>)] = &[
+            (
+                "rect_100x60",
+                vec![(0.0, 0.0), (100.0, 0.0), (100.0, 60.0), (0.0, 60.0)],
+                600.0,
+                10.0,
+                None,
+            ),
+            (
+                "rect_200x40",
+                vec![(0.0, 0.0), (200.0, 0.0), (200.0, 40.0), (0.0, 40.0)],
+                400.0,
+                10.0,
+                None,
+            ),
+            (
+                "trapecio",
+                vec![(0.0, 0.0), (80.0, 0.0), (80.0, 80.0), (20.0, 80.0)],
+                500.0,
+                12.0,
+                Some((1.0, 0.0)),
+            ),
+            (
+                "cuadrado_40",
+                vec![(0.0, 0.0), (40.0, 0.0), (40.0, 40.0), (0.0, 40.0)],
+                200.0,
+                8.0,
+                None,
+            ),
+            (
+                "forma_L",
+                vec![
+                    (0.0, 0.0),
+                    (50.0, 0.0),
+                    (50.0, 30.0),
+                    (30.0, 30.0),
+                    (30.0, 50.0),
+                    (0.0, 50.0),
+                ],
+                300.0,
+                10.0,
+                Some((0.0, 1.0)),
+            ),
+        ];
+        for (name, ring, target, front, dir) in rings {
+            let a = subdivide_manzano_cabecera_cuerpo(ring, *target, *front, *dir);
+            let b = subdivide_manzano_cabecera_cuerpo(ring, *target, *front, *dir);
+            assert_eq!(a.len(), b.len(), "{name}: count no idempotente");
+            let sa: f64 = a.iter().map(|l| l.area_m2).sum();
+            let sb: f64 = b.iter().map(|l| l.area_m2).sum();
+            assert!(
+                (sa - sb).abs() < 1e-9,
+                "{name}: total area no idempotente ({sa} vs {sb})"
+            );
+        }
+    }
+}
