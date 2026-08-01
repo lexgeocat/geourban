@@ -1,57 +1,132 @@
 #!/usr/bin/env node
 // scripts/run-vitest-with-watchdog.mjs
 //
-// Ejecuta vitest en un proceso hijo con timeout duro a nivel de SO.
-// El timeout interno de Vitest no sirve contra un test bloqueado en
-// código 100% síncrono (p. ej. OverlayOp.difference de JSTS con
-// geometría patológica): ese timeout se chequea en el mismo event loop
-// que está bloqueado, así que nunca dispara. Un proceso padre aparte SÍ
-// puede matar al hijo por señal del SO, sin depender de que el hijo
-// coopere.
+// Envuelve `vitest run` con un watchdog externo: si el proceso hijo se
+// cuelga más allá de un timeout (típico con JSTS OverlayOp sobre
+// geometría patológica, que no tiene cancelación interna), lo matamos
+// desde afuera en vez de dejar CI colgado indefinidamente.
+//
+// El suite de fuzz (src/geo/__fuzz__) es lento/no-determinístico por
+// diseño y se excluye del `npm test` normal — PERO si el caller apunta
+// explícitamente a esa carpeta (como hace `npm run test:fuzz`), la
+// exclusión se levanta automáticamente. Antes este script la excluía
+// siempre, dejando `test:fuzz` sin ningún archivo para correr.
+
 import { spawn } from 'node:child_process';
-import process from 'node:process';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const TIMEOUT_MS = Number(process.env.VITEST_WATCHDOG_TIMEOUT_MS ?? 3 * 60_000);
-const vitestArgs = process.argv.slice(2);
-const isWindows = process.platform === 'win32';
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const ROOT = path.resolve(__dirname, '..');
 
-const child = spawn('npx', ['vitest', ...vitestArgs], {
-  stdio: 'inherit',
-  shell: isWindows, // en Windows npx es un .cmd
-});
+const FUZZ_DIR = 'src/geo/__fuzz__';
+const DEFAULT_WATCHDOG_MS = 120_000; // margen sobre cualquier --testTimeout
 
-let settled = false;
+function toPosix(p) {
+  return p.split(path.sep).join('/');
+}
 
-const timer = setTimeout(() => {
-  if (settled) return;
-  console.error(
-    `\n⛔ [watchdog] vitest no terminó en ${TIMEOUT_MS}ms — probablemente hay un test ` +
-      'colgado en una llamada síncrona (p. ej. una unión/diferencia de JSTS con geometría ' +
-      'patológica). Matando el proceso y sus hijos.\n'
-  );
-  if (isWindows && child.pid) {
-    // taskkill mata el árbol completo (npx -> node -> vitest workers).
-    spawn('taskkill', ['/pid', String(child.pid), '/T', '/F']);
-  } else {
-    child.kill('SIGKILL');
+/** ¿Alguno de los argumentos posicionales (no-flags) apunta al directorio de fuzz? */
+function targetsFuzzDir(args) {
+  return args.some((a) => !a.startsWith('-') && toPosix(a).includes(FUZZ_DIR));
+}
+
+function hasExplicitExclude(args) {
+  return args.some((a) => a === '--exclude' || a.startsWith('--exclude='));
+}
+
+function extractTestTimeoutMs(args) {
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (a.startsWith('--testTimeout')) {
+      const raw = a.includes('=') ? a.split('=')[1] : args[i + 1];
+      const n = Number.parseInt(raw, 10);
+      if (Number.isFinite(n) && n > 0) return n;
+    }
   }
-  process.exitCode = 1;
-}, TIMEOUT_MS);
+  return null;
+}
 
-child.on('exit', (code, signal) => {
-  settled = true;
-  clearTimeout(timer);
-  if (signal) {
-    console.error(`[watchdog] vitest terminó por señal ${signal}`);
-    process.exitCode = 1;
-  } else {
-    process.exitCode = code ?? 1;
+async function main() {
+  const cliArgs = process.argv.slice(2);
+  const vitestArgs = [...cliArgs];
+
+  const fuzzTargeted = targetsFuzzDir(cliArgs);
+
+  // Solo inyectamos la exclusión del fuzz suite si:
+  //  (a) el caller no está apuntando explícitamente a esa carpeta, y
+  //  (b) el caller no trajo su propio --exclude (no lo pisamos).
+  if (!fuzzTargeted && !hasExplicitExclude(cliArgs)) {
+    vitestArgs.push('--exclude', `${FUZZ_DIR}/**`);
   }
-});
 
-child.on('error', (err) => {
-  settled = true;
-  clearTimeout(timer);
-  console.error('[watchdog] no se pudo lanzar vitest:', err);
-  process.exitCode = 1;
-});
+  const explicitTimeout = extractTestTimeoutMs(cliArgs);
+  const watchdogMs = explicitTimeout != null ? explicitTimeout + 60_000 : DEFAULT_WATCHDOG_MS;
+
+  const vitestBin =
+    process.platform === 'win32'
+      ? path.join(ROOT, 'node_modules', '.bin', 'vitest.cmd')
+      : path.join(ROOT, 'node_modules', '.bin', 'vitest');
+
+  const child = spawn(vitestBin, vitestArgs, {
+    cwd: ROOT,
+    stdio: 'inherit',
+    shell: process.platform === 'win32',
+    detached: process.platform !== 'win32',
+  });
+
+  let settled = false;
+  let killedByWatchdog = false;
+
+  const killTree = () => {
+    if (process.platform === 'win32') {
+      spawn('taskkill', ['/pid', String(child.pid), '/T', '/F']);
+    } else {
+      try {
+        process.kill(-child.pid, 'SIGKILL');
+      } catch {
+        try {
+          child.kill('SIGKILL');
+        } catch {
+          /* noop */
+        }
+      }
+    }
+  };
+
+  const watchdog = setTimeout(() => {
+    if (settled) return;
+    killedByWatchdog = true;
+    console.error(
+      `\n[watchdog] vitest superó ${watchdogMs}ms sin terminar — se asume una operación ` +
+        'geométrica sin cota (p.ej. JSTS OverlayOp) colgada. Matando el árbol de procesos.\n'
+    );
+    killTree();
+  }, watchdogMs);
+  watchdog.unref?.();
+
+  const onSignal = () => {
+    if (!settled) killTree();
+  };
+  process.on('SIGINT', onSignal);
+  process.on('SIGTERM', onSignal);
+
+  const exitCode = await new Promise((resolve) => {
+    child.on('exit', (code, signal) => {
+      settled = true;
+      clearTimeout(watchdog);
+      if (killedByWatchdog) return resolve(1);
+      resolve(code ?? (signal ? 1 : 0));
+    });
+    child.on('error', (err) => {
+      settled = true;
+      clearTimeout(watchdog);
+      console.error('[watchdog] no se pudo lanzar vitest:', err);
+      resolve(1);
+    });
+  });
+
+  process.exit(exitCode);
+}
+
+main();
