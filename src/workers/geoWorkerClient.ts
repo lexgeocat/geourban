@@ -7,6 +7,8 @@ import type { RoundaboutParams } from '../geo/roundabout/roundaboutEngine';
 import type { CornerMode } from '../geo/roads/ringFillet';
 import type { RoadNetworkNet } from '../geo/roads/roadNetworkNet';
 import type { Pt } from '../geo/math/polygonEngine';
+import { invoke } from '@tauri-apps/api/core';
+import { useNativeGeoEngineStore } from '../store/debug/nativeEngineStore';
 import { recordGeometrySanitizeEvent } from '../store/debug/geometryTelemetry';
 import { recordWorkerRoundtrip } from '../store/debug/perfTelemetry';
 
@@ -183,6 +185,115 @@ function runWorker<T extends GeoWorkerResponse>(request: GeoWorkerRequest, timeo
   });
 }
 
+// ─── Motor nativo (Fase 2.5.a) ───────────────────────────────────────────
+
+function isTauriRuntime(): boolean {
+  return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+}
+
+function shouldUseNative(): boolean {
+  return useNativeGeoEngineStore.getState().enabled && isTauriRuntime();
+}
+
+/** Mapea 1:1 los nombres de campo de `SubdivisionOptions` (TS) a los que
+ * espera `SubdivisionOptions` (Rust, `#[serde(rename_all="camelCase")]`) —
+ * ya coinciden en nombre, esto solo garantiza que cada clave viaje
+ * explícita como `null` en vez de omitida (ver types.rs: los campos
+ * opcionales no tienen `#[serde(default)]`, así que una clave ausente
+ * puede fallar la deserialización; `undefined` en JS se omite al
+ * serializar el payload de `invoke`). */
+function toNativeSubdivisionOptions(options: SubdivisionOptions) {
+  return {
+    method: options.method,
+    targetAreaM2: options.targetAreaM2 ?? null,
+    frontMinM: options.frontMinM ?? null,
+    dirAx: options.dirAx ?? null,
+    dirAy: options.dirAy ?? null,
+    frenteSeg: options.frenteSeg ?? null,
+    auxSeg: options.auxSeg ?? null,
+    cutLine: options.cutLine ?? null,
+  };
+}
+
+function toNativeDirPref(dirPref?: { ax: number; ay: number }) {
+  return dirPref ? { ax: dirPref.ax, ay: dirPref.ay } : null;
+}
+
+async function subdivideNative(
+  polygon: GeoJsonPolygon,
+  options: SubdivisionOptions,
+): Promise<SubdivisionResult> {
+  const t0 = performance.now();
+  try {
+    const result = await invoke<SubdivisionResult>('subdivide', {
+      coordinates: polygon.coordinates as unknown as Array<Array<[number, number]>>,
+      options: toNativeSubdivisionOptions(options),
+    });
+    recordWorkerRoundtrip('subdivide:native', performance.now() - t0);
+    return result;
+  } catch (err) {
+    recordWorkerRoundtrip('subdivide:native', performance.now() - t0);
+    throw err;
+  }
+}
+
+async function subdivideManzanoNative(
+  ring: [number, number][],
+  method: ManzanoLoteMethod,
+  targetAreaM2: number,
+  frontMinM: number,
+  dirPref?: { ax: number; ay: number },
+): Promise<LotResult[]> {
+  const t0 = performance.now();
+  try {
+    const lots = await invoke<LotResult[]>('subdivide_manzano', {
+      ring,
+      method,
+      targetAreaM2,
+      frontMinM,
+      dirPref: toNativeDirPref(dirPref),
+    });
+    recordWorkerRoundtrip('subdivideManzano:native', performance.now() - t0);
+    return lots;
+  } catch (err) {
+    recordWorkerRoundtrip('subdivideManzano:native', performance.now() - t0);
+    throw err;
+  }
+}
+
+async function subdivideManzanoBatchNative(
+  manzanos: Array<{
+    id: string | number;
+    ring: [number, number][];
+    method: ManzanoLoteMethod;
+    targetAreaM2: number;
+    frontMinM: number;
+    dirPref?: { ax: number; ay: number };
+  }>,
+): Promise<Array<{ id: string | number; lots: LotResult[] }>> {
+  const t0 = performance.now();
+  try {
+    const results = await invoke<Array<{ id: string | number; lots: LotResult[] }>>(
+      'subdivide_manzano_batch',
+      {
+        manzanos: manzanos.map((m) => ({
+          id: m.id,
+          ring: m.ring,
+          method: m.method,
+          targetAreaM2: m.targetAreaM2,
+          frontMinM: m.frontMinM,
+          dirPref: toNativeDirPref(m.dirPref),
+        })),
+      },
+    );
+    recordWorkerRoundtrip('subdivideManzanoBatch:native', performance.now() - t0);
+    return results;
+  } catch (err) {
+    recordWorkerRoundtrip('subdivideManzanoBatch:native', performance.now() - t0);
+    throw err;
+  }
+}
+
 // ─── API pública ────────────────────────────────────────────────────────
 
 export async function computeManzanosInWorker(
@@ -201,6 +312,17 @@ export async function subdivideInWorker(
   polygon: GeoJsonPolygon,
   options: SubdivisionOptions,
 ): Promise<SubdivisionResult> {
+  if (shouldUseNative()) {
+    try {
+      return await subdivideNative(polygon, options);
+    } catch (err) {
+      console.error(
+        'geoWorkerClient: "subdivide" en motor nativo falló — se reintenta en el worker JS. ' +
+        'Desactivá "Motor nativo" en el panel de debug si esto se repite.',
+        err,
+      );
+    }
+  }
   const response = await runWorker<{ type: 'subdivide'; result: SubdivisionResult }>({
     type: 'subdivide',
     polygon,
@@ -216,6 +338,17 @@ export async function subdivideManzanoInWorker(
   frontMinM: number,
   dirPref?: { ax: number; ay: number },
 ): Promise<LotResult[]> {
+  if (shouldUseNative()) {
+    try {
+      return await subdivideManzanoNative(ring, method, targetAreaM2, frontMinM, dirPref);
+    } catch (err) {
+      console.error(
+        'geoWorkerClient: "subdivide_manzano" en motor nativo falló — se reintenta en el worker JS. ' +
+        'Desactivá "Motor nativo" en el panel de debug si esto se repite.',
+        err,
+      );
+    }
+  }
   const response = await runWorker<{ type: 'subdivideManzano'; lots: LotResult[] }>({
     type: 'subdivideManzano',
     ring,
@@ -237,6 +370,17 @@ export async function subdivideManzanoBatchInWorker(
     dirPref?: { ax: number; ay: number };
   }>,
 ): Promise<Array<{ id: string | number; lots: LotResult[] }>> {
+  if (shouldUseNative()) {
+    try {
+      return await subdivideManzanoBatchNative(manzanos);
+    } catch (err) {
+      console.error(
+        'geoWorkerClient: "subdivide_manzano_batch" en motor nativo falló — se reintenta en el worker JS. ' +
+        'Desactivá "Motor nativo" en el panel de debug si esto se repite.',
+        err,
+      );
+    }
+  }
   const response = await runWorker<{ type: 'subdivideManzanoBatch'; results: Array<{ id: string | number; lots: LotResult[] }> }>({
     type: 'subdivideManzanoBatch',
     manzanos,

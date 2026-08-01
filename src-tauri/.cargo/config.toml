@@ -1,0 +1,46 @@
+# Cargo config para habilitar el backend GEOS de `geourban-geo`.
+#
+# Requiere que vcpkg tenga libgeos instalado para el target `x64-windows-static`:
+#
+#     cd C:\vcpkg
+#     .\vcpkg install geos:x64-windows-static
+#
+# Si vcpkg vive en otra ruta de tu sistema, editá `VCPKG_INSTALLED` abajo.
+# Aplica solo al workspace de `src-tauri/` (es un `.cargo/config.toml` scoped
+# a este subdirectorio, no se filtra al frontend).
+
+[env]
+# Path donde vcpkg deja headers + libs despues de `vcpkg install geos:x64-windows-static`.
+# Por convencion de vcpkg: <VCPKG_ROOT>/installed/<TARGET>/...
+# Cambiar el target aca si instalaste otra variante (e.g. `x64-windows`).
+VCPKG_INSTALLED = { value = "x64-windows-static", force = false }
+# `cc` (la crate que `geos-sys` usa internamente para compilar wrappers C)
+# respeta CPATH en unix y Windows. Lo seteamos para que encuentre
+# `geos_c.h` sin tener que patchear el build script de la crate.
+CPATH = { value = "C:\\vcpkg\\installed\\x64-windows-static\\include", force = false }
+# Cplusplus include path por si la crate intenta compilar algo C++.
+CPLUS_INCLUDE_PATH = { value = "C:\\vcpkg\\installed\\x64-windows-static\\include", force = false }
+# `geos-sys` usa pkg-config para localizar libgeos. vcpkg provee
+# `pkgconf` (reemplazo drop-in de pkg-config). Apuntamos PKG_CONFIG
+# al binario de vcpkg para no requerir pkg-config en PATH.
+PKG_CONFIG = { value = "C:\\vcpkg\\installed\\x64-windows-static\\tools\\pkgconf\\pkgconf.exe", force = false }
+# pkgconf busca modulos `.pc` en PKG_CONFIG_PATH. vcpkg los deja en
+# `<installed>/lib/pkgconfig` y `<installed>/share/pkgconfig`.
+PKG_CONFIG_PATH = { value = "C:\\vcpkg\\installed\\x64-windows-static\\lib\\pkgconfig;C:\\vcpkg\\installed\\x64-windows-static\\share\\pkgconfig", force = false }
+PKG_CONFIG_LIBDIR = { value = "C:\\vcpkg\\installed\\x64-windows-static\\lib\\pkgconfig", force = false }
+
+[target.x86_64-pc-windows-msvc]
+# El linker MSVC (`link.exe`) no busca por defecto en dirs no estandar.
+# `-LIBPATH:` le suma un directorio de busqueda de .lib al link.
+# El include path lo agrega la crate `geos-sys` automaticamente si la lib
+# esta en una ruta estandar; sino, la crate usa `bindings_wrapper.h` que
+# igual resuelve via `cc` en su build.rs.
+linker = "link.exe"
+rustflags = [
+    "-C", "link-arg=/LIBPATH:C:\\vcpkg\\installed\\x64-windows-static\\lib",
+    # vcpkg `x64-windows-static` compila libgeos con /MT (CRT estatica),
+    # pero el resto del binario usa /MD (CRT dinamica). Eso provoca el
+    # warning `LNK4098 defaultlib 'LIBCMT' conflicts`. Forzamos al linker
+    # a no vincular automaticamente LIBCMT — la libgeos ya la embebe.
+    "-C", "link-arg=/NODEFAULTLIB:LIBCMT",
+]

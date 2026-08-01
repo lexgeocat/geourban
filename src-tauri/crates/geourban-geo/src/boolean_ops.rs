@@ -2,8 +2,9 @@
 
 use std::time::Instant;
 
-use geos::{CoordDimensions, CoordSeq, Geom, Geometry, GeometryTypes};
+use geos::{ContextHandle, CoordDimensions, CoordSeq, Geom, Geometry, GeometryTypes};
 use serde::Serialize;
+use std::cell::RefCell;
 
 use crate::math::orient_ring_ccw;
 use crate::roads::{
@@ -46,9 +47,36 @@ fn close_ring(ring: &[Pt]) -> Vec<Pt> {
     }
 }
 
+// ─── Contexto GEOS por thread ──────────────────────────────────────────
+//
+// En geos 8.x `Geometry<'a>` toma prestado el `ContextHandle`. Como muchas
+// de nuestras funciones crean y combinan `Geometry` locales y necesitan
+// que el `ContextHandle` viva durante toda la operación, lo guardamos en
+// un `thread_local!` con lifetime `'static` (es seguro:
+// `ContextHandle` no contiene referencias, solo un ptr GEOS y un
+// `Box<InnerContext>` propio, ambos liberados en `Drop`).
+thread_local! {
+    static GEOS_CTX: RefCell<Option<ContextHandle<'static>>> = const { RefCell::new(None) };
+}
+
+/// Inicializa (si hace falta) el `ContextHandle` del thread actual.
+fn ensure_geos_ctx() {
+    GEOS_CTX.with(|cell| {
+        let mut borrow = cell.borrow_mut();
+        if borrow.is_none() {
+            let ctx = ContextHandle::init().expect("GEOS_init_r no debería fallar");
+            // SAFETY: `ContextHandle` no contiene referencias — es dueño
+            // de su ptr GEOS y de su `InnerContext`. El transmute a
+            // `'static` solo wideniza el lifetime.
+            let ctx: ContextHandle<'static> = unsafe { std::mem::transmute(ctx) };
+            *borrow = Some(ctx);
+        }
+    });
+}
+
 // ─── Conversión Pt <-> GEOS ─────────────────────────────────────────────
 
-fn ring_to_linear_ring(ring: &[Pt]) -> Result<Geometry, geos::Error> {
+fn ring_to_linear_ring(ring: &[Pt]) -> Result<Geometry<'static>, geos::Error> {
     let closed = close_ring(ring);
     let n = closed.len();
     let mut cs = CoordSeq::new(n as u32, CoordDimensions::TwoD)?;
@@ -56,22 +84,28 @@ fn ring_to_linear_ring(ring: &[Pt]) -> Result<Geometry, geos::Error> {
         cs.set_x(i, x)?;
         cs.set_y(i, y)?;
     }
-    Geometry::create_linear_ring(cs)
+    let geom = Geometry::create_linear_ring(cs)?;
+    // SAFETY: el thread_local context vive hasta el fin del thread, asi
+    // que widenizar el lifetime de la Geometry a `'static` es seguro.
+    Ok(unsafe { std::mem::transmute(geom) })
 }
 
 /// Construye un polígono GEOS a partir de un único anillo (sin huecos).
-fn ring_to_polygon(ring: &[Pt]) -> Result<Geometry, geos::Error> {
+#[allow(dead_code)]
+fn ring_to_polygon(ring: &[Pt]) -> Result<Geometry<'static>, geos::Error> {
     let shell = ring_to_linear_ring(ring)?;
-    Geometry::create_polygon(shell, vec![])
+    let poly = Geometry::create_polygon(shell, vec![])?;
+    Ok(unsafe { std::mem::transmute(poly) })
 }
 
-fn rings_to_polygon(rings: &[Vec<Pt>]) -> Result<Geometry, geos::Error> {
+fn rings_to_polygon(rings: &[Vec<Pt>]) -> Result<Geometry<'static>, geos::Error> {
     let shell = ring_to_linear_ring(&rings[0])?;
     let mut holes = Vec::with_capacity(rings.len().saturating_sub(1));
     for hole in rings.iter().skip(1) {
         holes.push(ring_to_linear_ring(hole)?);
     }
-    Geometry::create_polygon(shell, holes)
+    let poly = Geometry::create_polygon(shell, holes)?;
+    Ok(unsafe { std::mem::transmute(poly) })
 }
 
 fn coord_seq_to_ring(cs: &CoordSeq) -> Result<Vec<Pt>, geos::Error> {
@@ -83,7 +117,13 @@ fn coord_seq_to_ring(cs: &CoordSeq) -> Result<Vec<Pt>, geos::Error> {
     Ok(out)
 }
 
-fn polygon_to_rings(poly: &Geometry) -> Result<Vec<Vec<Pt>>, geos::Error> {
+/// Extrae los anillos (exterior + huecos) de un polígono o multipolígono.
+///
+/// Acepta cualquier tipo que implemente el trait `Geom` (típicamente
+/// `Geometry` o `ConstGeometry`) para poder consumir tanto geometrías
+/// propias como referencias devueltas por `get_geometry_n`/`get_exterior_ring`,
+/// que en geos 8.x retornan `ConstGeometry`.
+fn polygon_to_rings<'a, G: Geom<'a>>(poly: &G) -> Result<Vec<Vec<Pt>>, geos::Error> {
     let mut rings = Vec::new();
     let exterior = poly.get_exterior_ring()?;
     rings.push(coord_seq_to_ring(&exterior.get_coord_seq()?)?);
@@ -96,8 +136,8 @@ fn polygon_to_rings(poly: &Geometry) -> Result<Vec<Vec<Pt>>, geos::Error> {
     Ok(rings)
 }
 
-fn split_into_polygon_geoms(geom: &Geometry) -> Result<Vec<Geometry>, geos::Error> {
-    let geom_type = geom.geometry_type()?;
+fn split_into_polygon_geoms(geom: &Geometry<'static>) -> Result<Vec<Geometry<'static>>, geos::Error> {
+    let geom_type = geom.geometry_type();
     match geom_type {
         GeometryTypes::Polygon => {
             if geom.is_empty()? {
@@ -112,7 +152,7 @@ fn split_into_polygon_geoms(geom: &Geometry) -> Result<Vec<Geometry>, geos::Erro
             let mut out = Vec::with_capacity(n);
             for i in 0..n {
                 let part = geom.get_geometry_n(i)?;
-                if part.geometry_type()? == GeometryTypes::Polygon && !part.is_empty()? {
+                if part.geometry_type() == GeometryTypes::Polygon && !part.is_empty()? {
                     let rings = polygon_to_rings(&part)?;
                     out.push(rings_to_polygon(&rings)?);
                 }
@@ -123,8 +163,8 @@ fn split_into_polygon_geoms(geom: &Geometry) -> Result<Vec<Geometry>, geos::Erro
     }
 }
 
-fn geometry_to_polygons(geom: &Geometry) -> Result<Vec<Vec<Vec<Pt>>>, geos::Error> {
-    let geom_type = geom.geometry_type()?;
+fn geometry_to_polygons(geom: &Geometry<'static>) -> Result<Vec<Vec<Vec<Pt>>>, geos::Error> {
+    let geom_type = geom.geometry_type();
     match geom_type {
         GeometryTypes::Polygon => {
             if geom.is_empty()? {
@@ -138,7 +178,7 @@ fn geometry_to_polygons(geom: &Geometry) -> Result<Vec<Vec<Vec<Pt>>>, geos::Erro
             let mut out = Vec::with_capacity(n);
             for i in 0..n {
                 let part = geom.get_geometry_n(i)?;
-                if part.geometry_type()? == GeometryTypes::Polygon && !part.is_empty()? {
+                if part.geometry_type() == GeometryTypes::Polygon && !part.is_empty()? {
                     out.push(polygon_to_rings(&part)?);
                 }
             }
@@ -150,8 +190,9 @@ fn geometry_to_polygons(geom: &Geometry) -> Result<Vec<Vec<Vec<Pt>>>, geos::Erro
 
 // ─── Unión con reintento por auto-limpieza ─────────────────────────────
 
-fn union_polygons_with_retry(polygons: &[Vec<Vec<Pt>>], warn_prefix: &str) -> Option<Geometry> {
-    let base: Vec<Geometry> =
+fn union_polygons_with_retry(polygons: &[Vec<Vec<Pt>>], warn_prefix: &str) -> Option<Geometry<'static>> {
+    ensure_geos_ctx();
+    let base: Vec<Geometry<'static>> =
         polygons.iter().filter_map(|rings| rings_to_polygon(rings).ok()).collect();
     if base.is_empty() {
         return None;
@@ -164,10 +205,10 @@ fn union_polygons_with_retry(polygons: &[Vec<Vec<Pt>>], warn_prefix: &str) -> Op
                 "{warn_prefix}: unión directa falló, reintentando con auto-limpieza por polígono individual. {err1:?}"
             );
 
-            let retry_base: Vec<Geometry> =
+            let retry_base: Vec<Geometry<'static>> =
                 polygons.iter().filter_map(|rings| rings_to_polygon(rings).ok()).collect();
 
-            let mut self_cleaned: Vec<Geometry> = Vec::new();
+            let mut self_cleaned: Vec<Geometry<'static>> = Vec::new();
             for g in &retry_base {
                 match g.unary_union() {
                     Ok(cleaned) => match split_into_polygon_geoms(&cleaned) {
@@ -199,16 +240,20 @@ fn union_polygons_with_retry(polygons: &[Vec<Vec<Pt>>], warn_prefix: &str) -> Op
     }
 }
 
-fn unary_union_of_geoms(polys: Vec<Geometry>) -> Result<Geometry, geos::Error> {
+fn unary_union_of_geoms(polys: Vec<Geometry<'static>>) -> Result<Geometry<'static>, geos::Error> {
     let mut it = polys.into_iter();
     let first = it.next().expect("unary_union_of_geoms: llamar solo con `polys` no vacío");
     match it.next() {
-        None => first.unary_union(),
+        None => {
+            let result = first.unary_union()?;
+            Ok(unsafe { std::mem::transmute(result) })
+        }
         Some(second) => {
             let mut rest = vec![first, second];
             rest.extend(it);
             let collection = Geometry::create_geometry_collection(rest)?;
-            collection.unary_union()
+            let result = collection.unary_union()?;
+            Ok(unsafe { std::mem::transmute(result) })
         }
     }
 }
@@ -264,7 +309,7 @@ pub fn union_rings(rings: &[Vec<Pt>], context: &str) -> Vec<Vec<Vec<Pt>>> {
 
 // ─── robustUnionRoadNetwork + computeManzanos (geoOperations.ts) ───────
 
-pub fn robust_union_road_network(road_network: &[Vec<Vec<Pt>>]) -> Option<Geometry> {
+pub fn robust_union_road_network(road_network: &[Vec<Vec<Pt>>]) -> Option<Geometry<'static>> {
     let mut polys: Vec<Vec<Vec<Pt>>> = Vec::new();
 
     for rings in road_network {
@@ -322,6 +367,7 @@ pub struct ManzanoFragment {
 
 /// <- `computeManzanos` (src/workers/geoOperations.ts).
 pub fn compute_manzanos(parcels: &[Vec<Vec<Pt>>], road_network: &[Vec<Pt>]) -> Vec<ManzanoFragment> {
+    ensure_geos_ctx();
     let road_network_polys: Vec<Vec<Vec<Pt>>> = road_network
         .iter()
         .filter(|r| r.len() >= 3)
@@ -343,9 +389,9 @@ pub fn compute_manzanos(parcels: &[Vec<Vec<Pt>>], road_network: &[Vec<Pt>]) -> V
             }
         };
 
-        let diff_geom = match &road_union {
+        let diff_geom: Geometry<'static> = match &road_union {
             Some(ru) => match parcel_geom.difference(ru) {
-                Ok(d) => d,
+                Ok(d) => unsafe { std::mem::transmute(d) },
                 Err(err) => {
                     log::warn!("computeManzanos: difference() falló para la parcela {index}: {err:?}");
                     continue;

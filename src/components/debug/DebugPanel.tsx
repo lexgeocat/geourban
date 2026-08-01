@@ -12,6 +12,7 @@ import {
   type WorkerStatSnapshot,
 } from '../../store/debug/perfTelemetry';
 import { generateSyntheticLots, ensureSyntheticLotLayer } from '../../geo/debug/syntheticDataset';
+import { useNativeGeoEngineStore } from '../../store/debug/nativeEngineStore';
 
 const REFRESH_MS = 400;
 const SYNTHETIC_SIZES = [100_000, 500_000, 1_000_000] as const;
@@ -80,6 +81,8 @@ export default function DebugPanel() {
   const [undoSnap, setUndoSnap] = useState(readUndoSnapshotStats());
   const [projectLoad, setProjectLoad] = useState(readProjectLoadStats());
   const [heap, setHeap] = useState(readHeapSnapshot());
+  const nativeEngineEnabled = useNativeGeoEngineStore((s) => s.enabled);
+const toggleNativeEngine = useNativeGeoEngineStore((s) => s.toggle);
 
   const [genBusy, setGenBusy] = useState<number | null>(null);
   const [lastGen, setLastGen] = useState<{ size: number; generateMs: number; loadMs: number } | null>(null);
@@ -194,6 +197,32 @@ export default function DebugPanel() {
           />
         ))
       )}
+
+      <SectionTitle>Motor de geometría (Fase 2.5.a)</SectionTitle>
+<div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+  <span style={{ color: 'var(--cad-text-dim)' }}>
+    {nativeEngineEnabled ? 'Nativo (Rust, Tauri)' : 'Worker (JS, JSTS)'}
+  </span>
+  <button
+    onClick={toggleNativeEngine}
+    className="cad-icon-btn"
+    style={{
+      width: 'auto',
+      height: 'auto',
+      padding: '3px 10px',
+      fontSize: '0.6rem',
+      color: nativeEngineEnabled ? 'var(--cad-accent-green)' : 'var(--cad-text-dim)',
+      border: `1px solid ${nativeEngineEnabled ? 'var(--cad-accent-green)' : 'var(--cad-border)'}`,
+    }}
+  >
+    {nativeEngineEnabled ? 'ON' : 'OFF'}
+  </button>
+</div>
+<div style={{ color: 'var(--cad-text-muted)', fontSize: '0.6rem', marginBottom: 2 }}>
+  subdivide / subdivideManzano / subdivideManzanoBatch. Si falla, cae solo
+  al worker JS. Compará contra "Worker roundtrip por tipo" — las entradas
+  con sufijo ":native" son este motor.
+</div>
 
       <SectionTitle>Dataset sintético (Fase 0)</SectionTitle>
       <div style={{ display: 'flex', gap: 4, marginBottom: 4 }}>
