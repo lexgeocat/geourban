@@ -91,8 +91,7 @@ fn ring_to_linear_ring(ring: &[Pt]) -> Result<Geometry<'static>, geos::Error> {
 }
 
 /// Construye un polígono GEOS a partir de un único anillo (sin huecos).
-
-[allow(dead_code)]
+#[allow(dead_code)]
 fn ring_to_polygon(ring: &[Pt]) -> Result<Geometry<'static>, geos::Error> {
     let shell = ring_to_linear_ring(ring)?;
     let poly = Geometry::create_polygon(shell, vec![])?;

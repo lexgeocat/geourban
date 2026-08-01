@@ -1,0 +1,88 @@
+{
+  "version": 1,
+  "generatedAt": "2026-08-01T14:32:26.875Z",
+  "fixtures": [
+    {
+      "name": "caso_identidad",
+      "fragmentCount": 1,
+      "memberCount": 1,
+      "assignments": [
+        {
+          "fragmentIdx": 0,
+          "memberIdx": 0,
+          "overlapArea": 100
+        }
+      ]
+    },
+    {
+      "name": "caso_parcial",
+      "fragmentCount": 1,
+      "memberCount": 1,
+      "assignments": [
+        {
+          "fragmentIdx": 0,
+          "memberIdx": 0,
+          "overlapArea": 81
+        }
+      ]
+    },
+    {
+      "name": "caso_sin_match",
+      "fragmentCount": 1,
+      "memberCount": 1,
+      "assignments": [
+        {
+          "fragmentIdx": 0,
+          "memberIdx": null,
+          "overlapArea": 0
+        }
+      ]
+    },
+    {
+      "name": "caso_bajo_umbral",
+      "fragmentCount": 1,
+      "memberCount": 1,
+      "assignments": [
+        {
+          "fragmentIdx": 0,
+          "memberIdx": null,
+          "overlapArea": 0
+        }
+      ]
+    },
+    {
+      "name": "caso_multi_fragmentos",
+      "fragmentCount": 2,
+      "memberCount": 2,
+      "assignments": [
+        {
+          "fragmentIdx": 0,
+          "memberIdx": 0,
+          "overlapArea": 100
+        },
+        {
+          "fragmentIdx": 1,
+          "memberIdx": 1,
+          "overlapArea": 100
+        }
+      ]
+    },
+    {
+      "name": "caso_competencia",
+      "fragmentCount": 2,
+      "memberCount": 1,
+      "assignments": [
+        {
+          "fragmentIdx": 0,
+          "memberIdx": 0,
+          "overlapArea": 144
+        },
+        {
+          "fragmentIdx": 1,
+          "memberIdx": null,
+          "overlapArea": 0
+        }
+      ]
+    }
+  ]
+}
