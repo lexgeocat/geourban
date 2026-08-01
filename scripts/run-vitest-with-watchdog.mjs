@@ -7,19 +7,25 @@
 // desde afuera en vez de dejar CI colgado indefinidamente.
 //
 // El suite de fuzz (src/geo/__fuzz__) es lento/no-determinístico por
-// diseño y se excluye del `npm test` normal — PERO si el caller apunta
-// explícitamente a esa carpeta (como hace `npm run test:fuzz`), la
-// exclusión se levanta automáticamente. Antes este script la excluía
-// siempre, dejando `test:fuzz` sin ningún archivo para correr.
+// diseño. vitest.config.ts lo excluye INCONDICIONALMENTE vía `test.exclude`
+// — Vitest aplica ese exclude sin importar qué filtro posicional de CLI
+// se le pase, así que apuntar `vitest run src/geo/__fuzz__` contra el
+// config default nunca lo desexcluye (ese era el bug: "No test files
+// found, exiting with code 1"). La solución no es pelear con el exclude
+// del config default: cuando el caller apunta a esa carpeta (como hace
+// `npm run test:fuzz`), este script cambia a un config dedicado
+// (vitest.fuzz.config.mjs) que no lo excluye.
 
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { existsSync } from 'node:fs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
 
 const FUZZ_DIR = 'src/geo/__fuzz__';
+const FUZZ_CONFIG_CANDIDATES = ['vitest.fuzz.config.mjs', 'vitest.fuzz.config.ts'];
 const DEFAULT_WATCHDOG_MS = 120_000; // margen sobre cualquier --testTimeout
 
 function toPosix(p) {
@@ -31,8 +37,15 @@ function targetsFuzzDir(args) {
   return args.some((a) => !a.startsWith('-') && toPosix(a).includes(FUZZ_DIR));
 }
 
-function hasExplicitExclude(args) {
-  return args.some((a) => a === '--exclude' || a.startsWith('--exclude='));
+function hasExplicitConfig(args) {
+  return args.some((a) => a === '--config' || a.startsWith('--config='));
+}
+
+function resolveFuzzConfigPath() {
+  for (const candidate of FUZZ_CONFIG_CANDIDATES) {
+    if (existsSync(path.join(ROOT, candidate))) return candidate;
+  }
+  return null;
 }
 
 function extractTestTimeoutMs(args) {
@@ -53,11 +66,19 @@ async function main() {
 
   const fuzzTargeted = targetsFuzzDir(cliArgs);
 
-  // Solo inyectamos la exclusión del fuzz suite si:
-  //  (a) el caller no está apuntando explícitamente a esa carpeta, y
-  //  (b) el caller no trajo su propio --exclude (no lo pisamos).
-  if (!fuzzTargeted && !hasExplicitExclude(cliArgs)) {
-    vitestArgs.push('--exclude', `${FUZZ_DIR}/**`);
+  if (fuzzTargeted) {
+    if (!hasExplicitConfig(cliArgs)) {
+      const fuzzConfig = resolveFuzzConfigPath();
+      if (!fuzzConfig) {
+        console.error(
+          `\n[watchdog] Se pidió correr la suite de fuzz (${FUZZ_DIR}) pero no existe ninguno de ` +
+            `estos configs en la raíz del repo: ${FUZZ_CONFIG_CANDIDATES.join(', ')}.\n` +
+            'Creá vitest.fuzz.config.mjs (sin excluir src/geo/__fuzz__) o pasá --config explícitamente.\n'
+        );
+        process.exit(1);
+      }
+      vitestArgs.push('--config', fuzzConfig);
+    }
   }
 
   const explicitTimeout = extractTestTimeoutMs(cliArgs);
