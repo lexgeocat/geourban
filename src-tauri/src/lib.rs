@@ -25,6 +25,8 @@ pub fn run() {
             geo_bridge::subdivide_manzano_batch,
             geo_bridge::compute_manzanos_cmd,
             geo_bridge::compute_manzanos_batch,
+            geo_bridge::compute_road_network_net_cmd,
+            geo_bridge::match_fragments_batch,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

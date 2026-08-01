@@ -91,11 +91,58 @@ fn ring_to_linear_ring(ring: &[Pt]) -> Result<Geometry<'static>, geos::Error> {
 }
 
 /// Construye un polígono GEOS a partir de un único anillo (sin huecos).
-#[allow(dead_code)]
+
+[allow(dead_code)]
 fn ring_to_polygon(ring: &[Pt]) -> Result<Geometry<'static>, geos::Error> {
     let shell = ring_to_linear_ring(ring)?;
     let poly = Geometry::create_polygon(shell, vec![])?;
     Ok(unsafe { std::mem::transmute(poly) })
+}
+/// <- `ringIntersectionAreaRaw` (fragmentReconciliation.ts).
+///
+/// Área de la intersección GEOS entre dos anillos, tratados como
+/// polígonos simples (sin huecos). Nunca falla de forma visible al
+/// caller: ante cualquier error de construcción o de la operación
+/// booleana, registra un warning y devuelve `0.0` — mismo criterio que el
+/// JS de origen ("overlap=0 para este par").
+pub(crate) fn ring_intersection_area(a: &[Pt], b: &[Pt]) -> f64 {
+    if a.len() < 3 || b.len() < 3 {
+        return 0.0;
+    }
+    ensure_geos_ctx();
+
+    let poly_a = match ring_to_polygon(a) {
+        Ok(p) => p,
+        Err(err) => {
+            log::warn!(
+                "fragmentReconciliation: no se pudo construir el polígono A ({} vértices) para intersección — overlap=0. {err:?}",
+                a.len(),
+            );
+            return 0.0;
+        }
+    };
+    let poly_b = match ring_to_polygon(b) {
+        Ok(p) => p,
+        Err(err) => {
+            log::warn!(
+                "fragmentReconciliation: no se pudo construir el polígono B ({} vértices) para intersección — overlap=0. {err:?}",
+                b.len(),
+            );
+            return 0.0;
+        }
+    };
+
+    match poly_a.intersection(&poly_b) {
+        Ok(inter) => inter.area().unwrap_or(0.0).max(0.0),
+        Err(err) => {
+            log::warn!(
+                "fragmentReconciliation: intersection() falló — overlap=0 para este par. aVertices={} bVertices={} {err:?}",
+                a.len(),
+                b.len(),
+            );
+            0.0
+        }
+    }
 }
 
 fn rings_to_polygon(rings: &[Vec<Pt>]) -> Result<Geometry<'static>, geos::Error> {

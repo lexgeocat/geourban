@@ -11,7 +11,10 @@ export default defineConfig({
     },
   },
   test: {
-    include: ['src/geo/subdivision/__parity__/__generator__/buildSnapshot.test.ts'],
+    include: [
+      'src/geo/subdivision/__parity__/__generator__/buildSnapshot.test.ts',
+      'src/geo/roads/__parity__/__generator__/buildFragRecSnapshot.test.ts',
+    ],
     exclude: [],
     watch: false,
   },

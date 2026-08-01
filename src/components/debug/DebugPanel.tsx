@@ -219,9 +219,10 @@ const toggleNativeEngine = useNativeGeoEngineStore((s) => s.toggle);
   </button>
 </div>
 <div style={{ color: 'var(--cad-text-muted)', fontSize: '0.6rem', marginBottom: 2 }}>
-  subdivide / subdivideManzano / subdivideManzanoBatch. Si falla, cae solo
-  al worker JS. Compará contra "Worker roundtrip por tipo" — las entradas
-  con sufijo ":native" son este motor.
+  subdivide / subdivideManzano / subdivideManzanoBatch / computeManzanos /
+  computeRoadNetworkNet / matchFragmentsBatch. Si falla, cae solo al worker
+  JS. Compará contra "Worker roundtrip por tipo" — las entradas con sufijo
+  ":native" son este motor.
 </div>
 
       <SectionTitle>Dataset sintético (Fase 0)</SectionTitle>

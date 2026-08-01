@@ -185,7 +185,7 @@ function runWorker<T extends GeoWorkerResponse>(request: GeoWorkerRequest, timeo
   });
 }
 
-// ─── Motor nativo (Fase 2.5.a) ───────────────────────────────────────────
+// ─── Motor nativo (Fase 2.5) ───────────────────────────────────────────
 
 function isTauriRuntime(): boolean {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
@@ -195,13 +195,6 @@ function shouldUseNative(): boolean {
   return useNativeGeoEngineStore.getState().enabled && isTauriRuntime();
 }
 
-/** Mapea 1:1 los nombres de campo de `SubdivisionOptions` (TS) a los que
- * espera `SubdivisionOptions` (Rust, `#[serde(rename_all="camelCase")]`) —
- * ya coinciden en nombre, esto solo garantiza que cada clave viaje
- * explícita como `null` en vez de omitida (ver types.rs: los campos
- * opcionales no tienen `#[serde(default)]`, así que una clave ausente
- * puede fallar la deserialización; `undefined` en JS se omite al
- * serializar el payload de `invoke`). */
 function toNativeSubdivisionOptions(options: SubdivisionOptions) {
   return {
     method: options.method,
@@ -294,12 +287,102 @@ async function subdivideManzanoBatchNative(
   }
 }
 
+/** <- `computeManzanosInWorker`. Antes de esto, este cableado no existía:
+ * el comando Tauri `compute_manzanos_cmd` estaba registrado pero nunca se
+ * invocaba desde el frontend (Fase 2.5.b quedaba a medias). */
+async function computeManzanosNative(
+  parcels: FeatureCollection,
+  roadNetwork: FeatureCollection,
+): Promise<FeatureCollection> {
+  const t0 = performance.now();
+  try {
+    const parcelRings = parcels.features.map((f) => {
+      const geom = f.geometry as GeoJsonPolygon;
+      return geom.coordinates as unknown as Pt[][];
+    });
+    const roadRings = roadNetwork.features.map((f) => {
+      const geom = f.geometry as GeoJsonPolygon;
+      return geom.coordinates[0] as unknown as Pt[];
+    });
+    const fragments = await invoke<Array<{ origParcelIndex: number; rings: Pt[][] }>>(
+      'compute_manzanos_cmd',
+      { parcels: parcelRings, roadNetwork: roadRings },
+    );
+    const result: FeatureCollection = {
+      type: 'FeatureCollection',
+      features: fragments.map((frag) => ({
+        type: 'Feature',
+        properties: { origParcelIndex: frag.origParcelIndex },
+        geometry: { type: 'Polygon', coordinates: frag.rings } as GeoJsonPolygon,
+      })) as never[],
+    };
+    recordWorkerRoundtrip('computeManzanos:native', performance.now() - t0);
+    return result;
+  } catch (err) {
+    recordWorkerRoundtrip('computeManzanos:native', performance.now() - t0);
+    throw err;
+  }
+}
+
+/** <- `computeRoadNetworkNetInWorker`. Cierra Fase 2.5.c. */
+async function computeRoadNetworkNetNative(
+  streets: Street[],
+  roundabouts: RoundaboutParams[],
+  cornerMode: CornerMode,
+): Promise<RoadNetworkNet> {
+  const t0 = performance.now();
+  try {
+    const net = await invoke<RoadNetworkNet>('compute_road_network_net_cmd', {
+      streets,
+      roundabouts,
+      cornerMode,
+    });
+    recordWorkerRoundtrip('computeRoadNetworkNet:native', performance.now() - t0);
+    return net;
+  } catch (err) {
+    recordWorkerRoundtrip('computeRoadNetworkNet:native', performance.now() - t0);
+    throw err;
+  }
+}
+
+/** <- `matchFragmentsBatchInWorker`. Cierra Fase 2.4/2.5.c. */
+async function matchFragmentsBatchNative(
+  items: MatchFragmentsBatchItem[],
+): Promise<MatchFragmentsBatchResultItem[]> {
+  const t0 = performance.now();
+  try {
+    const results = await invoke<MatchFragmentsBatchResultItem[]>('match_fragments_batch', {
+      items: items.map((it) => ({
+        groupIdx: it.groupIdx,
+        fragments: it.fragments,
+        memberRings: it.memberRings,
+      })),
+    });
+    recordWorkerRoundtrip('matchFragmentsBatch:native', performance.now() - t0);
+    return results;
+  } catch (err) {
+    recordWorkerRoundtrip('matchFragmentsBatch:native', performance.now() - t0);
+    throw err;
+  }
+}
+
 // ─── API pública ────────────────────────────────────────────────────────
 
 export async function computeManzanosInWorker(
   parcels: FeatureCollection,
   roadNetwork: FeatureCollection,
 ) {
+  if (shouldUseNative()) {
+    try {
+      return await computeManzanosNative(parcels, roadNetwork);
+    } catch (err) {
+      console.error(
+        'geoWorkerClient: "computeManzanos" en motor nativo falló — se reintenta en el worker JS. ' +
+        'Desactivá "Motor nativo" en el panel de debug si esto se repite.',
+        err,
+      );
+    }
+  }
   const response = await runWorker<{ type: 'computeManzanos'; manzanos: FeatureCollection }>({
     type: 'computeManzanos',
     parcels,
@@ -394,6 +477,17 @@ export async function computeRoadNetworkNetInWorker(
   cornerMode: CornerMode,
   timeoutMs = 6000,
 ): Promise<RoadNetworkNet> {
+  if (shouldUseNative()) {
+    try {
+      return await computeRoadNetworkNetNative(streets, roundabouts, cornerMode);
+    } catch (err) {
+      console.error(
+        'geoWorkerClient: "computeRoadNetworkNet" en motor nativo falló — se reintenta en el worker JS. ' +
+        'Desactivá "Motor nativo" en el panel de debug si esto se repite.',
+        err,
+      );
+    }
+  }
   const response = await runWorker<{ type: 'computeRoadNetworkNet'; net: RoadNetworkNet }>(
     { type: 'computeRoadNetworkNet', streets, roundabouts, cornerMode },
     timeoutMs,
@@ -416,6 +510,17 @@ export async function matchFragmentsBatchInWorker(
   timeoutMs = 8000,
 ): Promise<MatchFragmentsBatchResultItem[]> {
   if (items.length === 0) return [];
+  if (shouldUseNative()) {
+    try {
+      return await matchFragmentsBatchNative(items);
+    } catch (err) {
+      console.error(
+        'geoWorkerClient: "matchFragmentsBatch" en motor nativo falló — se reintenta en el worker JS. ' +
+        'Desactivá "Motor nativo" en el panel de debug si esto se repite.',
+        err,
+      );
+    }
+  }
   const response = await runWorker<{ type: 'matchFragmentsBatch'; results: MatchFragmentsBatchResultItem[] }>(
     { type: 'matchFragmentsBatch', items },
     timeoutMs,

@@ -3,12 +3,16 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 
 type NativeGeoEngineState = {
   /**
-   * Fase 2.5.a (auditoria-para-mejora.md) — cuando está en `true`, las
-   * operaciones de subdivisión (`subdivide` / `subdivideManzano` /
-   * `subdivideManzanoBatch`) se resuelven vía comando Tauri nativo (crate
+   * Fase 2.5 (auditoria-para-mejora.md) — cuando está en `true`, las
+   * operaciones de geometría se resuelven vía comando Tauri nativo (crate
    * `geourban-geo`) en lugar del Web Worker JS (JSTS +
-   * subdivisionAlgorithms.ts). Pensado para hacer A/B manual dentro de la
-   * app mientras no hay benchmark automatizado (Fase 2.6).
+   * polygon-clipping). Operaciones cubiertas:
+   *   - `subdivide` / `subdivideManzano` / `subdivideManzanoBatch` (Fase 2.5.a)
+   *   - `computeManzanos` (Fase 2.5.b)
+   *   - `computeRoadNetworkNet` / `matchFragmentsBatch` (Fase 2.5.c)
+   *
+   * Pensado para hacer A/B manual dentro de la app mientras no hay
+   * benchmark automatizado (Fase 2.6).
    *
    * Si `invoke()` falla (build web sin Tauri, comando no registrado, etc.)
    * `geoWorkerClient.ts` cae automáticamente al worker JS — este flag solo

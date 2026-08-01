@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 // scripts/parity-sync.mjs
 //
-// Regenera el snapshot de paridad TS <-> Rust usado por:
+// Regenera los snapshots de paridad TS <-> Rust usados por:
 //   - src/geo/subdivision/__parity__/subdivisionCabeceraCuerpo.parity.test.ts
 //   - src-tauri/crates/geourban-geo/tests/parity_cabecera_cuerpo.rs
+//   - src/geo/roads/__parity__/fragmentReconciliation.parity.test.ts
+//   - src-tauri/crates/geourban-geo/tests/parity_fragment_reconciliation.rs
 //
 // Pasos:
 //   1. Corre el test generador (buildSnapshot.test.ts) con una config de
@@ -40,8 +42,10 @@ const ROOT = join(__dirname, '..');
 const VITEST_CONFIG = join(ROOT, 'vitest.parity-sync.config.mjs');
 
 const SRC_SNAPSHOT = join(ROOT, 'src', 'geo', 'subdivision', '__parity__', 'paritySnapshot.json');
+const SRC_FRAG_REC_SNAPSHOT = join(ROOT, 'src', 'geo', 'roads', '__parity__', 'fragRecParitySnapshot.json');
 const DEST_DIR = join(ROOT, 'src-tauri', 'crates', 'geourban-geo', 'tests', 'fixtures');
 const DEST_SNAPSHOT = join(DEST_DIR, 'paritySnapshot.json');
+const DEST_FRAG_REC_SNAPSHOT = join(DEST_DIR, 'fragRecParitySnapshot.json');
 
 /** Busca el binario local de `name` en node_modules/.bin — nunca toca PATH ni npx. */
 function resolveLocalBin(name) {
@@ -104,17 +108,26 @@ function syncToRustFixtures() {
         'Revisá la salida de vitest de arriba — probablemente buildSnapshot.test.ts no llegó a escribirlo.'
     );
   }
+  if (!existsSync(SRC_FRAG_REC_SNAPSHOT)) {
+    throw new Error(
+      `Se esperaba encontrar ${SRC_FRAG_REC_SNAPSHOT} después de correr el generador, pero no está.\n` +
+        'Revisá la salida de vitest de arriba — probablemente buildFragRecSnapshot.test.ts no llegó a escribirlo.'
+    );
+  }
   mkdirSync(DEST_DIR, { recursive: true });
   copyFileSync(SRC_SNAPSHOT, DEST_SNAPSHOT);
   console.log(`[parity:sync] Snapshot copiado a ${DEST_SNAPSHOT}`);
+  copyFileSync(SRC_FRAG_REC_SNAPSHOT, DEST_FRAG_REC_SNAPSHOT);
+  console.log(`[parity:sync] Snapshot copiado a ${DEST_FRAG_REC_SNAPSHOT}`);
 }
 
 try {
   generateSnapshot();
   syncToRustFixtures();
   console.log(
-    '[parity:sync] Listo. Corré `npm test` y ' +
-      '`cargo test -p geourban-geo --test parity_cabecera_cuerpo` (desde src-tauri/) para validar paridad.'
+    '[parity:sync] Listo. Corré `npm test` y desde src-tauri/:\n' +
+      '  cargo test -p geourban-geo --test parity_cabecera_cuerpo\n' +
+      '  cargo test -p geourban-geo --features geos-backend --test parity_fragment_reconciliation'
   );
 } catch (err) {
   console.error('[parity:sync] Falló:', err instanceof Error ? err.message : err);
