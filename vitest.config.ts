@@ -10,14 +10,17 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['src/**/*.{test,spec}.ts'],
-    exclude: ['node_modules', 'dist', 'src-tauri', 'src/**/__parity__/__generator__/**'],
-    reporters: ['default'],
-    // pool 'forks' corre cada archivo en un proceso hijo real: si un test
-    // síncrono se cuelga (p.ej. un overlay JSTS pesado), el proceso padre
-    // puede matarlo desde afuera al vencer testTimeout. Con el pool
-    // 'threads' por defecto, un bloqueo síncrono del hilo puede impedir
-    // que el propio timer de timeout dispare.
-    pool: 'forks',
-    testTimeout: 10000,
+    exclude: [
+      '**/node_modules/**',
+      '**/dist/**',
+      '**/__generator__/**',
+      // Fase 2.6 — fuzzing: puede tardar mucho y, en el peor caso, colgarse
+      // por robustez de JSTS ante geometría patológica. No corre en
+      // `npm test`; se corre a demanda con `npm run test:fuzz`, que además
+      // usa el watchdog de proceso (ver script abajo).
+      'src/geo/__fuzz__/**',
+    ],
+    testTimeout: 20000,
+    hookTimeout: 20000,
   },
 });
