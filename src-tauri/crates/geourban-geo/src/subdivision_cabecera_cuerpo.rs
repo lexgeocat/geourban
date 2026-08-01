@@ -32,7 +32,12 @@ fn min_area_bounding_quad(pts: &[Pt]) -> Vec<Pt> {
         let max_x = pts.iter().map(|p| p.0).fold(f64::NEG_INFINITY, f64::max);
         let min_y = pts.iter().map(|p| p.1).fold(f64::INFINITY, f64::min);
         let max_y = pts.iter().map(|p| p.1).fold(f64::NEG_INFINITY, f64::max);
-        return vec![(min_x, min_y), (max_x, min_y), (max_x, max_y), (min_x, max_y)];
+        return vec![
+            (min_x, min_y),
+            (max_x, min_y),
+            (max_x, max_y),
+            (min_x, max_y),
+        ];
     }
 
     struct Best {
@@ -72,7 +77,14 @@ fn min_area_bounding_quad(pts: &[Pt]) -> Vec<Pt> {
         }
         let area = (max_x - min_x) * (max_y - min_y);
         if best.as_ref().map_or(true, |b| area < b.area) {
-            best = Some(Best { area, min_x, max_x, min_y, max_y, ang });
+            best = Some(Best {
+                area,
+                min_x,
+                max_x,
+                min_y,
+                max_y,
+                ang,
+            });
         }
     }
     let best = best.unwrap();
@@ -84,7 +96,10 @@ fn min_area_bounding_quad(pts: &[Pt]) -> Vec<Pt> {
         (best.max_x, best.max_y),
         (best.min_x, best.max_y),
     ];
-    corners.iter().map(|&(rx, ry)| (rx * cs - ry * sn, rx * sn + ry * cs)).collect()
+    corners
+        .iter()
+        .map(|&(rx, ry)| (rx * cs - ry * sn, rx * sn + ry * cs))
+        .collect()
 }
 
 fn line_line(p1: Pt, d1: Pt, p2: Pt, d2: Pt) -> Option<Pt> {
@@ -119,7 +134,11 @@ fn unfillet_manzano(ring_in: &[Pt]) -> Vec<Pt> {
         let dy = b.1 - a.1;
         let l = dx.hypot(dy);
         elen.push(l);
-        edir.push(if l > 1e-9 { (dx / l, dy / l) } else { (0.0, 0.0) });
+        edir.push(if l > 1e-9 {
+            (dx / l, dy / l)
+        } else {
+            (0.0, 0.0)
+        });
     }
     const ANG: f64 = 4.0 * std::f64::consts::PI / 180.0;
     let mut is_break = vec![false; m];
@@ -161,7 +180,12 @@ fn unfillet_manzano(ring_in: &[Pt]) -> Vec<Pt> {
         let dy = ep.1 - sp.1;
         let dl_raw = dx.hypot(dy);
         let dl = if dl_raw != 0.0 { dl_raw } else { 1.0 };
-        runs.push(Run { s: sp, e: ep, len: l, dir: (dx / dl, dy / dl) });
+        runs.push(Run {
+            s: sp,
+            e: ep,
+            len: l,
+            dir: (dx / dl, dy / dl),
+        });
     }
 
     const MAX_FILLET_R: f64 = 8.0;
@@ -179,7 +203,9 @@ fn unfillet_manzano(ring_in: &[Pt]) -> Vec<Pt> {
         let cur = major[j];
         let ip = line_line(prev.s, prev.dir, cur.s, cur.dir);
         let far = match ip {
-            Some(p) => dist(p, prev.e) > prev.len * 4.0 + 60.0 || dist(p, cur.s) > cur.len * 4.0 + 60.0,
+            Some(p) => {
+                dist(p, prev.e) > prev.len * 4.0 + 60.0 || dist(p, cur.s) > cur.len * 4.0 + 60.0
+            }
             None => true,
         };
         let ip = if ip.is_none() || far {
@@ -207,7 +233,9 @@ fn order_quad_long(pts: &[Pt]) -> [Pt; 4] {
     sorted.sort_by(|a, b| {
         let ang_a = (a.1 - cy).atan2(a.0 - cx);
         let ang_b = (b.1 - cy).atan2(b.0 - cx);
-        ang_a.partial_cmp(&ang_b).unwrap_or(std::cmp::Ordering::Equal)
+        ang_a
+            .partial_cmp(&ang_b)
+            .unwrap_or(std::cmp::Ordering::Equal)
     });
     let len_a = (dist(sorted[0], sorted[1]) + dist(sorted[2], sorted[3])) / 2.0;
     let len_b = (dist(sorted[1], sorted[2]) + dist(sorted[3], sorted[0])) / 2.0;
@@ -379,7 +407,11 @@ struct HbConfig {
 fn hb_get_cfg(block_area: f64, target_area_m2: f64, front_min_m: f64) -> HbConfig {
     let min_area = target_area_m2.max(0.0);
     let min_frente = front_min_m.max(0.0);
-    let head_depth = if min_frente > 0.0 { (min_area / min_frente).max(5.0) } else { 20.0 };
+    let head_depth = if min_frente > 0.0 {
+        (min_area / min_frente).max(5.0)
+    } else {
+        20.0
+    };
     let body_cols: i64 = 2;
     if min_area > 0.0 && block_area > 0.0 {
         let head_rows: i64 = 1;
@@ -387,9 +419,23 @@ fn hb_get_cfg(block_area: f64, target_area_m2: f64, front_min_m: f64) -> HbConfi
         let body_area = (block_area - head_area).max(0.0);
         let body_lots = (body_area / min_area).floor().max(1.0);
         let body_rows = (body_lots / body_cols as f64).round().max(1.0) as i64;
-        HbConfig { body_cols, body_rows, head_rows, min_area, head_depth, min_frente }
+        HbConfig {
+            body_cols,
+            body_rows,
+            head_rows,
+            min_area,
+            head_depth,
+            min_frente,
+        }
     } else {
-        HbConfig { body_cols, body_rows: 6, head_rows: 1, min_area: 0.0, head_depth, min_frente }
+        HbConfig {
+            body_cols,
+            body_rows: 6,
+            head_rows: 1,
+            min_area: 0.0,
+            head_depth,
+            min_frente,
+        }
     }
 }
 
@@ -411,7 +457,11 @@ fn hb_auto_head_plan(
     min_area: f64,
     target_depth: f64,
 ) -> HeadPlan {
-    let d = if target_depth > 0.0 { target_depth } else { 20.0 };
+    let d = if target_depth > 0.0 {
+        target_depth
+    } else {
+        20.0
+    };
     if head_rows <= 0 {
         let target_lot_area = if min_area > 0.0 {
             min_area
@@ -420,7 +470,11 @@ fn hb_auto_head_plan(
         } else {
             0.0
         };
-        return HeadPlan { head_cols1: 0, head_cols2: 0, target_lot_area };
+        return HeadPlan {
+            head_cols1: 0,
+            head_cols2: 0,
+            target_lot_area,
+        };
     }
 
     let measure = |area: f64| -> (i64, i64) {
@@ -451,9 +505,17 @@ fn hb_auto_head_plan(
             break;
         }
         let tl = body_rows * body_cols + head_rows * (c1 + c2);
-        target = if tl > 0 { total_area / tl as f64 } else { target };
+        target = if tl > 0 {
+            total_area / tl as f64
+        } else {
+            target
+        };
     }
-    HeadPlan { head_cols1: c1, head_cols2: c2, target_lot_area: target }
+    HeadPlan {
+        head_cols1: c1,
+        head_cols2: c2,
+        target_lot_area: target,
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -490,10 +552,14 @@ struct Divider {
 }
 
 fn hb_min_by<F: Fn(Pt) -> f64>(arr: &[Pt], key: F) -> Pt {
-    *arr.iter().reduce(|a, b| if key(*b) < key(*a) { b } else { a }).unwrap()
+    *arr.iter()
+        .reduce(|a, b| if key(*b) < key(*a) { b } else { a })
+        .unwrap()
 }
 fn hb_max_by<F: Fn(Pt) -> f64>(arr: &[Pt], key: F) -> Pt {
-    *arr.iter().reduce(|a, b| if key(*b) > key(*a) { b } else { a }).unwrap()
+    *arr.iter()
+        .reduce(|a, b| if key(*b) > key(*a) { b } else { a })
+        .unwrap()
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -527,8 +593,16 @@ fn hb_build_zone(
     let u_key = |p: Pt| p.0 * ux + p.1 * uy;
     let v_key = |p: Pt| p.0 * vx + p.1 * vy;
     let epsu = (u_max - u_min) * 1e-6 + 1e-9;
-    let on_a: Vec<Pt> = zone_poly.iter().copied().filter(|&p| (u_key(p) - u_a).abs() < epsu).collect();
-    let on_b: Vec<Pt> = zone_poly.iter().copied().filter(|&p| (u_key(p) - u_b).abs() < epsu).collect();
+    let on_a: Vec<Pt> = zone_poly
+        .iter()
+        .copied()
+        .filter(|&p| (u_key(p) - u_a).abs() < epsu)
+        .collect();
+    let on_b: Vec<Pt> = zone_poly
+        .iter()
+        .copied()
+        .filter(|&p| (u_key(p) - u_b).abs() < epsu)
+        .collect();
 
     let skew_ok = on_a.len() >= 2 && on_b.len() >= 2;
     let (top_lo, top_hi, bot_lo, bot_hi) = if skew_ok {
@@ -542,25 +616,43 @@ fn hb_build_zone(
         (None, None, None, None)
     };
 
-    let v_min_z = zone_poly.iter().map(|&p| v_key(p)).fold(f64::INFINITY, f64::min);
-    let v_max_z = zone_poly.iter().map(|&p| v_key(p)).fold(f64::NEG_INFINITY, f64::max);
+    let v_min_z = zone_poly
+        .iter()
+        .map(|&p| v_key(p))
+        .fold(f64::INFINITY, f64::min);
+    let v_max_z = zone_poly
+        .iter()
+        .map(|&p| v_key(p))
+        .fold(f64::NEG_INFINITY, f64::max);
     let v_span_z = v_max_z - v_min_z;
 
     let divider_at = |f: f64| -> Divider {
         if !skew_ok {
-            return Divider { nx: vx, ny: vy, d: v_min_z + f * v_span_z };
+            return Divider {
+                nx: vx,
+                ny: vy,
+                d: v_min_z + f * v_span_z,
+            };
         }
         let pt = lerp(top_lo.unwrap(), top_hi.unwrap(), f);
         let pb = lerp(bot_lo.unwrap(), bot_hi.unwrap(), f);
         let dx = pb.0 - pt.0;
         let dy = pb.1 - pt.1;
         let len = dx.hypot(dy);
-        let (mut nx, mut ny) = if len < 1e-9 { (vx, vy) } else { (dy / len, -dx / len) };
+        let (mut nx, mut ny) = if len < 1e-9 {
+            (vx, vy)
+        } else {
+            (dy / len, -dx / len)
+        };
         if nx * vx + ny * vy < 0.0 {
             nx = -nx;
             ny = -ny;
         }
-        Divider { nx, ny, d: nx * pt.0 + ny * pt.1 }
+        Divider {
+            nx,
+            ny,
+            d: nx * pt.0 + ny * pt.1,
+        }
     };
 
     let col_area_up_to_f = |f: f64| -> f64 {
@@ -584,7 +676,12 @@ fn hb_build_zone(
         let full_col = n_rows as f64 * target_lot_area;
         let rem_a = zone_total - full_col;
         if rem_a < full_col {
-            lots.push(HbLot { pts: zone_poly, area: zone_total, zone: zone.to_string(), is_remainder: true });
+            lots.push(HbLot {
+                pts: zone_poly,
+                area: zone_total,
+                zone: zone.to_string(),
+                is_remainder: true,
+            });
             return;
         }
         eq_split = true;
@@ -594,15 +691,32 @@ fn hb_build_zone(
     if remainder_lot && !eq_split {
         let full_col = n_rows as f64 * target_lot_area;
         for c in 0..n_cols - 1 {
-            f_cuts.push(bisect(&col_area_up_to_f, 0.0, 1.0, (c + 1) as f64 * full_col));
+            f_cuts.push(bisect(
+                &col_area_up_to_f,
+                0.0,
+                1.0,
+                (c + 1) as f64 * full_col,
+            ));
         }
     } else {
         let col_target = zone_total / n_cols as f64;
         for c in 0..n_cols - 1 {
-            f_cuts.push(bisect(&col_area_up_to_f, 0.0, 1.0, (c + 1) as f64 * col_target));
+            f_cuts.push(bisect(
+                &col_area_up_to_f,
+                0.0,
+                1.0,
+                (c + 1) as f64 * col_target,
+            ));
         }
     }
     f_cuts.push(1.0);
+
+    if std::env::var("GU_DEBUG_HB").is_ok() {
+        eprintln!(
+            "[RUST] zone={zone} n_cols={n_cols} zone_total={zone_total:.6} f_cuts={f_cuts:?}"
+        );
+        eprintln!("[RUST] zone_poly={zone_poly:?}");
+    }
 
     for c in 0..n_cols {
         let ci = c as usize;
@@ -620,11 +734,18 @@ fn hb_build_zone(
         }
         let col_area = poly_area(&col_poly);
         let is_rem_col = remainder_lot && !eq_split && n_cols > 1 && c == n_cols - 1;
-        let cell_target = if is_rem_col { target_lot_area } else { col_area / n_rows as f64 };
+        let cell_target = if is_rem_col {
+            target_lot_area
+        } else {
+            col_area / n_rows as f64
+        };
 
         let u_projs_col: Vec<f64> = col_poly.iter().map(|&p| u_key(p)).collect();
         let u_min_c = u_projs_col.iter().cloned().fold(f64::INFINITY, f64::min);
-        let u_max_c = u_projs_col.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+        let u_max_c = u_projs_col
+            .iter()
+            .cloned()
+            .fold(f64::NEG_INFINITY, f64::max);
         let row_area_up_to = |u_cut: f64| -> f64 {
             let sub = hb_clip_poly_half(&col_poly, ux, uy, 1.0, u_min_c);
             let sub = hb_clip_poly_half(&sub, ux, uy, -1.0, -u_cut);
@@ -636,7 +757,12 @@ fn hb_build_zone(
         };
         let mut row_cuts: Vec<f64> = vec![u_min_c];
         for r in 0..n_rows - 1 {
-            row_cuts.push(bisect(&row_area_up_to, u_min_c, u_max_c, (r + 1) as f64 * cell_target));
+            row_cuts.push(bisect(
+                &row_area_up_to,
+                u_min_c,
+                u_max_c,
+                (r + 1) as f64 * cell_target,
+            ));
         }
         row_cuts.push(u_max_c);
 
@@ -648,7 +774,12 @@ fn hb_build_zone(
                 continue;
             }
             let area = poly_area(&lot);
-            lots.push(HbLot { pts: lot, area, zone: zone.to_string(), is_remainder: is_rem_col && r == n_rows - 1 });
+            lots.push(HbLot {
+                pts: lot,
+                area,
+                zone: zone.to_string(),
+                is_remainder: is_rem_col && r == n_rows - 1,
+            });
         }
     }
 }
@@ -715,21 +846,37 @@ fn hb_build_body_zone(
             let dy = p2.1 - p1.1;
             let len = dx.hypot(dy);
             if len < 1e-9 {
-                return Divider { nx: vx, ny: vy, d: p1.0 * vx + p1.1 * vy };
+                return Divider {
+                    nx: vx,
+                    ny: vy,
+                    d: p1.0 * vx + p1.1 * vy,
+                };
             }
             let (mut nx, mut ny) = (-dy / len, dx / len);
             if nx * vx + ny * vy < 0.0 {
                 nx = -nx;
                 ny = -ny;
             }
-            Divider { nx, ny, d: nx * p1.0 + ny * p1.1 }
+            Divider {
+                nx,
+                ny,
+                d: nx * p1.0 + ny * p1.1,
+            }
         };
 
         let lot_area_at = |t0: f64, t1: f64| -> f64 {
             let c0 = cut_line_at(t0);
             let c1 = cut_line_at(t1);
-            let sub = if t0 > 1e-9 { hb_clip_poly_half(&strip_poly, c0.nx, c0.ny, 1.0, c0.d) } else { strip_poly.clone() };
-            let sub = if t1 < 1.0 - 1e-9 { hb_clip_poly_half(&sub, c1.nx, c1.ny, -1.0, -c1.d) } else { sub };
+            let sub = if t0 > 1e-9 {
+                hb_clip_poly_half(&strip_poly, c0.nx, c0.ny, 1.0, c0.d)
+            } else {
+                strip_poly.clone()
+            };
+            let sub = if t1 < 1.0 - 1e-9 {
+                hb_clip_poly_half(&sub, c1.nx, c1.ny, -1.0, -c1.d)
+            } else {
+                sub
+            };
             if sub.len() >= 3 {
                 poly_area(&sub)
             } else {
@@ -739,8 +886,13 @@ fn hb_build_body_zone(
         let row_area = lot_area_at(0.0, 1.0);
 
         let row_len_u = (rb - ra).abs();
-        let local_ancho = if row_len_u > 1e-9 { row_area / row_len_u } else { 0.0 };
-        let force_single_col = min_frente > 0.0 && n_cols > 1 && local_ancho / n_cols as f64 <= min_frente;
+        let local_ancho = if row_len_u > 1e-9 {
+            row_area / row_len_u
+        } else {
+            0.0
+        };
+        let force_single_col =
+            min_frente > 0.0 && n_cols > 1 && local_ancho / n_cols as f64 <= min_frente;
         let n_cols_here = if force_single_col { 1 } else { n_cols };
 
         let col_target = row_area / n_cols_here as f64;
@@ -759,8 +911,16 @@ fn hb_build_body_zone(
             let t1 = col_cuts[ci + 1];
             let c0 = cut_line_at(t0);
             let c1 = cut_line_at(t1);
-            let mut col_poly = if t0 > 1e-9 { hb_clip_poly_half(&strip_poly, c0.nx, c0.ny, 1.0, c0.d) } else { strip_poly.clone() };
-            col_poly = if t1 < 1.0 - 1e-9 { hb_clip_poly_half(&col_poly, c1.nx, c1.ny, -1.0, -c1.d) } else { col_poly };
+            let mut col_poly = if t0 > 1e-9 {
+                hb_clip_poly_half(&strip_poly, c0.nx, c0.ny, 1.0, c0.d)
+            } else {
+                strip_poly.clone()
+            };
+            col_poly = if t1 < 1.0 - 1e-9 {
+                hb_clip_poly_half(&col_poly, c1.nx, c1.ny, -1.0, -c1.d)
+            } else {
+                col_poly
+            };
             if col_poly.len() < 3 {
                 continue;
             }
@@ -769,9 +929,13 @@ fn hb_build_body_zone(
                 let col_area = poly_area(&col_poly);
                 let n_sub_rows = ((col_area / target_lot_area).round() as i64).max(1);
                 if n_sub_rows > 1 {
-                    let u_projs_col: Vec<f64> = col_poly.iter().map(|p| p.0 * ux + p.1 * uy).collect();
+                    let u_projs_col: Vec<f64> =
+                        col_poly.iter().map(|p| p.0 * ux + p.1 * uy).collect();
                     let u_min_col = u_projs_col.iter().cloned().fold(f64::INFINITY, f64::min);
-                    let u_max_col = u_projs_col.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+                    let u_max_col = u_projs_col
+                        .iter()
+                        .cloned()
+                        .fold(f64::NEG_INFINITY, f64::max);
                     let sub_row_area_up_to = |u_cut: f64| -> f64 {
                         let sub = hb_clip_poly_half(&col_poly, ux, uy, 1.0, u_min_col);
                         let sub = hb_clip_poly_half(&sub, ux, uy, -1.0, -u_cut);
@@ -784,7 +948,12 @@ fn hb_build_body_zone(
                     let sub_target = col_area / n_sub_rows as f64;
                     let mut sub_cuts: Vec<f64> = vec![u_min_col];
                     for sr in 0..n_sub_rows - 1 {
-                        sub_cuts.push(bisect(&sub_row_area_up_to, u_min_col, u_max_col, (sr + 1) as f64 * sub_target));
+                        sub_cuts.push(bisect(
+                            &sub_row_area_up_to,
+                            u_min_col,
+                            u_max_col,
+                            (sr + 1) as f64 * sub_target,
+                        ));
                     }
                     sub_cuts.push(u_max_col);
                     for sr in 0..n_sub_rows {
@@ -795,13 +964,23 @@ fn hb_build_body_zone(
                             continue;
                         }
                         let area = poly_area(&sub_lot);
-                        lots.push(HbLot { pts: sub_lot, area, zone: "body".to_string(), is_remainder: false });
+                        lots.push(HbLot {
+                            pts: sub_lot,
+                            area,
+                            zone: "body".to_string(),
+                            is_remainder: false,
+                        });
                     }
                     continue;
                 }
             }
             let area = poly_area(&col_poly);
-            lots.push(HbLot { pts: col_poly, area, zone: "body".to_string(), is_remainder: false });
+            lots.push(HbLot {
+                pts: col_poly,
+                area,
+                zone: "body".to_string(),
+                is_remainder: false,
+            });
         }
     }
 }
@@ -848,14 +1027,26 @@ fn hb_lotize_with_baseline(mzn_pts: &[Pt], cfg: HbConfig, baseline: (Pt, Pt)) ->
             return 0.0;
         }
         let vs: Vec<f64> = pts.iter().map(|p| p.0 * vx + p.1 * vy).collect();
-        vs.iter().cloned().fold(f64::NEG_INFINITY, f64::max) - vs.iter().cloned().fold(f64::INFINITY, f64::min)
+        vs.iter().cloned().fold(f64::NEG_INFINITY, f64::max)
+            - vs.iter().cloned().fold(f64::INFINITY, f64::min)
     };
 
-    let plan = hb_auto_head_plan(total_area, u_min, u_max, width_at_u, head_rows, body_rows, body_cols, min_area, head_depth);
+    let plan = hb_auto_head_plan(
+        total_area, u_min, u_max, width_at_u, head_rows, body_rows, body_cols, min_area, head_depth,
+    );
     let head_cols1 = plan.head_cols1;
     let head_cols2 = plan.head_cols2;
     let target_lot_area = plan.target_lot_area;
-    let b_rows = hb_fit_body_rows(total_area, target_lot_area, head_rows, head_cols1, head_cols2, body_cols, body_rows, use_fixed_area);
+    let b_rows = hb_fit_body_rows(
+        total_area,
+        target_lot_area,
+        head_rows,
+        head_cols1,
+        head_cols2,
+        body_cols,
+        body_rows,
+        use_fixed_area,
+    );
 
     let (u_h1, u_h2) = if head_rows <= 0 {
         (u_min, u_max)
@@ -863,7 +1054,9 @@ fn hb_lotize_with_baseline(mzn_pts: &[Pt], cfg: HbConfig, baseline: (Pt, Pt)) ->
         let head_area1 = head_rows as f64 * head_cols1 as f64 * target_lot_area;
         let body_area = b_rows as f64 * body_cols as f64 * target_lot_area;
         let uh1 = bisect(&area_up_to, u_min, u_max, head_area1);
-        let uh2 = bisect(&area_up_to, uh1, u_max, head_area1 + body_area).max(uh1).min(u_max);
+        let uh2 = bisect(&area_up_to, uh1, u_max, head_area1 + body_area)
+            .max(uh1)
+            .min(u_max);
         (uh1, uh2)
     };
 
@@ -871,18 +1064,57 @@ fn hb_lotize_with_baseline(mzn_pts: &[Pt], cfg: HbConfig, baseline: (Pt, Pt)) ->
 
     if head_rows > 0 {
         hb_build_zone(
-            work_poly, ux, uy, vx, vy, u_min, u_max, target_lot_area,
-            u_min, u_h1, head_rows, head_cols1, "head1", use_fixed_area, &mut lots,
+            work_poly,
+            ux,
+            uy,
+            vx,
+            vy,
+            u_min,
+            u_max,
+            target_lot_area,
+            u_min,
+            u_h1,
+            head_rows,
+            head_cols1,
+            "head1",
+            use_fixed_area,
+            &mut lots,
         );
     }
     hb_build_body_zone(
-        work_poly, ux, uy, vx, vy, u_min, u_max, min_frente, min_area, target_lot_area,
-        u_h1, u_h2, b_rows, body_cols, &mut lots,
+        work_poly,
+        ux,
+        uy,
+        vx,
+        vy,
+        u_min,
+        u_max,
+        min_frente,
+        min_area,
+        target_lot_area,
+        u_h1,
+        u_h2,
+        b_rows,
+        body_cols,
+        &mut lots,
     );
     if head_rows > 0 {
         hb_build_zone(
-            work_poly, ux, uy, vx, vy, u_min, u_max, target_lot_area,
-            u_h2, u_max, head_rows, head_cols2, "head2", use_fixed_area, &mut lots,
+            work_poly,
+            ux,
+            uy,
+            vx,
+            vy,
+            u_min,
+            u_max,
+            target_lot_area,
+            u_h2,
+            u_max,
+            head_rows,
+            head_cols2,
+            "head2",
+            use_fixed_area,
+            &mut lots,
         );
     }
 
@@ -971,7 +1203,12 @@ fn hb_merge_head_remainders(lots: Vec<HbLot>, target_lot_area: f64) -> Vec<HbLot
         let merged_pts = hb_merge_polys(&result[rem_idx].pts, &result[best_idx].pts);
         let merged_area = poly_area(&merged_pts);
         let merged_zone = result[best_idx].zone.clone();
-        let merged_lot = HbLot { pts: merged_pts, area: merged_area, zone: merged_zone, is_remainder: false };
+        let merged_lot = HbLot {
+            pts: merged_pts,
+            area: merged_area,
+            zone: merged_zone,
+            is_remainder: false,
+        };
 
         let insert_at = rem_idx.min(best_idx);
         let i_hi = rem_idx.max(best_idx);

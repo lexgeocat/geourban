@@ -28,8 +28,8 @@ interface LotSummary {
   ringArea: number;
 }
 
-function summarize(ring: Pt[], targetAreaM2: number, frontMinM: number): LotSummary {
-  const lots = subdivideManzanoCabeceraCuerpo(ring, targetAreaM2, frontMinM);
+function summarize(ring: Pt[], targetAreaM2: number, frontMinM: number, dirPref?: { ax: number; ay: number }): LotSummary {
+  const lots = subdivideManzanoCabeceraCuerpo(ring, targetAreaM2, frontMinM, dirPref);
   let totalArea = 0;
   let remnantCount = 0;
   const areas: number[] = [];
@@ -71,7 +71,7 @@ describe('paridad snapshot generator', () => {
       version: 1,
       generatedAt: new Date().toISOString(),
       fixtures: PARITY_FIXTURES.map((fx) => {
-        const s = summarize(fx.ring as Pt[], fx.targetAreaM2, fx.frontMinM);
+        const s = summarize(fx.ring as Pt[], fx.targetAreaM2, fx.frontMinM, fx.dirPref);
         return {
           name: fx.name,
           targetAreaM2: fx.targetAreaM2,

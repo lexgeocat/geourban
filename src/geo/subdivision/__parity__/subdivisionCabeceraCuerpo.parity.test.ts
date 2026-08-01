@@ -24,8 +24,8 @@ interface LotSummary {
   ringArea: number;
 }
 
-function summarize(ring: Pt[], targetAreaM2: number, frontMinM: number): LotSummary {
-  const lots = subdivideManzanoCabeceraCuerpo(ring, targetAreaM2, frontMinM);
+function summarize(ring: Pt[], targetAreaM2: number, frontMinM: number, dirPref?: { ax: number; ay: number }): LotSummary {
+  const lots = subdivideManzanoCabeceraCuerpo(ring, targetAreaM2, frontMinM, dirPref);
   let totalArea = 0;
   let remnantCount = 0;
   const areas: number[] = [];
@@ -131,7 +131,7 @@ describe('paridad subdivideManzanoCabeceraCuerpo (TS vs snapshot)', () => {
     it(`match con snapshot para ${fx.name}`, () => {
       const expected = snapshot.fixtures[expectedAt];
       expect(expected, `snapshot no tiene fixture #${expectedAt}`).toBeDefined();
-      const actual = summarize(fx.ring as Pt[], fx.targetAreaM2, fx.frontMinM);
+      const actual = summarize(fx.ring as Pt[], fx.targetAreaM2, fx.frontMinM, fx.dirPref);
       compareSummary(actual, expected.summary);
     });
   }

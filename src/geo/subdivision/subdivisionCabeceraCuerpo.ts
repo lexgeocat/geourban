@@ -385,6 +385,12 @@ function hbLotizeWithBaseline(mznPts: Pt[], cfg: HbConfig, baseline: [Pt, Pt]): 
     }
     fCuts.push(1);
 
+    // DEBUG: instrumentación opt-in via env var (no emite en producción).
+    if (typeof process !== 'undefined' && process.env.GU_DEBUG_HB) {
+      process.stderr.write(`[TS] zone=${zone} nCols=${nCols} zoneTotal=${zoneTotal} fCuts=${JSON.stringify(fCuts)}\n`);
+      process.stderr.write(`[TS] zonePoly=${JSON.stringify(zonePoly)}\n`);
+    }
+
     for (let c = 0; c < nCols; c++) {
       const L0 = dividerAt(fCuts[c]), L1 = dividerAt(fCuts[c + 1]);
       let colPoly = zonePoly;
