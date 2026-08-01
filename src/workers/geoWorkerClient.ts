@@ -11,6 +11,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { useNativeGeoEngineStore } from '../store/debug/nativeEngineStore';
 import { recordGeometrySanitizeEvent } from '../store/debug/geometryTelemetry';
 import { recordWorkerRoundtrip } from '../store/debug/perfTelemetry';
+import { recordNativeEngineOutcome } from '../store/debug/nativeEngineTelemetry';
 
 interface PendingEntry {
   type: GeoWorkerRequest['type'];
@@ -212,6 +213,49 @@ function toNativeDirPref(dirPref?: { ax: number; ay: number }) {
   return dirPref ? { ax: dirPref.ax, ay: dirPref.ay } : null;
 }
 
+// ─── Fase 2.7 — validación en sombra (shadow mode) ─────────────────────
+//
+// Cuando el motor nativo resuelve una operación con éxito, y el flag de
+// validación en sombra está activo, con probabilidad `shadowSampleRate`
+// se corre EN PARALELO (sin bloquear ni afectar la respuesta ya
+// resuelta con el resultado nativo) el mismo cómputo en el motor JS de
+// referencia, y se comparan resúmenes con tolerancia. Es el mecanismo
+// concreto para "validar la paridad en la app real con datos de
+// producción" sin retirar el motor JS todavía.
+
+function shouldRunShadowValidation(): boolean {
+  const { shadowValidationEnabled, shadowSampleRate } = useNativeGeoEngineStore.getState();
+  if (!shadowValidationEnabled) return false;
+  return Math.random() < shadowSampleRate;
+}
+
+function runShadowValidation<T>(
+  opType: string,
+  runJs: () => Promise<T>,
+  compare: (js: T) => { ok: boolean; detail?: string },
+): void {
+  if (!shouldRunShadowValidation()) return;
+  void runJs()
+    .then((js) => {
+      const cmp = compare(js);
+      recordNativeEngineOutcome(opType, cmp.ok ? 'shadowMatch' : 'shadowMismatch', cmp.detail);
+    })
+    .catch((err) => {
+      // El motor JS también puede fallar en geometría patológica — no es
+      // en sí un mismatch (el nativo ya respondió bien), solo se deja
+      // registrado para no perder la señal.
+      recordNativeEngineOutcome(
+        opType,
+        'shadowMismatch',
+        `motor JS de referencia falló: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    });
+}
+
+function areaWithinTolerance(a: number, b: number, relTol = 0.02, absTol = 1): boolean {
+  return Math.abs(a - b) <= Math.max(absTol, Math.max(Math.abs(a), Math.abs(b)) * relTol);
+}
+
 async function subdivideNative(
   polygon: GeoJsonPolygon,
   options: SubdivisionOptions,
@@ -287,9 +331,6 @@ async function subdivideManzanoBatchNative(
   }
 }
 
-/** <- `computeManzanosInWorker`. Antes de esto, este cableado no existía:
- * el comando Tauri `compute_manzanos_cmd` estaba registrado pero nunca se
- * invocaba desde el frontend (Fase 2.5.b quedaba a medias). */
 async function computeManzanosNative(
   parcels: FeatureCollection,
   roadNetwork: FeatureCollection,
@@ -324,7 +365,6 @@ async function computeManzanosNative(
   }
 }
 
-/** <- `computeRoadNetworkNetInWorker`. Cierra Fase 2.5.c. */
 async function computeRoadNetworkNetNative(
   streets: Street[],
   roundabouts: RoundaboutParams[],
@@ -345,7 +385,6 @@ async function computeRoadNetworkNetNative(
   }
 }
 
-/** <- `matchFragmentsBatchInWorker`. Cierra Fase 2.4/2.5.c. */
 async function matchFragmentsBatchNative(
   items: MatchFragmentsBatchItem[],
 ): Promise<MatchFragmentsBatchResultItem[]> {
@@ -374,8 +413,41 @@ export async function computeManzanosInWorker(
 ) {
   if (shouldUseNative()) {
     try {
-      return await computeManzanosNative(parcels, roadNetwork);
+      const nativeResult = await computeManzanosNative(parcels, roadNetwork);
+      recordNativeEngineOutcome('computeManzanos', 'native');
+      runShadowValidation(
+        'computeManzanos',
+        async () => {
+          const response = await runWorker<{ type: 'computeManzanos'; manzanos: FeatureCollection }>({
+            type: 'computeManzanos', parcels, roadNetwork,
+          });
+          return response.manzanos;
+        },
+        (js) => {
+          const areaOf = (fc: FeatureCollection) => fc.features.reduce((s, f) => {
+            if (f.geometry?.type !== 'Polygon') return s;
+            const ring = f.geometry.coordinates[0] as [number, number][];
+            let a = 0;
+            for (let i = 0; i < ring.length; i++) {
+              const p = ring[i], q = ring[(i + 1) % ring.length];
+              a += p[0] * q[1] - q[0] * p[1];
+            }
+            return s + Math.abs(a) / 2;
+          }, 0);
+          const nativeArea = areaOf(nativeResult);
+          const jsArea = areaOf(js);
+          if (nativeResult.features.length !== js.features.length) {
+            return { ok: false, detail: `cantidad de fragmentos difiere: nativo=${nativeResult.features.length} js=${js.features.length}` };
+          }
+          if (!areaWithinTolerance(nativeArea, jsArea, 0.03, 2)) {
+            return { ok: false, detail: `área total difiere: nativo=${nativeArea.toFixed(2)} js=${jsArea.toFixed(2)}` };
+          }
+          return { ok: true };
+        },
+      );
+      return nativeResult;
     } catch (err) {
+      recordNativeEngineOutcome('computeManzanos', 'fallback');
       console.error(
         'geoWorkerClient: "computeManzanos" en motor nativo falló — se reintenta en el worker JS. ' +
         'Desactivá "Motor nativo" en el panel de debug si esto se repite.',
@@ -397,8 +469,37 @@ export async function subdivideInWorker(
 ): Promise<SubdivisionResult> {
   if (shouldUseNative()) {
     try {
-      return await subdivideNative(polygon, options);
+      const nativeResult = await subdivideNative(polygon, options);
+      recordNativeEngineOutcome('subdivide', 'native');
+      runShadowValidation(
+        'subdivide',
+        async () => {
+          const response = await runWorker<{ type: 'subdivide'; result: SubdivisionResult }>({
+            type: 'subdivide', polygon, options,
+          });
+          return response.result;
+        },
+        (js) => {
+          if (nativeResult.ok !== js.ok) {
+            return { ok: false, detail: `ok difiere: nativo=${nativeResult.ok} js=${js.ok}` };
+          }
+          if (!nativeResult.ok) return { ok: true };
+          if (nativeResult.features.length !== js.features.length) {
+            return { ok: false, detail: `cantidad de features difiere: nativo=${nativeResult.features.length} js=${js.features.length}` };
+          }
+          const areaOf = (r: SubdivisionResult) =>
+            r.features.reduce((s, f) => s + ((f.properties as { areaM2?: number } | null)?.areaM2 ?? 0), 0);
+          const nativeArea = areaOf(nativeResult);
+          const jsArea = areaOf(js);
+          if (!areaWithinTolerance(nativeArea, jsArea)) {
+            return { ok: false, detail: `área total difiere: nativo=${nativeArea.toFixed(2)} js=${jsArea.toFixed(2)}` };
+          }
+          return { ok: true };
+        },
+      );
+      return nativeResult;
     } catch (err) {
+      recordNativeEngineOutcome('subdivide', 'fallback');
       console.error(
         'geoWorkerClient: "subdivide" en motor nativo falló — se reintenta en el worker JS. ' +
         'Desactivá "Motor nativo" en el panel de debug si esto se repite.',
@@ -423,8 +524,31 @@ export async function subdivideManzanoInWorker(
 ): Promise<LotResult[]> {
   if (shouldUseNative()) {
     try {
-      return await subdivideManzanoNative(ring, method, targetAreaM2, frontMinM, dirPref);
+      const nativeLots = await subdivideManzanoNative(ring, method, targetAreaM2, frontMinM, dirPref);
+      recordNativeEngineOutcome('subdivideManzano', 'native');
+      runShadowValidation(
+        'subdivideManzano',
+        async () => {
+          const response = await runWorker<{ type: 'subdivideManzano'; lots: LotResult[] }>({
+            type: 'subdivideManzano', ring, method, targetAreaM2, frontMinM, dirPref,
+          });
+          return response.lots;
+        },
+        (jsLots) => {
+          if (nativeLots.length !== jsLots.length) {
+            return { ok: false, detail: `cantidad de lotes difiere: nativo=${nativeLots.length} js=${jsLots.length}` };
+          }
+          const nativeArea = nativeLots.reduce((s, l) => s + l.areaM2, 0);
+          const jsArea = jsLots.reduce((s, l) => s + l.areaM2, 0);
+          if (!areaWithinTolerance(nativeArea, jsArea)) {
+            return { ok: false, detail: `área total difiere: nativo=${nativeArea.toFixed(2)} js=${jsArea.toFixed(2)}` };
+          }
+          return { ok: true };
+        },
+      );
+      return nativeLots;
     } catch (err) {
+      recordNativeEngineOutcome('subdivideManzano', 'fallback');
       console.error(
         'geoWorkerClient: "subdivide_manzano" en motor nativo falló — se reintenta en el worker JS. ' +
         'Desactivá "Motor nativo" en el panel de debug si esto se repite.',
@@ -455,8 +579,11 @@ export async function subdivideManzanoBatchInWorker(
 ): Promise<Array<{ id: string | number; lots: LotResult[] }>> {
   if (shouldUseNative()) {
     try {
-      return await subdivideManzanoBatchNative(manzanos);
+      const results = await subdivideManzanoBatchNative(manzanos);
+      recordNativeEngineOutcome('subdivideManzanoBatch', 'native');
+      return results;
     } catch (err) {
+      recordNativeEngineOutcome('subdivideManzanoBatch', 'fallback');
       console.error(
         'geoWorkerClient: "subdivide_manzano_batch" en motor nativo falló — se reintenta en el worker JS. ' +
         'Desactivá "Motor nativo" en el panel de debug si esto se repite.',
@@ -479,8 +606,28 @@ export async function computeRoadNetworkNetInWorker(
 ): Promise<RoadNetworkNet> {
   if (shouldUseNative()) {
     try {
-      return await computeRoadNetworkNetNative(streets, roundabouts, cornerMode);
+      const nativeNet = await computeRoadNetworkNetNative(streets, roundabouts, cornerMode);
+      recordNativeEngineOutcome('computeRoadNetworkNet', 'native');
+      runShadowValidation(
+        'computeRoadNetworkNet',
+        async () => {
+          const response = await runWorker<{ type: 'computeRoadNetworkNet'; net: RoadNetworkNet }>(
+            { type: 'computeRoadNetworkNet', streets, roundabouts, cornerMode },
+            timeoutMs,
+          );
+          return response.net;
+        },
+        (js) => {
+          const ringCount = (n: RoadNetworkNet) => n.road.length + n.outer.length;
+          if (ringCount(nativeNet) !== ringCount(js)) {
+            return { ok: false, detail: `cantidad de polígonos difiere: nativo=${ringCount(nativeNet)} js=${ringCount(js)}` };
+          }
+          return { ok: true };
+        },
+      );
+      return nativeNet;
     } catch (err) {
+      recordNativeEngineOutcome('computeRoadNetworkNet', 'fallback');
       console.error(
         'geoWorkerClient: "computeRoadNetworkNet" en motor nativo falló — se reintenta en el worker JS. ' +
         'Desactivá "Motor nativo" en el panel de debug si esto se repite.',
@@ -512,8 +659,11 @@ export async function matchFragmentsBatchInWorker(
   if (items.length === 0) return [];
   if (shouldUseNative()) {
     try {
-      return await matchFragmentsBatchNative(items);
+      const results = await matchFragmentsBatchNative(items);
+      recordNativeEngineOutcome('matchFragmentsBatch', 'native');
+      return results;
     } catch (err) {
+      recordNativeEngineOutcome('matchFragmentsBatch', 'fallback');
       console.error(
         'geoWorkerClient: "matchFragmentsBatch" en motor nativo falló — se reintenta en el worker JS. ' +
         'Desactivá "Motor nativo" en el panel de debug si esto se repite.',
