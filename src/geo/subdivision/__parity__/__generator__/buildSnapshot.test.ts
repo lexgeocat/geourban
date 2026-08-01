@@ -9,8 +9,8 @@ import { describe, it } from 'vitest';
 import { writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { polyArea, type Pt } from '../../math/polygonEngine';
-import { subdivideManzanoCabeceraCuerpo } from '../../subdivisionCabeceraCuerpo';
+import { polyArea, type Pt } from '@/geo/math/polygonEngine';
+import { subdivideManzanoCabeceraCuerpo } from '@/geo/subdivision/subdivisionCabeceraCuerpo';
 import { PARITY_FIXTURES } from '../parityFixtures';
 
 const __filename = fileURLToPath(import.meta.url);

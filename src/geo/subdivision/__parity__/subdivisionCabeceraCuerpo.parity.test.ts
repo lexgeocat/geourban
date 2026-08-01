@@ -1,26 +1,10 @@
-// Test de paridad para `subdivideManzanoCabeceraCuerpo` (método `auto`).
-//
-// Single source of truth = `paritySnapshot.json` (al lado de este archivo).
-//   - `npm run parity:sync` lo regenera desde el motor TS y lo copia al
-//     crate Rust para el integration test.
-//   - `cargo test -p geourban-geo --test parity_cabecera_cuerpo` lo lee
-//     desde el lado Rust y compara con la misma tolerancia.
-// Cualquier divergencia entre TS y Rust rompe los dos tests.
-//
-// Criterio de éxito (auditoria-para-mejora.md §6 Fase 2.2): areaM2 /
-// frontM / depthM / count coinciden entre TS y Rust dentro de tolerancia.
-//
-// NOTA: este archivo SOLO lee el snapshot. El generador está en
-// `buildSnapshot.test.ts` y se invoca via `npm run parity:sync`.
-// Si el snapshot no existe, este archivo falla con mensaje claro.
-
 import { describe, expect, it, beforeAll } from 'vitest';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { subdivideManzanoCabeceraCuerpo } from '../subdivisionCabeceraCuerpo';
+import { subdivideManzanoCabeceraCuerpo } from '@/geo/subdivision/subdivisionCabeceraCuerpo';
 import { PARITY_FIXTURES } from './parityFixtures';
-import { polyArea, type Pt } from '../../math/polygonEngine';
+import { polyArea, type Pt } from '@/geo/math/polygonEngine';
 
 const AREA_TOL_M2 = 1e-3;
 const LEN_TOL_M = 1e-3;
