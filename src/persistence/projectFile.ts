@@ -18,6 +18,7 @@ import { useCommandStack } from '../commands/core/CommandStack';
 import { resetIncrementalRoadTracking } from '../geo/recomputeManzanos';
 import { recordProjectLoad } from '../store/debug/perfTelemetry';
 import { encodeWkb, decodeWkb, uint8ToBase64, base64ToUint8, type WkbGeometry } from './wkb';
+import { getOrCreateSpatialIndex } from '../map/spatialIndex';
 import type { Layer } from '../core/objectModel';
 
 interface LayerDto {
@@ -180,6 +181,10 @@ export async function loadProject(name: string): Promise<void> {
     features[i] = feat;
   }
   drawSource.addFeatures(features);
+  // FIX: bulk-load explícito — el índice espacial no depende de que
+  // <MapView/> esté montado y sus listeners addfeature/removefeature
+  // reconstruyan el RBush feature por feature.
+  getOrCreateSpatialIndex().load(features as unknown as Feature<Polygon>[]);
 
   for (const s of payload.streets) {
     useStreetStore.getState().addStreetWithId(s.id, {

@@ -4,8 +4,11 @@ import { immer } from 'zustand/middleware/immer';
 import Map from 'ol/Map.js';
 import VectorSource from 'ol/source/Vector.js';
 import GeoJSON from 'ol/format/GeoJSON.js';
+import type Feature from 'ol/Feature.js';
+import type Polygon from 'ol/geom/Polygon.js';
 import { extend as extendExtent, type Extent } from 'ol/extent.js';
 import { refreshSourceMetrics } from '../../geo/metrics';
+import { getOrCreateSpatialIndex } from '../../map/spatialIndex';
 import { useSelectionStore } from './selectionStore';
 import { runCommand } from '../../commands/core/CommandStack';
 import { DeleteFeaturesCommand } from '../../commands/features/DeleteFeaturesCommand';
@@ -65,6 +68,10 @@ export const useMapStore = create<MapState>()(
       });
       src.clear();
       src.addFeatures(features as any);
+      // FIX: bulk-load explícito — no depender de que los listeners
+      // addfeature/removefeature (atados solo mientras <MapView/> vive)
+      // reconstruyan el RBush uno por uno.
+      getOrCreateSpatialIndex().load(features as unknown as Feature<Polygon>[]);
       refreshSourceMetrics(src);
       src.changed();
       const elapsedMs = performance.now() - t0;

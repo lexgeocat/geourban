@@ -102,21 +102,14 @@ const IconLineKind = () => (
     <path d="M4 20 20 4" />
   </svg>
 );
-const IconPointKind = () => (
-  <svg viewBox="0 0 24 24" fill="currentColor" style={{ width: 9, height: 9 }} aria-hidden="true">
-    <circle cx="12" cy="12" r="6" />
-  </svg>
-);
 
 function geometryIconForKind(kind: LayerKind) {
   if (kind === 'calle' || kind === 'linea' || kind === 'rotonda') return <IconLineKind />;
-  if (kind === 'texto') return <IconPointKind />;
   return <IconPolygonKind />;
 }
 
 function geometryLabelForKind(kind: LayerKind): string {
   if (kind === 'calle' || kind === 'linea' || kind === 'rotonda') return 'línea';
-  if (kind === 'texto') return 'punto';
   return 'polígono';
 }
 

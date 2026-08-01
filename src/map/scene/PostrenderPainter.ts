@@ -16,6 +16,7 @@ import { SnapGuidePainter } from './painters/SnapGuidePainter';
 import { OverlayPainter } from './painters/OverlayPainter';
 import { SelectionHighlightPainter } from './painters/SelectionHighlightPainter';
 import { recordPostrenderDuration } from '../../store/debug/debugCounters';
+import { recordGeometrySanitizeEvent } from '../../store/debug/geometryTelemetry';
 
 
 function getZoomFromResolution(resolution: number): number {
@@ -134,6 +135,7 @@ export class PostrenderPainter {
   private getVisibleFeatures(all: Array<Feature<Geometry>>): Array<Feature<Geometry>> {
     const index = getOrCreateSpatialIndex();
     if (index.size === 0 && all.length > 0) {
+      recordGeometrySanitizeEvent('spatialIndex.emptyOnPostrender', { featureCount: all.length });
       if (import.meta.env.DEV) {
         console.warn(
           `PostrenderPainter: índice espacial vacío con ${all.length} feature(s) presentes — reconstruyendo. ` +

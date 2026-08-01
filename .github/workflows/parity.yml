@@ -1,0 +1,26 @@
+name: geometry-engine-parity
+on: [push, pull_request]
+
+jobs:
+  ts-and-parity-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: npm ci
+      - run: npm run parity:sync
+      - run: npm test
+      - name: fallar si parity:sync dejó el repo sucio
+        run: git diff --exit-code -- src-tauri/crates/geourban-geo/tests/fixtures
+
+  rust-parity:
+    needs: ts-and-parity-sync
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: |
+          cd src-tauri
+          cargo test -p geourban-geo
+          cargo test -p geourban-geo --features geos-backend

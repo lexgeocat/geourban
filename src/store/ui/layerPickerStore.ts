@@ -7,7 +7,10 @@ export function requireLayerForKind(kind: GeoUrbanFeatureKind): Promise<string |
 
   if (registry.activeLayerId) {
     const active = registry.getById(registry.activeLayerId);
-    if (active && !active.locked) return Promise.resolve(active.id);
+    // FIX: antes no comprobaba active.kind === kind, así que asignaba
+    // en silencio geometría de un tipo a una capa de otro tipo (p.ej.
+    // una calle dibujada con la capa "Lote" activa).
+    if (active && !active.locked && active.kind === kind) return Promise.resolve(active.id);
   }
 
   const existing = registry.getLayerForKind(kind);

@@ -36,7 +36,10 @@ export const useNativeGeoEngineStore = create<NativeGeoEngineState>()(
   persist(
     (set) => ({
       enabled: true,
-      shadowValidationEnabled: true,
+      // FIX: la validación en sombra es una herramienta de paridad para
+      // desarrollo, no un costo que deba pagar un usuario final — solo se
+      // activa por defecto en build DEV.
+      shadowValidationEnabled: import.meta.env.DEV,
       shadowSampleRate: 0.15,
       setEnabled: (v) => set({ enabled: v }),
       toggle: () => set((s) => ({ enabled: !s.enabled })),
@@ -55,10 +58,12 @@ export const useNativeGeoEngineStore = create<NativeGeoEngineState>()(
           // "nunca lo tocó" de "lo apagó a mano" (ambos guardaban
           // `false`, que era el default viejo), así que se sobreescribe
           // explícitamente — es el criterio de negocio de esta fase.
+          // La validación en sombra (paridad DEV) no se hereda a
+          // producción: solo queda activa en build DEV.
           return {
             ...state,
             enabled: true,
-            shadowValidationEnabled: true,
+            shadowValidationEnabled: import.meta.env.DEV,
             shadowSampleRate: state.shadowSampleRate ?? 0.15,
           };
         }
