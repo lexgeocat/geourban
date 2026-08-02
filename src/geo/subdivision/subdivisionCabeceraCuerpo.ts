@@ -1,5 +1,17 @@
 ﻿import { type Pt, type LotResult, polyArea, centroid, convexHull } from '../math/polygonEngine';
-
+/**
+ * Guarda de seguridad contra escala patológica de coordenadas (Fase 2.6,
+ * fuzz con ×1e5–1e8 — ver auditoria-para-mejora.md). Sin este límite,
+ * geometría con área astronómica pero target/frontMin normales produce
+ * recuentos de filas/columnas absurdos (headCols1/headCols2/bodyRows, y
+ * nSubRows en el forzado de columna única) que hacen que los bucles de
+ * `buildZone`/`buildBodyZone` corran efectivamente para siempre. Los
+ * valores son muy generosos frente a cualquier caso real (los fixtures
+ * de paridad no superan ~20 lotes), así que nunca se activan con
+ * geometría sana — no cambian ningún snapshot existente.
+ */
+const MAX_HB_DIM = 400;
+const MAX_HB_TOTAL_LOTS = 1200;
 const lerp = (a: Pt, b: Pt, t: number): Pt => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
 const dist = (a: Pt, b: Pt): number => Math.hypot(b[0] - a[0], b[1] - a[1]);
 
@@ -236,7 +248,7 @@ function hbGetCfg(blockArea: number, targetAreaM2: number, frontMinM: number): H
     const headArea = 2 * headRows * 2 * minArea;
     const bodyArea = Math.max(0, blockArea - headArea);
     const bodyLots = Math.max(1, Math.floor(bodyArea / minArea));
-    const bodyRows = Math.max(1, Math.round(bodyLots / bodyCols));
+    const bodyRows = Math.min(MAX_HB_DIM, Math.max(1, Math.round(bodyLots / bodyCols)));
     return { bodyCols, bodyRows, headRows, minArea, headDepth, minFrente };
   }
   return { bodyCols, bodyRows: 6, headRows: 1, headDepth, minArea: 0, minFrente };
@@ -257,7 +269,10 @@ function hbAutoHeadPlan(
     const uB = Math.max(uMin, uMax - depth);
     const w1 = Math.max(1e-6, widthAtU((uMin + uA) / 2));
     const w2 = Math.max(1e-6, widthAtU((uMax + uB) / 2));
-    return { c1: Math.max(1, Math.round(w1 / frontage)), c2: Math.max(1, Math.round(w2 / frontage)) };
+    return {
+      c1: Math.min(MAX_HB_DIM, Math.max(1, Math.round(w1 / frontage))),
+      c2: Math.min(MAX_HB_DIM, Math.max(1, Math.round(w2 / frontage))),
+    };
   };
   let target = minArea > 0 ? minArea : totalArea / (bodyRows * bodyCols + 2 * headRows * 2);
   let c1 = 1, c2 = 1;
@@ -270,7 +285,6 @@ function hbAutoHeadPlan(
   }
   return { headCols1: c1, headCols2: c2, targetLotArea: target };
 }
-
 function hbFitBodyRows(
   totalArea: number, target: number, headRows: number, headCols1: number, headCols2: number,
   bodyCols: number, bodyRows: number, useFixedArea: boolean,
@@ -278,7 +292,7 @@ function hbFitBodyRows(
   if (!useFixedArea || headRows <= 0 || target <= 0) return bodyRows;
   const headL = headRows * (headCols1 + headCols2);
   const cap = Math.round((totalArea / target - headL) / bodyCols);
-  return Math.max(1, cap);
+  return Math.min(MAX_HB_DIM, Math.max(1, cap));
 }
 
 interface HbLot { pts: Pt[]; area: number; zone: string; isRemainder: boolean; }
@@ -286,6 +300,12 @@ interface HbLot { pts: Pt[]; area: number; zone: string; isRemainder: boolean; }
 function hbLotizeWithBaseline(mznPts: Pt[], cfg: HbConfig, baseline: [Pt, Pt]): HbLot[] {
   const { bodyCols, bodyRows, headRows, minArea, headDepth, minFrente } = cfg;
   const lots: HbLot[] = [];
+  let lotBudget = MAX_HB_TOTAL_LOTS;
+  const pushLot = (lot: HbLot): void => {
+    if (lotBudget <= 0) return;
+    lots.push(lot);
+    lotBudget--;
+  };
   const workPoly = mznPts;
 
   const dxB = baseline[1][0] - baseline[0][0];
@@ -325,7 +345,7 @@ function hbLotizeWithBaseline(mznPts: Pt[], cfg: HbConfig, baseline: [Pt, Pt]): 
   }
 
   function buildZone(uA: number, uB: number, nRows: number, nCols: number, zone: string, remainderLot: boolean) {
-    if (nRows <= 0 || nCols <= 0) return;
+    if (nRows <= 0 || nCols <= 0 || lotBudget <= 0) return;
     let zonePoly = hbClipPolyHalf(workPoly, ux, uy, 1, uA);
     zonePoly = hbClipPolyHalf(zonePoly, ux, uy, -1, -uB);
     if (zonePoly.length < 3) return;
@@ -369,7 +389,7 @@ function hbLotizeWithBaseline(mznPts: Pt[], cfg: HbConfig, baseline: [Pt, Pt]): 
       const fullCol = nRows * targetLotArea;
       const remA = zoneTotal - fullCol;
       if (remA < fullCol) {
-        lots.push({ pts: zonePoly, area: zoneTotal, zone, isRemainder: true });
+        pushLot({ pts: zonePoly, area: zoneTotal, zone, isRemainder: true });
         return;
       }
       eqSplit = true;
@@ -392,6 +412,7 @@ function hbLotizeWithBaseline(mznPts: Pt[], cfg: HbConfig, baseline: [Pt, Pt]): 
     }
 
     for (let c = 0; c < nCols; c++) {
+      if (lotBudget <= 0) break;
       const L0 = dividerAt(fCuts[c]), L1 = dividerAt(fCuts[c + 1]);
       let colPoly = zonePoly;
       if (fCuts[c] > 1e-9) colPoly = hbClipPolyHalf(colPoly, L0.nx, L0.ny, 1, L0.d);
@@ -413,16 +434,17 @@ function hbLotizeWithBaseline(mznPts: Pt[], cfg: HbConfig, baseline: [Pt, Pt]): 
       rowCuts.push(uMaxC);
 
       for (let r = 0; r < nRows; r++) {
+        if (lotBudget <= 0) break;
         let lot = hbClipPolyHalf(colPoly, ux, uy, 1, rowCuts[r]);
         lot = hbClipPolyHalf(lot, ux, uy, -1, -rowCuts[r + 1]);
         if (lot.length < 3) continue;
-        lots.push({ pts: lot, area: polyArea(lot), zone, isRemainder: isRemCol && r === nRows - 1 });
+        pushLot({ pts: lot, area: polyArea(lot), zone, isRemainder: isRemCol && r === nRows - 1 });
       }
     }
   }
 
   function buildBodyZone(uA: number, uB: number, nRows: number, nCols: number) {
-    if (nRows <= 0 || nCols <= 0) return;
+    if (nRows <= 0 || nCols <= 0 || lotBudget <= 0) return;
     const zoneTotal = hbStripArea(workPoly, ux, uy, uA, uB);
     if (zoneTotal <= 0) return;
     const rowTarget = zoneTotal / nRows;
@@ -431,6 +453,7 @@ function hbLotizeWithBaseline(mznPts: Pt[], cfg: HbConfig, baseline: [Pt, Pt]): 
     rowCuts.push(uB);
 
     for (let r = 0; r < nRows; r++) {
+      if (lotBudget <= 0) break;
       const ra = rowCuts[r], rb = rowCuts[r + 1];
       let stripPoly = hbClipPolyHalf(workPoly, ux, uy, 1, ra);
       stripPoly = hbClipPolyHalf(stripPoly, ux, uy, -1, -rb);
@@ -470,6 +493,7 @@ function hbLotizeWithBaseline(mznPts: Pt[], cfg: HbConfig, baseline: [Pt, Pt]): 
       colCuts.push(1);
 
       for (let c = 0; c < nColsHere; c++) {
+        if (lotBudget <= 0) break;
         const t0 = colCuts[c], t1 = colCuts[c + 1];
         const c0 = cutLineAt(t0), c1 = cutLineAt(t1);
         let colPoly = t0 > 1e-9 ? hbClipPolyHalf(stripPoly, c0.nx, c0.ny, 1, c0.d) : stripPoly;
@@ -478,7 +502,7 @@ function hbLotizeWithBaseline(mznPts: Pt[], cfg: HbConfig, baseline: [Pt, Pt]): 
 
         if (forceSingleCol && minArea > 0 && targetLotArea > 0) {
           const colArea = polyArea(colPoly);
-          const nSubRows = Math.max(1, Math.round(colArea / targetLotArea));
+          const nSubRows = Math.min(MAX_HB_DIM, Math.max(1, Math.round(colArea / targetLotArea)));
           if (nSubRows > 1) {
             const uProjsCol = colPoly.map((p) => p[0] * ux + p[1] * uy);
             const uMinCol = Math.min(...uProjsCol), uMaxCol = Math.max(...uProjsCol);
@@ -492,15 +516,17 @@ function hbLotizeWithBaseline(mznPts: Pt[], cfg: HbConfig, baseline: [Pt, Pt]): 
             for (let sr = 0; sr < nSubRows - 1; sr++) subCuts.push(bisect(subRowAreaUpTo, uMinCol, uMaxCol, (sr + 1) * subTarget));
             subCuts.push(uMaxCol);
             for (let sr = 0; sr < nSubRows; sr++) {
+              if (lotBudget <= 0) break;
               let subLot = hbClipPolyHalf(colPoly, ux, uy, 1, subCuts[sr]);
               subLot = hbClipPolyHalf(subLot, ux, uy, -1, -subCuts[sr + 1]);
               if (subLot.length < 3) continue;
-              lots.push({ pts: subLot, area: polyArea(subLot), zone: 'body', isRemainder: false });
+              pushLot({ pts: subLot, area: polyArea(subLot), zone: 'body', isRemainder: false });
             }
             continue;
           }
         }
-        lots.push({ pts: colPoly, area: polyArea(colPoly), zone: 'body', isRemainder: false });
+        const area = polyArea(colPoly);
+        pushLot({ pts: colPoly, area, zone: 'body', isRemainder: false });
       }
     }
   }

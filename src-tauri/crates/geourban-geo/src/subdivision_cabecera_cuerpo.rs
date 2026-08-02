@@ -1,6 +1,12 @@
 use crate::math::{centroid, convex_hull, poly_area};
 use crate::types::{LotResult, Pt};
-
+/// Guarda de seguridad contra escala patológica de coordenadas (Fase 2.6
+/// de auditoria-para-mejora.md, fuzz con ×1e5–1e8). Espejo exacto de
+/// MAX_HB_DIM/MAX_HB_TOTAL_LOTS en subdivisionCabeceraCuerpo.ts. Nunca se
+/// activa con geometría sana (los fixtures de paridad no superan ~20
+/// lotes), así que no cambia ningún snapshot existente.
+const MAX_HB_DIM: i64 = 400;
+const MAX_HB_TOTAL_LOTS: usize = 1200;
 fn lerp(a: Pt, b: Pt, t: f64) -> Pt {
     (a.0 + (b.0 - a.0) * t, a.1 + (b.1 - a.1) * t)
 }
@@ -418,7 +424,7 @@ fn hb_get_cfg(block_area: f64, target_area_m2: f64, front_min_m: f64) -> HbConfi
         let head_area = 2.0 * head_rows as f64 * 2.0 * min_area;
         let body_area = (block_area - head_area).max(0.0);
         let body_lots = (body_area / min_area).floor().max(1.0);
-        let body_rows = (body_lots / body_cols as f64).round().max(1.0) as i64;
+        let body_rows = ((body_lots / body_cols as f64).round().max(1.0) as i64).min(MAX_HB_DIM);
         HbConfig {
             body_cols,
             body_rows,
@@ -484,8 +490,8 @@ fn hb_auto_head_plan(
         let u_b = (u_max - depth).max(u_min);
         let w1 = width_at_u((u_min + u_a) / 2.0).max(1e-6);
         let w2 = width_at_u((u_max + u_b) / 2.0).max(1e-6);
-        let c1 = ((w1 / frontage).round() as i64).max(1);
-        let c2 = ((w2 / frontage).round() as i64).max(1);
+        let c1 = ((w1 / frontage).round() as i64).max(1).min(MAX_HB_DIM);
+        let c2 = ((w2 / frontage).round() as i64).max(1).min(MAX_HB_DIM);
         (c1, c2)
     };
 
@@ -534,7 +540,7 @@ fn hb_fit_body_rows(
     }
     let head_l = head_rows * (head_cols1 + head_cols2);
     let cap = ((total_area / target - head_l as f64) / body_cols as f64).round() as i64;
-    cap.max(1)
+    cap.max(1).min(MAX_HB_DIM)
 }
 
 #[derive(Debug, Clone)]
@@ -579,8 +585,9 @@ fn hb_build_zone(
     zone: &str,
     remainder_lot: bool,
     lots: &mut Vec<HbLot>,
+    lot_budget: &mut usize,
 ) {
-    if n_rows <= 0 || n_cols <= 0 {
+    if n_rows <= 0 || n_cols <= 0 || *lot_budget == 0 {
         return;
     }
     let mut zone_poly = hb_clip_poly_half(work_poly, ux, uy, 1.0, u_a);
@@ -676,12 +683,15 @@ fn hb_build_zone(
         let full_col = n_rows as f64 * target_lot_area;
         let rem_a = zone_total - full_col;
         if rem_a < full_col {
-            lots.push(HbLot {
-                pts: zone_poly,
-                area: zone_total,
-                zone: zone.to_string(),
-                is_remainder: true,
-            });
+            if *lot_budget > 0 {
+                lots.push(HbLot {
+                    pts: zone_poly,
+                    area: zone_total,
+                    zone: zone.to_string(),
+                    is_remainder: true,
+                });
+                *lot_budget -= 1;
+            }
             return;
         }
         eq_split = true;
@@ -719,6 +729,9 @@ fn hb_build_zone(
     }
 
     for c in 0..n_cols {
+        if *lot_budget == 0 {
+            break;
+        }
         let ci = c as usize;
         let l0 = divider_at(f_cuts[ci]);
         let l1 = divider_at(f_cuts[ci + 1]);
@@ -767,6 +780,9 @@ fn hb_build_zone(
         row_cuts.push(u_max_c);
 
         for r in 0..n_rows {
+            if *lot_budget == 0 {
+                break;
+            }
             let ri = r as usize;
             let mut lot = hb_clip_poly_half(&col_poly, ux, uy, 1.0, row_cuts[ri]);
             lot = hb_clip_poly_half(&lot, ux, uy, -1.0, -row_cuts[ri + 1]);
@@ -780,6 +796,7 @@ fn hb_build_zone(
                 zone: zone.to_string(),
                 is_remainder: is_rem_col && r == n_rows - 1,
             });
+            *lot_budget -= 1;
         }
     }
 }
@@ -801,8 +818,9 @@ fn hb_build_body_zone(
     n_rows: i64,
     n_cols: i64,
     lots: &mut Vec<HbLot>,
+    lot_budget: &mut usize,
 ) {
-    if n_rows <= 0 || n_cols <= 0 {
+    if n_rows <= 0 || n_cols <= 0 || *lot_budget == 0 {
         return;
     }
     let zone_total = hb_strip_area(work_poly, ux, uy, u_a, u_b);
@@ -819,6 +837,9 @@ fn hb_build_body_zone(
     row_cuts.push(u_b);
 
     for r in 0..n_rows {
+        if *lot_budget == 0 {
+            break;
+        }
         let ri = r as usize;
         let ra = row_cuts[ri];
         let rb = row_cuts[ri + 1];
@@ -906,6 +927,9 @@ fn hb_build_body_zone(
         col_cuts.push(1.0);
 
         for c in 0..n_cols_here {
+            if *lot_budget == 0 {
+                break;
+            }
             let ci = c as usize;
             let t0 = col_cuts[ci];
             let t1 = col_cuts[ci + 1];
@@ -927,7 +951,9 @@ fn hb_build_body_zone(
 
             if force_single_col && min_area > 0.0 && target_lot_area > 0.0 {
                 let col_area = poly_area(&col_poly);
-                let n_sub_rows = ((col_area / target_lot_area).round() as i64).max(1);
+                let n_sub_rows = ((col_area / target_lot_area).round() as i64)
+                    .max(1)
+                    .min(MAX_HB_DIM);
                 if n_sub_rows > 1 {
                     let u_projs_col: Vec<f64> =
                         col_poly.iter().map(|p| p.0 * ux + p.1 * uy).collect();
@@ -957,6 +983,9 @@ fn hb_build_body_zone(
                     }
                     sub_cuts.push(u_max_col);
                     for sr in 0..n_sub_rows {
+                        if *lot_budget == 0 {
+                            break;
+                        }
                         let sri = sr as usize;
                         let mut sub_lot = hb_clip_poly_half(&col_poly, ux, uy, 1.0, sub_cuts[sri]);
                         sub_lot = hb_clip_poly_half(&sub_lot, ux, uy, -1.0, -sub_cuts[sri + 1]);
@@ -970,6 +999,7 @@ fn hb_build_body_zone(
                             zone: "body".to_string(),
                             is_remainder: false,
                         });
+                        *lot_budget -= 1;
                     }
                     continue;
                 }
@@ -981,6 +1011,7 @@ fn hb_build_body_zone(
                 zone: "body".to_string(),
                 is_remainder: false,
             });
+            *lot_budget -= 1;
         }
     }
 }
@@ -1061,6 +1092,7 @@ fn hb_lotize_with_baseline(mzn_pts: &[Pt], cfg: HbConfig, baseline: (Pt, Pt)) ->
     };
 
     let mut lots: Vec<HbLot> = Vec::new();
+    let mut lot_budget: usize = MAX_HB_TOTAL_LOTS;
 
     if head_rows > 0 {
         hb_build_zone(
@@ -1079,6 +1111,7 @@ fn hb_lotize_with_baseline(mzn_pts: &[Pt], cfg: HbConfig, baseline: (Pt, Pt)) ->
             "head1",
             use_fixed_area,
             &mut lots,
+            &mut lot_budget,
         );
     }
     hb_build_body_zone(
@@ -1097,6 +1130,7 @@ fn hb_lotize_with_baseline(mzn_pts: &[Pt], cfg: HbConfig, baseline: (Pt, Pt)) ->
         b_rows,
         body_cols,
         &mut lots,
+        &mut lot_budget,
     );
     if head_rows > 0 {
         hb_build_zone(
@@ -1115,6 +1149,7 @@ fn hb_lotize_with_baseline(mzn_pts: &[Pt], cfg: HbConfig, baseline: (Pt, Pt)) ->
             "head2",
             use_fixed_area,
             &mut lots,
+            &mut lot_budget,
         );
     }
 

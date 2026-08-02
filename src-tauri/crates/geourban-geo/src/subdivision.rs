@@ -3,11 +3,11 @@ use crate::math::{
     project_extents, Extent1D, PolyHit,
 };
 use crate::sanitize::{sanitize_ring, SanitizeRingOptions};
+use crate::types::Pt;
 use crate::types::{
     CutResult, LotResult, ManzanoLoteMethod, SliceResult, SubdivisionMethod, SubdivisionOptions,
     SubdivisionResult,
 };
-use crate::types::Pt;
 use serde_json::{json, Value};
 
 const NARROW_RATIO: f64 = 1.6;
@@ -42,7 +42,10 @@ fn compute_cuts(
         }
         let rest_area_m2 = poly_area(&rest_poly);
         if rest_area_m2 < target_area_m2 * 0.5 {
-            cuts.push(CutResult { t: half_ext.max, is_remnant: true });
+            cuts.push(CutResult {
+                t: half_ext.max,
+                is_remnant: true,
+            });
             break;
         }
         let nom_front_w = nom_front_m;
@@ -87,7 +90,10 @@ fn compute_cuts(
             best_f = front_min_m;
         }
         t += best_f;
-        cuts.push(CutResult { t, is_remnant: false });
+        cuts.push(CutResult {
+            t,
+            is_remnant: false,
+        });
         lot_count += 1;
         if lot_count > 500 {
             break;
@@ -109,7 +115,16 @@ fn compute_lots_on_half(
     target_area_m2: f64,
     front_min_m: f64,
 ) -> Vec<LotResult> {
-    let cuts = match compute_cuts(full_poly, ext_l, lx, ly, sx, sy, target_area_m2, front_min_m) {
+    let cuts = match compute_cuts(
+        full_poly,
+        ext_l,
+        lx,
+        ly,
+        sx,
+        sy,
+        target_area_m2,
+        front_min_m,
+    ) {
         Some(c) => c,
         None => return Vec::new(),
     };
@@ -137,7 +152,11 @@ fn compute_lots_on_half(
             pts: strip_poly,
             is_remnant: cut.is_remnant || area_m2 < target_area_m2 * 0.5,
             front_m: actual_end - prev_t,
-            depth_m: if depth_m > 0.0 { depth_m } else { ext_s.max - ext_s.min },
+            depth_m: if depth_m > 0.0 {
+                depth_m
+            } else {
+                ext_s.max - ext_s.min
+            },
             area_m2,
         });
         prev_t = actual_end;
@@ -303,7 +322,17 @@ pub fn subdivide_manzano_auto(
     let is_narrow = total_short_m < NARROW_RATIO * nom_depth_m;
 
     if is_narrow {
-        return compute_lots_on_half(mzn_pts, ext_l, ext_s, lx, ly, sx, sy, target_area_m2, front_min_m);
+        return compute_lots_on_half(
+            mzn_pts,
+            ext_l,
+            ext_s,
+            lx,
+            ly,
+            sx,
+            sy,
+            target_area_m2,
+            front_min_m,
+        );
     }
 
     let s_mid = (ext_s.min + ext_s.max) / 2.0;
@@ -313,17 +342,47 @@ pub fn subdivide_manzano_auto(
     let half_top_ok = half_top.len() >= 3 && poly_area(&half_top) >= target_area_m2 * 0.1;
 
     if !half_bot_ok && !half_top_ok {
-        return compute_lots_on_half(mzn_pts, ext_l, ext_s, lx, ly, sx, sy, target_area_m2, front_min_m);
+        return compute_lots_on_half(
+            mzn_pts,
+            ext_l,
+            ext_s,
+            lx,
+            ly,
+            sx,
+            sy,
+            target_area_m2,
+            front_min_m,
+        );
     }
     if !half_bot_ok {
         let ext_l_top = project_extents(&half_top, lx, ly);
         let ext_s_top = project_extents(&half_top, sx, sy);
-        return compute_lots_on_half(&half_top, ext_l_top, ext_s_top, lx, ly, sx, sy, target_area_m2, front_min_m);
+        return compute_lots_on_half(
+            &half_top,
+            ext_l_top,
+            ext_s_top,
+            lx,
+            ly,
+            sx,
+            sy,
+            target_area_m2,
+            front_min_m,
+        );
     }
     if !half_top_ok {
         let ext_l_bot = project_extents(&half_bot, lx, ly);
         let ext_s_bot = project_extents(&half_bot, sx, sy);
-        return compute_lots_on_half(&half_bot, ext_l_bot, ext_s_bot, lx, ly, sx, sy, target_area_m2, front_min_m);
+        return compute_lots_on_half(
+            &half_bot,
+            ext_l_bot,
+            ext_s_bot,
+            lx,
+            ly,
+            sx,
+            sy,
+            target_area_m2,
+            front_min_m,
+        );
     }
 
     let ext_l_bot = project_extents(&half_bot, lx, ly);
@@ -331,9 +390,26 @@ pub fn subdivide_manzano_auto(
     let span_bot = ext_l_bot.max - ext_l_bot.min;
     let span_top = ext_l_top.max - ext_l_top.min;
     let master_idx = if span_top > span_bot { 1 } else { 0 };
-    let master_poly: &[Pt] = if master_idx == 0 { &half_bot } else { &half_top };
-    let master_ext = if master_idx == 0 { ext_l_bot } else { ext_l_top };
-    let master_cuts = compute_cuts(master_poly, master_ext, lx, ly, sx, sy, target_area_m2, front_min_m);
+    let master_poly: &[Pt] = if master_idx == 0 {
+        &half_bot
+    } else {
+        &half_top
+    };
+    let master_ext = if master_idx == 0 {
+        ext_l_bot
+    } else {
+        ext_l_top
+    };
+    let master_cuts = compute_cuts(
+        master_poly,
+        master_ext,
+        lx,
+        ly,
+        sx,
+        sy,
+        target_area_m2,
+        front_min_m,
+    );
 
     let master_cuts = match master_cuts {
         Some(c) if !c.is_empty() => c,
@@ -341,11 +417,27 @@ pub fn subdivide_manzano_auto(
             let mut all_lots = Vec::new();
             let ext_s_bot2 = project_extents(&half_bot, sx, sy);
             all_lots.extend(compute_lots_on_half(
-                &half_bot, ext_l_bot, ext_s_bot2, lx, ly, sx, sy, target_area_m2, front_min_m,
+                &half_bot,
+                ext_l_bot,
+                ext_s_bot2,
+                lx,
+                ly,
+                sx,
+                sy,
+                target_area_m2,
+                front_min_m,
             ));
             let ext_s_top2 = project_extents(&half_top, sx, sy);
             all_lots.extend(compute_lots_on_half(
-                &half_top, ext_l_top, ext_s_top2, lx, ly, sx, sy, target_area_m2, front_min_m,
+                &half_top,
+                ext_l_top,
+                ext_s_top2,
+                lx,
+                ly,
+                sx,
+                sy,
+                target_area_m2,
+                front_min_m,
             ));
             return all_lots;
         }
@@ -441,7 +533,18 @@ pub fn subdivide_manzano_exact(
     let mut all_lots: Vec<LotResult> = Vec::new();
 
     if global_narrow {
-        subdivide_half(mzn_pts, lx, ly, sx, sy, ext_l, target_area_m2, front_min_m, false, &mut all_lots);
+        subdivide_half(
+            mzn_pts,
+            lx,
+            ly,
+            sx,
+            sy,
+            ext_l,
+            target_area_m2,
+            front_min_m,
+            false,
+            &mut all_lots,
+        );
     } else {
         let s_mid = (ext_s.min + ext_s.max) / 2.0;
         let half_bot = clip_to_strip(mzn_pts, sx, sy, ext_s.min, s_mid);
@@ -450,18 +553,73 @@ pub fn subdivide_manzano_exact(
         let half_top_ok = half_top.len() >= 3 && poly_area(&half_top) >= target_area_m2 * 0.1;
 
         if !half_bot_ok && !half_top_ok {
-            subdivide_half(mzn_pts, lx, ly, sx, sy, ext_l, target_area_m2, front_min_m, false, &mut all_lots);
+            subdivide_half(
+                mzn_pts,
+                lx,
+                ly,
+                sx,
+                sy,
+                ext_l,
+                target_area_m2,
+                front_min_m,
+                false,
+                &mut all_lots,
+            );
         } else if !half_bot_ok {
             let ext_l_top = project_extents(&half_top, lx, ly);
-            subdivide_half(&half_top, lx, ly, sx, sy, ext_l_top, target_area_m2, front_min_m, false, &mut all_lots);
+            subdivide_half(
+                &half_top,
+                lx,
+                ly,
+                sx,
+                sy,
+                ext_l_top,
+                target_area_m2,
+                front_min_m,
+                false,
+                &mut all_lots,
+            );
         } else if !half_top_ok {
             let ext_l_bot = project_extents(&half_bot, lx, ly);
-            subdivide_half(&half_bot, lx, ly, sx, sy, ext_l_bot, target_area_m2, front_min_m, false, &mut all_lots);
+            subdivide_half(
+                &half_bot,
+                lx,
+                ly,
+                sx,
+                sy,
+                ext_l_bot,
+                target_area_m2,
+                front_min_m,
+                false,
+                &mut all_lots,
+            );
         } else {
             let ext_l_bot = project_extents(&half_bot, lx, ly);
-            subdivide_half(&half_bot, lx, ly, sx, sy, ext_l_bot, target_area_m2, front_min_m, false, &mut all_lots);
+            subdivide_half(
+                &half_bot,
+                lx,
+                ly,
+                sx,
+                sy,
+                ext_l_bot,
+                target_area_m2,
+                front_min_m,
+                false,
+                &mut all_lots,
+            );
             let ext_l_top = project_extents(&half_top, lx, ly);
-            subdivide_half(&half_top, lx, ly, sx, sy, ext_l_top, target_area_m2, front_min_m, false, &mut all_lots);
+            subdivide_half(
+                &half_top,
+                lx,
+                ly,
+                sx,
+                sy,
+                ext_l_top,
+                target_area_m2,
+                front_min_m,
+                false,
+                &mut all_lots,
+            );
         }
     }
     all_lots
@@ -507,9 +665,18 @@ pub fn slice_bisect_manzano(
             frente_seg.0 .1 + (frente_seg.1 .1 - frente_seg.0 .1) * kf,
         ));
     }
-    let frente_adv_projs: Vec<f64> = frente_points.iter().map(|p| p.0 * adv_x + p.1 * adv_y).collect();
-    let frente_proj_med = (frente_adv_projs.iter().cloned().fold(f64::INFINITY, f64::min)
-        + frente_adv_projs.iter().cloned().fold(f64::NEG_INFINITY, f64::max))
+    let frente_adv_projs: Vec<f64> = frente_points
+        .iter()
+        .map(|p| p.0 * adv_x + p.1 * adv_y)
+        .collect();
+    let frente_proj_med = (frente_adv_projs
+        .iter()
+        .cloned()
+        .fold(f64::INFINITY, f64::min)
+        + frente_adv_projs
+            .iter()
+            .cloned()
+            .fold(f64::NEG_INFINITY, f64::max))
         / 2.0;
     let frente_es_min = (frente_proj_med - proj_min).abs() <= (frente_proj_med - proj_max).abs();
 
@@ -571,7 +738,11 @@ pub fn slice_bisect_manzano(
         if raw_hits.len() < 2 {
             return None;
         }
-        raw_hits.sort_by(|a, b| a.t_cut.partial_cmp(&b.t_cut).unwrap_or(std::cmp::Ordering::Equal));
+        raw_hits.sort_by(|a, b| {
+            a.t_cut
+                .partial_cmp(&b.t_cut)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         let mut hits: Vec<RawHit> = Vec::new();
         hits.push(raw_hits.remove(0));
         for h in raw_hits {
@@ -594,8 +765,16 @@ pub fn slice_bisect_manzano(
             }
             let sl = build_cut_polys(
                 wp,
-                PolyHit { seg_idx: h_a.seg_idx, u: h_a.u, pt: (h_a.x, h_a.y) },
-                PolyHit { seg_idx: h_b.seg_idx, u: h_b.u, pt: (h_b.x, h_b.y) },
+                PolyHit {
+                    seg_idx: h_a.seg_idx,
+                    u: h_a.u,
+                    pt: (h_a.x, h_a.y),
+                },
+                PolyHit {
+                    seg_idx: h_b.seg_idx,
+                    u: h_b.u,
+                    pt: (h_b.x, h_b.y),
+                },
             );
             let sl = match sl {
                 Some(s) if s.poly1.len() >= 3 && s.poly2.len() >= 3 => s,
@@ -621,7 +800,11 @@ pub fn slice_bisect_manzano(
                 }
             };
             let area_m2 = poly_area(&front);
-            return Some(SliceResult { front, rest, area_m2 });
+            return Some(SliceResult {
+                front,
+                rest,
+                area_m2,
+            });
         }
         None
     };
@@ -635,7 +818,10 @@ pub fn slice_bisect_manzano(
     for k in 1..N_SAMPLES {
         let t = k as f64 / N_SAMPLES as f64;
         if let Some(ev) = eval_t(t) {
-            samples.push(Sample { t, area_m2: ev.area_m2 });
+            samples.push(Sample {
+                t,
+                area_m2: ev.area_m2,
+            });
         }
     }
     if samples.is_empty() {
@@ -768,13 +954,45 @@ pub fn slice_bisect_manzano(
 fn sanitize_lot_results(lots: Vec<LotResult>, context: &str) -> Vec<LotResult> {
     let mut out = Vec::with_capacity(lots.len());
     for lot in lots {
-        let cleaned = match sanitize_ring(Some(lot.pts.as_slice()), SanitizeRingOptions::default(), context) {
+        let cleaned = match sanitize_ring(
+            Some(lot.pts.as_slice()),
+            SanitizeRingOptions::default(),
+            context,
+        ) {
             Some(c) => c,
             None => continue,
         };
         let mut pts = cleaned;
-        pts.pop(); // sanitize_ring cierra el anillo; acá volvemos a anillo abierto (== `.slice(0,-1)` en TS)
-        out.push(LotResult { pts, ..lot });
+        pts.pop(); // sanitize_ring cierra el anillo; volvemos a anillo abierto (== `.slice(0,-1)` en TS)
+
+        // lot.area_m2/front_m/depth_m pueden haberse calculado más arriba
+        // (dentro del algoritmo de subdivisión) a partir de geometría
+        // todavía sin sanear, y quedar no-finitos aunque los PUNTOS ya se
+        // hayan limpiado acá. En el camino sano esto nunca dispara — no
+        // cambia ningún snapshot de paridad existente.
+        let area_m2 = if lot.area_m2.is_finite() {
+            lot.area_m2
+        } else {
+            poly_area(&pts)
+        };
+        let front_m = if lot.front_m.is_finite() {
+            lot.front_m
+        } else {
+            0.0
+        };
+        let depth_m = if lot.depth_m.is_finite() {
+            lot.depth_m
+        } else {
+            0.0
+        };
+
+        out.push(LotResult {
+            pts,
+            area_m2,
+            front_m,
+            depth_m,
+            ..lot
+        });
     }
     out
 }
@@ -790,21 +1008,46 @@ pub fn subdivide_manzano(
     if ring_pts.len() < 3 {
         return Vec::new();
     }
+
     let mut pts: Vec<Pt> = ring_pts.to_vec();
-    let first = pts[0];
-    let last = *pts.last().unwrap();
-    if first.0 != last.0 || first.1 != last.1 {
-        pts.push(first);
+
+    // Saneo de entrada — solo si hace falta (mismo criterio que el TS: ver
+    // subdivideManzano en subdivisionAlgorithms.ts). Un anillo con
+    // vértices no-finitos contamina toda la aritmética interna; sanearlo
+    // acá antes de que entre a los algoritmos protege también producción,
+    // ya que este comando recibe rings del frontend sin garantías.
+    if pts.iter().any(|p| !p.0.is_finite() || !p.1.is_finite()) {
+        match sanitize_ring(
+            Some(pts.as_slice()),
+            SanitizeRingOptions::default(),
+            "subdivisionAlgorithms.subdivideManzano.input",
+        ) {
+            Some(cleaned) => pts = cleaned,
+            None => return Vec::new(),
+        }
+    } else {
+        let first = pts[0];
+        let last = *pts.last().unwrap();
+        if first.0 != last.0 || first.1 != last.1 {
+            pts.push(first);
+        }
     }
+
     let lots = match method {
-        ManzanoLoteMethod::Exact => subdivide_manzano_exact(&pts, target_area_m2, front_min_m, dir_pref),
-        ManzanoLoteMethod::Modo2 => subdivide_manzano_auto(&pts, target_area_m2, front_min_m, dir_pref),
-        ManzanoLoteMethod::Auto => crate::subdivision_cabecera_cuerpo::subdivide_manzano_cabecera_cuerpo(
-            &pts,
-            target_area_m2,
-            front_min_m,
-            dir_pref,
-        ),
+        ManzanoLoteMethod::Exact => {
+            subdivide_manzano_exact(&pts, target_area_m2, front_min_m, dir_pref)
+        }
+        ManzanoLoteMethod::Modo2 => {
+            subdivide_manzano_auto(&pts, target_area_m2, front_min_m, dir_pref)
+        }
+        ManzanoLoteMethod::Auto => {
+            crate::subdivision_cabecera_cuerpo::subdivide_manzano_cabecera_cuerpo(
+                &pts,
+                target_area_m2,
+                front_min_m,
+                dir_pref,
+            )
+        }
     };
     sanitize_lot_results(lots, "subdivisionAlgorithms.subdivideManzano")
 }
@@ -861,14 +1104,20 @@ pub fn subdivide(polygon_coordinates: &[Vec<Pt>], opts: &SubdivisionOptions) -> 
     let mut warnings: Vec<String> = Vec::new();
 
     let lots: Vec<LotResult> = match opts.method {
-        SubdivisionMethod::Auto => crate::subdivision_cabecera_cuerpo::subdivide_manzano_cabecera_cuerpo(
-            &pts,
-            target_area_m2,
-            front_min_m,
-            dir_pref,
-        ),
-        SubdivisionMethod::Modo2 => subdivide_manzano_auto(&pts, target_area_m2, front_min_m, dir_pref),
-        SubdivisionMethod::Exact => subdivide_manzano_exact(&pts, target_area_m2, front_min_m, dir_pref),
+        SubdivisionMethod::Auto => {
+            crate::subdivision_cabecera_cuerpo::subdivide_manzano_cabecera_cuerpo(
+                &pts,
+                target_area_m2,
+                front_min_m,
+                dir_pref,
+            )
+        }
+        SubdivisionMethod::Modo2 => {
+            subdivide_manzano_auto(&pts, target_area_m2, front_min_m, dir_pref)
+        }
+        SubdivisionMethod::Exact => {
+            subdivide_manzano_exact(&pts, target_area_m2, front_min_m, dir_pref)
+        }
         SubdivisionMethod::ManualSlice => {
             let bisect_result = if let Some(cut_line) = &opts.cut_line {
                 let dx = cut_line.p2.0 - cut_line.p1.0;
@@ -906,8 +1155,20 @@ pub fn subdivide(polygon_coordinates: &[Vec<Pt>], opts: &SubdivisionOptions) -> 
                     let front_area = poly_area(&r.front);
                     let rest_area = poly_area(&r.rest);
                     vec![
-                        LotResult { pts: r.front, is_remnant: false, front_m: 0.0, depth_m: 0.0, area_m2: front_area },
-                        LotResult { pts: r.rest, is_remnant: true, front_m: 0.0, depth_m: 0.0, area_m2: rest_area },
+                        LotResult {
+                            pts: r.front,
+                            is_remnant: false,
+                            front_m: 0.0,
+                            depth_m: 0.0,
+                            area_m2: front_area,
+                        },
+                        LotResult {
+                            pts: r.rest,
+                            is_remnant: true,
+                            front_m: 0.0,
+                            depth_m: 0.0,
+                            area_m2: rest_area,
+                        },
                     ]
                 }
                 None => {
@@ -938,7 +1199,9 @@ pub fn subdivide(polygon_coordinates: &[Vec<Pt>], opts: &SubdivisionOptions) -> 
             ok: false,
             features: Vec::new(),
             warnings,
-            error: Some("Los lotes generados quedaron con geometría degenerada tras el saneo".to_string()),
+            error: Some(
+                "Los lotes generados quedaron con geometría degenerada tras el saneo".to_string(),
+            ),
         };
     }
     if sanitized_lots.len() < lots_len {
@@ -979,5 +1242,10 @@ pub fn subdivide(polygon_coordinates: &[Vec<Pt>], opts: &SubdivisionOptions) -> 
         })
         .collect();
 
-    SubdivisionResult { ok: true, features, warnings, error: None }
+    SubdivisionResult {
+        ok: true,
+        features,
+        warnings,
+        error: None,
+    }
 }

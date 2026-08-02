@@ -5,6 +5,7 @@ pub mod boolean_ops;
 pub mod fragment_reconciliation;
 pub mod geojson;
 pub mod math;
+pub mod mulberry32;
 pub mod roads;
 pub mod roundabout;
 pub mod sanitize;

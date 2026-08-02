@@ -593,12 +593,30 @@ export function sliceBisectManzano(
   return best;
 }
 
+function hasNonFiniteVertex(pts: Pt[]): boolean {
+  for (const p of pts) {
+    if (!Number.isFinite(p[0]) || !Number.isFinite(p[1])) return true;
+  }
+  return false;
+}
+
 function sanitizeLotResults(lots: LotResult[], context: string): LotResult[] {
   const out: LotResult[] = [];
   for (const lot of lots) {
     const cleaned = sanitizeRing(lot.pts, { context });
     if (!cleaned) continue;
-    out.push({ ...lot, pts: cleaned.slice(0, -1) });
+    const cleanedOpen = cleaned.slice(0, -1);
+
+    // lot.areaM2/frontM/depthM pueden haberse calculado más arriba (dentro
+    // del algoritmo de subdivisión) a partir de geometría todavía sin
+    // sanear, y quedar no-finitos aunque los PUNTOS ya se hayan limpiado
+    // acá. En el camino sano esto nunca dispara — no cambia ningún
+    // snapshot de paridad; solo protege el caso degenerado.
+    const areaM2 = Number.isFinite(lot.areaM2) ? lot.areaM2 : polyArea(cleanedOpen);
+    const frontM = Number.isFinite(lot.frontM) ? lot.frontM : 0;
+    const depthM = Number.isFinite(lot.depthM) ? lot.depthM : 0;
+
+    out.push({ ...lot, pts: cleanedOpen, areaM2, frontM, depthM });
   }
   return out;
 }
@@ -613,10 +631,27 @@ export function subdivideManzano(
   dirPref?: { ax: number; ay: number },
 ): LotResult[] {
   if (!ringPts || ringPts.length < 3) return [];
-  const pts: Pt[] = ringPts.map((c) => [c[0], c[1]]);
-  if (pts[0][0] !== pts[pts.length - 1][0] || pts[0][1] !== pts[pts.length - 1][1]) {
+
+  let pts: Pt[] = ringPts.map((c) => [c[0], c[1]]);
+
+  // Saneo de entrada — solo se paga el costo si hace falta. Un anillo con
+  // vértices no-finitos (NaN/Infinity) contamina toda la aritmética
+  // interna (áreas, ejes principales, clips) y termina produciendo lotes
+  // con areaM2/puntos no-finitos aunque el saneo de SALIDA ya limpie la
+  // geometría (los campos numéricos derivados se calculan antes de esa
+  // limpieza). Sanear acá, en la entrada, protege tanto los tests de
+  // fuzz como producción real (el motor nativo recibe rings del
+  // frontend sin garantías). Con input finito (el camino normal) este
+  // branch nunca se ejecuta — mismo código que antes, cero impacto en
+  // paridad.
+  if (hasNonFiniteVertex(pts)) {
+    const sanitizedInput = sanitizeRing(pts, { context: 'subdivisionAlgorithms.subdivideManzano.input' });
+    if (!sanitizedInput) return [];
+    pts = sanitizedInput.map((c) => [c[0], c[1]]);
+  } else if (pts[0][0] !== pts[pts.length - 1][0] || pts[0][1] !== pts[pts.length - 1][1]) {
     pts.push([pts[0][0], pts[0][1]]);
   }
+
   let lots: LotResult[];
   if (method === 'exact') lots = subdivideManzanoExact(pts, targetAreaM2, frontMinM, dirPref);
   else if (method === 'modo2') lots = subdivideManzanoAuto(pts, targetAreaM2, frontMinM, dirPref);
