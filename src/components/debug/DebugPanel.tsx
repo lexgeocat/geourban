@@ -366,6 +366,10 @@ export default function DebugPanel() {
             value={`${r.jsQueryAvgMs.toFixed(2)} / ${r.nativeQueryAvgMs.toFixed(2)} ms`}
           />
           <Row
+            label="rstar interno (sin IPC)"
+            value={`${r.nativeSearchAvgMs.toFixed(3)} ms`}
+          />
+          <Row
             label={`hits JS/nat`}
             value={`${r.jsHitCount} / ${r.nativeHitCount} ${r.parityOk ? '· paridad ✓' : '· ⚠ PARIDAD FALLA'}`}
           />

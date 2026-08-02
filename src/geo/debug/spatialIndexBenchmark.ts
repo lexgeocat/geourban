@@ -30,6 +30,8 @@ export interface SpatialIndexBenchmarkResult {
   nativeLoadMs: number;
   jsQueryAvgMs: number;
   nativeQueryAvgMs: number;
+  /** Búsqueda pura dentro de Rust (queryMs que reporta el comando, sin IPC ni serialización). */
+  nativeSearchAvgMs: number;
   jsHitCount: number;
   nativeHitCount: number;
   parityOk: boolean;
@@ -98,6 +100,7 @@ export async function runSpatialIndexBenchmark(datasetSize: number): Promise<Spa
   const rects = makeQueryRects(extent);
   let jsQueryAvgMs = 0;
   let nativeQueryAvgMs = 0;
+  let nativeSearchAvgMs = 0;
   let jsHitCount = 0;
   let nativeHitCount = 0;
   // Ambos índices deben haber cargado la misma cantidad de features.
@@ -117,14 +120,17 @@ export async function runSpatialIndexBenchmark(datasetSize: number): Promise<Spa
       jsHitCount += jsHits.length;
 
       let nativeTotalMs = 0;
+      let nativeSearchTotalMs = 0;
       let nativeHits: string[] = [];
       for (let r = 0; r < QUERY_ROUNDS; r++) {
         const q0 = performance.now();
         const result = await spatialIndexQueryInWorker(rect.minX, rect.minY, rect.maxX, rect.maxY);
         nativeTotalMs += performance.now() - q0;
+        nativeSearchTotalMs += result.queryMs;
         nativeHits = result.ids.map((id) => String(id));
       }
       nativeQueryAvgMs += nativeTotalMs / QUERY_ROUNDS;
+      nativeSearchAvgMs += nativeSearchTotalMs / QUERY_ROUNDS;
       nativeHitCount += nativeHits.length;
 
       const jsSorted = [...jsHits].sort();
@@ -144,6 +150,7 @@ export async function runSpatialIndexBenchmark(datasetSize: number): Promise<Spa
     nativeLoadMs,
     jsQueryAvgMs: jsQueryAvgMs / rects.length,
     nativeQueryAvgMs: nativeQueryAvgMs / rects.length,
+    nativeSearchAvgMs: nativeSearchAvgMs / rects.length,
     jsHitCount,
     nativeHitCount,
     parityOk,
