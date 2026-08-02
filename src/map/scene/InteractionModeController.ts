@@ -2,8 +2,6 @@
 import VectorSource from 'ol/source/Vector.js';
 import VectorLayer from 'ol/layer/Vector.js';
 import type Draw from 'ol/interaction/Draw.js';
-import type Feature from 'ol/Feature.js';
-import type Geometry from 'ol/geom/Geometry.js';
 import type { DrawMode } from '../../store/map/drawStore';
 import { isFeatureLayerLocked, isFeatureLayerVisible } from '../../core/layerVisibility';
 import type { PostrenderPainter } from './PostrenderPainter';

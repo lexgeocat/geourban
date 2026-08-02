@@ -45,6 +45,7 @@ struct SnapshotSummary {
     front_ms: Vec<f64>,
     depth_ms: Vec<f64>,
     #[serde(default)]
+    #[allow(dead_code)]
     ring_area: f64,
 }
 
@@ -89,12 +90,8 @@ fn parity_con_snapshot_ts() {
     for fx in &snap.fixtures {
         let dir_pref = fx.dir_pref.as_ref().map(|d| (d.ax, d.ay));
         let ring: Vec<(f64, f64)> = parse_ring(&fx.name, &fx.summary.ring_area);
-        let lots = subdivide_manzano_cabecera_cuerpo(
-            &ring,
-            fx.target_area_m2,
-            fx.front_min_m,
-            dir_pref,
-        );
+        let lots =
+            subdivide_manzano_cabecera_cuerpo(&ring, fx.target_area_m2, fx.front_min_m, dir_pref);
 
         // Count
         assert_eq!(

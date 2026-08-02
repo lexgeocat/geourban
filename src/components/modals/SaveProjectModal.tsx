@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { Modal } from '../ui/Modal';
 import { saveProject } from '../../persistence/projectFile';
 import { useProjectFileStore } from '../../store/ui/projectFileStore';
@@ -12,10 +12,15 @@ export default function SaveProjectModal() {
   const busy = useProjectFileStore((s) => s.busy);
   const setBusy = useProjectFileStore((s) => s.setBusy);
   const [name, setName] = useState('');
-
-  useEffect(() => {
+  // Ajuste de estado durante el render (patrón recomendado por React
+  // para "resetear un state cuando cambia una prop") en vez de un
+  // efecto: evita el setState síncrono e incondicional al tope de un
+  // useEffect.
+  const [prevOpen, setPrevOpen] = useState(open);
+  if (open !== prevOpen) {
+    setPrevOpen(open);
     if (open) setName(currentName ?? '');
-  }, [open, currentName]);
+  }
 
   const handleSave = async () => {
     const trimmed = name.trim();

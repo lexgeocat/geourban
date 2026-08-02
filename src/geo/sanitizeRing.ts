@@ -99,6 +99,17 @@ export function sanitizeRing(ringIn: Pt[] | null | undefined, opts: SanitizeRing
   const originalCount = ringIn.length;
   let corrected = false;
 
+// Contrato deliberado de esta función: FILTRA los vértices no-finitos
+  // y sigue con los que queden, en vez de rechazar el anillo entero.
+  // Es el comportamiento correcto para sus usos de auto-reparación
+  // (limpieza de trazos del usuario en el editor CAD, uniones de red
+  // vial) donde perder 1-2 vértices y continuar es justamente lo
+  // deseado. Callers que reciben geometría no confiable y necesitan
+  // semántica de "todo o nada" (p.ej. subdivideManzano en
+  // subdivisionAlgorithms.ts, que recibe rings del frontend/motor
+  // nativo sin garantías) deben validar ANTES de llamar acá, no confiar
+  // en que este filtro rechace por ellos — ver Fase 2.6,
+  // auditoria-para-mejora.md.
   let pts = ringIn.filter((p) => Number.isFinite(p[0]) && Number.isFinite(p[1]));
   if (pts.length !== ringIn.length) corrected = true;
   if (pts.length < 3) {

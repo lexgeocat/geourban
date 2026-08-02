@@ -1,5 +1,73 @@
 use crate::math::{centroid, convex_hull, poly_area};
 use crate::types::{LotResult, Pt};
+use std::cell::Cell;
+
+// ─── Guardas de terminación para geometría de escala patológica ────────
+// (Fase 2.6, fuzz con coordenadas escaladas ×1e5–1e8 — ver
+// auditoria-para-mejora.md). Mismo mecanismo que el lado TS
+// (subdivisionCabeceraCuerpo.ts): un presupuesto duro de operaciones de
+// recorte/bisección como garantía final de terminación, más un épsilon
+// de deduplicación relativo a la escala del polígono con breakeven
+// exacto en 1e-7 para cualquier diagonal < 1e5 (cero impacto en
+// paridad para geometría sana o real). `thread_local!` porque, a
+// diferencia de JS, distintas invocaciones del comando Tauri pueden
+// correr en threads distintos del runtime async — mismo patrón que
+// GEOS_CTX en boolean_ops.rs.
+const OP_BUDGET_MAX: i64 = 2_000_000;
+
+thread_local! {
+    static OP_BUDGET_REMAINING: Cell<i64> = Cell::new(OP_BUDGET_MAX);
+    static CURRENT_DIST_EPS: Cell<f64> = Cell::new(1e-7);
+}
+
+fn tick_op_budget() -> bool {
+    OP_BUDGET_REMAINING.with(|c| {
+        let v = c.get();
+        if v <= 0 {
+            return false;
+        }
+        c.set(v - 1);
+        true
+    })
+}
+
+fn reset_op_budget() {
+    OP_BUDGET_REMAINING.with(|c| c.set(OP_BUDGET_MAX));
+}
+
+fn dist_eps_for_poly(pts: &[Pt]) -> f64 {
+    let mut min_x = f64::INFINITY;
+    let mut max_x = f64::NEG_INFINITY;
+    let mut min_y = f64::INFINITY;
+    let mut max_y = f64::NEG_INFINITY;
+    for p in pts {
+        if p.0 < min_x {
+            min_x = p.0;
+        }
+        if p.0 > max_x {
+            max_x = p.0;
+        }
+        if p.1 < min_y {
+            min_y = p.1;
+        }
+        if p.1 > max_y {
+            max_y = p.1;
+        }
+    }
+    let dx = (max_x - min_x).max(0.0);
+    let dy = (max_y - min_y).max(0.0);
+    let diag = dx.hypot(dy);
+    (diag * 1e-12_f64).max(1e-7)
+}
+
+fn set_current_dist_eps(pts: &[Pt]) {
+    let eps = dist_eps_for_poly(pts);
+    CURRENT_DIST_EPS.with(|c| c.set(eps));
+}
+
+fn current_dist_eps() -> f64 {
+    CURRENT_DIST_EPS.with(|c| c.get())
+}
 /// Guarda de seguridad contra escala patológica de coordenadas (Fase 2.6
 /// de auditoria-para-mejora.md, fuzz con ×1e5–1e8). Espejo exacto de
 /// MAX_HB_DIM/MAX_HB_TOTAL_LOTS en subdivisionCabeceraCuerpo.ts. Nunca se
@@ -19,6 +87,9 @@ fn bisect<F: Fn(f64) -> f64>(f: &F, lo: f64, hi: f64, target: f64) -> f64 {
     let mut a = lo;
     let mut b = hi;
     for _ in 0..60 {
+        if !tick_op_budget() {
+            break;
+        }
         let m = (a + b) / 2.0;
         if f(m) < target {
             a = m;
@@ -257,8 +328,12 @@ fn order_quad_long(pts: &[Pt]) -> [Pt; 4] {
 fn hb_clean_poly(pts_in: Vec<Pt>) -> Vec<Pt> {
     let mut p = pts_in;
     let mut changed = true;
-    while changed && p.len() > 3 {
+    let eps = current_dist_eps();
+    let guard_max = p.len() + 64;
+    let mut guard = 0usize;
+    while changed && p.len() > 3 && guard < guard_max {
         changed = false;
+        guard += 1;
         let n = p.len();
         for i in 0..n {
             let b = p[i];
@@ -266,7 +341,7 @@ fn hb_clean_poly(pts_in: Vec<Pt>) -> Vec<Pt> {
             let c = p[(i + 1) % n];
             let d1 = (b.0 - a.0).hypot(b.1 - a.1);
             let d2 = (c.0 - b.0).hypot(c.1 - b.1);
-            if d1 < 1e-7 || d2 < 1e-7 {
+            if d1 < eps || d2 < eps {
                 p.remove(i);
                 changed = true;
                 break;
@@ -289,6 +364,9 @@ fn hb_clean_poly(pts_in: Vec<Pt>) -> Vec<Pt> {
 
 fn hb_clip_poly_half(poly: &[Pt], nx: f64, ny: f64, sign: f64, d: f64) -> Vec<Pt> {
     if poly.is_empty() {
+        return Vec::new();
+    }
+    if !tick_op_budget() {
         return Vec::new();
     }
     let inside = |p: Pt| sign * (p.0 * nx + p.1 * ny) >= d - 1e-10;
@@ -697,10 +775,20 @@ fn hb_build_zone(
         eq_split = true;
     }
 
+    // Guarda de escala (Fase 2.6): n_cols puede llegar a MAX_HB_DIM
+    // (400) pero el presupuesto de lotes restante puede ser mucho
+    // menor — no precalculamos por bisección más cortes de los que el
+    // loop de abajo va a consumir antes de que *lot_budget llegue a 0
+    // (cada columna de esta zona consume exactamente 1 lote, ya que
+    // n_rows siempre es 1 acá). El acceso a f_cuts más abajo usa
+    // `.get()` con fallback seguro por si el margen no alcanzara. No
+    // cambia el resultado en geometría sana.
+    let cut_cols = n_cols.min((*lot_budget as i64 + 2).max(1));
+
     let mut f_cuts: Vec<f64> = vec![0.0];
     if remainder_lot && !eq_split {
         let full_col = n_rows as f64 * target_lot_area;
-        for c in 0..n_cols - 1 {
+        for c in 0..cut_cols - 1 {
             f_cuts.push(bisect(
                 &col_area_up_to_f,
                 0.0,
@@ -710,7 +798,7 @@ fn hb_build_zone(
         }
     } else {
         let col_target = zone_total / n_cols as f64;
-        for c in 0..n_cols - 1 {
+        for c in 0..cut_cols - 1 {
             f_cuts.push(bisect(
                 &col_area_up_to_f,
                 0.0,
@@ -733,13 +821,15 @@ fn hb_build_zone(
             break;
         }
         let ci = c as usize;
-        let l0 = divider_at(f_cuts[ci]);
-        let l1 = divider_at(f_cuts[ci + 1]);
+        let f0 = f_cuts.get(ci).copied().unwrap_or(1.0);
+        let f1 = f_cuts.get(ci + 1).copied().unwrap_or(1.0);
+        let l0 = divider_at(f0);
+        let l1 = divider_at(f1);
         let mut col_poly = zone_poly.clone();
-        if f_cuts[ci] > 1e-9 {
+        if f0 > 1e-9 {
             col_poly = hb_clip_poly_half(&col_poly, l0.nx, l0.ny, 1.0, l0.d);
         }
-        if f_cuts[ci + 1] < 1.0 - 1e-9 {
+        if f1 < 1.0 - 1e-9 {
             col_poly = hb_clip_poly_half(&col_poly, l1.nx, l1.ny, -1.0, -l1.d);
         }
         if col_poly.len() < 3 {
@@ -784,8 +874,10 @@ fn hb_build_zone(
                 break;
             }
             let ri = r as usize;
-            let mut lot = hb_clip_poly_half(&col_poly, ux, uy, 1.0, row_cuts[ri]);
-            lot = hb_clip_poly_half(&lot, ux, uy, -1.0, -row_cuts[ri + 1]);
+            let r0 = row_cuts.get(ri).copied().unwrap_or(u_max_c);
+            let r1 = row_cuts.get(ri + 1).copied().unwrap_or(u_max_c);
+            let mut lot = hb_clip_poly_half(&col_poly, ux, uy, 1.0, r0);
+            lot = hb_clip_poly_half(&lot, ux, uy, -1.0, -r1);
             if lot.len() < 3 {
                 continue;
             }
@@ -828,9 +920,16 @@ fn hb_build_body_zone(
         return;
     }
     let row_target = zone_total / n_rows as f64;
-    let area_up_to = |u_cut: f64| hb_strip_area(work_poly, ux, uy, u_min, u_cut);
+
+    // Guarda de escala (Fase 2.6): mismo criterio que hb_build_zone.
+    // Cada fila de cuerpo puede generar más de 1 lote (bodyCols=2, o
+    // más vía el desdoble force_single_col de abajo), así que el
+    // margen es más generoso. No cambia el resultado en geometría sana.
+    let cut_rows = n_rows.min((*lot_budget as i64 + 8).max(1));
+
     let mut row_cuts: Vec<f64> = vec![u_a];
-    for r in 0..n_rows - 1 {
+    let area_up_to = |u_cut: f64| hb_strip_area(work_poly, ux, uy, u_a, u_cut);
+    for r in 0..cut_rows - 1 {
         let target = area_up_to(u_a) + (r + 1) as f64 * row_target;
         row_cuts.push(bisect(&area_up_to, u_a, u_b, target));
     }
@@ -841,8 +940,8 @@ fn hb_build_body_zone(
             break;
         }
         let ri = r as usize;
-        let ra = row_cuts[ri];
-        let rb = row_cuts[ri + 1];
+        let ra = row_cuts.get(ri).copied().unwrap_or(u_b);
+        let rb = row_cuts.get(ri + 1).copied().unwrap_or(u_b);
         let mut strip_poly = hb_clip_poly_half(work_poly, ux, uy, 1.0, ra);
         strip_poly = hb_clip_poly_half(&strip_poly, ux, uy, -1.0, -rb);
         if strip_poly.len() < 3 {
@@ -971,9 +1070,13 @@ fn hb_build_body_zone(
                             0.0
                         }
                     };
+                    // Mismo clamp que arriba: no precalculamos más
+                    // sub-cortes de los que lot_budget podría llegar a
+                    // consumir.
+                    let sub_cut_rows = n_sub_rows.min((*lot_budget as i64 + 4).max(1));
                     let sub_target = col_area / n_sub_rows as f64;
                     let mut sub_cuts: Vec<f64> = vec![u_min_col];
-                    for sr in 0..n_sub_rows - 1 {
+                    for sr in 0..sub_cut_rows - 1 {
                         sub_cuts.push(bisect(
                             &sub_row_area_up_to,
                             u_min_col,
@@ -987,8 +1090,10 @@ fn hb_build_body_zone(
                             break;
                         }
                         let sri = sr as usize;
-                        let mut sub_lot = hb_clip_poly_half(&col_poly, ux, uy, 1.0, sub_cuts[sri]);
-                        sub_lot = hb_clip_poly_half(&sub_lot, ux, uy, -1.0, -sub_cuts[sri + 1]);
+                        let s0 = sub_cuts.get(sri).copied().unwrap_or(u_max_col);
+                        let s1 = sub_cuts.get(sri + 1).copied().unwrap_or(u_max_col);
+                        let mut sub_lot = hb_clip_poly_half(&col_poly, ux, uy, 1.0, s0);
+                        sub_lot = hb_clip_poly_half(&sub_lot, ux, uy, -1.0, -s1);
                         if sub_lot.len() < 3 {
                             continue;
                         }
@@ -1209,7 +1314,17 @@ fn hb_merge_head_remainders(lots: Vec<HbLot>, target_lot_area: f64) -> Vec<HbLot
     const THRESHOLD: f64 = 0.8;
 
     let mut result = lots;
+    // Guarda redundante (Fase 2.6): el bucle ya está autoacotado (cada
+    // fusión exitosa reduce result.len() en 1), pero agregamos un
+    // guard explícito + tick del presupuesto de operaciones por
+    // consistencia con el resto del módulo.
+    let guard_max = result.len() + 8;
+    let mut guard = 0usize;
     loop {
+        guard += 1;
+        if guard > guard_max || !tick_op_budget() {
+            break;
+        }
         let rem_idx = result
             .iter()
             .position(|l| l.zone.starts_with("head") && l.area < target_lot_area * THRESHOLD);
@@ -1267,6 +1382,12 @@ pub fn subdivide_manzano_cabecera_cuerpo(
     if mzn_pts.len() < 3 {
         return Vec::new();
     }
+    // Reset del presupuesto de operaciones + épsilon de escala — ver
+    // comentario junto a OP_BUDGET_MAX/dist_eps_for_poly más arriba
+    // (Fase 2.6).
+    reset_op_budget();
+    set_current_dist_eps(mzn_pts);
+
     let block_area = poly_area(mzn_pts);
     if block_area < target_area_m2 * 0.15 {
         return Vec::new();

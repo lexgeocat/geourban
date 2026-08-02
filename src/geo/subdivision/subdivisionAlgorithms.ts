@@ -632,23 +632,24 @@ export function subdivideManzano(
 ): LotResult[] {
   if (!ringPts || ringPts.length < 3) return [];
 
-  let pts: Pt[] = ringPts.map((c) => [c[0], c[1]]);
+  const pts: Pt[] = ringPts.map((c) => [c[0], c[1]]);
 
-  // Saneo de entrada — solo se paga el costo si hace falta. Un anillo con
-  // vértices no-finitos (NaN/Infinity) contamina toda la aritmética
-  // interna (áreas, ejes principales, clips) y termina produciendo lotes
-  // con areaM2/puntos no-finitos aunque el saneo de SALIDA ya limpie la
-  // geometría (los campos numéricos derivados se calculan antes de esa
-  // limpieza). Sanear acá, en la entrada, protege tanto los tests de
-  // fuzz como producción real (el motor nativo recibe rings del
-  // frontend sin garantías). Con input finito (el camino normal) este
-  // branch nunca se ejecuta — mismo código que antes, cero impacto en
-  // paridad.
-  if (hasNonFiniteVertex(pts)) {
-    const sanitizedInput = sanitizeRing(pts, { context: 'subdivisionAlgorithms.subdivideManzano.input' });
-    if (!sanitizedInput) return [];
-    pts = sanitizedInput.map((c) => [c[0], c[1]]);
-  } else if (pts[0][0] !== pts[pts.length - 1][0] || pts[0][1] !== pts[pts.length - 1][1]) {
+  // Decisión de diseño (Fase 2.6, auditoria-para-mejora.md): un anillo
+  // con vértices no-finitos (NaN/Infinity) se trata como entrada
+  // corrupta/no confiable y se RECHAZA por completo — nunca se intenta
+  // "salvar" filtrando los vértices malos y subdividiendo lo que queda.
+  // Un anillo parcial filtrado puede quedar casi degenerado (colineal,
+  // con muy pocos vértices) y seguir produciendo NaN/Infinity más abajo
+  // (PCA, clipToStrip, biseccioness) — que es justo lo que esta guarda
+  // existe para evitar. sanitizeRing() mantiene su contrato de
+  // "filtrar y continuar" para sus otros usos (limpieza de trazos del
+  // usuario en el editor, uniones de red vial): ese comportamiento de
+  // auto-reparación sigue siendo el correcto ahí. Acá, en el límite de
+  // entrada de subdivideManzano — que recibe rings del frontend y del
+  // motor nativo sin ninguna garantía — la política es más estricta.
+  if (hasNonFiniteVertex(pts)) return [];
+
+  if (pts[0][0] !== pts[pts.length - 1][0] || pts[0][1] !== pts[pts.length - 1][1]) {
     pts.push([pts[0][0], pts[0][1]]);
   }
 

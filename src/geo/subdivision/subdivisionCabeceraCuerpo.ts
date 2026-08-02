@@ -12,12 +12,71 @@
  */
 const MAX_HB_DIM = 400;
 const MAX_HB_TOTAL_LOTS = 1200;
+
+// ─── Guardas de terminación para geometría de escala patológica ────────
+// (Fase 2.6, fuzz con coordenadas escaladas ×1e5–1e8 — ver
+// auditoria-para-mejora.md, corpus en
+// src/geo/__fuzz__/degenerateGeometry.fuzz.test.ts).
+//
+// MAX_HB_DIM/MAX_HB_TOTAL_LOTS de arriba ya acotan CUÁNTOS lotes/filas/
+// columnas se generan, pero no el COSTO de cada bisección/recorte: a
+// escala ×1e5–1e8 el ULP de un float64 cerca de 1e10 es ~1e-6, así que
+// el épsilon absoluto que usaba hbCleanPoly (1e-7) deja de detectar
+// vértices casi-duplicados producidos por cada recorte — el polígono
+// acumula vértices en vez de podarlos, y cada operación subsiguiente se
+// vuelve más cara. A eso se suma que las funciones que precalculan
+// cortes por bisección (fCuts/rowCuts en buildZone/buildBodyZone) lo
+// hacían sin mirar cuánto presupuesto de lotes quedaba, desperdiciando
+// hasta MAX_HB_DIM-1 biseccioness aunque solo fueran a usarse unas
+// pocas.
+//
+// Dos capas de defensa, NINGUNA cambia el resultado en geometría de
+// escala normal (ver breakeven exacto de distEpsForPoly más abajo):
+//   1. distEpsForPoly(): épsilon de deduplicación relativo al tamaño
+//      del propio polígono (diagonal del bbox) en vez de una constante
+//      absoluta.
+//   2. Presupuesto duro de operaciones de recorte/bisección para TODA
+//      la llamada — la garantía final de terminación, independiente de
+//      que el punto 1 alcance o no.
+const OP_BUDGET_MAX = 2_000_000;
+let opBudgetRemaining = OP_BUDGET_MAX;
+
+/** Consume una unidad del presupuesto de operaciones de la llamada en
+ * curso. Devuelve `false` (y deja de decrementar) una vez agotado. */
+function tickOpBudget(): boolean {
+  if (opBudgetRemaining <= 0) return false;
+  opBudgetRemaining -= 1;
+  return true;
+}
+
+/**
+ * Épsilon de distancia para deduplicar vértices en hbCleanPoly, relativo
+ * a la escala del polígono (diagonal de su bbox). Breakeven exacto en
+ * diag = 1e5: para cualquier polígono con diagonal menor (todas las
+ * fixtures reales, y cualquier geometría urbana real en metros) el
+ * resultado es EXACTAMENTE 1e-7, igual que la constante que reemplaza —
+ * cero impacto en paridad para geometría sana. Solo escala hacia arriba
+ * para las coordenadas ×1e5–1e8 del corpus de fuzz.
+ */
+function distEpsForPoly(pts: Pt[]): number {
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const p of pts) {
+    if (p[0] < minX) minX = p[0]; if (p[0] > maxX) maxX = p[0];
+    if (p[1] < minY) minY = p[1]; if (p[1] > maxY) maxY = p[1];
+  }
+  const diag = Math.hypot(Math.max(0, maxX - minX), Math.max(0, maxY - minY));
+  return Math.max(1e-7, diag * 1e-12);
+}
+
+let currentDistEps = 1e-7;
+
 const lerp = (a: Pt, b: Pt, t: number): Pt => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
 const dist = (a: Pt, b: Pt): number => Math.hypot(b[0] - a[0], b[1] - a[1]);
 
 function bisect(fn: (x: number) => number, lo: number, hi: number, target: number, iters = 60): number {
   let a = lo, b = hi;
   for (let i = 0; i < iters; i++) {
+    if (!tickOpBudget()) break;
     const m = (a + b) / 2;
     if (fn(m) < target) a = m; else b = m;
   }
@@ -145,14 +204,22 @@ function orderQuadLong(pts: Pt[]): [Pt, Pt, Pt, Pt] {
 function hbCleanPoly(pts: Pt[]): Pt[] {
   let p = pts;
   let changed = true;
-  while (changed && p.length > 3) {
+  const eps = currentDistEps;
+  // Guarda redundante (mismo patrón que MAX_CLEANUP_ITERATIONS_SLACK en
+  // sanitizeRing.ts): el bucle ya es autoacotado porque p.length baja
+  // en cada iteración "changed", pero un guard explícito es más barato
+  // que razonar sobre eso cada vez que se toca este código.
+  const guardMax = p.length + 64;
+  let guard = 0;
+  while (changed && p.length > 3 && guard < guardMax) {
     changed = false;
+    guard++;
     for (let i = 0; i < p.length; i++) {
       const n = p.length;
       const b = p[i], a = p[(i - 1 + n) % n], c = p[(i + 1) % n];
       const d1 = Math.hypot(b[0] - a[0], b[1] - a[1]);
       const d2 = Math.hypot(c[0] - b[0], c[1] - b[1]);
-      if (d1 < 1e-7 || d2 < 1e-7) { p = p.slice(0, i).concat(p.slice(i + 1)); changed = true; break; }
+      if (d1 < eps || d2 < eps) { p = p.slice(0, i).concat(p.slice(i + 1)); changed = true; break; }
       const ux1 = (b[0] - a[0]) / d1, uy1 = (b[1] - a[1]) / d1;
       const ux2 = (c[0] - b[0]) / d2, uy2 = (c[1] - b[1]) / d2;
       const dot = ux1 * ux2 + uy1 * uy2;
@@ -167,6 +234,7 @@ function hbCleanPoly(pts: Pt[]): Pt[] {
 
 function hbClipPolyHalf(poly: Pt[], nx: number, ny: number, sign: number, d: number): Pt[] {
   if (!poly.length) return [];
+  if (!tickOpBudget()) return [];
   const inside = (p: Pt) => sign * (p[0] * nx + p[1] * ny) >= d - 1e-10;
   const result: Pt[] = [];
   for (let i = 0; i < poly.length; i++) {
@@ -395,17 +463,27 @@ function hbLotizeWithBaseline(mznPts: Pt[], cfg: HbConfig, baseline: [Pt, Pt]): 
       eqSplit = true;
     }
 
+    // Guarda de escala (Fase 2.6): nCols puede llegar a MAX_HB_DIM
+    // (400), pero el presupuesto de lotes restante puede ser mucho
+    // menor — no tiene sentido precalcular por bisección más cortes de
+    // los que el loop de abajo va a consumir antes de que lotBudget
+    // llegue a 0 (cada columna de esta zona consume exactamente 1 lote:
+    // nRows siempre es 1 acá — headRows). El acceso a fCuts más abajo
+    // además tiene un fallback seguro por si el margen no alcanzara.
+    // No cambia el resultado en geometría sana (ahí lotBudget siempre
+    // sobra para cubrir nCols).
+    const cutCols = Math.min(nCols, Math.max(1, lotBudget) + 2);
+
     const fCuts = [0];
     if (remainderLot && !eqSplit) {
       const fullCol = nRows * targetLotArea;
-      for (let c = 0; c < nCols - 1; c++) fCuts.push(bisect(colAreaUpToF, 0, 1, (c + 1) * fullCol));
+      for (let c = 0; c < cutCols - 1; c++) fCuts.push(bisect(colAreaUpToF, 0, 1, (c + 1) * fullCol));
     } else {
       const colTarget = zoneTotal / nCols;
-      for (let c = 0; c < nCols - 1; c++) fCuts.push(bisect(colAreaUpToF, 0, 1, (c + 1) * colTarget));
+      for (let c = 0; c < cutCols - 1; c++) fCuts.push(bisect(colAreaUpToF, 0, 1, (c + 1) * colTarget));
     }
     fCuts.push(1);
 
-    // DEBUG: instrumentación opt-in via env var (no emite en producción).
     if (import.meta.env?.VITE_GU_DEBUG_HB) {
       console.error(`[TS] zone=${zone} nCols=${nCols} zoneTotal=${zoneTotal} fCuts=${JSON.stringify(fCuts)}`);
       console.error(`[TS] zonePoly=${JSON.stringify(zonePoly)}`);
@@ -413,10 +491,12 @@ function hbLotizeWithBaseline(mznPts: Pt[], cfg: HbConfig, baseline: [Pt, Pt]): 
 
     for (let c = 0; c < nCols; c++) {
       if (lotBudget <= 0) break;
-      const L0 = dividerAt(fCuts[c]), L1 = dividerAt(fCuts[c + 1]);
+      const f0 = fCuts[c] ?? 1;
+      const f1 = fCuts[c + 1] ?? 1;
+      const L0 = dividerAt(f0), L1 = dividerAt(f1);
       let colPoly = zonePoly;
-      if (fCuts[c] > 1e-9) colPoly = hbClipPolyHalf(colPoly, L0.nx, L0.ny, 1, L0.d);
-      if (fCuts[c + 1] < 1 - 1e-9) colPoly = hbClipPolyHalf(colPoly, L1.nx, L1.ny, -1, -L1.d);
+      if (f0 > 1e-9) colPoly = hbClipPolyHalf(colPoly, L0.nx, L0.ny, 1, L0.d);
+      if (f1 < 1 - 1e-9) colPoly = hbClipPolyHalf(colPoly, L1.nx, L1.ny, -1, -L1.d);
       if (colPoly.length < 3) continue;
       const colArea = polyArea(colPoly);
       const isRemCol = remainderLot && !eqSplit && nCols > 1 && c === nCols - 1;
@@ -435,8 +515,10 @@ function hbLotizeWithBaseline(mznPts: Pt[], cfg: HbConfig, baseline: [Pt, Pt]): 
 
       for (let r = 0; r < nRows; r++) {
         if (lotBudget <= 0) break;
-        let lot = hbClipPolyHalf(colPoly, ux, uy, 1, rowCuts[r]);
-        lot = hbClipPolyHalf(lot, ux, uy, -1, -rowCuts[r + 1]);
+        const r0 = rowCuts[r] ?? uMaxC;
+        const r1 = rowCuts[r + 1] ?? uMaxC;
+        let lot = hbClipPolyHalf(colPoly, ux, uy, 1, r0);
+        lot = hbClipPolyHalf(lot, ux, uy, -1, -r1);
         if (lot.length < 3) continue;
         pushLot({ pts: lot, area: polyArea(lot), zone, isRemainder: isRemCol && r === nRows - 1 });
       }
@@ -448,13 +530,22 @@ function hbLotizeWithBaseline(mznPts: Pt[], cfg: HbConfig, baseline: [Pt, Pt]): 
     const zoneTotal = hbStripArea(workPoly, ux, uy, uA, uB);
     if (zoneTotal <= 0) return;
     const rowTarget = zoneTotal / nRows;
+
+    // Guarda de escala (Fase 2.6): mismo criterio que buildZone. Cada
+    // fila de cuerpo puede generar más de 1 lote (bodyCols=2, o más vía
+    // el desdoble forceSingleCol de abajo), así que el margen es más
+    // generoso que en buildZone. No cambia el resultado en geometría
+    // sana.
+    const cutRows = Math.min(nRows, Math.max(1, lotBudget) + 8);
+
     const rowCuts = [uA];
-    for (let r = 0; r < nRows - 1; r++) rowCuts.push(bisect(areaUpTo, uA, uB, areaUpTo(uA) + (r + 1) * rowTarget));
+    for (let r = 0; r < cutRows - 1; r++) rowCuts.push(bisect(areaUpTo, uA, uB, areaUpTo(uA) + (r + 1) * rowTarget));
     rowCuts.push(uB);
 
     for (let r = 0; r < nRows; r++) {
       if (lotBudget <= 0) break;
-      const ra = rowCuts[r], rb = rowCuts[r + 1];
+      const ra = rowCuts[r] ?? uB;
+      const rb = rowCuts[r + 1] ?? uB;
       let stripPoly = hbClipPolyHalf(workPoly, ux, uy, 1, ra);
       stripPoly = hbClipPolyHalf(stripPoly, ux, uy, -1, -rb);
       if (stripPoly.length < 3) continue;
@@ -512,13 +603,18 @@ function hbLotizeWithBaseline(mznPts: Pt[], cfg: HbConfig, baseline: [Pt, Pt]): 
               return sub.length >= 3 ? polyArea(sub) : 0;
             };
             const subTarget = colArea / nSubRows;
+            // Mismo criterio de clamp que arriba: no precalculamos más
+            // sub-cortes de los que lotBudget podría llegar a consumir.
+            const subCutRows = Math.min(nSubRows, Math.max(1, lotBudget) + 4);
             const subCuts = [uMinCol];
-            for (let sr = 0; sr < nSubRows - 1; sr++) subCuts.push(bisect(subRowAreaUpTo, uMinCol, uMaxCol, (sr + 1) * subTarget));
+            for (let sr = 0; sr < subCutRows - 1; sr++) subCuts.push(bisect(subRowAreaUpTo, uMinCol, uMaxCol, (sr + 1) * subTarget));
             subCuts.push(uMaxCol);
             for (let sr = 0; sr < nSubRows; sr++) {
               if (lotBudget <= 0) break;
-              let subLot = hbClipPolyHalf(colPoly, ux, uy, 1, subCuts[sr]);
-              subLot = hbClipPolyHalf(subLot, ux, uy, -1, -subCuts[sr + 1]);
+              const s0 = subCuts[sr] ?? uMaxCol;
+              const s1 = subCuts[sr + 1] ?? uMaxCol;
+              let subLot = hbClipPolyHalf(colPoly, ux, uy, 1, s0);
+              subLot = hbClipPolyHalf(subLot, ux, uy, -1, -s1);
               if (subLot.length < 3) continue;
               pushLot({ pts: subLot, area: polyArea(subLot), zone: 'body', isRemainder: false });
             }
@@ -572,7 +668,16 @@ function hbMergeHeadRemainders(lots: HbLot[], targetLotArea: number): HbLot[] {
   }
 
   let result = [...lots];
-  while (true) {
+  // Guarda redundante (Fase 2.6): el bucle ya está autoacotado (cada
+  // fusión exitosa reduce result.length en 1), pero agregamos un guard
+  // explícito + tick del presupuesto de operaciones por consistencia
+  // con el resto del archivo — geometría sana nunca se acerca a ninguno
+  // de los dos límites.
+  const guardMax = result.length + 8;
+  let guard = 0;
+  while (guard < guardMax) {
+    guard++;
+    if (!tickOpBudget()) break;
     const remIdx = result.findIndex((l) => l.zone.startsWith('head') && l.area < targetLotArea * THRESHOLD);
     if (remIdx === -1) break;
     const rem = result[remIdx];
@@ -601,6 +706,12 @@ export function subdivideManzanoCabeceraCuerpo(
   dirPref?: { ax: number; ay: number },
 ): LotResult[] {
   if (mznPts.length < 3) return [];
+  // Reset del presupuesto de operaciones + épsilon de escala — ver
+  // comentario junto a OP_BUDGET_MAX/distEpsForPoly más arriba
+  // (Fase 2.6).
+  opBudgetRemaining = OP_BUDGET_MAX;
+  currentDistEps = distEpsForPoly(mznPts);
+
   const blockArea = polyArea(mznPts);
   if (blockArea < targetAreaM2 * 0.15) return [];
 

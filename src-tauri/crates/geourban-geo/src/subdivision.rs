@@ -998,6 +998,7 @@ fn sanitize_lot_results(lots: Vec<LotResult>, context: &str) -> Vec<LotResult> {
 }
 
 /// <- `subdivideManzano` (dispatcher por `ManzanoLoteMethod`)
+/// <- `subdivideManzano` (dispatcher por `ManzanoLoteMethod`)
 pub fn subdivide_manzano(
     ring_pts: &[Pt],
     method: ManzanoLoteMethod,
@@ -1011,26 +1012,22 @@ pub fn subdivide_manzano(
 
     let mut pts: Vec<Pt> = ring_pts.to_vec();
 
-    // Saneo de entrada — solo si hace falta (mismo criterio que el TS: ver
-    // subdivideManzano en subdivisionAlgorithms.ts). Un anillo con
-    // vértices no-finitos contamina toda la aritmética interna; sanearlo
-    // acá antes de que entre a los algoritmos protege también producción,
-    // ya que este comando recibe rings del frontend sin garantías.
+    // Mismo criterio que subdivideManzano (subdivisionAlgorithms.ts,
+    // Fase 2.6): un anillo con vértices no-finitos es entrada
+    // corrupta/no confiable — este comando recibe rings del frontend
+    // sin garantías, así que se rechaza directamente (Vec vacío) en vez
+    // de intentar salvarlo filtrando los vértices malos, que puede
+    // dejar un anillo parcial casi degenerado capaz de seguir
+    // produciendo NaN/Infinity más abajo (PCA, recortes, bisección).
+    // sanitize_ring() mantiene su contrato de "filtrar y continuar"
+    // para sus otros usos.
     if pts.iter().any(|p| !p.0.is_finite() || !p.1.is_finite()) {
-        match sanitize_ring(
-            Some(pts.as_slice()),
-            SanitizeRingOptions::default(),
-            "subdivisionAlgorithms.subdivideManzano.input",
-        ) {
-            Some(cleaned) => pts = cleaned,
-            None => return Vec::new(),
-        }
-    } else {
-        let first = pts[0];
-        let last = *pts.last().unwrap();
-        if first.0 != last.0 || first.1 != last.1 {
-            pts.push(first);
-        }
+        return Vec::new();
+    }
+    let first = pts[0];
+    let last = *pts.last().unwrap();
+    if first.0 != last.0 || first.1 != last.1 {
+        pts.push(first);
     }
 
     let lots = match method {

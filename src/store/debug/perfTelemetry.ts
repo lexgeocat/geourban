@@ -1,5 +1,3 @@
-const now = (): number => (typeof performance !== 'undefined' ? performance.now() : Date.now());
-
 // ─── Roundtrip por tipo de request al geo worker ─────────────────────
 
 interface RequestStat {

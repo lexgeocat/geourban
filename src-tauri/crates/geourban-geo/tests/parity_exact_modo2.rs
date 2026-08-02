@@ -1,4 +1,3 @@
-
 //! Test de paridad TS <-> Rust para `subdivide_manzano_exact` y
 //! `subdivide_manzano_auto` (metodos 'exact' y 'modo2'). Completa la
 //! cobertura de la Fase 2.2 — `parity_cabecera_cuerpo.rs` solo cubria 'auto'.
@@ -27,7 +26,10 @@ struct SnapshotFixture {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct DirPref { ax: f64, ay: f64 }
+struct DirPref {
+    ax: f64,
+    ay: f64,
+}
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -40,6 +42,7 @@ struct SnapshotSummary {
     front_ms: Vec<f64>,
     depth_ms: Vec<f64>,
     #[serde(default)]
+    #[allow(dead_code)]
     ring_area: f64,
 }
 
@@ -77,7 +80,14 @@ fn parse_ring(name: &str) -> Vec<(f64, f64)> {
     } else if name.ends_with("cuadrado_40x40_target_200") {
         vec![(0.0, 0.0), (40.0, 0.0), (40.0, 40.0), (0.0, 40.0)]
     } else if name.ends_with("forma_L_dir_y") {
-        vec![(0.0, 0.0), (50.0, 0.0), (50.0, 30.0), (30.0, 30.0), (30.0, 50.0), (0.0, 50.0)]
+        vec![
+            (0.0, 0.0),
+            (50.0, 0.0),
+            (50.0, 30.0),
+            (30.0, 30.0),
+            (30.0, 50.0),
+            (0.0, 50.0),
+        ]
     } else {
         panic!(
             "Fixture desconocida en snapshot: {name}. Actualiza `parse_ring` en \
@@ -108,31 +118,86 @@ fn parity_con_snapshot_ts() {
             other => panic!("{}: metodo desconocido en snapshot: {other}", fx.name),
         };
 
-        assert_eq!(lots.len(), fx.summary.count, "{}: count difiere (rust={} ts={})", fx.name, lots.len(), fx.summary.count);
+        assert_eq!(
+            lots.len(),
+            fx.summary.count,
+            "{}: count difiere (rust={} ts={})",
+            fx.name,
+            lots.len(),
+            fx.summary.count
+        );
 
         let rem = lots.iter().filter(|l| l.is_remnant).count();
-        assert_eq!(rem, fx.summary.remnant_count, "{}: remnant_count difiere", fx.name);
+        assert_eq!(
+            rem, fx.summary.remnant_count,
+            "{}: remnant_count difiere",
+            fx.name
+        );
 
         let total_area: f64 = lots.iter().map(|l| l.area_m2).sum();
-        assert!(approx(total_area, fx.summary.total_area, AREA_TOL_M2), "{}: totalArea difiere (rust={:.6} ts={:.6})", fx.name, total_area, fx.summary.total_area);
+        assert!(
+            approx(total_area, fx.summary.total_area, AREA_TOL_M2),
+            "{}: totalArea difiere (rust={:.6} ts={:.6})",
+            fx.name,
+            total_area,
+            fx.summary.total_area
+        );
 
-        let (mut min_x, mut min_y, mut max_x, mut max_y) = (f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY);
+        let (mut min_x, mut min_y, mut max_x, mut max_y) = (
+            f64::INFINITY,
+            f64::INFINITY,
+            f64::NEG_INFINITY,
+            f64::NEG_INFINITY,
+        );
         for l in &lots {
             for p in &l.pts {
-                if p.0 < min_x { min_x = p.0; }
-                if p.0 > max_x { max_x = p.0; }
-                if p.1 < min_y { min_y = p.1; }
-                if p.1 > max_y { max_y = p.1; }
+                if p.0 < min_x {
+                    min_x = p.0;
+                }
+                if p.0 > max_x {
+                    max_x = p.0;
+                }
+                if p.1 < min_y {
+                    min_y = p.1;
+                }
+                if p.1 > max_y {
+                    max_y = p.1;
+                }
             }
         }
-        let bbox_area = if min_x.is_finite() { (max_x - min_x) * (max_y - min_y) } else { 0.0 };
-        assert!(approx(bbox_area, fx.summary.bbox_area, AREA_TOL_M2), "{}: bboxArea difiere", fx.name);
+        let bbox_area = if min_x.is_finite() {
+            (max_x - min_x) * (max_y - min_y)
+        } else {
+            0.0
+        };
+        assert!(
+            approx(bbox_area, fx.summary.bbox_area, AREA_TOL_M2),
+            "{}: bboxArea difiere",
+            fx.name
+        );
 
         assert_eq!(lots.len(), fx.summary.areas.len(), "{}: areas.len", fx.name);
         for (i, l) in lots.iter().enumerate() {
-            assert!(approx(l.area_m2, fx.summary.areas[i], AREA_TOL_M2), "{}: areas[{}] difiere (rust={} ts={})", fx.name, i, l.area_m2, fx.summary.areas[i]);
-            assert!(approx(l.front_m, fx.summary.front_ms[i], LEN_TOL_M), "{}: fronts[{}] difiere", fx.name, i);
-            assert!(approx(l.depth_m, fx.summary.depth_ms[i], LEN_TOL_M), "{}: depths[{}] difiere", fx.name, i);
+            assert!(
+                approx(l.area_m2, fx.summary.areas[i], AREA_TOL_M2),
+                "{}: areas[{}] difiere (rust={} ts={})",
+                fx.name,
+                i,
+                l.area_m2,
+                fx.summary.areas[i]
+            );
+            assert!(
+                approx(l.front_m, fx.summary.front_ms[i], LEN_TOL_M),
+                "{}: fronts[{}] difiere",
+                fx.name,
+                i
+            );
+            assert!(
+                approx(l.depth_m, fx.summary.depth_ms[i], LEN_TOL_M),
+                "{}: depths[{}] difiere",
+                fx.name,
+                i
+            );
         }
         for l in &lots {
             assert!(l.area_m2 > 0.0, "{}: lote con area <= 0", fx.name);

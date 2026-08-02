@@ -27,10 +27,20 @@ export default function OpenProjectModal() {
 
   useEffect(() => {
     if (!open) return;
-    setLoadError(null);
-    void listProjects().then(setProjects).catch((err) => {
-      setLoadError(err instanceof Error ? err.message : 'No se pudo listar los proyectos');
-    });
+    let cancelled = false;
+    listProjects()
+      .then((result) => {
+        if (cancelled) return;
+        setProjects(result);
+        setLoadError(null);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setLoadError(err instanceof Error ? err.message : 'No se pudo listar los proyectos');
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [open]);
 
   const handleOpen = async (name: string) => {
