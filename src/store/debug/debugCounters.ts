@@ -50,6 +50,16 @@ const PR_SAMPLE_MAX = 120;
 const postrenderSamples: number[] = [];
 let postrenderLastMs = 0;
 
+const labelCacheHits = makeRollingCounter();
+const labelCacheMisses = makeRollingCounter();
+
+export function recordLabelCacheHit(): void {
+  bump(labelCacheHits);
+}
+export function recordLabelCacheMiss(): void {
+  bump(labelCacheMisses);
+}
+
 export function recordPostrenderDuration(ms: number): void {
   postrenderLastMs = ms;
   postrenderSamples.push(ms);
@@ -63,6 +73,8 @@ export interface DebugCountersSnapshot {
   webglLayerCount: number;
   postrenderLastMs: number;
   postrenderAvgMs: number;
+  labelCacheHitsPerMin: number;
+  labelCacheMissesPerMin: number;
 }
 
 export function readDebugCounters(): DebugCountersSnapshot {
@@ -76,5 +88,7 @@ export function readDebugCounters(): DebugCountersSnapshot {
     webglLayerCount,
     postrenderLastMs,
     postrenderAvgMs: avg,
+    labelCacheHitsPerMin: peek(labelCacheHits),
+    labelCacheMissesPerMin: peek(labelCacheMisses),
   };
 }

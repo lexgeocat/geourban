@@ -228,6 +228,10 @@ export default function DebugPanel() {
       <Row label="Features" value={String(featureCount)} />
       <Row label="Postrender last" value={`${(counters?.postrenderLastMs ?? 0).toFixed(2)} ms`} />
       <Row label="Postrender avg" value={`${(counters?.postrenderAvgMs ?? 0).toFixed(2)} ms`} />
+      <Row
+        label="Label cache (hit/miss/min)"
+        value={`${counters?.labelCacheHitsPerMin ?? 0} / ${counters?.labelCacheMissesPerMin ?? 0}`}
+      />
       <Row label="setStyle/min" value={String(counters?.setStyleCallsPerMin ?? 0)} />
       <Row label="syncLayerSet/min" value={String(counters?.syncLayerSetCallsPerMin ?? 0)} />
       <Row label="syncGizmo/min" value={String(counters?.syncGizmoCallsPerMin ?? 0)} />

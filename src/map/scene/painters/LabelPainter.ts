@@ -1,5 +1,6 @@
 import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
+import type { Extent } from 'ol/extent.js';
 import Polygon from 'ol/geom/Polygon.js';
 import LineString from 'ol/geom/LineString.js';
 import { useSelectionStore } from '../../../store/map/selectionStore';
@@ -14,6 +15,7 @@ import {
   computeCotaOpacity,
 } from '../../styleFactory';
 import { formatMetricLength, formatMetricArea, type SegmentMetric } from '../../../geo/metrics';
+import { recordLabelCacheHit, recordLabelCacheMiss } from '../../../store/debug/debugCounters';
 import { manzanoDisplayColor } from '../../../geo/manzanoColor';
 import { measureCached } from '../../textMeasureCache';
 import { getFeatureKind, getLotStatus } from '../../../core/objectModel';
@@ -121,8 +123,64 @@ export class LabelPainter {
 
   private readonly screenAreaCache = new globalThis.Map<string | number, ScreenAreaCacheEntry>();
 
+  // ─── Caché de ops (Fase 4.3) ────────────────────────────────────────────
+  // El pase de etiquetas (colisiones + decisiones) es O(n) y corre en cada
+  // postrender aunque el viewport y los datos no hayan cambiado (el pulse
+  // de selección redibuja a 24fps, streetPainter llama map.render(), etc.).
+  // Gateamos la reconstrucción con una firma: si nada cambió, re-ejecutamos
+  // las ops de dibujo ya decididas (solo canvas, sin medir ni colisionar).
+  private dataVersion = 0;
+  private lastKey: string | null = null;
+  private cachedOps: Array<(ctx: CanvasRenderingContext2D, toPx: (c: number[]) => [number, number]) => void> = [];
+
+  private recordOp(
+    op: (ctx: CanvasRenderingContext2D, toPx: (c: number[]) => [number, number]) => void,
+  ): void {
+    this.cachedOps.push(op);
+  }
+
+  /** Hash de la selección: tamaño + primeros ids (la selección de edición es
+   *  chica; para selecciones masivas el tamaño + ventana cubren el cambio). */
+  private selectionKey(): number {
+    const ids = useSelectionStore.getState().selectedIds;
+    let h = ids.size;
+    let i = 0;
+    for (const id of ids) {
+      if (i >= 512) break;
+      const s = String(id);
+      for (let j = 0; j < s.length; j++) h = (Math.imul(h, 31) + s.charCodeAt(j)) | 0;
+      i++;
+    }
+    return h;
+  }
+
+  /** Firma de visibilidad de capas — exacta: pocas capas, barato. */
+  private layersKey(): string {
+    let sig = '';
+    for (const layer of useLayersStore.getState().layers) {
+      sig += layer.id + (layer.visible ? '1' : '0') + '|';
+    }
+    return sig;
+  }
+
+  private computeCacheKey(
+    features: Array<Feature<Geometry>>,
+    zoom: number,
+    resolution: number,
+    extent: Extent | null,
+  ): string {
+    if (!extent) return 'no-extent';
+    const q = Math.max(resolution * 2, 1e-9);
+    const [minX, minY, maxX, maxY] = extent;
+    const e = `${Math.round(minX / q)},${Math.round(minY / q)},${Math.round(maxX / q)},${Math.round(maxY / q)}`;
+    return `${e}|${zoom.toFixed(4)}|${features.length}|${this.dataVersion}|${this.selectionKey()}|${this.layersKey()}`;
+  }
+
   update(features: Array<Feature<Geometry>>, changed: boolean): void {
-    if (changed) this.lotGroupCounts = computeLotGroupCounts(features);
+    if (changed) {
+      this.lotGroupCounts = computeLotGroupCounts(features);
+      this.dataVersion++;
+    }
     if (this.screenAreaCache.size > SCREEN_AREA_CACHE_MAX) this.screenAreaCache.clear();
   }
 
@@ -133,9 +191,20 @@ export class LabelPainter {
     resolution: number,
     toPx: (c: number[]) => [number, number],
     interacting: boolean,
+    extent: Extent | null,
   ): void {
     if (interacting) return;
+    const key = this.computeCacheKey(features, zoom, resolution, extent);
+    if (key !== 'no-extent' && key === this.lastKey) {
+      recordLabelCacheHit();
+      for (const op of this.cachedOps) op(ctx, toPx);
+      return;
+    }
+    recordLabelCacheMiss();
+    this.lastKey = key;
+    this.cachedOps = [];
     this.paintFeatureLabels(ctx, features, zoom, resolution, toPx);
+    for (const op of this.cachedOps) op(ctx, toPx);
   }
 
   /** Mismo criterio de bucket que geo/math/lod.ts, por consistencia. */
@@ -218,12 +287,14 @@ export class LabelPainter {
             const text = `Mzo. ${colorIdx + 1}`;
             if (!isColliding(ctx, labelPoint, text, this.collisionGrid, toPx)) {
               const mznColor = manzanoDisplayColor(colorIdx);
-              drawMainMetricLabel(ctx, labelPoint, toPx, text, true, {
-                extraLine: areaText ?? undefined,
-                color: mznColor,
-                mainOpacity: showTitle ? labelOp : 0,
-                extraLineOpacity: showArea ? cotaOp : 0,
-              });
+              this.recordOp((c, px) =>
+                drawMainMetricLabel(c, labelPoint, px, text, true, {
+                  extraLine: areaText ?? undefined,
+                  color: mznColor,
+                  mainOpacity: showTitle ? labelOp : 0,
+                  extraLineOpacity: showArea ? cotaOp : 0,
+                }),
+              );
             }
           }
         } else if (isLote) {
@@ -236,30 +307,32 @@ export class LabelPainter {
               if (showBadge) {
                 const numberText = extractLotNumberText(feature.get('label') as string | undefined);
                 const isRemnant = !!feature.get('isRemnant');
-                drawLotNumberBadge(ctx, labelPoint, toPx, numberText, isRemnant, labelOp);
+                this.recordOp((c, px) => drawLotNumberBadge(c, labelPoint, px, numberText, isRemnant, labelOp));
               }
               if (showCaption) {
-                drawLotAreaCaption(ctx, labelPoint, toPx, areaText!, cotaOp);
+                this.recordOp((c, px) => drawLotAreaCaption(c, labelPoint, px, areaText!, cotaOp));
               }
             }
           }
         } else if (labelPoint && areaText && cotaOp > 0.002 && allowLabels) {
           if (!isColliding(ctx, labelPoint, areaText, this.collisionGrid, toPx)) {
-            drawMainMetricLabel(ctx, labelPoint, toPx, areaText, false, { mainOpacity: cotaOp });
+            this.recordOp((c, px) => drawMainMetricLabel(c, labelPoint, px, areaText, false, { mainOpacity: cotaOp }));
           }
         }
 
         if (allowSegmentCotas) {
-          drawSegmentLabels(
-            ctx,
-            feature.get('segmentLengths') as SegmentMetric[] | undefined,
-            labelPoint,
-            orientation,
-            toPx,
-            isManzana,
-            cotaOp,
-            !isLote,
-            !isLote,
+          this.recordOp((c, px) =>
+            drawSegmentLabels(
+              c,
+              feature.get('segmentLengths') as SegmentMetric[] | undefined,
+              labelPoint,
+              orientation,
+              px,
+              isManzana,
+              cotaOp,
+              !isLote,
+              !isLote,
+            ),
           );
         }
       } else if (geometry instanceof LineString) {
@@ -271,19 +344,21 @@ export class LabelPainter {
           if (lengthM !== undefined) {
             const text = formatMetricLength(lengthM);
             if (!isColliding(ctx, labelPoint, text, this.collisionGrid, toPx)) {
-              drawMainMetricLabel(ctx, labelPoint, toPx, text, false, { mainOpacity: cotaOp });
+              this.recordOp((c, px) => drawMainMetricLabel(c, labelPoint, px, text, false, { mainOpacity: cotaOp }));
             }
           }
         }
         if (allowSegmentCotas) {
-          drawSegmentLabels(
-            ctx,
-            feature.get('segmentLengths') as SegmentMetric[] | undefined,
-            labelPoint,
-            orientation,
-            toPx,
-            false,
-            cotaOp,
+          this.recordOp((c, px) =>
+            drawSegmentLabels(
+              c,
+              feature.get('segmentLengths') as SegmentMetric[] | undefined,
+              labelPoint,
+              orientation,
+              px,
+              false,
+              cotaOp,
+            ),
           );
         }
       }
