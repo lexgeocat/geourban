@@ -14,6 +14,7 @@ import {
 import { generateSyntheticManzanos, ensureSyntheticLotLayer } from '../../geo/debug/syntheticDataset';
 import { readNativeEngineStats, type NativeEngineStatsSnapshot } from '../../store/debug/nativeEngineTelemetry';
 import { runStreetUndoBenchmarkSuite, type StreetUndoBenchmarkResult } from '../../geo/debug/undoRedoBenchmark';
+import { runSpatialIndexBenchmarkSuite, type SpatialIndexBenchmarkResult } from '../../geo/debug/spatialIndexBenchmark';
 
 const REFRESH_MS = 400;
 const SYNTHETIC_SIZES = [100_000, 500_000, 1_000_000] as const;
@@ -87,6 +88,10 @@ export default function DebugPanel() {
   const [benchResults, setBenchResults] = useState<StreetUndoBenchmarkResult[]>([]);
   const [benchError, setBenchError] = useState<string | null>(null);
 
+  const [spatialBusy, setSpatialBusy] = useState(false);
+  const [spatialResults, setSpatialResults] = useState<SpatialIndexBenchmarkResult[]>([]);
+  const [spatialError, setSpatialError] = useState<string | null>(null);
+
   const [genBusy, setGenBusy] = useState<number | null>(null);
   const [lastGen, setLastGen] = useState<{
     size: number;
@@ -122,6 +127,16 @@ export default function DebugPanel() {
       .then(setBenchResults)
       .catch((err) => setBenchError(err instanceof Error ? err.message : String(err)))
       .finally(() => setBenchBusy(false));
+  };
+
+  const handleRunSpatialBenchmark = () => {
+    if (spatialBusy) return;
+    setSpatialBusy(true);
+    setSpatialError(null);
+    void runSpatialIndexBenchmarkSuite([10_000, 100_000, 500_000])
+      .then(setSpatialResults)
+      .catch((err) => setSpatialError(err instanceof Error ? err.message : String(err)))
+      .finally(() => setSpatialBusy(false));
   };
 
   const handleGenerateSynthetic = (size: number) => {
@@ -326,6 +341,35 @@ export default function DebugPanel() {
           label={`${r.datasetSize / 1000}k features`}
           value={`undo=${formatKB(r.undoDiffBytes)} · baseline=${formatKB(r.fullSnapshotBaselineBytes)} · ratio=${(r.ratio * 100).toFixed(2)}% · ${r.executeMs.toFixed(0)}ms`}
         />
+      ))}
+
+      <SectionTitle>Benchmark Fase 4.1/4.2 — rstar nativo vs RBush JS</SectionTitle>
+      <button
+        onClick={handleRunSpatialBenchmark}
+        disabled={spatialBusy}
+        className="cad-icon-btn"
+        style={{ width: '100%', height: 24, fontSize: '0.62rem', marginBottom: 4 }}
+      >
+        {spatialBusy ? <><span className="cad-spinner" /> Corriendo…</> : '▶ Correr suite (10k/100k/500k)'}
+      </button>
+      {spatialError && (
+        <div style={{ color: 'var(--cad-accent-red)', fontSize: '0.6rem', marginBottom: 4 }}>{spatialError}</div>
+      )}
+      {spatialResults.map((r) => (
+        <div key={r.datasetSize} style={{ marginBottom: 4 }}>
+          <Row
+            label={`${r.datasetSize / 1000}k load JS/nat`}
+            value={`${r.jsLoadMs.toFixed(1)} / ${r.nativeLoadMs.toFixed(1)} ms`}
+          />
+          <Row
+            label={`query JS/nat (${r.queryRounds}r)`}
+            value={`${r.jsQueryAvgMs.toFixed(2)} / ${r.nativeQueryAvgMs.toFixed(2)} ms`}
+          />
+          <Row
+            label={`hits JS/nat`}
+            value={`${r.jsHitCount} / ${r.nativeHitCount} ${r.parityOk ? '· paridad ✓' : '· ⚠ PARIDAD FALLA'}`}
+          />
+        </div>
       ))}
 
       {geoTelemetry && Object.values(geoTelemetry.countsByContext).some((n) => n > 0) && (

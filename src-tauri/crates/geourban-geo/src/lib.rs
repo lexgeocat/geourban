@@ -9,6 +9,7 @@ pub mod mulberry32;
 pub mod roads;
 pub mod roundabout;
 pub mod sanitize;
+pub mod spatial;
 pub mod subdivision;
 pub mod subdivision_cabecera_cuerpo;
 

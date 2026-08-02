@@ -4,6 +4,7 @@ mod project_store;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .manage(geo_bridge::SpatialIndexState(std::sync::Mutex::new(None)))
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(
@@ -27,6 +28,9 @@ pub fn run() {
             geo_bridge::compute_manzanos_batch,
             geo_bridge::compute_road_network_net_cmd,
             geo_bridge::match_fragments_batch,
+            geo_bridge::spatial_index_load,
+            geo_bridge::spatial_index_clear,
+            geo_bridge::spatial_index_query,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
