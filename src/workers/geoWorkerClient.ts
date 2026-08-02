@@ -318,6 +318,9 @@ export async function matchFragmentsBatchInWorker(
 // Consulta de viewport del lado Rust (auditoria-para-mejora.md §6, Fase 4).
 // El índice se hidrata con bulk-load y se consulta por comando; espejo del
 // `SpatialIndex` JS (src/map/spatialIndex.ts) para proyectos grandes.
+//
+// El estado nativo es multi-slot: `slot` aísla usos concurrentes
+// (`"benchmark"` para el DebugPanel, `"viewport"` para el render real).
 
 export interface SpatialIndexItem {
   id: string | number;
@@ -333,10 +336,11 @@ export interface SpatialIndexQueryResult {
   queryMs: number;
 }
 
-async function spatialIndexLoadNative(items: SpatialIndexItem[]): Promise<number> {
+async function spatialIndexLoadNative(items: SpatialIndexItem[], slot: string): Promise<number> {
   const t0 = performance.now();
   try {
     const count = await invoke<number>('spatial_index_load', {
+      slot,
       items: items.map((it) => ({ id: it.id, minX: it.minX, minY: it.minY, maxX: it.maxX, maxY: it.maxY })),
     });
     recordWorkerRoundtrip('spatialIndexLoad:native', performance.now() - t0);
@@ -352,10 +356,11 @@ async function spatialIndexQueryNative(
   minY: number,
   maxX: number,
   maxY: number,
+  slot: string,
 ): Promise<SpatialIndexQueryResult> {
   const t0 = performance.now();
   try {
-    const result = await invoke<SpatialIndexQueryResult>('spatial_index_query', { minX, minY, maxX, maxY });
+    const result = await invoke<SpatialIndexQueryResult>('spatial_index_query', { slot, minX, minY, maxX, maxY });
     recordWorkerRoundtrip('spatialIndexQuery:native', performance.now() - t0);
     return result;
   } catch (err) {
@@ -364,13 +369,13 @@ async function spatialIndexQueryNative(
   }
 }
 
-async function spatialIndexClearNative(): Promise<void> {
-  await invoke('spatial_index_clear');
+async function spatialIndexClearNative(slot: string): Promise<void> {
+  await invoke('spatial_index_clear', { slot });
 }
 
-export async function spatialIndexLoadInWorker(items: SpatialIndexItem[]): Promise<number> {
+export async function spatialIndexLoadInWorker(items: SpatialIndexItem[], slot: string): Promise<number> {
   requireNativeRuntime();
-  return spatialIndexLoadNative(items);
+  return spatialIndexLoadNative(items, slot);
 }
 
 export async function spatialIndexQueryInWorker(
@@ -378,12 +383,13 @@ export async function spatialIndexQueryInWorker(
   minY: number,
   maxX: number,
   maxY: number,
+  slot: string,
 ): Promise<SpatialIndexQueryResult> {
   requireNativeRuntime();
-  return spatialIndexQueryNative(minX, minY, maxX, maxY);
+  return spatialIndexQueryNative(minX, minY, maxX, maxY, slot);
 }
 
-export async function spatialIndexClearInWorker(): Promise<void> {
+export async function spatialIndexClearInWorker(slot: string): Promise<void> {
   requireNativeRuntime();
-  await spatialIndexClearNative();
+  await spatialIndexClearNative(slot);
 }

@@ -26,14 +26,39 @@ pub struct IndexedEnvelope {
     pub max_y: f64,
 }
 
+/// Normaliza ids numéricos: `1` (PosInt) y `1.0` (Float) son el mismo id
+/// lógico pero hashean distinto en `serde_json::Value` (que distingue
+/// PosInt/NegInt/Float internamente) — sin esto un id numérico podría
+/// existir dos veces en el índice y quedar entradas fantasma.
+fn canonicalize_id(id: Value) -> Value {
+    if let Value::Number(n) = &id {
+        if let Some(i) = n.as_i64() {
+            return Value::from(i);
+        }
+        if let Some(u) = n.as_u64() {
+            return Value::from(u);
+        }
+        // `Number::as_i64()` no cubre floats; un float entero (1.0, típico
+        // si el id pasó por aritmética JS) se canónica a entero.
+        if let Some(f) = n.as_f64() {
+            if f.is_finite() && f.fract() == 0.0 && f >= i64::MIN as f64 && f <= i64::MAX as f64 {
+                return Value::from(f as i64);
+            }
+        }
+    }
+    id
+}
+
 impl IndexedEnvelope {
+    /// Ordena min/max defensivamente (idempotente, no rompe casos válidos)
+    /// para que un bbox mal ordenado nunca corrompa las invariantes del R-tree.
     pub fn new(id: Value, min_x: f64, min_y: f64, max_x: f64, max_y: f64) -> Self {
         Self {
-            id,
-            min_x,
-            min_y,
-            max_x,
-            max_y,
+            id: canonicalize_id(id),
+            min_x: min_x.min(max_x),
+            min_y: min_y.min(max_y),
+            max_x: min_x.max(max_x),
+            max_y: min_y.max(max_y),
         }
     }
 }
@@ -64,13 +89,21 @@ impl Default for SpatialIndex {
 impl SpatialIndex {
     /// Carga masiva (reemplaza el índice entero). Bulk STR — nunca
     /// inserción incremental para volúmenes grandes (criterio §7.4).
+    ///
+    /// Dedupea por id ANTES de construir el árbol (criterio last-wins,
+    /// igual que `insert`): si el caller trae un id repetido (geometría
+    /// corrupta, doble carga, batch mal armado), `tree` y `by_id` quedan
+    /// garantizados 1:1 — si no, el árbol podría guardar dos nodos con el
+    /// mismo id: `remove` deja uno huérfano para siempre y `search` puede
+    /// devolver ids duplicados.
     pub fn bulk_load(items: Vec<IndexedEnvelope>) -> Self {
         let mut by_id = HashMap::with_capacity(items.len());
-        for item in &items {
-            by_id.insert(item.id.clone(), item.clone());
+        for item in items {
+            by_id.insert(item.id.clone(), item);
         }
+        let deduped: Vec<IndexedEnvelope> = by_id.values().cloned().collect();
         Self {
-            tree: RTree::bulk_load(items),
+            tree: RTree::bulk_load(deduped),
             by_id,
         }
     }
@@ -255,6 +288,49 @@ mod tests {
         index.clear();
         assert!(index.is_empty());
         assert_eq!(index.len(), 0);
+    }
+
+    #[test]
+    fn bulk_load_dedupes_duplicate_ids_last_wins() {
+        let items = vec![
+            IndexedEnvelope::new(Value::from("a"), 0.0, 0.0, 10.0, 10.0),
+            IndexedEnvelope::new(Value::from("b"), 50.0, 50.0, 60.0, 60.0),
+            // Duplicado de "a" con bbox desplazado: last-wins.
+            IndexedEnvelope::new(Value::from("a"), 100.0, 100.0, 110.0, 110.0),
+        ];
+        let index = SpatialIndex::bulk_load(items);
+        assert_eq!(index.len(), 2, "el árbol y by_id quedan 1:1 por id");
+
+        // El bbox viejo no responde; el nuevo sí, sin duplicados.
+        let mut out = Vec::new();
+        index.search(0.0, 0.0, 20.0, 20.0, &mut out);
+        assert!(out.is_empty());
+        index.search(95.0, 95.0, 115.0, 115.0, &mut out);
+        assert_eq!(out, vec![Value::from("a")], "un solo hit para el id dedupeado");
+
+        // remove() elimina sin dejar nodos fantasma (sin panics ni hits extra).
+        let mut index = index;
+        assert!(index.remove(&Value::from("a")));
+        assert_eq!(index.len(), 1);
+    }
+
+    #[test]
+    fn new_normalizes_min_max_and_numeric_ids() {
+        // Bbox con min>max se ordena solo.
+        let env = IndexedEnvelope::new(Value::from(1), 30.0, 20.0, 10.0, 40.0);
+        assert_eq!(env.min_x, 10.0);
+        assert_eq!(env.max_x, 30.0);
+        assert_eq!(env.min_y, 20.0);
+        assert_eq!(env.max_y, 40.0);
+
+        // 1 (PosInt) y 1.0 (Float) se canonican al mismo id.
+        let a = IndexedEnvelope::new(Value::from(1), 0.0, 0.0, 1.0, 1.0).id;
+        let b = IndexedEnvelope::new(Value::from(1.0), 0.0, 0.0, 1.0, 1.0).id;
+        assert_eq!(a, b, "id numérico canónico: 1 == 1.0");
+
+        // Strings no se tocan.
+        let s = IndexedEnvelope::new(Value::from("x"), 0.0, 0.0, 1.0, 1.0).id;
+        assert_eq!(s, Value::from("x"));
     }
 
     #[test]

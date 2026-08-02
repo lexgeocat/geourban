@@ -4,7 +4,7 @@ mod project_store;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .manage(geo_bridge::SpatialIndexState(std::sync::Mutex::new(None)))
+        .manage(geo_bridge::SpatialIndexState(std::sync::Mutex::new(std::collections::HashMap::new())))
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(

@@ -191,7 +191,10 @@ pub fn match_fragments_batch(
 // feature puede ser `string | number` y acá no se interpreta — solo hace
 // ida y vuelta (mismo criterio que `SubdivideManzanoBatchItem`).
 
-pub struct SpatialIndexState(pub Mutex<Option<SpatialIndex>>);
+/// Estado del índice espacial nativo. Es un mapa de slots a propósito:
+/// el benchmark del DebugPanel usa el slot `"benchmark"` y no puede pisar
+/// el slot `"viewport"` que la Fase 4.1 cableará al render real.
+pub struct SpatialIndexState(pub Mutex<std::collections::HashMap<String, SpatialIndex>>);
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -204,30 +207,38 @@ pub struct SpatialIndexLoadItem {
 }
 
 /// <- `spatialIndexLoadInWorker` (src/workers/geoWorkerClient.ts).
-/// Reemplaza el índice entero con bulk-load. Devuelve la cantidad de items.
+/// Reemplaza el índice de un slot con bulk-load. Devuelve la cantidad de
+/// items (tras dedupe por id y descarte de bboxes no-finitos).
 #[tauri::command]
 pub fn spatial_index_load(
     state: State<'_, SpatialIndexState>,
+    slot: String,
     items: Vec<SpatialIndexLoadItem>,
 ) -> Result<usize, String> {
-    let index = SpatialIndex::bulk_load(
-        items
-            .into_iter()
-            .map(|it| IndexedEnvelope::new(it.id, it.min_x, it.min_y, it.max_x, it.max_y))
-            .collect(),
-    );
+    let envelopes: Vec<IndexedEnvelope> = items
+        .into_iter()
+        .filter_map(|it| {
+            if !it.min_x.is_finite() || !it.min_y.is_finite() || !it.max_x.is_finite() || !it.max_y.is_finite()
+            {
+                log::warn!("spatial_index_load[{slot}]: item con bbox no-finito descartado (id={:?})", it.id);
+                return None;
+            }
+            Some(IndexedEnvelope::new(it.id, it.min_x, it.min_y, it.max_x, it.max_y))
+        })
+        .collect();
+    let index = SpatialIndex::bulk_load(envelopes);
     let len = index.len();
     let mut guard = state.0.lock().map_err(|e| e.to_string())?;
-    *guard = Some(index);
+    guard.insert(slot, index);
     Ok(len)
 }
 
-/// <- `spatialIndexClearInWorker`. Descarta el índice (p. ej. al cerrar
-/// proyecto o volver a un dataset donde manda el RBush JS).
+/// <- `spatialIndexClearInWorker`. Descarta el índice de un slot (p. ej. al
+/// cerrar proyecto o volver a un dataset donde manda el RBush JS).
 #[tauri::command]
-pub fn spatial_index_clear(state: State<'_, SpatialIndexState>) -> Result<(), String> {
+pub fn spatial_index_clear(state: State<'_, SpatialIndexState>, slot: String) -> Result<(), String> {
     let mut guard = state.0.lock().map_err(|e| e.to_string())?;
-    *guard = None;
+    guard.remove(&slot);
     Ok(())
 }
 
@@ -246,14 +257,17 @@ pub struct SpatialIndexQueryResult {
 #[tauri::command]
 pub fn spatial_index_query(
     state: State<'_, SpatialIndexState>,
+    slot: String,
     min_x: f64,
     min_y: f64,
     max_x: f64,
     max_y: f64,
 ) -> Result<SpatialIndexQueryResult, String> {
     let guard = state.0.lock().map_err(|e| e.to_string())?;
-    let Some(index) = guard.as_ref() else {
-        return Err("índice espacial no cargado — invocar spatial_index_load primero".into());
+    let Some(index) = guard.get(&slot) else {
+        return Err(format!(
+            "índice espacial \"{slot}\" no cargado — invocar spatial_index_load primero"
+        ));
     };
     let t0 = std::time::Instant::now();
     let mut ids = Vec::new();

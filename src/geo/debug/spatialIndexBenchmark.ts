@@ -7,7 +7,10 @@
 // en vez de resolver en el RBush local.
 //
 // No toca el índice global de la app: usa instancias standalone del
-// `SpatialIndex` JS y el estado nativo solo para benchmark.
+// `SpatialIndex` JS y el estado nativo solo para benchmark. El estado
+// nativo es multi-slot (`geo_bridge::SpatialIndexState`): este benchmark
+// usa el slot `"benchmark"` y jamás compite con el slot `"viewport"` que
+// la Fase 4.1 cableará al render real.
 //
 // Requiere runtime Tauri (invoca el índice nativo vía invoke).
 
@@ -22,6 +25,8 @@ import {
   spatialIndexClearInWorker,
   type SpatialIndexItem,
 } from '../../workers/geoWorkerClient';
+
+const BENCHMARK_SLOT = 'benchmark';
 
 export interface SpatialIndexBenchmarkResult {
   datasetSize: number;
@@ -94,7 +99,7 @@ export async function runSpatialIndexBenchmark(datasetSize: number): Promise<Spa
     items.push({ id, minX: e[0], minY: e[1], maxX: e[2], maxY: e[3] });
   }
   const t1 = performance.now();
-  const nativeLoaded = await spatialIndexLoadInWorker(items);
+  const nativeLoaded = await spatialIndexLoadInWorker(items, BENCHMARK_SLOT);
   const nativeLoadMs = performance.now() - t1;
 
   const rects = makeQueryRects(extent);
@@ -124,7 +129,7 @@ export async function runSpatialIndexBenchmark(datasetSize: number): Promise<Spa
       let nativeHits: string[] = [];
       for (let r = 0; r < QUERY_ROUNDS; r++) {
         const q0 = performance.now();
-        const result = await spatialIndexQueryInWorker(rect.minX, rect.minY, rect.maxX, rect.maxY);
+        const result = await spatialIndexQueryInWorker(rect.minX, rect.minY, rect.maxX, rect.maxY, BENCHMARK_SLOT);
         nativeTotalMs += performance.now() - q0;
         nativeSearchTotalMs += result.queryMs;
         nativeHits = result.ids.map((id) => String(id));
@@ -140,7 +145,7 @@ export async function runSpatialIndexBenchmark(datasetSize: number): Promise<Spa
       }
     }
   } finally {
-    await spatialIndexClearInWorker();
+    await spatialIndexClearInWorker(BENCHMARK_SLOT);
   }
 
   return {
