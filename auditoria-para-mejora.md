@@ -51,7 +51,7 @@ Misma numeración que el documento original, con el estado real de cada punto ag
 
 ### 2.1 — CRÍTICO: el undo/redo de calles serializa el proyecto ENTERO en cada edición
 
-**Estado: SIN RESOLVER.** `src/commands/core/drawSourceSnapshot.ts` sigue serializando `source.getFeatures()` completo a GeoJSON en cada `AddStreetCommand`/`AddRoundaboutCommand`, dos veces (antes y después). No hubo trabajo en la Fase 3 todavía — ver el desglose ampliado en §6, Fase 3.
+**Estado: ✅ RESUELTO (2-ago-2026, Fase 3.2).** `AddStreetCommand`/`AddRoundaboutCommand` ya no serializan el drawSource completo — `drawSourceSnapshot.ts` quedó deprecado y sin usos; el undo/redo de cada trazo usa el `StructuralDiff` (solo los manzanos/lotes afectados) que devuelve `recomputeManzanos()`. Detalle completo en §6, Fase 3. Queda pendiente de esta sección únicamente la medición de regresión (3.4) que lo confirme a escala.
 
 ### 2.2 — El motor de geometría corre en JS puro, interpretado, en el hilo del navegador
 
@@ -280,17 +280,28 @@ El A/B se validó en la app real con datos de producción: **72+ comparaciones e
 
 ---
 
-### Fase 3 — Undo/redo estructural — ❌ NO INICIADA
+### Fase 3 — Undo/redo estructural — 🟡 CASI COMPLETA (2-ago-2026): 3.0-3.3 ✅, falta 3.4
 
-Desglose ampliado (el documento original la trataba como bloque único de 2 semanas; se abre en sub-fases):
+**Estado real verificado leyendo el código (2-ago-2026):** esta fase NO estaba "no iniciada" como figuraba hasta hoy — las sub-fases 3.0 a 3.3 están **implementadas y en producción** (la infraestructura vive en `src/commands/`), pero el trabajo nunca se documentó y falta la 3.4 (medición). Detalle por sub-fase:
 
-- **3.0 — Prerrequisito:** no diseñar el diff estructural en el vacío — reusar exactamente el mismo cálculo de `changedExtent`/grupos de manzanos afectados que `recomputeManzanosImmediate` ya hace en `recomputeManzanos.ts` para saber qué tocó una calle nueva. Es la misma información que necesita el undo estructural para saber qué manzanos/lotes registrar como "antes/después", así que no debería calcularse dos veces.
-- **3.1 — Diseño del formato de diff** (2-3 días): decidir si se registra por comando `{ manzanosAfectados: [{id, geomAntes, geomDespues}], lotesCreados: [...], lotesEliminados: [...] }` o algo más granular. Debe cubrir tanto `AddStreetCommand`/`AddRoundaboutCommand` como cualquier comando futuro que hoy use snapshot completo.
-- **3.2 — Port de `AddStreetCommand`/`AddRoundaboutCommand`** (1 semana): reemplazar `snapshotDrawSource`/`restoreDrawSourceSnapshot` por el diff de 3.1. Es el comando más usado (cada trazo de calle) y el de mayor impacto medible.
-- **3.3 — Auditoría de otros call-sites** (2-3 días): confirmar que no queden otros comandos apoyándose en snapshot completo por comodidad (revisar `SubdivideCommand.ts`, `GenerateLotsCommand.ts` — estos ya trabajan por id individual, probablemente no necesiten cambios, pero hay que confirmarlo explícitamente, no asumirlo).
-- **3.4 — Medición de regresión** (2-3 días): correr el dataset sintético de 200k features, trazar una calle, confirmar que la asignación de memoria del comando ya no es proporcional al tamaño total del proyecto (criterio de éxito original, sin cambios).
+- **3.0 — Prerrequisito (reusar el cómputo de manzanos afectados)** — ✅ **HECHO:** `recomputeManzanos()` (`src/geo/recomputeManzanos.ts`) devuelve un `StructuralDiff` en lugar de un snapshot: un `StructuralDiffRecorder` se alimenta dentro de `recomputeManzanosImmediate` (~20 call-sites de `recordAdd`/`recordRemove`/`recordModifyBefore`/`recordModifyAfter`), exactamente el mismo cómputo de grupos/extent afectados que la auditoría pedía reutilizar.
+- **3.1 — Formato de diff** — ✅ **HECHO:** `src/commands/core/structuralDiff.ts` implementa el formato completo: `StructuralDiff { added, removed, modified }`, `StructuralDiffRecorder` (neto por id: add→remove y remove→re-add en la misma operación se anulan; modify repetido conserva el "antes" original), `composeStructuralDiffs` (permite coalescing correcto de N trazos de una sesión de dibujo), `applyStructuralDiffForward`/`revertStructuralDiff` (redo/undo) y `approxStructuralDiffBytes` (para el pruning del stack).
+- **3.2 — Port de `AddStreetCommand`/`AddRoundaboutCommand`** — ✅ **HECHO:** ambos comandos (`src/commands/roads/`) ya no serializan el drawSource completo; su undo/redo usa el diff que devuelve `recomputeManzanos()`, con `coalesceInto` por sesión de trazo (`streetTracingSessionStore.currentSessionId` garantiza que trazos consecutivos NO se fusionen). `drawSourceSnapshot.ts` quedó **deprecado y sin usos** (verificado: ningún call-site activo de `snapshotDrawSource`/`restoreDrawSourceSnapshot` en el repo).
+- **3.3 — Auditoría de call-sites** — ✅ **HECHO (auditado el 2-ago-2026, los 17 comandos):** ningún comando activo se apoya en snapshot completo:
+  - *Proporcionales al cambio:* `SubdivideCommand` (snapshot solo del target + ids de lotes nuevos), `GenerateLotsCommand`/`RecomputeManzanoLotsCommand` (`removedLotSnapshots` por manzano tocado), `ModifyGeometryCommand` (before/after por feature), `DeleteFeaturesCommand` (features borrados, respetando capas bloqueadas), `RemoveLayerCommand` (features de la capa o reasignación por id), `DuplicateLayerCommand` (ids de los clones), `MoveFeaturesToLayerCommand`, `UpdateLayerCommand`, `ReorderLayersCommand`, `AddLayerCommand`, `AddFeatureCommand`.
+  - *O(n) intencional y documentado:* `ClearFeaturesCommand` — su "cambio" ES el proyecto entero (semántica "Nuevo proyecto"), con `approxMemoryBytes()` real para que el pruning lo vea.
+  - *Bonus 3.3:* los comandos pesados implementan `approxMemoryBytes()` real (antes el default de 256 bytes ocultaba el costo al `pruneStack` por bytes — `MAX_STACK_BYTES = 24 MB`), y `CommandStack.ts` (coalescing de 250 ms, `MAX_STACK = 100`) quedó completo y consumido desde StatusBar (`Undo2`/`Redo2`) y `Ctrl+Z`/`Ctrl+Shift+Z`.
 
-**Total estimado:** 2-2.5 semanas, similar al original, con el trabajo mejor secuenciado.
+- **3.4 — Medición de regresión** — ❌ **PENDIENTE (única sub-fase que falta):** no existe el benchmark que confirme el criterio de éxito original ("trazar una calle en el dataset de 200k features ya no retiene memoria proporcional al tamaño total del proyecto"). El mecanismo está en producción; falta medirlo.
+
+**Deudas nuevas encontradas en esta revisión (2-ago-2026):**
+
+1. **Telemetría muerta:** `recordUndoSnapshot` (`src/store/debug/perfTelemetry.ts`) y la sección "Snapshot de undo (GeoJSON)" del `DebugPanel.tsx` siguen vivos pero solo los llama `drawSourceSnapshot.ts` (deprecado, sin usos). Es exactamente el anti-patrón de "código que nadie usa" que la auditoría ya cazó en el motor JS. → Actualizar a bytes del diff estructural (`approxStructuralDiffBytes`) o eliminar.
+2. **Cero tests:** `composeStructuralDiffs` (lógica delicada: neto add→remove, modify→remove, composición de 3+ trazos) y el `CommandStack` (coalescing, pruning por bytes) no tienen cobertura alguna — no existe ni un `*.test.ts` en `src/commands/`. Son lógica pura, ideales para unit tests.
+3. **`redo()` que re-ejecuta el algoritmo:** `SubdivideCommand.redo()` vuelve a llamar al worker (`subdivideInWorker`), y `RemoveLayerCommand`/`DuplicateLayerCommand` re-ejecutan `execute()`. Correcto por determinismo, pero (a) paga el costo del worker en el redo, y (b) si el algoritmo deja de ser determinista o el estado mutó, el redo puede divergir del resultado original. Los diffs guardados alcanzan para redo sin re-ejecutar (patrón `applyStructuralDiffForward`).
+4. **`CommandStack.undo()/redo()` no transaccionales:** si `command.undo()` lanza, el `catch` loguea pero `pointer` avanza igual — el stack queda con un comando deshecho a medias. Robustez: no avanzar pointer si el comando falló (o marcarlo corrupto y abortar).
+
+**Total estimado restante: ~1 semana** (3.4: 2-3 días; deuda 1: 0.5 día; deuda 2: 1-1.5 días; deuda 3: 0.5-1 día; deuda 4 opcional), en lugar de las 2-2.5 semanas que figuraban por estar la fase mal clasificada.
 
 ---
 
@@ -341,12 +352,12 @@ Desglose ampliado (el documento original la trataba como bloque único de 2 sema
 | 2.5 — Cableado Tauri               | ✅ Completa (los 7 comandos registrados y consumidos; motor nativo como vía única desde 2.7) | —                           |
 | 2.6 — Fuzzing/paridad              | ✅ Completa (fuzz TS 236 casos + fuzz Rust con timeout, 0 cuelgues) | —                                              |
 | 2.7 — Limpieza JS                  | ✅ **Completa (1-ago-2026):** A/B validado en la app real (72+ comparaciones en sombra, 0 mismatches, 0 fallbacks; batch por A/B manual ON/OFF con resultados idénticos) y motor JS retirado — jsts/polygon-clipping fuera de package.json, worker/algoritmos/tests eliminados, motor nativo como vía única | — (regresión post-retiro verde) |
-| 3 — Undo/redo estructural          | ❌ No iniciada                                   | 2-2.5 semanas                                      |
+| 3 — Undo/redo estructural          | 🟡 3.0-3.3 completas (2-ago-2026, diffs estructurales en producción); falta 3.4 (medición) + deudas menores | ~1 semana |
 | 4 — Índice espacial + render       | ❌ No iniciada (bug 5.1 pendiente)               | 3-3.5 semanas                                      |
 | 5 — CRS afín                       | ❌ No iniciada                                   | 1.5-2 semanas                                      |
 | 6 — Estrés                         | ❌ No iniciada                                   | 2.5-3 semanas                                      |
 
-**Total restante estimado: ~9-11 semanas** desde hoy, asumiendo 1-2 ingenieros senior dedicados — **menor que las 14-16 semanas que proyectaba la revisión anterior**, porque la Fase 2 quedó completa (2.2-2.7, incluido el retiro del JS). El trabajo que sigue es, en orden de impacto: Fase 3 (undo estructural, el otro cuello de botella crítico de §2.1) y Fase 4 (índice + render a escala, que además necesita el bug de §5.1 resuelto).
+**Total restante estimado: ~8-10 semanas** desde hoy, asumiendo 1-2 ingenieros senior dedicados — **menor que las 9-11 semanas que figuraban ayer**, porque la Fase 3 resultó estar casi completa (3.0-3.3 en producción; resta ~1 semana con 3.4 y deudas). El trabajo que sigue es, en orden de impacto: cerrar Fase 3, después Fase 4 (índice + render a escala, que además necesita el bug de §5.1 resuelto) y Fase 5.
 
 ---
 
@@ -356,7 +367,7 @@ _(Preservados del original, con nota de estado agregada a cada uno.)_
 
 **7.1 — Linealización afín de la proyección UTM** — ❌ pendiente (Fase 5).
 
-**7.2 — WKB, no GeoJSON, en cualquier límite de serialización** — ✅ parcialmente aplicado: la persistencia (Fase 1) ya usa WKB. **Pendiente:** el snapshot de undo (Fase 3) y el IPC de geometría (hoy JSON vía `serde_json` por decisión explícita de 2.0, "optimizar después"). El cierre de la Fase 2 (2.7 incluida) no cambió la decisión de IPC en JSON — sigue siendo deuda de performance futura, medible recién cuando exista el benchmark de roundtrip del IPC.
+**7.2 — WKB, no GeoJSON, en cualquier límite de serialización** — ✅ parcialmente aplicado: la persistencia (Fase 1) ya usa WKB. **Actualizado el 2-ago-2026 (Fase 3):** el snapshot de undo dejó de ser un límite de serialización — los diffs estructurales viven como geometrías OL en memoria (sin GeoJSON), así que WKB ya no aplica ahí; queda como pendiente solo el IPC de geometría (hoy JSON vía `serde_json` por decisión explícita de 2.0, "optimizar después"), deuda de performance medible recién cuando exista el benchmark de roundtrip del IPC.
 
 **7.3 — Transferables, no clonado estructurado, en `postMessage`** — ✅ **ya no aplica (1-ago-2026, cierre de Fase 2):** el Web Worker JS fue retirado en la Fase 2.7 y el IPC es `invoke()` de Tauri; la recomendación queda como nota histórica y su equivalente futuro es el ítem 7.2 (formato binario en el IPC).
 
@@ -392,7 +403,7 @@ _(Preservado del original, con un ítem nuevo al final.)_
 | Métrica                                     | Estado hoy (1-ago-2026)                                                                 | Objetivo post-migración                                                      |
 | ------------------------------------------- | --------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
 | Carga de proyecto urbano completo           | ✅ Resuelto en Fase 1, confirmado en código                                              | < 500ms                                                                      |
-| Trazar 1 calle en proyecto de 200k features | ❌ Sin cambios — sigue siendo O(n) por snapshot GeoJSON completo (Fase 3 sin iniciar)     | O(cambios reales), independiente de n                                        |
+| Trazar 1 calle en proyecto de 200k features | ✅ Migrado a diff estructural (2-ago-2026): el undo de un trazo retiene solo los manzanos/lotes afectados (`StructuralDiff`), no un snapshot GeoJSON del proyecto completo; la medición de regresión (3.4) que lo confirma con el dataset real sigue pendiente | O(cambios reales), independiente de n |
 | Unión de red vial, 5.000 segmentos          | ✅ Medible y validada: A/B en sombra (72+ comparaciones, 0 mismatches) y batch por A/B manual ON/OFF idéntico; rendimiento nativo medido en la app real (subdivideManzanoBatch 50 features: 14ms vs 108ms; computeRoadNetworkNet: 12ms vs 264ms) | < 100ms |
 | FPS con 200k features en viewport           | ❌ Sin cambios — LOD tiers degradan desde 350-900 features                               | 60fps sostenidos                                                             |
 | Memoria con dataset de 1M features          | ⏸ Sin medir (heap de JS sí se mide; memoria nativa del proceso, no)                      | < 2GB confirmado con profiler nativo                                         |
@@ -402,4 +413,4 @@ _(Preservado del original, con un ítem nuevo al final.)_
 
 ---
 
-Esta sigue siendo una hoja de ruta, no una promesa — la diferencia con la versión anterior de este documento es que ahora cada casilla de "completado" está respaldada por una lectura real del código y por tests verdes, no por la expectativa de que el plan se ejecutó tal como se escribió. El cierre de la Fase 2 (1-ago-2026) deja la hoja de ruta en su punto más simple desde que existe: **las tres piernas de la auditoría — portar el algoritmo (2.0-2.4), conectarlo al producto (2.5) y probarlo en producción y borrar lo viejo (2.6 fuzzing + 2.7 limpieza) — están hechas y verificadas.** Lo que sigue, en orden de impacto, es Fase 3 (undo estructural, el otro cuello de botella de §2.1), Fase 4 (índice + render a escala, que además necesita el bug de §5.1 resuelto — la única deuda que arrastra sin acción desde la primera revisión) y Fase 5 (CRS afín). El cronograma restante (~9-11 semanas) está desglosado en la tabla de tiempos.
+Esta sigue siendo una hoja de ruta, no una promesa — la diferencia con la versión anterior de este documento es que ahora cada casilla de "completado" está respaldada por una lectura real del código y por tests verdes, no por la expectativa de que el plan se ejecutó tal como se escribió. El cierre de la Fase 2 (1-ago-2026) y la verificación de la Fase 3 (2-ago-2026) dejan la hoja de ruta en su punto más simple desde que existe: **las tres piernas de la auditoría — portar el algoritmo (2.0-2.4), conectarlo al producto (2.5) y probarlo en producción y borrar lo viejo (2.6 fuzzing + 2.7 limpieza) — están hechas, y el undo/redo estructural que era el otro cuello de botella crítico de §2.1 ya está en producción (3.0-3.3), con diffs proporcionales al cambio.** Lo que sigue, en orden de impacto: cerrar la Fase 3 con su medición de regresión (3.4) y deudas menores (~1 semana), después Fase 4 (índice + render a escala, que además necesita el bug de §5.1 resuelto — la única deuda que arrastra sin acción desde la primera revisión) y Fase 5 (CRS afín). El cronograma restante está desglosado en la tabla de tiempos.

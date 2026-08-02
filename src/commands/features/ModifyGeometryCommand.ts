@@ -3,6 +3,7 @@ import type Geometry from 'ol/geom/Geometry.js';
 import type { Geometry as OlGeometry } from 'ol/geom';
 import { Command, type CommandContext } from '../core/Command';
 import { updateFeatureMetrics } from '../../geo/metrics';
+import { estimateGeometryBytes } from '../core/memoryEstimate';
 
 /** Captura el estado "antes" de un cambio de geometría para deshacer. */
 function captureGeom(f: Feature<Geometry>): unknown {
@@ -95,5 +96,20 @@ export class ModifyGeometryCommand extends Command {
       previous.after.set(id, geom);
     }
     return true;
+  }
+
+  // Fase 3.3 (auditoria-para-mejora.md) — es el comando de undo más
+  // frecuente de todos (dispara en cada modifyend/translateend de
+  // EditMode.ts), y guarda un clon COMPLETO de geometría por feature
+  // tocado, dos veces (before + after). Sin este override caía en el
+  // default de 256 bytes de Command.approxMemoryBytes() sin importar
+  // cuántos vértices o cuántos features multi-selección tuviera el
+  // clon real — es decir, CommandStack.pruneStack() (MAX_STACK_BYTES)
+  // nunca vería la memoria real que este comando retiene.
+  override approxMemoryBytes(): number {
+    let total = 0;
+    for (const g of this.before.values()) total += estimateGeometryBytes(g as Geometry | null);
+    for (const g of this.after.values()) total += estimateGeometryBytes(g as Geometry | null);
+    return total || 256;
   }
 }
