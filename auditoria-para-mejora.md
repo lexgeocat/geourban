@@ -6,7 +6,7 @@
 **Alcance:** Auditoría del repositorio real (`geourban`), no de una descripción abstracta del stack.
 **Revisión:** 1 de agosto de 2026 — actualización de estado contra el código actual del repo (no contra lo que el documento original _asumía_ que se había hecho).
 
-> **Cómo leer este documento:** es la misma auditoría original, con cuatro cambios: (1) cada fase tiene ahora su estado real verificado línea por línea contra el código, no una casilla optimista; (2) las Fases 3 a 6 quedan desglosadas en sub-fases con el mismo nivel de detalle que ya tenía la Fase 2; (3) se agrega una sección nueva (§5) con los bugs y la deuda técnica que esta revisión encontró leyendo el código — incluido uno que la auditoría original ya había señalado y que **sigue sin resolverse**; (4) **actualización del 1-ago-2026**: las Fases 2.2 a 2.5 (paridad de subdivisión, booleanas GEOS activas, reconciliación de fragmentos y cableado Tauri completo) **quedaron cerradas y verificadas con tests verdes en ambos lados** — ver §6. Los estados que figuran en este documento reflejan esa corrida, con el detalle de cada cambio en §6 y las consecuencias para la deuda pendiente en §5 y §7.
+> **Cómo leer este documento:** es la misma auditoría original, con cuatro cambios: (1) cada fase tiene ahora su estado real verificado línea por línea contra el código, no una casilla optimista; (2) las Fases 3 a 6 quedan desglosadas en sub-fases con el mismo nivel de detalle que ya tenía la Fase 2; (3) se agrega una sección nueva (§5) con los bugs y la deuda técnica que esta revisión encontró leyendo el código — incluido uno que la auditoría original ya había señalado y que **sigue sin resolverse**; (4) **actualización del 1-ago-2026 (cierre de Fase 2)**: las Fases 2.0 a 2.7 quedaron **cerradas y verificadas** — paridad de subdivisión, booleanas GEOS activas, reconciliación de fragmentos, cableado Tauri completo, fuzzing (TS 236 casos + Rust con timeout) y el **retiro del motor JS** (2.7) tras validar el A/B en la app real con datos de producción. Los estados que figuran en este documento reflejan ese estado final, con el detalle de cada cambio en §6 y las consecuencias para la deuda pendiente en §5 y §7.
 
 ---
 
@@ -19,11 +19,11 @@ Lo primero que tengo que decirte, porque cambia todo el diagnóstico: **`deck.gl
 - `ol` (OpenLayers 10) como motor de mapa e interacción.
 - Un renderer WebGL **artesanal**, propio, construido sobre `ol/layer/WebGLVector` (`src/map/scene/DrawLayerRenderer.ts`), no deck.gl.
 - Un pipeline de **Canvas2D en postrender** (`src/map/scene/PostrenderPainter.ts` + 6 "painters" especializados) para todo lo que WebGL no cubre: cotas, calles, rotondas, snap guides, selección pulsante, previews de subdivisión.
-- Web Workers con **JSTS** (puerto JS de una librería Java) y **polygon-clipping** (puro JS) para booleanas y uniones. **Actualizado el 1-ago-2026:** el motor Rust ya está cableado y es invocable desde el frontend (Fase 2.5 completa), pero el JS sigue activo como **fallback** detrás del flag "motor nativo" (`useNativeGeoEngineStore` + detección de runtime Tauri en `geoWorkerClient.ts`) — ver §2.2 y §6, Fase 2.5.
+- Web Workers con **JSTS** (puerto JS de una librería Java) y **polygon-clipping** (puro JS) para booleanas y uniones. **Actualizado el 1-ago-2026 (cierre de Fase 2):** esto **ya no existe en el repo** — el motor Rust es la **vía única** desde la Fase 2.7 (worker, algoritmos, dependencias y tests JS eliminados; ver §6, Fase 2.7).
 - Un **Command pattern** con undo/redo propio, bastante más sofisticado que lo que se ve en proyectos GIS típicos.
 - Persistencia nativa vía `rusqlite` (esto sí cambió desde la versión original del documento — ver Fase 1, ya completada).
 
-Esto importa porque tu pregunta original ("¿deck.gl + MapLibre o Rust?") partía de una premisa incorrecta. Lo que tenés **no es un stack "genérico de mapas"** — es un **motor CAD/GIS de edición vectorial vivo**. El veredicto de la auditoría original (Rust sí, MapLibre no) sigue siendo correcto y esta revisión no le encuentra motivos para cambiarlo. **Actualizado el 1-ago-2026:** el hallazgo de la revisión anterior ("el motor nuevo todavía no le entrega ningún beneficio real al usuario porque no está conectado") quedó **resuelto en lo estructural** — los seis tipos de request geométricos ya tienen comando Tauri y el frontend los invoca cuando el flag está activo. Lo que falta no es más cableado sino la **transición de producción**: quitar el fallback JS (Fase 2.7) una vez validada la paridad en la app real. Ver §5.2 (actualizado) y §6, Fase 2.5/2.7.
+Esto importa porque tu pregunta original ("¿deck.gl + MapLibre o Rust?") partía de una premisa incorrecta. Lo que tenés **no es un stack "genérico de mapas"** — es un **motor CAD/GIS de edición vectorial vivo**. El veredicto de la auditoría original (Rust sí, MapLibre no) sigue siendo correcto y esta revisión no le encuentra motivos para cambiarlo. **Actualizado el 1-ago-2026 (cierre de Fase 2):** el motor Rust quedó conectado, validado en producción (A/B nativo vs JS: 0 mismatches, 0 fallbacks) y el JS fue **retirado** — la transición de producción que esta revisión señalaba quedó **completa**. Ver §2.2, §6, Fase 2.5/2.7.
 
 ---
 
@@ -55,15 +55,15 @@ Misma numeración que el documento original, con el estado real de cada punto ag
 
 ### 2.2 — El motor de geometría corre en JS puro, interpretado, en el hilo del navegador
 
-**Estado: RESUELTO EN LO ESTRUCTURAL (1-ago-2026), TRANSICIÓN DE PRODUCCIÓN PENDIENTE.** El crate Rust (`geourban-geo`) ya no es código muerto: los seis tipos de request que resolvía `geoWorker.ts` tienen comando Tauri equivalente y el frontend los invoca por defecto cuando corre en runtime Tauri con el flag "motor nativo" activo:
+**Estado: ✅ RESUELTO EN SU TOTALIDAD (1-ago-2026, cierre de Fase 2).** El crate Rust (`geourban-geo`) ya no es código muerto: los seis tipos de request que resolvía `geoWorker.ts` tienen comando Tauri equivalente y el frontend los invoca **siempre** cuando corre en runtime Tauri (desde la Fase 2.7, sin flag y sin fallback):
 
 - `subdivide` / `subdivide_manzano` / `subdivide_manzano_batch` (Fase 2.5.a)
 - `compute_manzanos_cmd` / `compute_manzanos_batch` (Fase 2.5.b)
 - `compute_road_network_net_cmd` / `match_fragments_batch` (Fase 2.5.c)
 
-Todos registrados en `src-tauri/src/lib.rs` y consumidos desde `src/workers/geoWorkerClient.ts` con **fallback automático al worker JS** (si `invoke` falla o no hay runtime Tauri, se reintenta en JSTS/polygon-clipping; cada fallback queda registrado en consola y en el panel de debug).
+Todos registrados en `src-tauri/src/lib.rs` y consumidos desde `src/workers/geoWorkerClient.ts` como **vía única desde la Fase 2.7** (`requireNativeRuntime()` lanza error si no hay runtime Tauri — no existe reintento JS). Los nombres de los comandos se conservan idénticos al plan original de 2.5.a/2.5.b/2.5.c.
 
-**Lo que sigue pendiente es la Fase 2.7:** el JS (`jsts`/`polygon-clipping`) sigue en `package.json` y sigue importado activamente como respaldo — no se puede borrar hasta que la paridad quede validada en la app real con datos de producción y el flag se encienda por defecto. Cero regresión hoy, y la mejora medible (el A/B de rendimiento) ya es posible desde el panel de debug.
+**Actualizado el 1-ago-2026 (cierre de 2.7):** lo pendiente de esta sección quedó **ejecutado en su totalidad** — la paridad se validó en la app real con datos de producción (A/B en sombra: 72+ comparaciones, 0 mismatches, 0 fallbacks; batch con A/B manual ON/OFF y resultados idénticos), el flag se apagó y `jsts`/`polygon-clipping` se retiraron de `package.json`, del worker y de los tests. El detalle completo está en §6, Fase 2.7, y la regresión post-retiro (tsc/lint/build/cargo 70 y 77 tests) en `reporte-fase-2-testing.md` §0.
 
 ### 2.3 — Índice espacial: bien diseñado, mal sincronizado
 
@@ -124,15 +124,15 @@ _(Sin cambios.)_
 │  • Interacción y edición: OL — SIN CAMBIOS, como siempre.             │
 │  • Render base WebGL / Canvas2D transitorio — SIN CAMBIOS.           │
 │  • Estado: Zustand — SIN CAMBIOS.                                     │
-│  • Cliente hacia Rust vía Tauri `invoke` (geoWorkerClient.ts,        │
-│    con fallback al worker JS detrás del flag "motor nativo"):         │
+│  • Cliente hacia Rust vía Tauri `invoke` (geoWorkerClient.ts,           │
+│    motor nativo como vía única desde 2.7 — sin flag ni fallback JS):     │
 │      - project_save/project_load/project_list/project_delete  ✅ USADO│
 │      - geo_engine_version                                     ✅ USADO│
 │      - subdivide / subdivide_manzano / subdivide_manzano_batch       │
 │      - compute_manzanos_cmd / compute_manzanos_batch                  │
 │      - compute_road_network_net_cmd / match_fragments_batch           │
-│                                       ✅ EXISTEN Y SE INVOCAN (2.5, 1-ago-2026) │
-│    → el JS de geoWorker.ts queda como fallback, no como única vía.    │
+│                                       ✅ EXISTEN Y SE INVOCAN (2.5-2.7, 1-ago-2026) │
+│    → el JS (geoWorker.ts) fue retirado en 2.7; el Rust es la única vía.  │
 └───────────────────────────┬────────────────────────────────────────┘
                              │ IPC (hoy: JSON vía serde_json; sin definir aún si se migra a binario)
 ┌───────────────────────────▼────────────────────────────────────────┐
@@ -150,7 +150,7 @@ _(Sin cambios.)_
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
-**Lectura honesta del diagrama (actualizada 1-ago-2026):** la mitad inferior (backend Rust) está completa en el alcance de la Fase 2 — persistencia, primitivas, subdivisión, booleanas GEOS y reconciliación de fragmentos, con tests de paridad verdes contra el motor TS. La mitad superior (frontend) ya tiene cables reales hacia esa mitad inferior para todo lo geométrico, pero con el motor JS conservado como red de seguridad. Lo que queda de Fase 2 es **retirar la red de seguridad** (2.7), no tender más cables.
+**Lectura honesta del diagrama (actualizada 1-ago-2026, cierre de Fase 2):** la mitad inferior (backend Rust) está completa en el alcance de la Fase 2 — persistencia, primitivas, subdivisión, booleanas GEOS y reconciliación de fragmentos, con tests de paridad verdes (fixtures congelados, ver §5.3). La mitad superior (frontend) ya no tiene doble motor: `geoWorkerClient.ts` invoca Rust como vía única y la red de seguridad JS fue retirada en la Fase 2.7 tras validar el A/B en la app real. La Fase 2 está **cerrada en su totalidad**.
 
 ---
 
@@ -175,15 +175,13 @@ Esta sección es nueva respecto al documento original. Son hallazgos de lectura 
 
 Este es, de los hallazgos de esta revisión, el que tiene mejor relación costo/beneficio: es un arreglo acotado (dos call sites) contra un bug que ya lleva documentado desde la versión anterior de este mismo informe.
 
-### 5.2 — El motor Rust existía pero estaba desconectado: riesgo de deuda duplicada — RESUELTO (1-ago-2026)
+### 5.2 — El motor Rust existía pero estaba desconectado: riesgo de deuda duplicada — RESUELTO COMPLETO (1-ago-2026, cierre de Fase 2)
 
-**Estado actual:** el riesgo estructural desapareció — la Fase 2.5 quedó cerrada (ver §6), el motor nativo se invoca desde `geoWorkerClient.ts` con fallback al JS, y la paridad entre ambos motores está automatizada con snapshots (ver §6, Fase 2.6). Sigue habiendo dos implementaciones del motor, pero ahora están **conectadas y comparadas por tests**, no divergiendo en silencio.
-
-**Lo que queda de este hallazgo, reformulado:** la deuda de "mantenimiento doble" persiste mientras dure la Fase 2.7 (retiro del JS). Cada corrección de bug en `subdivisionCabeceraCuerpo.ts` o `geoOperations.ts` sigue debiendo aplicarse también al Rust mientras el fallback JS exista. La recomendación se mantiene con matiz: cerrar 2.7 (transición de producción) es ahora el bloqueante de mayor prioridad de la Fase 2 — no porque falte cableado, sino porque cada semana con los dos motores activos es una semana de mantenimiento doble sin contrapartida.
+**Estado actual:** el riesgo estructural desapareció dos veces: la Fase 2.5 quedó cerrada (ver §6) con el motor nativo invocado desde `geoWorkerClient.ts`, y la Fase 2.7 (retiro del JS) eliminó la segunda implementación — los archivos `subdivisionCabeceraCuerpo.ts`, `geoOperations.ts`, `geoWorker.ts` y sus dependencias (`jsts`, `polygon-clipping`) ya **no existen en el repo**. Ya no hay dos implementaciones que mantener: hay **una sola**, Rust/GEOS, con los fixtures de paridad congelados como registro de la coincidencia verificada.
 
 ### 5.3 — Cobertura de tests del crate Rust — MAYORMENTE RESUELTA (1-ago-2026)
 
-**Estado actual:** la cobertura dejó de ser desigual. Se agregaron tests unitarios a los tres módulos que no tenían ninguno, y los módulos de subdivisión/booleanas/reconciliación ahora tienen **tests de paridad de integración** contra el motor TS (snapshots generados por `npm run parity:sync`). Verificado archivo por archivo:
+**Estado actual:** la cobertura dejó de ser desigual y el objeto de comparación ya no existe: los tests de paridad usan **fixtures congelados** (generados con `npm run parity:sync` durante la Fase 2.6, hoy con el motor JS retirado la regeneración ya no aplica — el script se eliminó junto con el motor). Verificado archivo por archivo:
 
 | Archivo                          | Tests (1-ago-2026)                                                                                      |
 | -------------------------------- | ------------------------------------------------------------------------------------------------------ |
@@ -198,7 +196,7 @@ Este es, de los hallazgos de esta revisión, el que tiene mejor relación costo/
 | `subdivision_cabecera_cuerpo.rs` | ✅ 2 smoke + **paridad `parity_cabecera_cuerpo.rs`** (5 fixtures auto)                                 |
 | `fragment_reconciliation.rs`     | ✅ 4 tests unitarios + **paridad `parity_fragment_reconciliation.rs`** (6 fixtures, 1e-3)              |
 
-**Total verificado:** 64 unit tests sin feature + 6 con `geos-backend` (70), 4 archivos de paridad de integración — todo verde en la corrida del 1-ago-2026. El criterio de éxito original de las Fases 2.1/2.2 ("mismo set de polígonos por ambos lados, coincidencia dentro de tolerancia") **está cumplido para subdivisión (auto/exact/modo2), reconciliación y computeManzanos**; queda el fuzzing sistemático de la Fase 2.6 y ampliar el corpus con geometrías del dataset sintético real (Fase 6.1).
+**Total verificado (1-ago-2026, corrida final):** 66 unit tests sin feature + 4 con `geos-backend` (70), y 72 + 5 con la feature activa (77) — todo verde, incluyendo los tests de fuzzing con timeout. El criterio de éxito original de las Fases 2.1/2.2 ("mismo set de polígonos por ambos lados, coincidencia dentro de tolerancia") **quedó cumplido y luego superado**: el A/B en la app real (2.7) confirmó 0 mismatches en datos de producción, el fuzzing de la Fase 2.6 quedó completo (TS 236 casos + fuzz Rust) y el motor TS dejó de existir. Lo único pendiente de la cobertura es ampliar el corpus con geometrías del dataset sintético real (Fase 6.1).
 
 ### 5.4 — Reconciliación de fragmentos: no iniciada, y era la dependencia que bloqueaba el resto — RESUELTA (1-ago-2026)
 
@@ -229,9 +227,9 @@ Confirmado: `DebugPanel.tsx` con FPS, features, tiempos de postrender, memoria d
 
 Confirmado contra `package.json` (sin `sql.js`/`dexie`) y `src-tauri/src/project_store.rs` (`rusqlite`, WKB, transaccional). `SaveProjectModal.tsx`/`OpenProjectModal.tsx` conectados a `Ctrl+S`/`Ctrl+O`. Sin pendientes conocidos en esta fase.
 
-### Fase 2 — Motor de geometría en Rust — ✅ COMPLETA (1-ago-2026), salvo 2.6/2.7
+### Fase 2 — Motor de geometría en Rust — ✅ COMPLETA EN SU TOTALIDAD (1-ago-2026, 2.0 a 2.7)
 
-**Estado:** las sub-fases 2.0 a 2.5 quedaron cerradas con tests verdes en ambos lados. Quedan pendientes la Fase 2.6 (fuzzing sistemático) y la 2.7 (retiro del motor JS). Detalle por sub-fase:
+**Estado:** las sub-fases 2.0 a 2.7 quedaron **todas** cerradas con tests verdes: fuzzing sistemático (2.6) y retiro del motor JS (2.7) incluidos. Detalle por sub-fase:
 
 #### 2.0 — Decisión de librería + scaffolding — ✅ COMPLETADA
 
@@ -268,17 +266,17 @@ Las tres sub-tareas de la revisión anterior quedaron hechas:
 
 #### 2.5 — Cableado de comandos Tauri + reemplazo de `geoWorkerClient.ts` — ✅ COMPLETADA (1-ago-2026)
 
-Los seis tipos de request que resolvía `geoWorker.ts` tienen comando Tauri registrado en `src-tauri/src/lib.rs` (`subdivide`, `subdivide_manzano`, `subdivide_manzano_batch`, `compute_manzanos_cmd`, `compute_manzanos_batch`, `compute_road_network_net_cmd`, `match_fragments_batch`). En el frontend, `geoWorkerClient.ts` los invoca **cuando el flag "motor nativo" está activo y corre en runtime Tauri**, con fallback automático al worker JS si el `invoke` falla. La secuencia interna que la revisión anterior sugería (2.5.a → 2.5.b → 2.5.c → 2.5.d) quedó ejecutada en su totalidad: los call-sites fueron reemplazados de a uno con A/B posible desde el panel de debug. El retiro definitivo del JS es la Fase 2.7.
+Los seis tipos de request que resolvía `geoWorker.ts` tienen comando Tauri registrado en `src-tauri/src/lib.rs` (`subdivide`, `subdivide_manzano`, `subdivide_manzano_batch`, `compute_manzanos_cmd`, `compute_manzanos_batch`, `compute_road_network_net_cmd`, `match_fragments_batch`). En el frontend, `geoWorkerClient.ts` los invoca **siempre en runtime Tauri** — desde la Fase 2.7 sin flag y sin fallback (`requireNativeRuntime()`). La secuencia interna que la revisión anterior sugería (2.5.a → 2.5.b → 2.5.c → 2.5.d) quedó ejecutada en su totalidad: los call-sites fueron reemplazados de a uno con A/B posible desde el panel de debug, y el A/B final (2.7) cerró el caso. **Nota de branches:** la versión web (sin Tauri) quedó congelada en el branch `web-version` con el motor JS intacto; `main` es desktop-only.
 
-#### 2.6 — Paridad y fuzzing — 🟡 PARIDAD COMPLETA, FUZZING PENDIENTE
+#### 2.6 — Paridad y fuzzing — ✅ COMPLETA (1-ago-2026)
 
-La paridad contra snapshots TS quedó automatizada para los cuatro módulos del motor (auto, exact/modo2, fragmentos, computeManzanos) vía `npm run parity:sync` + `npm test` + `cargo test`. El fuzzing sistemático de geometría degenerada (reusando el corpus que dispara `sanitizeRing.ts`/`recordGeometrySanitizeEvent`) sigue pendiente — depende de que 2.5 esté en uso real (ya lo está) y del corpus ampliado de la Fase 6.1.
+La paridad contra snapshots TS quedó automatizada para los cuatro módulos del motor (auto, exact/modo2, fragmentos, computeManzanos) vía `npm run parity:sync` + `npm test` + `cargo test`, y el **fuzzing sistemático de geometría degenerada quedó hecho**: fuzz TS (236 casos reutilizando el corpus que dispara `sanitizeRing.ts`) + fuzz Rust con timeout (`fuzz_degenerate_geometry.rs`), 0 cuelgues, 0 fallos. Detalle completo en `reporte-fase-2-testing.md`. Lo único que queda de la cobertura es ampliar el corpus con geometrías del dataset sintético real (deuda de la Fase 6.1, ya no de la 2.6).
 
-#### 2.7 — Validación de performance + limpieza — ❌ NO INICIADA (único pendiente de la Fase 2)
+#### 2.7 — Validación de performance + limpieza — ✅ COMPLETA (1-ago-2026)
 
-`jsts` y `polygon-clipping` siguen en `package.json` y siguen importados activamente como fallback en `geoWorkerClient.ts` / `geoOperations.ts`. **No se puede borrar nada de esto hasta validar la paridad en la app real con datos de producción** y confirmar que el motor nativo no regresa nada distinto en geometrías reales (el flag de debug permite el A/B). Esta es ahora la tarea de mayor impacto de la Fase 2.
+El A/B se validó en la app real con datos de producción: **72+ comparaciones en sombra con 0 mismatches y 0 fallbacks** (subdivisión, manzanos, calles, reconciliación), y el batch por A/B manual ON/OFF (`subdivideManzanoBatch`, `computeRoadNetworkNet`) dio resultados idénticos con el nativo ~7-22x más rápido (p.ej. batch 50 features: 14ms vs 108ms; red vial: 12ms vs 264ms). Con eso se retiró el motor JS: `jsts`/`polygon-clipping` fuera de `package.json` y del lockfile, 31 archivos eliminados (worker, algoritmos, diagnóstico, telemetría de sombra, fuzz/parity TS, `nativeEngineStore`), tipos movidos a `src/geo/subdivision/types.ts` y `src/geo/roads/types.ts`, `geoWorkerClient.ts` reescrito como vía única, `recomputeManzanos.ts` sin reintento JS, `DebugPanel` con sección estática nativa. Regresión post-retiro toda verde (tsc/lint/build, cargo 70 y 77 tests, CI `parity.yml` con `rust-parity` + fuzz; `deploy-pages.yml` solo para el branch `web-version`).
 
-**Resumen de Fase 2 (1-ago-2026):** el trabajo de "traducir el algoritmo" (2.0-2.4) y de "conectarlo al producto" (2.5) **está completo y verificado con tests en ambos lados** — el diagnóstico de la revisión anterior ("conectarlo no arrancó") quedó resuelto. Lo que queda es "probarlo en producción y borrar lo viejo" (2.6 fuzzing + 2.7 limpieza), que es exactamente la parte que la auditoría advertía que era la más fácil de subestimar.
+**Resumen de Fase 2 (1-ago-2026):** las tres piernas de la auditoría — "traducir el algoritmo" (2.0-2.4), "conectarlo al producto" (2.5) y "probarlo en producción y borrar lo viejo" (2.6 fuzzing + 2.7 limpieza) — están **completas y verificadas**.
 
 ---
 
@@ -323,7 +321,7 @@ Desglose ampliado (el documento original la trataba como bloque único de 2 sema
 
 - **6.1 — Ampliar el dataset sintético** (3-4 días): `src/geo/debug/syntheticDataset.ts` hoy **solo genera lotes rectangulares en grilla** — no genera calles, rotondas, ni manzanos con geometría irregular. Esto es una limitación real: ni la Fase 2.2 (paridad de subdivisión) ni la Fase 2.3/2.4 (uniones y reconciliación de red vial) tienen con qué probarse a escala hoy mismo. Ampliarlo para generar una grilla de calles con anchos variables + algunas rotondas + manzanos resultantes debería ser, en la práctica, uno de los primeros pasos de esta fase, y podría adelantarse para desbloquear los tests de paridad de 2.2/2.4 antes de lo planeado.
 - **6.2 — Profiling de memoria nativo** (3-4 días): confirmar el objetivo de <2GB con 1M features usando herramientas nativas (no el `performance.memory` de Chrome, que ya se usa en `DebugPanel.tsx` pero solo cubre el heap de JS, no la memoria del proceso Rust).
-- **6.3 — Fuzzing de geometría degenerada contra el motor Rust activo** (1 semana, depende de que 2.5 esté cerrada): reusar el mismo corpus que hoy dispara `sanitizeRing.ts`/`recordGeometrySanitizeEvent` del lado JS.
+- **6.3 — Fuzzing de geometría degenerada contra el motor Rust activo** — **✅ CUMPLIDA (adelantada y cerrada como parte de la Fase 2.6, 1-ago-2026):** fuzz TS (236 casos, corpus del lado JS previo al retiro) + fuzz Rust con timeout (`fuzz_degenerate_geometry.rs` en `tests/`), 0 cuelgues, 0 fallos. Lo que sigue en pie de esta fase es 6.1 (ampliar el corpus del dataset sintético), 6.2 (profiling de memoria nativo) y 6.4 (carga concurrente).
 - **6.4 — Pruebas de carga concurrente** (3-4 días): varios comandos Tauri geométricos en paralelo (p. ej. `subdivideManzanoBatch` corriendo mientras el usuario sigue paneando/dibujando) para confirmar que el runtime async de Tauri + `rayon` no compite de forma visible con la interacción en curso.
 
 **Total estimado:** 2.5-3 semanas.
@@ -340,7 +338,7 @@ Desglose ampliado (el documento original la trataba como bloque único de 2 sema
 | 2.2 — Subdivisión                  | ✅ Portado + paridad verificada (auto + exact/modo2) | — (ampliar corpus con dataset sintético en 6.1)  |
 | 2.3 — Booleanas                    | ✅ Activa: GEOS on, build validado, paridad incl. MultiPolygon | —                                    |
 | 2.4 — Reconciliación de fragmentos | ✅ Completa (portada + paridad 6 fixtures)       | —                                                  |
-| 2.5 — Cableado Tauri               | ✅ Completa (los 7 comandos registrados + fallback JS) | —                                              |
+| 2.5 — Cableado Tauri               | ✅ Completa (los 7 comandos registrados y consumidos; motor nativo como vía única desde 2.7) | —                           |
 | 2.6 — Fuzzing/paridad              | ✅ Completa (fuzz TS 236 casos + fuzz Rust con timeout, 0 cuelgues) | —                                              |
 | 2.7 — Limpieza JS                  | ✅ **Completa (1-ago-2026):** A/B validado en la app real (72+ comparaciones en sombra, 0 mismatches, 0 fallbacks; batch por A/B manual ON/OFF con resultados idénticos) y motor JS retirado — jsts/polygon-clipping fuera de package.json, worker/algoritmos/tests eliminados, motor nativo como vía única | — (regresión post-retiro verde) |
 | 3 — Undo/redo estructural          | ❌ No iniciada                                   | 2-2.5 semanas                                      |
@@ -358,9 +356,9 @@ _(Preservados del original, con nota de estado agregada a cada uno.)_
 
 **7.1 — Linealización afín de la proyección UTM** — ❌ pendiente (Fase 5).
 
-**7.2 — WKB, no GeoJSON, en cualquier límite de serialización** — ✅ parcialmente aplicado: la persistencia (Fase 1) ya usa WKB. **Pendiente:** el snapshot de undo (Fase 3) y el IPC de geometría (Fase 2.5, hoy JSON vía `serde_json` por decisión explícita de 2.0, "optimizar después") todavía no. El cierre de 2.5 no cambió la decisión de IPC en JSON — es deuda de performance futura, medible recién cuando 2.7 esté cerrado y haya datos reales de roundtrip.
+**7.2 — WKB, no GeoJSON, en cualquier límite de serialización** — ✅ parcialmente aplicado: la persistencia (Fase 1) ya usa WKB. **Pendiente:** el snapshot de undo (Fase 3) y el IPC de geometría (hoy JSON vía `serde_json` por decisión explícita de 2.0, "optimizar después"). El cierre de la Fase 2 (2.7 incluida) no cambió la decisión de IPC en JSON — sigue siendo deuda de performance futura, medible recién cuando exista el benchmark de roundtrip del IPC.
 
-**7.3 — Transferables, no clonado estructurado, en `postMessage`** — ❌ sin cambios, sigue pendiente en `geoWorkerClient.ts` mientras siga en uso.
+**7.3 — Transferables, no clonado estructurado, en `postMessage`** — ✅ **ya no aplica (1-ago-2026, cierre de Fase 2):** el Web Worker JS fue retirado en la Fase 2.7 y el IPC es `invoke()` de Tauri; la recomendación queda como nota histórica y su equivalente futuro es el ítem 7.2 (formato binario en el IPC).
 
 **7.4 — Bulk-load STR, no inserción incremental** — el lado JS (`RBush.load()`) ya lo hace bien y sigue así. El lado Rust (`rstar`) todavía no existe — cuando se construya (Fase 4.1), aplicar el mismo criterio desde el día uno.
 
@@ -384,7 +382,7 @@ _(Preservado del original, con un ítem nuevo al final.)_
 4. No sigas usando `sql.js`/`dexie` — **ya resuelto, este ítem queda cerrado.**
 5. No optimices el pipeline de labels/SDF antes de tener el dato de que lo necesitás.
 6. No parchees la race condition del índice espacial con más `console.warn` — **sigue sin resolverse, ver §5.1. Este es el ítem más urgente de toda la lista de anti-patrones, porque es el único que ya lleva tres revisiones señalado sin acción.**
-7. No avances de una sub-fase de la Fase 2 a la siguiente sin su criterio de éxito verificado — **resuelto en la práctica (1-ago-2026):** las sub-fases 2.2-2.5 se cerraron con tests de paridad verdes en ambos lados, y la cobertura de tests del crate quedó pareja (§5.3). La regla sigue aplicando para 2.6/2.7 y para cualquier trabajo futuro del motor.
+7. No avances de una sub-fase de la Fase 2 a la siguiente sin su criterio de éxito verificado — **resuelto en la práctica (1-ago-2026):** las sub-fases 2.2-2.7 se cerraron con tests verdes (paridad en 2.2-2.4, A/B real en 2.7) y la cobertura de tests del crate quedó pareja (§5.3). La regla sigue aplicando para cualquier trabajo futuro del motor.
 8. **Nuevo en la revisión anterior: no sigas escribiendo más código Rust nuevo (2.4 en adelante) mientras 2.5.a siga sin hacerse.** — **cumplido (1-ago-2026):** 2.5 quedó completa (los 7 comandos geométricos registrados y consumidos desde el frontend con fallback). El anti-patrón se actualizó: **no retires `jsts`/`polygon-clipping` de `package.json` hasta validar el A/B nativo vs JS en la app real con datos de producción** (Fase 2.7) — retirar el fallback antes de esa validación reintroduciría silenciosamente el riesgo que este punto prevenía. **Cumplido (1-ago-2026, tarde):** el A/B se validó (0 mismatches / 0 fallbacks con datos reales) y el motor JS fue retirado. **Anti-patrón cerrado y cerrado el ítem.**
 
 ---
@@ -395,13 +393,13 @@ _(Preservado del original, con un ítem nuevo al final.)_
 | ------------------------------------------- | --------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
 | Carga de proyecto urbano completo           | ✅ Resuelto en Fase 1, confirmado en código                                              | < 500ms                                                                      |
 | Trazar 1 calle en proyecto de 200k features | ❌ Sin cambios — sigue siendo O(n) por snapshot GeoJSON completo (Fase 3 sin iniciar)     | O(cambios reales), independiente de n                                        |
-| Unión de red vial, 5.000 segmentos          | 🟡 Medible vía flag "motor nativo" (A/B desde el panel de debug); paridad correcta, benchmark de rendimiento aún sin correr | < 100ms |
+| Unión de red vial, 5.000 segmentos          | ✅ Medible y validada: A/B en sombra (72+ comparaciones, 0 mismatches) y batch por A/B manual ON/OFF idéntico; rendimiento nativo medido en la app real (subdivideManzanoBatch 50 features: 14ms vs 108ms; computeRoadNetworkNet: 12ms vs 264ms) | < 100ms |
 | FPS con 200k features en viewport           | ❌ Sin cambios — LOD tiers degradan desde 350-900 features                               | 60fps sostenidos                                                             |
 | Memoria con dataset de 1M features          | ⏸ Sin medir (heap de JS sí se mide; memoria nativa del proceso, no)                      | < 2GB confirmado con profiler nativo                                         |
 | Motor de geometría en producción            | ✅ **Motor Rust/GEOS como vía única (Fase 2.7 completa, 1-ago-2026):** motor JS retirado; sin runtime Tauri no hay motor (la versión web quedó en el branch `web-version`) | GEOS/`geo` nativo vía Rust como vía única |
 | Índice espacial                             | RBush JS, con bug de resincronización activo (§5.1) sin resolver                         | RBush JS + `rstar` nativo, con causa raíz del bug corregida antes de escalar |
-| Cobertura de tests de paridad JS↔Rust       | ✅ 4 de 4 módulos del motor con paridad automática (subdivisión auto/exact/modo2, fragmentos, computeManzanos) + tests unitarios en los 9 archivos del crate | Fuzzing sistemático + corpus ampliado con dataset sintético (Fase 6.1) |
+| Cobertura de tests de paridad JS↔Rust       | ✅ 4 de 4 módulos del motor con paridad automática (subdivisión auto/exact/modo2, fragmentos, computeManzanos) + fuzzing completo (TS 236 casos + Rust con timeout) + tests unitarios en los 9 archivos del crate | Corpus ampliado con dataset sintético (Fase 6.1) |
 
 ---
 
-Esta sigue siendo una hoja de ruta, no una promesa — la diferencia con la versión anterior de este documento es que ahora cada casilla de "completado" está respaldada por una lectura real del código y por tests verdes en ambos lados, no por la expectativa de que el plan se ejecutó tal como se escribió. El hallazgo central de esta revisión (1-ago-2026), si hay que quedarse con uno solo: **la parte que la auditoría original señalaba como la más difícil de estimar (portar el algoritmo) y la que señalaba como la más fácil de subestimar (conectarlo y probarlo) ya están hechas y verificadas — lo que queda de la Fase 2 es la tercera y última pierna: probar el motor nativo en la app real y borrar el JS (2.6/2.7). Después de eso, el cronograma restante (Fases 3-6) es el mismo que este documento ya tenía desglosado, con el bug del índice espacial (§5.1) como única deuda que arrastra desde la primera revisión sin acción.**
+Esta sigue siendo una hoja de ruta, no una promesa — la diferencia con la versión anterior de este documento es que ahora cada casilla de "completado" está respaldada por una lectura real del código y por tests verdes, no por la expectativa de que el plan se ejecutó tal como se escribió. El cierre de la Fase 2 (1-ago-2026) deja la hoja de ruta en su punto más simple desde que existe: **las tres piernas de la auditoría — portar el algoritmo (2.0-2.4), conectarlo al producto (2.5) y probarlo en producción y borrar lo viejo (2.6 fuzzing + 2.7 limpieza) — están hechas y verificadas.** Lo que sigue, en orden de impacto, es Fase 3 (undo estructural, el otro cuello de botella de §2.1), Fase 4 (índice + render a escala, que además necesita el bug de §5.1 resuelto — la única deuda que arrastra sin acción desde la primera revisión) y Fase 5 (CRS afín). El cronograma restante (~9-11 semanas) está desglosado en la tabla de tiempos.
