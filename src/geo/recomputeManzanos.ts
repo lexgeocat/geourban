@@ -27,6 +27,11 @@ import { roundRingReflex, pointOnRing } from './roads/ringFillet';
 import { autoCreateLayerForKind, resolveOrCreateLayerForKind } from '../store/entities/layerAutoCreate';
 import { sanitizeFeatureCollectionRings } from './sanitizeGeoJson';
 import { newId } from '../lib/id';
+import {
+  StructuralDiffRecorder,
+  EMPTY_STRUCTURAL_DIFF,
+  type StructuralDiff,
+} from '../commands/core/structuralDiff';
 
 function closeGeoRing(ring: Pt[]): Pt[] {
   const f = ring[0], l = ring[ring.length - 1];
@@ -34,12 +39,15 @@ function closeGeoRing(ring: Pt[]): Pt[] {
   return ring;
 }
 
+/** Fase 3.2 — todo mutation point de este helper queda envuelto en el recorder. */
 function restoreMemberToParcel(
   member: Feature<Geometry>,
   origPts: Pt[],
   origId: string,
   src: VectorSource,
+  recorder: StructuralDiffRecorder,
 ): void {
+  recorder.recordModifyBefore(member);
   member.setGeometry(new PolygonGeom([closeGeoRing(origPts)]));
   if (getFeatureKind(member) !== 'lote') member.set('kind', 'lote', true);
   member.unset('lotStatus', true);
@@ -47,6 +55,7 @@ function restoreMemberToParcel(
   member.set('origPts', origPts, true);
   src.addFeature(member);
   updateFeatureMetrics(member);
+  recorder.recordModifyAfter(member);
 }
 
 function orientRingCcw(ring: Pt[]): Pt[] {
@@ -163,7 +172,7 @@ const PERIMETER_WORKING_SUFFIX = '__working';
  * fragmentada en manzanos. Es idempotente: si la copia ya existe (o ya
  * derivó en manzano/s con el mismo id), no hace nada.
  */
-function ensurePerimeterWorkingCopies(src: VectorSource): void {
+function ensurePerimeterWorkingCopies(src: VectorSource, recorder: StructuralDiffRecorder): void {
   const perimetros: Array<Feature<Geometry>> = [];
   src.forEachFeature((f) => {
     if (getFeatureKind(f as Feature<Geometry>) === 'perimetro') {
@@ -194,6 +203,7 @@ function ensurePerimeterWorkingCopies(src: VectorSource): void {
     const perimLayerId = (perim.get('layerId') as string | undefined) ?? resolveOrCreateLayerForKind('perimetro');
     working.set('layerId', perimLayerId, true);
     src.addFeature(working);
+    recorder.recordAdd(working as Feature<Geometry>);
     updateFeatureMetrics(working as Feature<Geometry>);
   }
 }
@@ -280,7 +290,13 @@ function resolveLoteLayerId(preferredLayerId?: string): string {
   return autoCreateLayerForKind('lote');
 }
 
-async function recomputeManzanosImmediate(): Promise<void> {
+/**
+ * Fase 3.1/3.2 — ahora recibe un `StructuralDiffRecorder` y lo alimenta en
+ * cada punto de mutación real del drawSource (addFeature/removeFeature/
+ * setGeometry). El caller (`recomputeManzanos`, más abajo) es quien decide
+ * qué hacer con el diff resultante.
+ */
+async function recomputeManzanosImmediate(recorder: StructuralDiffRecorder): Promise<void> {
   const src = useMapStore.getState().drawSource;
   if (!src) return;
 
@@ -288,7 +304,7 @@ async function recomputeManzanosImmediate(): Promise<void> {
   const roundabouts = useRoundaboutStore.getState().roundabouts;
   const hasRoadNetwork = streets.length > 0 || roundabouts.length > 0;
 
-  syncPerimeterLayersVisibility(hasRoadNetwork); // ← agregar esta línea
+  syncPerimeterLayersVisibility(hasRoadNetwork);
 
   if (!hasRoadNetwork) {
     const { groups, lotsByGroupId } = collectOriginGroups(src);
@@ -303,15 +319,21 @@ async function recomputeManzanosImmediate(): Promise<void> {
           const childLots = lotsByGroupId.get(String(mid));
           if (childLots) {
             for (const lot of childLots) {
-              if (src.getFeatureById(lot.getId() as string | number) != null) src.removeFeature(lot);
+              if (src.getFeatureById(lot.getId() as string | number) != null) {
+                recorder.recordRemove(lot);
+                src.removeFeature(lot);
+              }
             }
           }
         }
-        if (src.getFeatureById(m.getId() as string | number) != null) src.removeFeature(m);
+        if (src.getFeatureById(m.getId() as string | number) != null) {
+          recorder.recordRemove(m);
+          src.removeFeature(m);
+        }
       }
 
       const primary = manzanos[0] as Feature<Geometry>;
-      restoreMemberToParcel(primary, group.origPts, group.origId, src);
+      restoreMemberToParcel(primary, group.origPts, group.origId, src, recorder);
     }
 
     if (groups.size > 0) {
@@ -329,9 +351,7 @@ async function recomputeManzanosImmediate(): Promise<void> {
   }
 
   // Antes de tocar nada: aseguramos la copia de trabajo de cada perímetro.
-  // De acá en adelante el pipeline solo ve/toca esas copias — el feature
-  // 'perimetro' original nunca se lee más abajo de este punto.
-  ensurePerimeterWorkingCopies(src);
+  ensurePerimeterWorkingCopies(src, recorder);
 
   const { groups, lotsByGroupId } = collectOriginGroups(src);
   if (groups.size === 0) return;
@@ -380,6 +400,7 @@ async function recomputeManzanosImmediate(): Promise<void> {
       if (lotsExtent && extentIntersects(lotsExtent, roadExtentForOrphans)) {
         for (const lot of lots) {
           if (src.getFeatureById(lot.getId() as string | number) != null) {
+            recorder.recordRemove(lot);
             src.removeFeature(lot);
           }
         }
@@ -417,7 +438,7 @@ async function recomputeManzanosImmediate(): Promise<void> {
     })) as never[],
   };
 
-let result: FeatureCollection;
+  let result: FeatureCollection;
   try {
     result = await computeManzanosInWorker(parcelsFC, roadNetworkFC);
   } catch (err) {
@@ -465,14 +486,12 @@ let result: FeatureCollection;
     overlapArea: number;
   }
 
-
   for (let idx = 0; idx < parcelIndexToGroup.length; idx++) {
     const group = parcelIndexToGroup[idx];
     const fragments = fragmentsByGroup.get(idx) ?? [];
     const untouched = fragments.length === 1 && polyArea(fragments[0]) >= polyArea(group.origPts) * 0.999;
     if (untouched) continue;
     if (fragmentsMatchCurrentMembers(group.members, fragments)) continue;
-
 
     const existingMembers = group.members
       .map((m) => {
@@ -484,15 +503,12 @@ let result: FeatureCollection;
       })
       .filter((x) => x.ring.length >= 3);
 
-
     const areaByRef = new globalThis.Map<Feature<Geometry>, number>();
     for (const em of existingMembers) areaByRef.set(em.ref, polyArea(em.ring));
     memberAreaByRefPerGroup.set(idx, areaByRef);
 
-
     reconTasks.push({ idx, fragments, existingMembers });
   }
-
 
   if (reconTasks.length > 0) {
     let batchResults: Array<{ groupIdx: number; assignments: Array<{ fragmentIdx: number; memberIdx: number | null; overlapArea: number }> }>;
@@ -512,9 +528,7 @@ let result: FeatureCollection;
       return;
     }
 
-
     const resultsByGroupIdx = new globalThis.Map(batchResults.map((r) => [r.groupIdx, r.assignments]));
-
 
     for (const task of reconTasks) {
       const rawAssignments = resultsByGroupIdx.get(task.idx) ?? [];
@@ -524,7 +538,6 @@ let result: FeatureCollection;
         overlapArea: a.overlapArea,
       }));
       assignmentsByGroupIdx.set(task.idx, assignments);
-
 
       const areaByRef = memberAreaByRefPerGroup.get(task.idx);
       for (const a of assignments) {
@@ -568,7 +581,7 @@ let result: FeatureCollection;
 
     const untouched = fragments.length === 1 && polyArea(fragments[0]) >= polyArea(group.origPts) * 0.999;
     if (untouched) {
-      restoreMemberToParcel(group.members[0], fragments[0], group.origId, src);
+      restoreMemberToParcel(group.members[0], fragments[0], group.origId, src, recorder);
       continue;
     }
 
@@ -585,10 +598,14 @@ let result: FeatureCollection;
         const childLots = lotsByGroupId.get(String(mid));
         if (childLots) {
           for (const lot of childLots) {
-            if (src.getFeatureById(lot.getId() as string | number) != null) src.removeFeature(lot);
+            if (src.getFeatureById(lot.getId() as string | number) != null) {
+              recorder.recordRemove(lot);
+              src.removeFeature(lot);
+            }
           }
         }
       }
+      recorder.recordRemove(m);
       src.removeFeature(m);
     }
 
@@ -623,6 +640,7 @@ let result: FeatureCollection;
         const ratioFrag = fragArea > 0 ? (assignment!.overlapArea / fragArea) : 0;
         const barelyChanged = Math.min(ratioOld, ratioFrag) >= 0.92;
 
+        recorder.recordModifyBefore(reused);
         reused.setGeometry(new PolygonGeom([rounded]));
         if (getFeatureKind(reused) !== 'manzana') {
           reused.set('kind', 'manzana', true);
@@ -632,6 +650,7 @@ let result: FeatureCollection;
         reused.set('origParcelId', group.origId, true);
         reused.set('origPts', group.origPts, true);
         updateFeatureMetrics(reused as Feature<Geometry>);
+        recorder.recordModifyAfter(reused);
 
         if (barelyChanged) continue;
 
@@ -640,7 +659,10 @@ let result: FeatureCollection;
         if (oldLots && oldLots.length > 0) {
           const prevLotLayerId = oldLots[0]?.get('layerId') as string | undefined;
           for (const lot of oldLots) {
-            if (src.getFeatureById(lot.getId() as string | number) != null) src.removeFeature(lot);
+            if (src.getFeatureById(lot.getId() as string | number) != null) {
+              recorder.recordRemove(lot);
+              src.removeFeature(lot);
+            }
           }
           if (wasSubdivided) {
             relotTasks.push({
@@ -651,6 +673,7 @@ let result: FeatureCollection;
             });
           } else {
             setLotStatus(reused, 'none');
+            recorder.recordModifyAfter(reused);
           }
         }
         continue;
@@ -677,6 +700,7 @@ let result: FeatureCollection;
       const lid = resolveManzanaLayerId();
       newFeat.set('layerId', lid);
       src.addFeature(newFeat);
+      recorder.recordAdd(newFeat as Feature<Geometry>);
       updateFeatureMetrics(newFeat as Feature<Geometry>);
       manzanoCreated = true;
     }
@@ -688,11 +712,16 @@ let result: FeatureCollection;
     if (!fragFeat) continue;
     if (!allowAutoRelot) {
       setLotStatus(fragFeat, 'pending');
+      recorder.recordModifyAfter(fragFeat);
       useManzanoStore.getState().setMethod(task.featureId, task.method);
       continue;
     }
     const fragGeom = fragFeat.getGeometry();
-    if (!(fragGeom instanceof PolygonGeom)) { setLotStatus(fragFeat, 'pending'); continue; }
+    if (!(fragGeom instanceof PolygonGeom)) {
+      setLotStatus(fragFeat, 'pending');
+      recorder.recordModifyAfter(fragFeat);
+      continue;
+    }
     const ring = ((fragGeom.getCoordinates()[0] ?? []) as number[][]).map((c) => [c[0], c[1]] as Pt);
     try {
       const lots = await subdivideManzanoInWorker(ring, task.method, targetAreaM2, frontMinM, task.dirPref);
@@ -726,15 +755,18 @@ let result: FeatureCollection;
         const lotLid = resolveLoteLayerId(task.layerId);
         lotFeat.set('layerId', lotLid);
         src.addFeature(lotFeat);
+        recorder.recordAdd(lotFeat as Feature<Geometry>);
         updateFeatureMetrics(lotFeat as Feature<Geometry>);
         created++;
       });
       setLotStatus(fragFeat, created > 0 ? 'subdivided' : 'pending');
+      recorder.recordModifyAfter(fragFeat);
       useManzanoStore.getState().setMethod(task.featureId, task.method);
       if (task.dirPref) useManzanoStore.getState().setRotateDir(task.featureId, task.dirPref);
     } catch (err) {
       console.error('recomputeManzanos: fallo la re-lotización automática', err);
       setLotStatus(fragFeat, 'pending');
+      recorder.recordModifyAfter(fragFeat);
     }
   }
 
@@ -751,18 +783,29 @@ let result: FeatureCollection;
     useManzanoStore.getState().setPanelVisible(true);
   }
 
-src.changed();
+  src.changed();
 }
 
 const RECOMPUTE_DEBOUNCE_MS = 250;
 let recomputeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
-let recomputeInFlight: Promise<void> | null = null;
-let recomputeResolve: (() => void) | null = null;
+let recomputeInFlight: Promise<StructuralDiff> | null = null;
+let recomputeResolve: ((diff: StructuralDiff) => void) | null = null;
 let recomputeReject: ((err: unknown) => void) | null = null;
+/** Recorder de la ventana de debounce actual — se recrea en cada flush real. */
+let pendingRecorder = new StructuralDiffRecorder();
 
-export function recomputeManzanos(): Promise<void> {
+/**
+ * Fase 3.1/3.2 (auditoria-para-mejora.md) — devuelve un `StructuralDiff`
+ * con SOLO los features que este recompute realmente tocó, no todo el
+ * proyecto. `AddStreetCommand`/`AddRoundaboutCommand` lo usan para armar
+ * su propio undo/redo sin snapshotear el drawSource completo (el bug
+ * crítico de §2.1). El resto de los call-sites, que no necesitan el
+ * diff, pueden seguir ignorando el valor de retorno exactamente igual
+ * que antes (`void recomputeManzanos()`).
+ */
+export function recomputeManzanos(): Promise<StructuralDiff> {
   if (!recomputeInFlight) {
-    recomputeInFlight = new Promise<void>((resolve, reject) => {
+    recomputeInFlight = new Promise<StructuralDiff>((resolve, reject) => {
       recomputeResolve = resolve;
       recomputeReject = reject;
     });
@@ -775,19 +818,23 @@ export function recomputeManzanos(): Promise<void> {
     const reject = recomputeReject!;
     recomputeResolve = null;
     recomputeReject = null;
-    const work = recomputeManzanosImmediate()
-      .then(resolve, reject)
+    const recorder = pendingRecorder;
+    pendingRecorder = new StructuralDiffRecorder();
+    recomputeManzanosImmediate(recorder)
+      .then(() => {
+        const src = useMapStore.getState().drawSource;
+        resolve(src ? recorder.toDiff(src) : EMPTY_STRUCTURAL_DIFF);
+      }, reject)
       .finally(() => {
         recomputeInFlight = null;
         useRecomputeStatusStore.getState().setRunning(false);
       });
-    recomputeInFlight = work;
   }, RECOMPUTE_DEBOUNCE_MS);
   return recomputeInFlight;
 }
 
 export function waitForPendingRecompute(): Promise<void> {
-  return recomputeInFlight ?? Promise.resolve();
+  return recomputeInFlight ? recomputeInFlight.then(() => undefined) : Promise.resolve();
 }
 
 export async function reapplyRoadCornerMode(): Promise<void> {
@@ -927,7 +974,7 @@ export async function reapplyRoadCornerMode(): Promise<void> {
       }
     }
 
-src.changed();
+    src.changed();
   } finally {
     useRecomputeStatusStore.getState().setRunning(false);
   }

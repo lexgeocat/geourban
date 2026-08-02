@@ -4,10 +4,13 @@ import { useStreetTracingSessionStore } from '../../store/ui/streetTracingSessio
 import { recomputeManzanos, waitForPendingRecompute } from '../../geo/recomputeManzanos';
 import { refreshSourceMetrics } from '../../geo/metrics';
 import {
-  snapshotDrawSource,
-  restoreDrawSourceSnapshot,
-  type DrawSourceSnapshot,
-} from '../core/drawSourceSnapshot';
+  composeStructuralDiffs,
+  applyStructuralDiffForward,
+  revertStructuralDiff,
+  approxStructuralDiffBytes,
+  EMPTY_STRUCTURAL_DIFF,
+  type StructuralDiff,
+} from '../core/structuralDiff';
 
 interface StreetEntry {
   id: string | null;
@@ -19,6 +22,14 @@ interface StreetEntry {
   layerId?: string;
 }
 
+/**
+ * Fase 3.2 (auditoria-para-mejora.md, §6, Fase 3) — ya no serializa el
+ * drawSource COMPLETO en cada trazo de calle (antes/después vía
+ * `drawSourceSnapshot.ts` — el bug crítico de §2.1). El undo/redo se arma
+ * a partir del `StructuralDiff` que devuelve `recomputeManzanos()`: solo
+ * los manzanos/lotes que esta calle realmente afectó, sin importar el
+ * tamaño total del proyecto.
+ */
 export class AddStreetCommand extends Command {
   readonly label = 'Trazar calle';
   /** Una key por sesión de trazo (cambia en cada `drawstart` de StreetMode).
@@ -26,8 +37,7 @@ export class AddStreetCommand extends Command {
   readonly coalesceKey: string;
 
   private entries: StreetEntry[];
-  private before: DrawSourceSnapshot | null = null;
-  private after: DrawSourceSnapshot | null = null;
+  private diff: StructuralDiff = EMPTY_STRUCTURAL_DIFF;
 
   constructor(
     start: [number, number],
@@ -50,11 +60,11 @@ export class AddStreetCommand extends Command {
     }];
   }
 
-  override async execute(ctx: CommandContext): Promise<void> {
-    if (this.before == null) {
-      await waitForPendingRecompute();
-      this.before = snapshotDrawSource(ctx.drawSource);
-    }
+  override async execute(_ctx: CommandContext): Promise<void> {
+    // Esperar cualquier recompute en curso antes de arrancar el propio:
+    // evita que el diff de esta operación se contamine con cambios de
+    // otro comando corriendo en simultáneo.
+    await waitForPendingRecompute();
     const entry = this.entries[this.entries.length - 1];
     entry.id = useStreetStore.getState().addStreet({
       start: entry.start,
@@ -64,18 +74,16 @@ export class AddStreetCommand extends Command {
       waypoints: entry.waypoints,
       layerId: entry.layerId,
     });
-    await recomputeManzanos();
-    this.after = snapshotDrawSource(ctx.drawSource);
+    const stepDiff = await recomputeManzanos();
+    this.diff = composeStructuralDiffs(this.diff, stepDiff);
   }
 
   override undo(ctx: CommandContext): void {
     for (const e of this.entries) {
       if (e.id) useStreetStore.getState().removeStreet(e.id);
     }
-    if (this.before != null) {
-      restoreDrawSourceSnapshot(ctx.drawSource, this.before);
-      refreshSourceMetrics(ctx.drawSource);
-    }
+    revertStructuralDiff(ctx.drawSource, this.diff);
+    refreshSourceMetrics(ctx.drawSource);
   }
 
   override async redo(ctx: CommandContext): Promise<void> {
@@ -91,22 +99,18 @@ export class AddStreetCommand extends Command {
         });
       }
     }
-    if (this.after != null) {
-      restoreDrawSourceSnapshot(ctx.drawSource, this.after);
-      refreshSourceMetrics(ctx.drawSource);
-    } else {
-      await this.execute(ctx);
-    }
+    applyStructuralDiffForward(ctx.drawSource, this.diff);
+    refreshSourceMetrics(ctx.drawSource);
   }
 
   override coalesceInto(previous: Command): boolean {
     if (!(previous instanceof AddStreetCommand)) return false;
     previous.entries.push(...this.entries);
-    previous.after = this.after;
+    previous.diff = composeStructuralDiffs(previous.diff, this.diff);
     return true;
   }
 
   override approxMemoryBytes(): number {
-    return (this.before?.length ?? 0) * 2 + (this.after?.length ?? 0) * 2;
+    return approxStructuralDiffBytes(this.diff);
   }
 }
