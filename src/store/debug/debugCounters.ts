@@ -50,6 +50,26 @@ const PR_SAMPLE_MAX = 120;
 const postrenderSamples: number[] = [];
 let postrenderLastMs = 0;
 
+const splitSamples = new globalThis.Map<string, number[]>();
+
+export function recordPostrenderSplit(label: string, ms: number): void {
+  let arr = splitSamples.get(label);
+  if (!arr) {
+    arr = [];
+    splitSamples.set(label, arr);
+  }
+  arr.push(ms);
+  if (arr.length > PR_SAMPLE_MAX) arr.shift();
+}
+
+export function readPostrenderSplit(): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const [label, arr] of splitSamples) {
+    out[label] = arr.reduce((a, b) => a + b, 0) / arr.length;
+  }
+  return out;
+}
+
 const labelCacheHits = makeRollingCounter();
 const labelCacheMisses = makeRollingCounter();
 

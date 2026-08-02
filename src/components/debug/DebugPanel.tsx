@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useDebugPanelStore } from '../../store/debug/debugPanelStore';
 import { useMapStore } from '../../store/map/mapStore';
-import { readDebugCounters } from '../../store/debug/debugCounters';
+import { readDebugCounters, readPostrenderSplit } from '../../store/debug/debugCounters';
 import type { DebugCountersSnapshot } from '../../store/debug/debugCounters';
 import { readGeometryTelemetry } from '../../store/debug/geometryTelemetry';
 import {
@@ -75,8 +75,10 @@ function formatKB(bytes: number): string {
 export default function DebugPanel() {
   const open = useDebugPanelStore((s) => s.open);
   const setOpen = useDebugPanelStore((s) => s.setOpen);
+  const [compact, setCompact] = useState(true);
   const { fps, fpsAvg } = useFps(open);
   const [counters, setCounters] = useState<DebugCountersSnapshot | null>(null);
+  const [split, setSplit] = useState<Record<string, number>>({});
   const [featureCount, setFeatureCount] = useState(0);
   const [geoTelemetry, setGeoTelemetry] = useState<ReturnType<typeof readGeometryTelemetry> | null>(null);
   const [workerStats, setWorkerStats] = useState<WorkerStatSnapshot[]>([]);
@@ -105,6 +107,7 @@ export default function DebugPanel() {
     if (!open) return;
     const tick = () => {
       setCounters(readDebugCounters());
+      setSplit(readPostrenderSplit());
       setGeoTelemetry(readGeometryTelemetry());
       setWorkerStats(readWorkerStats());
       setUndoSnap(readUndoCommandStats());
@@ -213,13 +216,23 @@ export default function DebugPanel() {
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6, borderBottom: '1px solid var(--cad-border)', paddingBottom: 4 }}>
         <span style={{ fontWeight: 700, color: 'var(--cad-accent)' }}>DEBUG</span>
-        <button
-          onClick={() => setOpen(false)}
-          style={{ background: 'none', border: 'none', color: 'var(--cad-text-dim)', cursor: 'pointer' }}
-          aria-label="Cerrar panel de debug"
-        >
-          ✕
-        </button>
+        <span style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <button
+            onClick={() => setCompact((c) => !c)}
+            style={{ background: 'none', border: 'none', color: compact ? 'var(--cad-accent-green)' : 'var(--cad-text-dim)', cursor: 'pointer', fontSize: '0.68rem' }}
+            aria-label="Alternar modo compacto"
+            title={compact ? 'Expandir panel completo' : 'Colapsar a métricas de rendimiento'}
+          >
+            {compact ? 'COMPACTO' : 'EXPANDIDO'}
+          </button>
+          <button
+            onClick={() => setOpen(false)}
+            style={{ background: 'none', border: 'none', color: 'var(--cad-text-dim)', cursor: 'pointer' }}
+            aria-label="Cerrar panel de debug"
+          >
+            ✕
+          </button>
+        </span>
       </div>
 
       <Row label="FPS" value={fps.toFixed(0)} />
@@ -232,10 +245,16 @@ export default function DebugPanel() {
         label="Label cache (hit/miss/min)"
         value={`${counters?.labelCacheHitsPerMin ?? 0} / ${counters?.labelCacheMissesPerMin ?? 0}`}
       />
+      <Row
+        label="Postrender split (avg ms)"
+        value={`fullFrame=${split.fullFrame?.toFixed(1)} · prologue=${split.prologue?.toFixed(1)} · visible=${split.getVisibleFeatures?.toFixed(1)} · labels=${split.labels?.toFixed(1)} · resto=${split.resto?.toFixed(1)}`}
+      />
       <Row label="setStyle/min" value={String(counters?.setStyleCallsPerMin ?? 0)} />
       <Row label="syncLayerSet/min" value={String(counters?.syncLayerSetCallsPerMin ?? 0)} />
       <Row label="syncGizmo/min" value={String(counters?.syncGizmoCallsPerMin ?? 0)} />
 
+      {!compact && (
+        <>
       <SectionTitle>Memoria heap JS</SectionTitle>
       {heap.available ? (
         <>
@@ -390,6 +409,8 @@ export default function DebugPanel() {
             .map(([ctx, n]) => (
               <Row key={ctx} label={ctx} value={String(n)} />
             ))}
+        </>
+      )}
         </>
       )}
 

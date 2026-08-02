@@ -154,11 +154,27 @@ export class LabelPainter {
     return h;
   }
 
-  /** Firma de visibilidad de capas — exacta: pocas capas, barato. */
+// src/map/scene/painters/LabelPainter.ts
+// Reemplazar el método `layersKey` existente por este:
+
+  /**
+   * Firma de capas relevante para el caché de ops (Fase 4.3).
+   * IMPORTANTE: debe incluir TODO campo de `Layer` que `paintFeatureLabels`
+   * lea directamente de `featureLayer` — hoy son `visible`, `showLabel` y
+   * `showCota`. Si en el futuro se lee algún campo nuevo de la capa acá
+   * (p.ej. opacity para labels), hay que sumarlo también a esta firma o
+   * el toggle correspondiente quedará "pisado" por un cache hit stale,
+   * igual que pasaba antes con showLabel/showCota (bug corregido acá).
+   */
   private layersKey(): string {
     let sig = '';
     for (const layer of useLayersStore.getState().layers) {
-      sig += layer.id + (layer.visible ? '1' : '0') + '|';
+      sig +=
+        layer.id +
+        (layer.visible ? '1' : '0') +
+        (layer.showLabel ? '1' : '0') +
+        (layer.showCota ? '1' : '0') +
+        '|';
     }
     return sig;
   }

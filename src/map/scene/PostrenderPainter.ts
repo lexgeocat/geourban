@@ -15,7 +15,7 @@ import { LabelPainter } from './painters/LabelPainter';
 import { SnapGuidePainter } from './painters/SnapGuidePainter';
 import { OverlayPainter } from './painters/OverlayPainter';
 import { SelectionHighlightPainter } from './painters/SelectionHighlightPainter';
-import { recordPostrenderDuration } from '../../store/debug/debugCounters';
+import { recordPostrenderDuration, recordPostrenderSplit } from '../../store/debug/debugCounters';
 import { recordGeometrySanitizeEvent } from '../../store/debug/geometryTelemetry';
 
 
@@ -43,6 +43,9 @@ export class PostrenderPainter {
   private lastFeatureCount = -1;
   private interacting = false;
 
+  private cachedVisibleFeatures: Array<Feature<Geometry>> | null = null;
+  private cachedVisibleKey: string | null = null;
+
 
   constructor(opts: { map: Map; drawSource: VectorSource; postrenderLayer: VectorLayer<VectorSource> }) {
     this.map = opts.map;
@@ -62,6 +65,23 @@ export class PostrenderPainter {
 
     this.listener = (event: any) => this.handle(event);
     this.postrenderLayer.on('postrender', this.listener);
+    this.trackFullFrame();
+  }
+
+  private lastFullFrameAt = 0;
+  private fullFrameKey: (() => void) | null = null;
+
+  /** Mide la duración total del frame del mapa (todas las capas, incl. WebGL). */
+  private trackFullFrame(): void {
+    const onPostrender = () => {
+      const now = performance.now();
+      if (this.lastFullFrameAt > 0) {
+        recordPostrenderSplit('fullFrame', now - this.lastFullFrameAt);
+      }
+      this.lastFullFrameAt = now;
+    };
+    this.map.on('postrender', onPostrender);
+    this.fullFrameKey = () => this.map.un('postrender', onPostrender);
   }
 
   invalidate(): void {
@@ -109,9 +129,13 @@ export class PostrenderPainter {
     const resolution = this.map.getView().getResolution() ?? 1;
     const zoom = getZoomFromResolution(resolution);
     const features = (this.drawSource.getFeatures() ?? []) as Array<Feature<Geometry>>;
+    const dataChanged = this.dirty;
+    const t1 = performance.now();
+    recordPostrenderSplit('prologue', t1 - t0);
 
 
     this.updateCaches(ctx, features, zoom, resolution);
+    const t2 = performance.now();
 
 
     const toPx = (coord: number[]): [number, number] => {
@@ -120,24 +144,50 @@ export class PostrenderPainter {
     };
 
 
-    const visibleFeatures = this.getVisibleFeatures(features);
+    const visibleFeatures = this.getVisibleFeatures(features, dataChanged);
+    const t3 = performance.now();
 
     const size = this.map.getSize();
     const viewportExtent = size ? this.map.getView().calculateExtent(size) : null;
 
     this.labelPainter.paint(ctx, visibleFeatures, zoom, resolution, toPx, this.interacting, viewportExtent);
+    const t4 = performance.now();
     this.streetPainter.paint(ctx, zoom, resolution, toPx, this.interacting);
+    const t5 = performance.now();
     this.roundaboutPainter.paint(ctx, toPx, resolution);
     this.selectionHighlightPainter.paint(ctx, toPx, resolution, this.drawSource);
     this.snapGuidePainter.paint(ctx, resolution);
     this.overlayPainter.paint(ctx, toPx);
+    const t6 = performance.now();
 
 
+    recordPostrenderSplit('updateCaches', t2 - t1);
+    recordPostrenderSplit('getVisibleFeatures', t3 - t2);
+    recordPostrenderSplit('labels', t4 - t3);
+    recordPostrenderSplit('street', t5 - t4);
+    recordPostrenderSplit('resto', t6 - t5);
     recordPostrenderDuration(performance.now() - t0);
   }
 
 
-  private getVisibleFeatures(all: Array<Feature<Geometry>>): Array<Feature<Geometry>> {
+  private getVisibleFeatures(
+    all: Array<Feature<Geometry>>,
+    dataChanged: boolean,
+  ): Array<Feature<Geometry>> {
+    const size = this.map.getSize();
+    if (!size) return all;
+    const extent = this.map.getView().calculateExtent(size);
+    const [minX, minY, maxX, maxY] = extent;
+    const marginX = (maxX - minX) * 0.15;
+    const marginY = (maxY - minY) * 0.15;
+    const px = Math.max((maxX - minX) / size[0], 1e-9);
+    const py = Math.max((maxY - minY) / size[1], 1e-9);
+    const key =
+      `${Math.round(minX / px)},${Math.round(minY / py)},${Math.round(maxX / px)},${Math.round(maxY / py)}` +
+      `|${all.length}|${dataChanged ? '1' : '0'}`;
+    if (this.cachedVisibleKey === key && this.cachedVisibleFeatures) {
+      return this.cachedVisibleFeatures;
+    }
     const index = getOrCreateSpatialIndex();
     if (index.size === 0 && all.length > 0) {
       recordGeometrySanitizeEvent('spatialIndex.emptyOnPostrender', { featureCount: all.length });
@@ -149,14 +199,15 @@ export class PostrenderPainter {
       }
       index.load(all as unknown as Feature<Polygon>[]);
     }
-    if (index.size === 0) return all;
-    const size = this.map.getSize();
-    if (!size) return all;
-    const extent = this.map.getView().calculateExtent(size);
-    const [minX, minY, maxX, maxY] = extent;
-    const marginX = (maxX - minX) * 0.15;
-    const marginY = (maxY - minY) * 0.15;
-    return index.search(minX - marginX, minY - marginY, maxX + marginX, maxY + marginY) as unknown as Array<Feature<Geometry>>;
+    if (index.size === 0) {
+      this.cachedVisibleKey = null;
+      this.cachedVisibleFeatures = null;
+      return all;
+    }
+    const visible = index.search(minX - marginX, minY - marginY, maxX + marginX, maxY + marginY) as unknown as Array<Feature<Geometry>>;
+    this.cachedVisibleKey = key;
+    this.cachedVisibleFeatures = visible;
+    return visible;
   }
 
 
@@ -171,6 +222,7 @@ export class PostrenderPainter {
 
   dispose(): void {
     this.postrenderLayer.un('postrender', this.listener);
+    this.fullFrameKey?.();
     this.streetPainter.dispose();
     this.selectionHighlightPainter.dispose(); // ← agregar
   }
