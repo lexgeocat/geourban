@@ -78,9 +78,31 @@ const FALLBACK_KEY = '__geourban_unassigned_mirror__';
 const STREET_SKETCH_Z_INDEX = 10_000;
 const POSTRENDER_Z_INDEX = 10_001;
 
+/** Número máximo de capas WebGL que OpenLayers admite con fluidez.
+ * Por encima de este límite, Fase 4.4 activa el pool compartido:
+ * varias capas lógicas comparten la misma capa WebGL física,
+ * resolviendo el color por feature vía `webglSlotIdx`. */
+export const MAX_WEBGL_LAYERS = 48;
+
 interface MirrorEntry {
   source: VectorSource;
   layer: WebGLVectorLayer;
+}
+
+interface PoolLayerColor {
+  color: string;
+  fillColor: string;
+  opacity: number;
+  /** Si es true, los lotes subdivididos se dibujan transparentes. */
+  suppressIfSubdivided: boolean;
+}
+
+interface PoolSlot {
+  source: VectorSource;
+  layer: WebGLVectorLayer;
+  /** Colores indexados por `webglSlotIdx`: slotColor[i] = color de la i‑ésima capa user. */
+  colorTable: PoolLayerColor[];
+  lastSig: string;
 }
 
 export class LayeredWebglRenderer {
@@ -97,6 +119,14 @@ export class LayeredWebglRenderer {
   private onRemove?: (evt: { feature?: Feature<Geometry> }) => void;
   private onChange?: (evt: { feature?: Feature<Geometry> }) => void;
   private lastStyleSignatures = new globalThis.Map<string, string>();
+
+  // ─── Pool mode (Fase 4.4) ───────────────────────────────────────────
+  private poolMode = false;
+  private poolSlots: PoolSlot[] = [];
+  /** layerId → { slot, idxInSlot } */
+  private layerSlotMap = new globalThis.Map<string, { slot: number; idx: number }>();
+  private poolFallbackSource: VectorSource | null = null;
+  private poolFallbackLayer: WebGLVectorLayer | null = null;
 
   constructor(master: VectorSource) {
     this.master = master;
@@ -138,22 +168,74 @@ export class LayeredWebglRenderer {
   }
 
   private place(feature: Feature<Geometry>, byId: globalThis.Map<string, Layer>): void {
+    // Quitar de donde sea que esté — mirror o pool
+    this.unplaceOnly(feature);
+
+    if (this.poolMode) {
+      const layerId = feature.get('layerId') as string | undefined;
+      if (!layerId || !byId.has(layerId)) {
+        this.poolFallbackSource?.addFeature(feature);
+        this.placement.set(feature, '__geourban_pool_fallback__');
+        feature.set('webglSlotIdx', -1, true);
+        return;
+      }
+      const slotInfo = this.layerSlotMap.get(layerId);
+      if (!slotInfo) {
+        this.poolFallbackSource?.addFeature(feature);
+        this.placement.set(feature, '__geourban_pool_fallback__');
+        feature.set('webglSlotIdx', -1, true);
+        return;
+      }
+      feature.set('webglSlotIdx', slotInfo.idx, true);
+      this.poolSlots[slotInfo.slot].source.addFeature(feature);
+      this.placement.set(feature, `pool:${slotInfo.slot}`);
+      return;
+    }
+
+    // per-layer mode (existing behavior)
     const key = this.resolveMirrorKey(feature, byId);
-    const prevKey = this.placement.get(feature);
-    if (prevKey === key) return; // ya está en el mirror correcto — nada que mover
-    if (prevKey != null) this.entryFor(prevKey)?.source.removeFeature(feature);
     this.entryFor(key)?.source.addFeature(feature);
     this.placement.set(feature, key);
   }
 
-  private unplace(feature: Feature<Geometry>): void {
+  private unplaceOnly(feature: Feature<Geometry>): void {
     const prevKey = this.placement.get(feature);
     if (prevKey == null) return;
-    this.entryFor(prevKey)?.source.removeFeature(feature);
+    if (this.poolMode) {
+      if (prevKey === '__geourban_pool_fallback__') {
+        this.poolFallbackSource?.removeFeature(feature);
+      } else if (prevKey.startsWith('pool:')) {
+        const slot = parseInt(prevKey.slice(5), 10);
+        if (!Number.isNaN(slot) && slot < this.poolSlots.length) {
+          this.poolSlots[slot].source.removeFeature(feature);
+        }
+      }
+    } else {
+      this.entryFor(prevKey)?.source.removeFeature(feature);
+    }
     this.placement.delete(feature);
   }
 
+  private unplace(feature: Feature<Geometry>): void {
+    this.unplaceOnly(feature);
+  }
+
   private syncLayerSet(layers: Layer[]): void {
+    const shouldPool = layers.length > MAX_WEBGL_LAYERS;
+    if (shouldPool !== this.poolMode) {
+      this.transitionMode(shouldPool, layers);
+      return;
+    }
+    if (this.poolMode) {
+      this.syncPooledLayers(layers);
+    } else {
+      this.syncPerLayerSet(layers);
+    }
+  }
+
+  // ─── Per‑layer sync (código existente, sin cambios funcionales) ─────
+
+  private syncPerLayerSet(layers: Layer[]): void {
     recordSyncLayerSetCall();
     const byId = new globalThis.Map(layers.map((l) => [l.id, l] as const));
     const currentIds = new Set(byId.keys());
@@ -174,9 +256,6 @@ export class LayeredWebglRenderer {
         this.map?.addLayer(entry.layer);
         this.lastStyleSignatures.set(layer.id, sig);
       } else {
-        // setStyle() es lo caro (recompila el pipeline de shaders): solo lo
-        // llamamos si algo que afecta el estilo realmente cambió, no en
-        // cada tick del store (p.ej. al mover el slider de OTRA capa).
         if (this.lastStyleSignatures.get(layer.id) !== sig) {
           entry.layer.setStyle(buildSingleLayerStyle(layer));
           recordSetStyleCall();
@@ -210,6 +289,156 @@ export class LayeredWebglRenderer {
     }
 
     recordWebglLayerCount(this.mirrors.size + 1);
+  }
+
+  // ─── Pooled mode (Fase 4.4) ──────────────────────────────────────────
+
+  private static poolSlotSig(layers: PoolLayerColor[]): string {
+    return layers.map((l) => `${l.color}|${l.fillColor}|${l.opacity}|${l.suppressIfSubdivided ? 1 : 0}`).join(',');
+  }
+
+  /** Construye el estilo WebGL de un slot físico. */
+  private static buildPoolSlotStyle(colors: PoolLayerColor[]): Record<string, unknown> {
+    const fillMatch: unknown[] = ['match', ['get', 'webglSlotIdx']];
+    const strokeMatch: unknown[] = ['match', ['get', 'webglSlotIdx']];
+    for (let i = 0; i < colors.length; i++) {
+      const c = colors[i];
+      const fill = withAlpha(c.fillColor, 0.3 * c.opacity);
+      const stroke = withAlpha(c.color, c.opacity);
+      fillMatch.push(i, c.suppressIfSubdivided
+        ? ['case', ['==', ['get', 'lotStatus'], 'subdivided'], 'rgba(0,0,0,0)', fill]
+        : fill);
+      strokeMatch.push(i, stroke);
+    }
+    fillMatch.push('rgba(0,0,0,0)');
+    strokeMatch.push('rgba(0,0,0,0)');
+    return {
+      'fill-color': fillMatch,
+      'stroke-color': strokeMatch,
+      'stroke-width': 2,
+    };
+  }
+
+  private allocatePoolSlots(layers: Layer[]): void {
+    this.layerSlotMap.clear();
+    const nSlots = Math.min(MAX_WEBGL_LAYERS, layers.length);
+    const slotSize = Math.ceil(layers.length / nSlots);
+
+    // Almacén temporal de listas de [color+layerIdx] por slot
+    const slotLayers: Array<{ layer: Layer; idx: number }[]> = [];
+    for (let i = 0; i < nSlots; i++) slotLayers.push([]);
+
+    let layerIdxGlobal = 0;
+    for (const layer of layers) {
+      const slot = Math.floor(layerIdxGlobal / slotSize);
+      if (slot >= nSlots) break; // shouldn't happen
+      slotLayers[slot].push({ layer, idx: slotLayers[slot].length });
+      this.layerSlotMap.set(layer.id, { slot, idx: slotLayers[slot].length - 1 });
+      layerIdxGlobal++;
+    }
+
+    // Rebuild PoolSlots. Respaña los ᜃColorSlot for each slot.
+    this.poolSlots.length = nSlots;
+    for (let i = 0; i < nSlots; i++) {
+      const colorTable: PoolLayerColor[] = slotLayers[i].map((entry) => ({
+        color: entry.layer.color,
+        fillColor: entry.layer.fillColor,
+        opacity: entry.layer.opacity,
+        suppressIfSubdivided: entry.layer.kind === 'manzana',
+      }));
+      const sig = LayeredWebglRenderer.poolSlotSig(colorTable);
+      const newStyle = LayeredWebglRenderer.buildPoolSlotStyle(colorTable);
+      const existing = this.poolSlots[i];
+      if (existing) {
+        existing.colorTable = colorTable;
+        existing.lastSig = sig;
+        if (this.map) existing.layer.setStyle(newStyle);
+      } else {
+        const source = new VectorSource();
+        const layer = new WebGLVectorLayer({
+          source,
+          disableHitDetection: true,
+          style: newStyle,
+          zIndex: 0, // all pool slots stay at base Z
+        });
+        this.poolSlots.push({ source, layer, colorTable, lastSig: sig });
+        this.map?.addLayer(layer);
+      }
+    }
+    // Cleanup any extra slots
+    const oldCount = this.poolSlots.length;
+    for (let i = nSlots; i < oldCount; i++) {
+      const removed = this.poolSlots.pop()!;
+      // any remaining features? might be never because we re-placed first
+      this.map?.removeLayer(removed.layer);
+      removed.layer.dispose();
+    }
+  }
+
+  private syncPooledLayers(layers: Layer[]): void {
+    recordSyncLayerSetCall();
+    if (this.poolSlots.length === 0) {
+      this.allocatePoolSlots(layers);
+    } else {
+      let anyChanged = false;
+      for (let i = 0; i < this.poolSlots.length; i++) {
+        const curSlot = this.poolSlots[i];
+        const currentSigRel = LayeredWebglRenderer.poolSlotSig(curSlot.colorTable);
+        if (curSlot.lastSig !== currentSigRel) { // where comes other?
+          anyChanged = true; break;
+        }
+      }
+      if (anyChanged) {
+        this.allocatePoolSlots(layers);
+      }
+    }
+
+    this.byIdCache = null; // redo cache for place
+    // Re‑place every feature to pool slots
+    const byId = this.getByIdMap();
+    for (const f of this.master.getFeatures()) {
+      this.place(f as Feature<Geometry>, byId);
+    }
+    recordWebglLayerCount(this.poolSlots.length);
+  }
+
+  private transitionMode(toPooled: boolean, layers: Layer[]): void {
+    this.poolMode = toPooled;
+    if (toPooled) {
+      // Move from mirror → pool
+      for (const [, entry] of Array.from(this.mirrors.entries())) {
+        this.map?.removeLayer(entry.layer);
+        entry.layer.dispose();
+      }
+      this.mirrors.clear();
+      this.lastStyleSignatures.clear();
+      this.knownLayerIds.clear();
+
+      // Create pool fallback
+      this.poolFallbackSource = new VectorSource();
+      this.poolFallbackLayer = new WebGLVectorLayer({
+        source: this.poolFallbackSource,
+        disableHitDetection: true,
+        style: FALLBACK_STYLE,
+        zIndex: -1,
+      });
+      this.map?.addLayer(this.poolFallbackLayer);
+
+      this.allocatePoolSlots(layers);
+    } else {
+      // Pool → per‑layer: simpler — just rebuild
+      this.poolSlots.forEach((p) => { this.map?.removeLayer(p.layer); p.layer.dispose(); });
+      this.poolSlots = [];
+      if (this.poolFallbackLayer) {
+        this.map?.removeLayer(this.poolFallbackLayer);
+        this.poolFallbackLayer.dispose();
+        this.poolFallbackLayer = null;
+        this.poolFallbackSource = null;
+      }
+      // Existing per‑layer fallback stays
+      this.poolMode = false;
+      this.syncPerLayerSet(layers);
+    }
   }
 
   attach(map: Map): () => void {
