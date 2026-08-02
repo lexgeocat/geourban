@@ -13,6 +13,7 @@ import {
 } from '../../store/debug/perfTelemetry';
 import { generateSyntheticManzanos, ensureSyntheticLotLayer } from '../../geo/debug/syntheticDataset';
 import { readNativeEngineStats, type NativeEngineStatsSnapshot } from '../../store/debug/nativeEngineTelemetry';
+import { runStreetUndoBenchmarkSuite, type StreetUndoBenchmarkResult } from '../../geo/debug/undoRedoBenchmark';
 
 const REFRESH_MS = 400;
 const SYNTHETIC_SIZES = [100_000, 500_000, 1_000_000] as const;
@@ -82,6 +83,9 @@ export default function DebugPanel() {
   const [projectLoad, setProjectLoad] = useState(readProjectLoadStats());
   const [heap, setHeap] = useState(readHeapSnapshot());
   const [nativeStats, setNativeStats] = useState<NativeEngineStatsSnapshot[]>([]);
+  const [benchBusy, setBenchBusy] = useState(false);
+  const [benchResults, setBenchResults] = useState<StreetUndoBenchmarkResult[]>([]);
+  const [benchError, setBenchError] = useState<string | null>(null);
 
   const [genBusy, setGenBusy] = useState<number | null>(null);
   const [lastGen, setLastGen] = useState<{
@@ -109,6 +113,16 @@ export default function DebugPanel() {
     const id = setInterval(tick, REFRESH_MS);
     return () => clearInterval(id);
   }, [open]);
+
+  const handleRunBenchmark = () => {
+    if (benchBusy) return;
+    setBenchBusy(true);
+    setBenchError(null);
+    void runStreetUndoBenchmarkSuite([10_000, 100_000, 500_000])
+      .then(setBenchResults)
+      .catch((err) => setBenchError(err instanceof Error ? err.message : String(err)))
+      .finally(() => setBenchBusy(false));
+  };
 
   const handleGenerateSynthetic = (size: number) => {
     if (genBusy != null) return;
@@ -293,6 +307,26 @@ export default function DebugPanel() {
           <Row label="Tiempo carga" value={`${lastGen.loadMs.toFixed(0)} ms`} />
         </>
       )}
+
+      <SectionTitle>Benchmark Fase 3.4 — undo de un trazo vs. proyecto entero</SectionTitle>
+      <button
+        onClick={handleRunBenchmark}
+        disabled={benchBusy}
+        className="cad-icon-btn"
+        style={{ width: '100%', height: 24, fontSize: '0.62rem', marginBottom: 4 }}
+      >
+        {benchBusy ? <><span className="cad-spinner" /> Corriendo…</> : '▶ Correr suite (10k/100k/500k)'}
+      </button>
+      {benchError && (
+        <div style={{ color: 'var(--cad-accent-red)', fontSize: '0.6rem', marginBottom: 4 }}>{benchError}</div>
+      )}
+      {benchResults.map((r) => (
+        <Row
+          key={r.datasetSize}
+          label={`${r.datasetSize / 1000}k features`}
+          value={`undo=${formatKB(r.undoDiffBytes)} · baseline=${formatKB(r.fullSnapshotBaselineBytes)} · ratio=${(r.ratio * 100).toFixed(2)}% · ${r.executeMs.toFixed(0)}ms`}
+        />
+      ))}
 
       {geoTelemetry && Object.values(geoTelemetry.countsByContext).some((n) => n > 0) && (
         <>

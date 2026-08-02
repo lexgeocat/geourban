@@ -16,6 +16,8 @@ export class DuplicateLayerCommand extends Command {
   readonly label = 'Duplicar capa';
   private readonly opts: DuplicateLayerOptions;
   private clonedFeatureIds: Array<string | number> = [];
+  private clonedFeatures: Array<{ id: string | number; feature: Feature<Geometry> }> = [];
+  private addedLayer: Layer | null = null;
 
   constructor(opts: DuplicateLayerOptions) {
     super();
@@ -34,10 +36,12 @@ export class DuplicateLayerCommand extends Command {
         name: this.opts.newName,
       };
       store.add(clone);
+      this.addedLayer = { ...clone, zIndex: source.zIndex };
     }
 
     if (this.opts.duplicateFeatures) {
       this.clonedFeatureIds = [];
+      this.clonedFeatures = [];
       const toClone: Array<Feature<Geometry>> = [];
       ctx.drawSource.forEachFeature((f) => {
         if (f.get('layerId') === this.opts.sourceLayerId) toClone.push(f as Feature<Geometry>);
@@ -50,6 +54,7 @@ export class DuplicateLayerCommand extends Command {
         clone.set('layerId', this.opts.newLayerId, true);
         ctx.drawSource.addFeature(clone);
         this.clonedFeatureIds.push(clonedFeatureId);
+        this.clonedFeatures.push({ id: clonedFeatureId, feature: clone });
       }
       ctx.drawSource.changed();
     }
@@ -66,6 +71,11 @@ export class DuplicateLayerCommand extends Command {
   }
 
   override redo(ctx: CommandContext): void {
-    this.execute(ctx);
+    const store = useLayersStore.getState();
+    if (this.addedLayer && !store.getById(this.addedLayer.id)) store.add(this.addedLayer);
+    for (const { id, feature } of this.clonedFeatures) {
+      if (ctx.drawSource.getFeatureById(id) == null) ctx.drawSource.addFeature(feature);
+    }
+    ctx.drawSource.changed();
   }
 }

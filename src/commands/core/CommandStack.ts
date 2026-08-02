@@ -2,6 +2,7 @@
 import { Command, type CommandContext, getCommandContext } from './Command';
 import { useSelectionStore } from '../../store/map/selectionStore';
 import { recordUndoCommand } from '../../store/debug/perfTelemetry';
+import { toast } from '../../store/ui/toastStore';
 
 type RunResult =
   | { ok: true; command: Command }
@@ -100,6 +101,7 @@ export const useCommandStack = create<CommandStackState>()((set) => ({
     if (!ctx) return false;
 
     const command = executed[pointer];
+    let succeeded = true;
     try {
       if (command.undo) {
         await command.undo(ctx);
@@ -107,8 +109,24 @@ export const useCommandStack = create<CommandStackState>()((set) => ({
         console.warn(`CommandStack: "${command.label}" no implementa undo() — se ignora.`);
       }
     } catch (err) {
-      console.error(`CommandStack: error al deshacer "${command.label}"`, err);
+      succeeded = false;
+      console.error(`CommandStack: falló el undo de "${command.label}" — el historial no avanza.`, err);
     }
+
+    if (!succeeded) {
+      // No tocamos `pointer`: un undo fallido NO se hace pasar por exitoso.
+      // El comando queda "atascado" en el tope hasta que el usuario reintente
+      // o recargue el proyecto — es preferible a corromper el historial
+      // avanzando el pointer sobre un estado parcialmente revertido.
+      toast(`No se pudo deshacer "${command.label}". Reintentá o revisá la consola.`, {
+        variant: 'error',
+        durationMs: 6000,
+      });
+      ctx.drawSource.changed();
+      syncFlags(set);
+      return false;
+    }
+
     pointer -= 1;
     lastCoalesceKey = null;
     lastCommandAt = 0;
@@ -127,6 +145,7 @@ export const useCommandStack = create<CommandStackState>()((set) => ({
     if (!ctx) return false;
 
     const command = executed[pointer + 1];
+    let succeeded = true;
     try {
       if (command.redo) {
         await command.redo(ctx);
@@ -134,8 +153,20 @@ export const useCommandStack = create<CommandStackState>()((set) => ({
         await command.execute(ctx);
       }
     } catch (err) {
-      console.error(`CommandStack: error al rehacer "${command.label}"`, err);
+      succeeded = false;
+      console.error(`CommandStack: falló el redo de "${command.label}" — el historial no avanza.`, err);
     }
+
+    if (!succeeded) {
+      toast(`No se pudo rehacer "${command.label}". Reintentá o revisá la consola.`, {
+        variant: 'error',
+        durationMs: 6000,
+      });
+      ctx.drawSource.changed();
+      syncFlags(set);
+      return false;
+    }
+
     pointer += 1;
     lastCoalesceKey = null;
     lastCommandAt = 0;

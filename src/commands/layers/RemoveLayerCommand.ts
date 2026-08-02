@@ -79,7 +79,19 @@ export class RemoveLayerCommand extends Command {
   }
 
   override redo(ctx: CommandContext): void {
-    this.execute(ctx);
+    if (!this.removedLayer) return;
+    const store = useLayersStore.getState();
+    if (store.getById(this.removedLayer.id)) store.remove(this.removedLayer.id);
+
+    for (const r of this.reassigned) {
+      const f = ctx.drawSource.getFeatureById(r.id);
+      if (f && this.opts.targetLayerId) f.set('layerId', this.opts.targetLayerId);
+    }
+    for (const { id } of this.removedFeatures) {
+      const f = ctx.drawSource.getFeatureById(id);
+      if (f) ctx.drawSource.removeFeature(f);
+    }
+    ctx.drawSource.changed();
   }
 
   // Fase 3.3 — "Eliminar capa" con acción `delete` puede arrastrar todos

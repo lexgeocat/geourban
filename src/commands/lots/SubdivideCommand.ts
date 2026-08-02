@@ -26,10 +26,17 @@ interface RemovedTargetSnapshot {
   props: Record<string, unknown>;
 }
 
+interface NewFeatureSnapshot {
+  id: string | number;
+  geometry: Geometry;
+  props: Record<string, unknown>;
+}
+
 export class SubdivideCommand extends Command {
   readonly label = 'Subdividir manzano';
   private readonly opts: SubdivideCommandOpts;
   private newFeatureIds: Array<string | number> = [];
+  private newFeatureSnapshots: NewFeatureSnapshot[] = [];
   private removedTarget: RemovedTargetSnapshot | null = null;
 
   constructor(opts: SubdivideCommandOpts) {
@@ -68,6 +75,7 @@ export class SubdivideCommand extends Command {
     }
 
     this.newFeatureIds = [];
+    this.newFeatureSnapshots = [];
     r.features.forEach((f) => {
       const g = f.geometry.type === 'Polygon' ? (f.geometry as GeoJsonPolygon) : null;
       if (!g) return;
@@ -93,6 +101,9 @@ export class SubdivideCommand extends Command {
       if (lid) olFeat.set('layerId', lid);
       updateFeatureMetrics(olFeat as Feature<Geometry>);
       this.newFeatureIds.push(subdividedId);
+      const snapshotProps = { ...olFeat.getProperties() };
+      delete snapshotProps.geometry;
+      this.newFeatureSnapshots.push({ id: subdividedId, geometry: geom3857 as Geometry, props: snapshotProps });
     });
 
     ctx.drawSource.changed();
@@ -112,8 +123,19 @@ export class SubdivideCommand extends Command {
     ctx.drawSource.changed();
   }
 
-  override async redo(ctx: CommandContext): Promise<void> {
-    await this.execute(ctx);
+  override redo(ctx: CommandContext): void {
+    if (this.newFeatureSnapshots.length === 0 && this.removedTarget == null) return;
+    if (this.removedTarget) {
+      const existing = ctx.drawSource.getFeatureById(this.removedTarget.id);
+      if (existing) ctx.drawSource.removeFeature(existing);
+    }
+    for (const s of this.newFeatureSnapshots) {
+      const f = new Feature({ geometry: s.geometry.clone() });
+      f.setId(s.id);
+      f.setProperties({ ...s.props });
+      ctx.drawSource.addFeature(f);
+    }
+    ctx.drawSource.changed();
   }
 
   override approxMemoryBytes(): number {

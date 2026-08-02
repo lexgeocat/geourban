@@ -6,7 +6,7 @@
 **Alcance:** Auditoría del repositorio real (`geourban`), no de una descripción abstracta del stack.
 **Revisión:** 1 de agosto de 2026 — actualización de estado contra el código actual del repo (no contra lo que el documento original _asumía_ que se había hecho).
 
-> **Cómo leer este documento:** es la misma auditoría original, con cuatro cambios: (1) cada fase tiene ahora su estado real verificado línea por línea contra el código, no una casilla optimista; (2) las Fases 3 a 6 quedan desglosadas en sub-fases con el mismo nivel de detalle que ya tenía la Fase 2; (3) se agrega una sección nueva (§5) con los bugs y la deuda técnica que esta revisión encontró leyendo el código — incluido uno que la auditoría original ya había señalado y que **sigue sin resolverse**; (4) **actualización del 1-ago-2026 (cierre de Fase 2)**: las Fases 2.0 a 2.7 quedaron **cerradas y verificadas** — paridad de subdivisión, booleanas GEOS activas, reconciliación de fragmentos, cableado Tauri completo, fuzzing (TS 236 casos + Rust con timeout) y el **retiro del motor JS** (2.7) tras validar el A/B en la app real con datos de producción. Los estados que figuran en este documento reflejan ese estado final, con el detalle de cada cambio en §6 y las consecuencias para la deuda pendiente en §5 y §7.
+> **Cómo leer este documento:** es la misma auditoría original, con cuatro cambios: (1) cada fase tiene ahora su estado real verificado línea por línea contra el código, no una casilla optimista; (2) las Fases 3 a 6 quedan desglosadas en sub-fases con el mismo nivel de detalle que ya tenía la Fase 2; (3) se agrega una sección nueva (§5) con los bugs y la deuda técnica que esta revisión encontró leyendo el código — incluido uno que la auditoría original ya había señalado y que quedó **resuelto en código (2-ago-2026)**; (4) **actualización del 1-ago-2026 (cierre de Fase 2)**: las Fases 2.0 a 2.7 quedaron **cerradas y verificadas** — paridad de subdivisión, booleanas GEOS activas, reconciliación de fragmentos, cableado Tauri completo, fuzzing (TS 236 casos + Rust con timeout) y el **retiro del motor JS** (2.7) tras validar el A/B en la app real con datos de producción; (5) **actualización del 2-ago-2026 (cierre de Fase 3)**: Fase 3 completa con medición de regresión (3.4) que cumple el criterio (ratio undo/snapshot 0.47% @ 500k), y el bug del índice espacial (§5.1) verificado como resuelto en código. Los estados que figuran en este documento reflejan ese estado final, con el detalle de cada cambio en §6 y las consecuencias para la deuda pendiente en §5 y §7.
 
 ---
 
@@ -51,7 +51,7 @@ Misma numeración que el documento original, con el estado real de cada punto ag
 
 ### 2.1 — CRÍTICO: el undo/redo de calles serializa el proyecto ENTERO en cada edición
 
-**Estado: ✅ RESUELTO (2-ago-2026, Fase 3.2).** `AddStreetCommand`/`AddRoundaboutCommand` ya no serializan el drawSource completo — `drawSourceSnapshot.ts` quedó deprecado y sin usos; el undo/redo de cada trazo usa el `StructuralDiff` (solo los manzanos/lotes afectados) que devuelve `recomputeManzanos()`. Detalle completo en §6, Fase 3. Queda pendiente de esta sección únicamente la medición de regresión (3.4) que lo confirme a escala.
+**Estado: ✅ RESUELTO (2-ago-2026, Fase 3.2).** `AddStreetCommand`/`AddRoundaboutCommand` ya no serializan el drawSource completo — `drawSourceSnapshot.ts` quedó deprecado y sin usos; el undo/redo de cada trazo usa el `StructuralDiff` (solo los manzanos/lotes afectados) que devuelve `recomputeManzanos()`. Detalle completo en §6, Fase 3. La medición de regresión (3.4) que faltaba quedó **ejecutada y con el criterio cumplido el 2-ago-2026** (benchmark en `src/geo/debug/undoRedoBenchmark.ts`, UI en `DebugPanel.tsx`): el undo de un trazo retiene **0.47%** del snapshot del proyecto entero con 500k features, y el ratio es **decreciente con n** (ver datos en §6, Fase 3.4).
 
 ### 2.2 — El motor de geometría corre en JS puro, interpretado, en el hilo del navegador
 
@@ -67,20 +67,7 @@ Todos registrados en `src-tauri/src/lib.rs` y consumidos desde `src/workers/geoW
 
 ### 2.3 — Índice espacial: bien diseñado, mal sincronizado
 
-**Estado: BUG CONFIRMADO, SIGUE ACTIVO.** El parche defensivo que la auditoría original señalaba como anti-patrón ("no lo arregles con más `console.warn`") **sigue exactamente igual** en `src/map/scene/PostrenderPainter.ts`:
-
-```ts
-if (index.size === 0 && all.length > 0) {
-  if (import.meta.env.DEV) {
-    console.warn(
-      'PostrenderPainter: índice espacial vacío con N feature(s) presentes — reconstruyendo...'
-    );
-  }
-  index.load(all as unknown as Feature<Polygon>[]);
-}
-```
-
-Esto es un bug real de causa-raíz no resuelta, no cosmético — ver el detalle y la propuesta de arreglo en §5.1, es el hallazgo más accionable de esta revisión.
+**Estado: ✅ RESUELTO (verificado 2-ago-2026).** Los dos arreglos que §5.1 pedía ya están en el código: `restoreDrawFeatures` (`src/store/map/mapStore.ts:120`) y `loadProject` (`src/persistence/projectFile.ts:187`) hacen `getOrCreateSpatialIndex().load(...)` explícito tras poblar `drawSource` en bulk, en vez de depender de los listeners incrementales `addfeature`. El fallback defensivo en `PostrenderPainter.getVisibleFeatures` sigue existiendo como red de seguridad, pero ahora reporta vía `recordGeometrySanitizeEvent('spatialIndex.emptyOnPostrender', ...)` (`src/map/scene/PostrenderPainter.ts:138`) **sin gate de `DEV`** — visible en producción a través del panel de debug (`readGeometryTelemetry()`). Si el contador `spatialIndex.emptyOnPostrender` se mantiene en 0 en uso real, confirma que la causa raíz (el desorden de montaje/listeners que el audit describía) ya no dispara. La verificación queda como ítem de la Fase 4.0.
 
 ### 2.4 — El pipeline de etiquetas/cotas es Canvas2D puro, recalculado cada frame
 
@@ -158,22 +145,14 @@ _(Sin cambios.)_
 
 Esta sección es nueva respecto al documento original. Son hallazgos de lectura de código, no suposiciones.
 
-### 5.1 — BUG activo: la reconstrucción silenciosa del índice espacial sigue sin arreglarse
+### 5.1 — BUG activo: la reconstrucción silenciosa del índice espacial sigue sin arreglarse — ✅ RESUELTO (verificado 2-ago-2026)
 
-**Dónde:** `src/map/scene/PostrenderPainter.ts`, método `getVisibleFeatures`.
+**Estado actual:** los dos pasos concretos que esta sección proponía ya están implementados y verificados en el código:
 
-**Qué pasa:** si el índice espacial (`RBush`, singleton vía `getOrCreateSpatialIndex()`) aparece vacío en un frame donde `drawSource` ya tiene features, el código lo reconstruye entero (`index.load(all...)`) dentro del propio callback de `postrender`, y solo deja un rastro (`console.warn`) cuando `import.meta.env.DEV` es verdadero. **En producción esto sucede en absoluto silencio.**
+1. **Carga explícita del índice en cada punto de entrada masivo** — ✅ HECHO: `restoreDrawFeatures` (`src/store/map/mapStore.ts:120`) y `loadProject` (`src/persistence/projectFile.ts:187`) llaman `getOrCreateSpatialIndex().load(features)` explícitamente después de poblar `drawSource`, con sanitización previa de geometrías no-finitas. Ya no se depende de que `addfeature` dispare `insert()` feature por feature (que además era más caro que `load()` bulk).
+2. **Telemetría de producción en vez de `console.warn` de DEV** — ✅ HECHO: el fallback en `PostrenderPainter.getVisibleFeatures` (`src/map/scene/PostrenderPainter.ts:138`) ahora llama `recordGeometrySanitizeEvent('spatialIndex.emptyOnPostrender', { featureCount })` **fuera** del gate de `import.meta.env.DEV` (solo el `console.warn` queda gateado) — el evento es visible en `DebugPanel.tsx` vía `readGeometryTelemetry()`, y la sección "Saneo de geometría (últimos 60s)" lo muestra en uso real.
 
-**Por qué importa:** un `index.load()` completo dentro de `postrender` es, por definición, un recálculo O(n log n) disparado desde el hilo de render — exactamente el tipo de trabajo que no debería aparecer ahí. Si esto se dispara con cierta frecuencia en proyectos grandes (algo que hoy nadie puede saber, porque no hay telemetría de producción para este evento), es un causante silencioso de jank intermitente que ningún usuario va a poder reportar de forma útil ("a veces el mapa tiene un tirón").
-
-**Hipótesis de causa raíz (igual que la auditoría original la planteaba, sin resolver):** un desorden entre el momento en que se instala el listener `addfeature`/`removefeature`/`changefeature` sobre `drawSource` (en `Map.tsx`) y el momento en que algo puebla `drawSource` en volumen (`restoreDrawFeatures` en `mapStore.ts`, o `loadProject` en `persistence/projectFile.ts`, que llama `drawSource.addFeatures(features)` directamente). En React 18/19 con Strict Mode, los efectos se montan/desmontan/remontan una vez extra en desarrollo — si `getOrCreateSpatialIndex()` devuelve el mismo singleton pero los listeners de un montaje anterior ya fueron limpiados por el `return () => {...}` del `useEffect`, podés terminar con features en `drawSource` pero sin ningún listener activo escuchándolas hasta el remount.
-
-**Cómo se arregla (dos pasos concretos, no otro parche):**
-
-1. **Hacer explícita la carga del índice en cada punto de entrada masivo**, en vez de confiar en que los eventos incrementales lo mantengan sincronizado. Tanto `restoreDrawFeatures` (`mapStore.ts`) como `loadProject` (`persistence/projectFile.ts`) deberían llamar `getOrCreateSpatialIndex().load(features)` explícitamente después de poblar `drawSource`, en vez de depender de que `addfeature` dispare `spatialIndex.insert()` feature por feature. Es más barato (`load()` es bulk, `insert()` repetido no) y elimina la ambigüedad de orden.
-2. **Convertir el `console.warn` en una métrica real**, incluso fuera de DEV (`recordGeometrySanitizeEvent`-style, ya existe el patrón en `store/debug/geometryTelemetry.ts` — reusarlo), para poder confirmar en producción si esto sigue pasando después del paso 1, en vez de asumir que ya quedó resuelto.
-
-Este es, de los hallazgos de esta revisión, el que tiene mejor relación costo/beneficio: es un arreglo acotado (dos call sites) contra un bug que ya lleva documentado desde la versión anterior de este mismo informe.
+**Verificación pendiente (Fase 4.0):** si el contador `spatialIndex.emptyOnPostrender` se mantiene en 0 durante uso real con proyectos grandes, queda confirmado que la causa raíz (el desorden de montaje/listeners que se describe abajo) ya no dispara. Mantener el fallback defensivo como red de seguridad.
 
 ### 5.2 — El motor Rust existía pero estaba desconectado: riesgo de deuda duplicada — RESUELTO COMPLETO (1-ago-2026, cierre de Fase 2)
 
@@ -280,9 +259,9 @@ El A/B se validó en la app real con datos de producción: **72+ comparaciones e
 
 ---
 
-### Fase 3 — Undo/redo estructural — 🟡 CASI COMPLETA (2-ago-2026): 3.0-3.3 ✅, falta 3.4
+### Fase 3 — Undo/redo estructural — ✅ COMPLETA (2-ago-2026): 3.0 a 3.4
 
-**Estado real verificado leyendo el código (2-ago-2026):** esta fase NO estaba "no iniciada" como figuraba hasta hoy — las sub-fases 3.0 a 3.3 están **implementadas y en producción** (la infraestructura vive en `src/commands/`), pero el trabajo nunca se documentó y falta la 3.4 (medición). Detalle por sub-fase:
+**Estado real verificado leyendo el código (2-ago-2026):** esta fase NO estaba "no iniciada" como figuraba en revisiones anteriores — las sub-fases 3.0 a 3.3 estaban **implementadas y en producción** (la infraestructura vive en `src/commands/`), pero el trabajo nunca se documentó y faltaba la 3.4 (medición), que quedó cerrada el mismo día. Detalle por sub-fase:
 
 - **3.0 — Prerrequisito (reusar el cómputo de manzanos afectados)** — ✅ **HECHO:** `recomputeManzanos()` (`src/geo/recomputeManzanos.ts`) devuelve un `StructuralDiff` en lugar de un snapshot: un `StructuralDiffRecorder` se alimenta dentro de `recomputeManzanosImmediate` (~20 call-sites de `recordAdd`/`recordRemove`/`recordModifyBefore`/`recordModifyAfter`), exactamente el mismo cómputo de grupos/extent afectados que la auditoría pedía reutilizar.
 - **3.1 — Formato de diff** — ✅ **HECHO:** `src/commands/core/structuralDiff.ts` implementa el formato completo: `StructuralDiff { added, removed, modified }`, `StructuralDiffRecorder` (neto por id: add→remove y remove→re-add en la misma operación se anulan; modify repetido conserva el "antes" original), `composeStructuralDiffs` (permite coalescing correcto de N trazos de una sesión de dibujo), `applyStructuralDiffForward`/`revertStructuralDiff` (redo/undo) y `approxStructuralDiffBytes` (para el pruning del stack).
@@ -292,28 +271,45 @@ El A/B se validó en la app real con datos de producción: **72+ comparaciones e
   - *O(n) intencional y documentado:* `ClearFeaturesCommand` — su "cambio" ES el proyecto entero (semántica "Nuevo proyecto"), con `approxMemoryBytes()` real para que el pruning lo vea.
   - *Bonus 3.3:* los comandos pesados implementan `approxMemoryBytes()` real (antes el default de 256 bytes ocultaba el costo al `pruneStack` por bytes — `MAX_STACK_BYTES = 24 MB`), y `CommandStack.ts` (coalescing de 250 ms, `MAX_STACK = 100`) quedó completo y consumido desde StatusBar (`Undo2`/`Redo2`) y `Ctrl+Z`/`Ctrl+Shift+Z`.
 
-- **3.4 — Medición de regresión** — ❌ **PENDIENTE (única sub-fase que falta):** no existe el benchmark que confirme el criterio de éxito original ("trazar una calle en el dataset de 200k features ya no retiene memoria proporcional al tamaño total del proyecto"). El mecanismo está en producción; falta medirlo.
+- **3.4 — Medición de regresión** — ✅ **RESUELTO (2-ago-2026).** Benchmark `runStreetUndoBenchmarkSuite` (`src/geo/debug/undoRedoBenchmark.ts`) con UI en `DebugPanel.tsx` (sección "Benchmark Fase 3.4"). Reutiliza el generador sintético y el pipeline real: `AddStreetCommand` → `recomputeManzanos` → `StructuralDiff`, con una calle que cruza toda la grilla (toca ~√n manzanos). Resultados de la corrida (runtime Tauri):
+
+  | Dataset | Undo (diff estructural) | Snapshot completo (baseline estimado) | Ratio | Tiempo de ejecución del comando |
+  |---|---|---|---|---|
+  | 10k features | 67.4 KB | 2,150.6 KB | 3.13% | 651 ms |
+  | 100k features | 211.8 KB | 21,486.3 KB | 0.99% | 3,075 ms |
+  | 500k features | 507.9 KB | 107,423.2 KB | 0.47% | 48,077 ms |
+
+  **Criterio de éxito cumplido:** el ratio **cae con n** (3.13% → 0.99% → 0.47%) y los bytes del diff crecen **sub-linealmente** (×3.1 y ×2.4 cuando el dataset crece ×10 y ×5) — consistente con el modelo de corredor (√10 ≈ 3.16 y √5 ≈ 2.24): el undo de un trazo es **O(cambios reales), independiente de n**. En 500k features el undo retiene menos de medio punto porcentual de lo que retenía el snapshot completo pre-Fase-3.
+
+  **Notas de la corrida (no bloquean el criterio, quedan registradas):**
+  1. Los ~48 s de `executeMs` en 500k **no son el costo del undo** (el diff pesa 508 KB, serialización trivial) — son el recompute nativo del trazado (`computeRoadNetworkNet` last 12,460 ms, `computeManzanos` 7,508 ms) más presión de GC.
+  2. Heap de JS al **70% del límite** (2,910 / 4,134 MB) con 500k features — el botón de 1M del panel sintético corre riesgo real de OOM/thrash (enlace con Fase 6.2).
+  3. `restoreDrawFeatures` tardó **56,060 ms** en 500k (107 MB, 500,006 features) — la carga es la deuda conocida de Fase 4, independiente del undo.
 
 **Deudas nuevas encontradas en esta revisión (2-ago-2026):**
 
 1. **Telemetría muerta:** `recordUndoSnapshot` (`src/store/debug/perfTelemetry.ts`) y la sección "Snapshot de undo (GeoJSON)" del `DebugPanel.tsx` siguen vivos pero solo los llama `drawSourceSnapshot.ts` (deprecado, sin usos). Es exactamente el anti-patrón de "código que nadie usa" que la auditoría ya cazó en el motor JS. → Actualizar a bytes del diff estructural (`approxStructuralDiffBytes`) o eliminar.
 2. **Cero tests:** `composeStructuralDiffs` (lógica delicada: neto add→remove, modify→remove, composición de 3+ trazos) y el `CommandStack` (coalescing, pruning por bytes) no tienen cobertura alguna — no existe ni un `*.test.ts` en `src/commands/`. Son lógica pura, ideales para unit tests.
-3. **`redo()` que re-ejecuta el algoritmo:** `SubdivideCommand.redo()` vuelve a llamar al worker (`subdivideInWorker`), y `RemoveLayerCommand`/`DuplicateLayerCommand` re-ejecutan `execute()`. Correcto por determinismo, pero (a) paga el costo del worker en el redo, y (b) si el algoritmo deja de ser determinista o el estado mutó, el redo puede divergir del resultado original. Los diffs guardados alcanzan para redo sin re-ejecutar (patrón `applyStructuralDiffForward`).
+3. **`redo()` que re-ejecuta el algoritmo — CERRADA (2-ago-2026):** los tres comandos dejaron de re-ejecutar en el redo, reconstruyendo desde snapshots capturados en `execute()`:
+   - `SubdivideCommand` — snapshot `{id, geometry, props}` de cada feature nueva (incluye métricas ya calculadas); redo sin `subdivideInWorker`.
+   - `RemoveLayerCommand` — redo replaya desde `removedLayer`/`removedIndex`, `reassigned` y `removedFeatures` (sin re-scan O(n) del drawSource ni re-derivación).
+   - `DuplicateLayerCommand` — snapshot `addedLayer` + `clonedFeatures {id, feature}`; el redo además **deja de regenerar ids nuevos** (`newId('dup')`), que era una divergencia silenciosa de determinismo del enfoque anterior.
+   Los tres con guard de no-op si `execute()` no produjo cambios.
 4. **`CommandStack.undo()/redo()` no transaccionales:** si `command.undo()` lanza, el `catch` loguea pero `pointer` avanza igual — el stack queda con un comando deshecho a medias. Robustez: no avanzar pointer si el comando falló (o marcarlo corrupto y abortar).
 
-**Total estimado restante: ~1 semana** (3.4: 2-3 días; deuda 1: 0.5 día; deuda 2: 1-1.5 días; deuda 3: 0.5-1 día; deuda 4 opcional), en lugar de las 2-2.5 semanas que figuraban por estar la fase mal clasificada.
+**Total estimado restante: ~1.5-2 días (deuda 1: 0.5 día; deuda 2: 1-1.5 días; deuda 3: CERRADA el 2-ago-2026; deuda 4 opcional)**, ya sin la 3.4 (medida y cumplida el 2-ago-2026).
 
 ---
 
-### Fase 4 — Índice espacial y render a escala — ❌ NO INICIADA
+### Fase 4 — Índice espacial y render a escala — ❌ NO INICIADA (bug §5.1 ya resuelto, la fase arranca sin bloqueo)
 
-- **4.0 — Arreglar primero el bug de §5.1** (2-3 días): antes de construir un índice nuevo (`rstar`) encima de la sincronización actual, hay que resolver la causa raíz de por qué el índice JS a veces aparece vacío. Si no se resuelve acá, el índice Rust va a heredar el mismo síntoma bajo una forma distinta (p. ej. una consulta de viewport contra un índice Rust desactualizado, ahora sin ningún `console.warn` que lo delate porque cruza un `invoke`).
+- **4.0 — Confirmar en producción que §5.1 no dispara** (0.5-1 día, ya sin 2-3 días de arreglo): el bug de sincronización del índice quedó **resuelto en código** (ver §5.1 y §2.3: `load()` explícito en `restoreDrawFeatures`/`loadProject` + telemetría de producción). Lo que queda es confirmación: verificar que `spatialIndex.emptyOnPostrender` se mantiene en 0 en uso real con proyectos grandes (visible en `DebugPanel` → "Saneo de geometría"). Si dispara, se ataca la causa raíz antes de construir el `rstar`; si no, se construye sobre la sincronización actual.
 - **4.1 — `rstar` del lado Rust + comando de consulta de viewport** (1.5 semanas): bulk-load (`RTree::bulk_load`, no inserción incremental — ver §7.4) al hidratar un proyecto grande desde SQLite.
-- **4.2 — Umbral de decisión medido** (2-3 días): usar el instrumental de Fase 0 para fijar el número real de features a partir del cual conviene pagar el costo de un `invoke` en vez de resolver en RBush JS local. No adivinar el umbral — medirlo con el dataset sintético.
+- **4.2 — Umbral de decisión medido** (2-3 días): usar el instrumental de Fase 0 para fijar el número real de features a partir del cual conviene pagar el costo de un `invoke` en vez de resolver en RBush JS local. No adivinar el umbral — medirlo con el dataset sintético. **Dato nuevo de la corrida de Fase 3.4 (2-ago-2026):** a 500k features el cuello de botella ya no es el undo (resuelto, diff de 508 KB) sino el motor nativo de red vial — `computeRoadNetworkNet` 12,460 ms y `computeManzanos` 7,508 ms en el trazado de una calle que cruza la grilla. Justifica medir el umbral antes de invertir en `rstar`: la pregunta real a esa escala es si el recompute nativo puede pagarse por `invoke` por operación o si necesita batch/delta, más que si la consulta de viewport va por IPC.
 - **4.3 — Rediseño de `LabelPainter` con caché por dirty-flag** (1 semana): usar `metricsUpdatedAt` (que ya existe en el modelo de feature) para gatear la reconstrucción de `collisionGrid`, no solo el caché de área en pantalla que ya tiene.
 - **4.4 — Presupuesto de capas físicas WebGL** (3-4 días): por encima de ~32 capas de usuario, pasar a un modelo de N capas físicas con atributo `layerColorId` resuelto por expresión de estilo, generalizando el patrón que ya existe para `colorIdx` de manzanos.
 
-**Total estimado:** 3-3.5 semanas.
+**Total estimado:** ~3 semanas (baja de 3-3.5: la 4.0 pasa de arreglar el bug —ya resuelto— a verificar su contador en producción).
 
 ---
 
@@ -331,7 +327,7 @@ El A/B se validó en la app real con datos de producción: **72+ comparaciones e
 ### Fase 6 — Endurecimiento y pruebas de estrés — ❌ NO INICIADA (salvo el generador de dataset de Fase 0, que es insuficiente tal cual está)
 
 - **6.1 — Ampliar el dataset sintético** (3-4 días): `src/geo/debug/syntheticDataset.ts` hoy **solo genera lotes rectangulares en grilla** — no genera calles, rotondas, ni manzanos con geometría irregular. Esto es una limitación real: ni la Fase 2.2 (paridad de subdivisión) ni la Fase 2.3/2.4 (uniones y reconciliación de red vial) tienen con qué probarse a escala hoy mismo. Ampliarlo para generar una grilla de calles con anchos variables + algunas rotondas + manzanos resultantes debería ser, en la práctica, uno de los primeros pasos de esta fase, y podría adelantarse para desbloquear los tests de paridad de 2.2/2.4 antes de lo planeado.
-- **6.2 — Profiling de memoria nativo** (3-4 días): confirmar el objetivo de <2GB con 1M features usando herramientas nativas (no el `performance.memory` de Chrome, que ya se usa en `DebugPanel.tsx` pero solo cubre el heap de JS, no la memoria del proceso Rust).
+- **6.2 — Profiling de memoria nativo** (3-4 días): confirmar el objetivo de <2GB con 1M features usando herramientas nativas (no el `performance.memory` de Chrome, que ya se usa en `DebugPanel.tsx` pero solo cubre el heap de JS, no la memoria del proceso Rust). **Medición parcial ya existente (corrida 3.4, 2-ago-2026):** heap de JS al **70% del límite con 500k features** (2,910 / 4,134 MB) — con ese dato el botón de 1M del panel sintético es **riesgo real de OOM/thrash**, no hipótesis; hasta que la Fase 4 mejore la carga/render, conviene bajar el límite del dataset sintético en el panel de debug (o mostrar un warning al intentar 1M).
 - **6.3 — Fuzzing de geometría degenerada contra el motor Rust activo** — **✅ CUMPLIDA (adelantada y cerrada como parte de la Fase 2.6, 1-ago-2026):** fuzz TS (236 casos, corpus del lado JS previo al retiro) + fuzz Rust con timeout (`fuzz_degenerate_geometry.rs` en `tests/`), 0 cuelgues, 0 fallos. Lo que sigue en pie de esta fase es 6.1 (ampliar el corpus del dataset sintético), 6.2 (profiling de memoria nativo) y 6.4 (carga concurrente).
 - **6.4 — Pruebas de carga concurrente** (3-4 días): varios comandos Tauri geométricos en paralelo (p. ej. `subdivideManzanoBatch` corriendo mientras el usuario sigue paneando/dibujando) para confirmar que el runtime async de Tauri + `rayon` no compite de forma visible con la interacción en curso.
 
@@ -339,7 +335,7 @@ El A/B se validó en la app real con datos de producción: **72+ comparaciones e
 
 ---
 
-### Resumen de tiempos restantes (actualizado 1-ago-2026)
+### Resumen de tiempos restantes (actualizado 2-ago-2026)
 
 | Fase                               | Estado (1-ago-2026)                              | Trabajo restante estimado                          |
 | ---------------------------------- | ------------------------------------------------ | -------------------------------------------------- |
@@ -352,12 +348,12 @@ El A/B se validó en la app real con datos de producción: **72+ comparaciones e
 | 2.5 — Cableado Tauri               | ✅ Completa (los 7 comandos registrados y consumidos; motor nativo como vía única desde 2.7) | —                           |
 | 2.6 — Fuzzing/paridad              | ✅ Completa (fuzz TS 236 casos + fuzz Rust con timeout, 0 cuelgues) | —                                              |
 | 2.7 — Limpieza JS                  | ✅ **Completa (1-ago-2026):** A/B validado en la app real (72+ comparaciones en sombra, 0 mismatches, 0 fallbacks; batch por A/B manual ON/OFF con resultados idénticos) y motor JS retirado — jsts/polygon-clipping fuera de package.json, worker/algoritmos/tests eliminados, motor nativo como vía única | — (regresión post-retiro verde) |
-| 3 — Undo/redo estructural          | 🟡 3.0-3.3 completas (2-ago-2026, diffs estructurales en producción); falta 3.4 (medición) + deudas menores | ~1 semana |
-| 4 — Índice espacial + render       | ❌ No iniciada (bug 5.1 pendiente)               | 3-3.5 semanas                                      |
+| 3 — Undo/redo estructural          | ✅ **Completa (2-ago-2026):** 3.0-3.4 — diffs estructurales en producción + medición cumplida (ratio undo/snapshot 0.47% @ 500k, decreciente con n); quedan 4 deudas menores | ~2-3 días (+deuda 4 opcional) |
+| 4 — Índice espacial + render       | ❌ No iniciada (bug §5.1 resuelto en código el 2-ago-2026; arranca sin bloqueo, 4.0 pasa a ser solo verificación en producción) | ~3 semanas                                      |
 | 5 — CRS afín                       | ❌ No iniciada                                   | 1.5-2 semanas                                      |
 | 6 — Estrés                         | ❌ No iniciada                                   | 2.5-3 semanas                                      |
 
-**Total restante estimado: ~8-10 semanas** desde hoy, asumiendo 1-2 ingenieros senior dedicados — **menor que las 9-11 semanas que figuraban ayer**, porque la Fase 3 resultó estar casi completa (3.0-3.3 en producción; resta ~1 semana con 3.4 y deudas). El trabajo que sigue es, en orden de impacto: cerrar Fase 3, después Fase 4 (índice + render a escala, que además necesita el bug de §5.1 resuelto) y Fase 5.
+**Total restante estimado: ~7-8 semanas** desde hoy, asumiendo 1-2 ingenieros senior dedicados — **menor que las 7-9 semanas que figuraban ayer**, porque la Fase 3 quedó **cerrada en su totalidad (2-ago-2026, 3.4 medida y criterio cumplido)** y el bug de sincronización del índice (§5.1), que bloqueaba el arranque de la Fase 4, resultó **ya resuelto en código** (2-ago-2026: `load()` explícito en los dos puntos de entrada masivo + telemetría de producción) — la 4.0 pasa de "arreglar" a "verificar". El trabajo que sigue es, en orden de impacto: saldar las deudas de la Fase 3 (~2-3 días), después Fase 4 (índice + render a escala, ahora sin bloqueo previo) y Fase 5.
 
 ---
 
@@ -392,7 +388,7 @@ _(Preservado del original, con un ítem nuevo al final.)_
 3. No muevas todo detrás de IPC de Tauri sin distinguir hot-path de batch.
 4. No sigas usando `sql.js`/`dexie` — **ya resuelto, este ítem queda cerrado.**
 5. No optimices el pipeline de labels/SDF antes de tener el dato de que lo necesitás.
-6. No parchees la race condition del índice espacial con más `console.warn` — **sigue sin resolverse, ver §5.1. Este es el ítem más urgente de toda la lista de anti-patrones, porque es el único que ya lleva tres revisiones señalado sin acción.**
+6. No parchees la race condition del índice espacial con más `console.warn` — **resuelto (verificado 2-ago-2026): ambos puntos de entrada masivo cargan el índice explícitamente (`restoreDrawFeatures` y `loadProject` hacen `getOrCreateSpatialIndex().load()`), y la telemetría del fallback corre en producción (`recordGeometrySanitizeEvent` sin gate de `DEV`), no solo en DEV. La regla se conserva como anti-patrón para el futuro: si el fallback vuelve a dispararse en uso real, se arregla la causa raíz, no el log.**
 7. No avances de una sub-fase de la Fase 2 a la siguiente sin su criterio de éxito verificado — **resuelto en la práctica (1-ago-2026):** las sub-fases 2.2-2.7 se cerraron con tests verdes (paridad en 2.2-2.4, A/B real en 2.7) y la cobertura de tests del crate quedó pareja (§5.3). La regla sigue aplicando para cualquier trabajo futuro del motor.
 8. **Nuevo en la revisión anterior: no sigas escribiendo más código Rust nuevo (2.4 en adelante) mientras 2.5.a siga sin hacerse.** — **cumplido (1-ago-2026):** 2.5 quedó completa (los 7 comandos geométricos registrados y consumidos desde el frontend con fallback). El anti-patrón se actualizó: **no retires `jsts`/`polygon-clipping` de `package.json` hasta validar el A/B nativo vs JS en la app real con datos de producción** (Fase 2.7) — retirar el fallback antes de esa validación reintroduciría silenciosamente el riesgo que este punto prevenía. **Cumplido (1-ago-2026, tarde):** el A/B se validó (0 mismatches / 0 fallbacks con datos reales) y el motor JS fue retirado. **Anti-patrón cerrado y cerrado el ítem.**
 
@@ -403,14 +399,14 @@ _(Preservado del original, con un ítem nuevo al final.)_
 | Métrica                                     | Estado hoy (1-ago-2026)                                                                 | Objetivo post-migración                                                      |
 | ------------------------------------------- | --------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
 | Carga de proyecto urbano completo           | ✅ Resuelto en Fase 1, confirmado en código                                              | < 500ms                                                                      |
-| Trazar 1 calle en proyecto de 200k features | ✅ Migrado a diff estructural (2-ago-2026): el undo de un trazo retiene solo los manzanos/lotes afectados (`StructuralDiff`), no un snapshot GeoJSON del proyecto completo; la medición de regresión (3.4) que lo confirma con el dataset real sigue pendiente | O(cambios reales), independiente de n |
+| Trazar 1 calle en proyecto de 200k features | ✅ **Resuelto y medido (2-ago-2026, Fase 3.4):** undo del trazo = diff estructural; benchmark con dataset sintético y pipeline real (`AddStreetCommand` → `recomputeManzanos` → `StructuralDiff`): undo 67.4 KB / 211.8 KB / 507.9 KB contra baselines de 2,150.6 / 21,486.3 / 107,423.2 KB en 10k/100k/500k features — ratio **3.13% → 0.99% → 0.47%**, decreciente con n y consistente con O(cambios reales) (la calle cruza un corredor de ~√n manzanos) | O(cambios reales), independiente de n |
 | Unión de red vial, 5.000 segmentos          | ✅ Medible y validada: A/B en sombra (72+ comparaciones, 0 mismatches) y batch por A/B manual ON/OFF idéntico; rendimiento nativo medido en la app real (subdivideManzanoBatch 50 features: 14ms vs 108ms; computeRoadNetworkNet: 12ms vs 264ms) | < 100ms |
 | FPS con 200k features en viewport           | ❌ Sin cambios — LOD tiers degradan desde 350-900 features                               | 60fps sostenidos                                                             |
 | Memoria con dataset de 1M features          | ⏸ Sin medir (heap de JS sí se mide; memoria nativa del proceso, no)                      | < 2GB confirmado con profiler nativo                                         |
 | Motor de geometría en producción            | ✅ **Motor Rust/GEOS como vía única (Fase 2.7 completa, 1-ago-2026):** motor JS retirado; sin runtime Tauri no hay motor (la versión web quedó en el branch `web-version`) | GEOS/`geo` nativo vía Rust como vía única |
-| Índice espacial                             | RBush JS, con bug de resincronización activo (§5.1) sin resolver                         | RBush JS + `rstar` nativo, con causa raíz del bug corregida antes de escalar |
+| Índice espacial                             | ✅ Bug de resincronización **resuelto en código (2-ago-2026):** `load()` explícito en `restoreDrawFeatures`/`loadProject` + telemetría `spatialIndex.emptyOnPostrender` en producción; falta solo confirmar contador en 0 en uso real (Fase 4.0) | RBush JS + `rstar` nativo, con causa raíz del bug corregida antes de escalar |
 | Cobertura de tests de paridad JS↔Rust       | ✅ 4 de 4 módulos del motor con paridad automática (subdivisión auto/exact/modo2, fragmentos, computeManzanos) + fuzzing completo (TS 236 casos + Rust con timeout) + tests unitarios en los 9 archivos del crate | Corpus ampliado con dataset sintético (Fase 6.1) |
 
 ---
 
-Esta sigue siendo una hoja de ruta, no una promesa — la diferencia con la versión anterior de este documento es que ahora cada casilla de "completado" está respaldada por una lectura real del código y por tests verdes, no por la expectativa de que el plan se ejecutó tal como se escribió. El cierre de la Fase 2 (1-ago-2026) y la verificación de la Fase 3 (2-ago-2026) dejan la hoja de ruta en su punto más simple desde que existe: **las tres piernas de la auditoría — portar el algoritmo (2.0-2.4), conectarlo al producto (2.5) y probarlo en producción y borrar lo viejo (2.6 fuzzing + 2.7 limpieza) — están hechas, y el undo/redo estructural que era el otro cuello de botella crítico de §2.1 ya está en producción (3.0-3.3), con diffs proporcionales al cambio.** Lo que sigue, en orden de impacto: cerrar la Fase 3 con su medición de regresión (3.4) y deudas menores (~1 semana), después Fase 4 (índice + render a escala, que además necesita el bug de §5.1 resuelto — la única deuda que arrastra sin acción desde la primera revisión) y Fase 5 (CRS afín). El cronograma restante está desglosado en la tabla de tiempos.
+Esta sigue siendo una hoja de ruta, no una promesa — la diferencia con la versión anterior de este documento es que ahora cada casilla de "completado" está respaldada por una lectura real del código y por tests verdes, no por la expectativa de que el plan se ejecutó tal como se escribió. El cierre de la Fase 2 (1-ago-2026) y el de la Fase 3 (2-ago-2026) dejan la hoja de ruta en su punto más simple desde que existe: **las tres piernas de la auditoría — portar el algoritmo (2.0-2.4), conectarlo al producto (2.5) y probarlo en producción y borrar lo viejo (2.6 fuzzing + 2.7 limpieza) — están hechas, el undo/redo estructural que era el otro cuello de botella crítico de §2.1 está completo y medido (3.0-3.4): diffs proporcionales al cambio, con la medición confirmando el criterio (ratio undo/snapshot 0.47% @ 500k y decreciente con n), y el bug de sincronización del índice espacial (§5.1), el hallazgo más urgente de las revisiones anteriores, resultó ya resuelto en código (carga explícita del índice en ambos puntos de entrada masivo + telemetría de producción).** Lo que sigue, en orden de impacto: saldar las deudas menores de la Fase 3 (~2-3 días), después Fase 4 (índice + render a escala, que arranca sin el bloqueo de §5.1 — solo resta verificar el contador en producción) y Fase 5 (CRS afín). El cronograma restante está desglosado en la tabla de tiempos.
