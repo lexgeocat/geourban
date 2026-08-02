@@ -5,9 +5,11 @@ import Map from 'ol/Map.js';
 import VectorSource from 'ol/source/Vector.js';
 import GeoJSON from 'ol/format/GeoJSON.js';
 import type Feature from 'ol/Feature.js';
+import type Geometry from 'ol/geom/Geometry.js';
 import type Polygon from 'ol/geom/Polygon.js';
 import { extend as extendExtent, type Extent } from 'ol/extent.js';
 import { refreshSourceMetrics } from '../../geo/metrics';
+import { DISPLAY_PROJECTION } from '../../geo/crs/projections';
 import { getOrCreateSpatialIndex } from '../../map/spatialIndex';
 import { useSelectionStore } from './selectionStore';
 import { runCommand } from '../../commands/core/CommandStack';
@@ -23,6 +25,16 @@ export type ViewConfig = {
   center: [number, number];
   zoom: number;
 };
+
+/** Fase 3.4 — un extent con NaN/Infinity no debe alimentar `View.fit()`
+ * ni el índice espacial: `View.fit()` sobre un extent infinito puede
+ * quedar buscando una resolución válida indefinidamente (percibido como
+ * "se cuelga"), y RBush con bboxes no-finitos degrada silenciosamente
+ * a resultados de búsqueda incorrectos. */
+function isFiniteExtent(ext: Extent | null | undefined): ext is Extent {
+  if (!ext || ext.length !== 4) return false;
+  return ext.every((v) => Number.isFinite(v));
+}
 
 type MapState = {
   mapInstance: Map | null;
@@ -63,20 +75,58 @@ export const useMapStore = create<MapState>()(
       const src = get().drawSource;
       if (!src) return;
       const t0 = performance.now();
+
+      // Fase 3.4 (auditoria-para-mejora.md) — BUGFIX: antes se leía sin
+      // `dataProjection`, cuyo default en ol/format/GeoJSON es EPSG:4326
+      // (lon/lat). El único caller real (DebugPanel → generateSyntheticLots)
+      // emite coordenadas YA en el plano métrico interno (mismas unidades
+      // que `drawSource` — ver DISPLAY_PROJECTION). Se interpretaban como
+      // grados: cualquier fila con y0 > 90 quedaba con latitud inválida →
+      // NaN/Infinity tras la proyección Mercator. Con datasets de 100k+
+      // eso rompía el índice espacial (RBush con bboxes no-finitos) y
+      // `fitToExtent` (View.fit con extent Infinity). Fix: sin
+      // reproyección — dataProjection === featureProjection === el plano
+      // interno del proyecto.
       const features = geoJsonFormat.readFeatures(geojson, {
-        featureProjection: 'EPSG:3857',
-      });
+        dataProjection: DISPLAY_PROJECTION,
+        featureProjection: DISPLAY_PROJECTION,
+      }) as Feature<Geometry>[];
+
+      // Red de seguridad adicional: si igual entrara geometría no-finita
+      // (bug futuro, archivo corrupto, generador mal parametrizado), se
+      // descarta acá — antes de tocar el índice espacial o el render —
+      // en vez de dejar que se propague en silencio.
+      const finiteFeatures: Feature<Geometry>[] = [];
+      let droppedCount = 0;
+      for (const f of features) {
+        const geom = f.getGeometry();
+        if (geom && isFiniteExtent(geom.getExtent())) {
+          finiteFeatures.push(f);
+        } else {
+          droppedCount++;
+        }
+      }
+      if (droppedCount > 0) {
+        console.warn(
+          `restoreDrawFeatures: se descartaron ${droppedCount} feature(s) con geometría no-finita.`,
+        );
+      }
+
       src.clear();
-      src.addFeatures(features as any);
+      src.addFeatures(finiteFeatures as any);
       // FIX: bulk-load explícito — no depender de que los listeners
       // addfeature/removefeature (atados solo mientras <MapView/> vive)
       // reconstruyan el RBush uno por uno.
-      getOrCreateSpatialIndex().load(features as unknown as Feature<Polygon>[]);
+      getOrCreateSpatialIndex().load(finiteFeatures as unknown as Feature<Polygon>[]);
       refreshSourceMetrics(src);
       src.changed();
       const elapsedMs = performance.now() - t0;
       useSelectionStore.getState().clear();
-      recordProjectLoad(elapsedMs, features.length, estimateGeoJsonBytes(geojson, features.length));
+      recordProjectLoad(
+        elapsedMs,
+        finiteFeatures.length,
+        estimateGeoJsonBytes(geojson, finiteFeatures.length),
+      );
     },
     setCursorCoords: (coords) =>
       set((state) => {
@@ -99,11 +149,14 @@ export const useMapStore = create<MapState>()(
         const src = (layer as any).getSource?.();
         if (!src || typeof src.getExtent !== 'function') continue;
         const ext = src.getExtent();
-        if (!ext || ext[0] === Infinity || ext[0] === -Infinity) continue;
+        // Fase 3.4 — antes solo chequeaba ext[0] === ±Infinity; un NaN
+        // (o Infinity en ext[1..3]) pasaba igual y contaminaba el extent
+        // combinado, rompiendo silenciosamente el fit.
+        if (!isFiniteExtent(ext)) continue;
         if (!fullExtent) fullExtent = [...ext] as Extent;
         else extendExtent(fullExtent, ext);
       }
-      if (fullExtent) {
+      if (fullExtent && isFiniteExtent(fullExtent)) {
         map
           .getView()
           .fit(fullExtent, { size: map.getSize(), maxZoom: 18, padding: [40, 40, 40, 40] });

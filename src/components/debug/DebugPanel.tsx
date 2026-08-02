@@ -11,7 +11,7 @@ import {
   readHeapSnapshot,
   type WorkerStatSnapshot,
 } from '../../store/debug/perfTelemetry';
-import { generateSyntheticLots, ensureSyntheticLotLayer } from '../../geo/debug/syntheticDataset';
+import { generateSyntheticManzanos, ensureSyntheticLotLayer } from '../../geo/debug/syntheticDataset';
 import { readNativeEngineStats, type NativeEngineStatsSnapshot } from '../../store/debug/nativeEngineTelemetry';
 
 const REFRESH_MS = 400;
@@ -111,41 +111,17 @@ export default function DebugPanel() {
     setTimeout(() => {
       try {
         ensureSyntheticLotLayer();
-        const map = useMapStore.getState().mapInstance;
-        const center = map?.getView().getCenter();
-        const { collection, generateMs, extent } = generateSyntheticLots(
-          size,
-          center ? ([center[0], center[1]] as [number, number]) : undefined,
-        );
+        // Fase 3.4 — centra la grilla sintética en el centro de vista
+        // actual (unidades internas del proyecto, no lon/lat) en vez de
+        // partir siempre desde el origen absoluto: con 100k+ features el
+        // lado de la grilla mide varios km y, sin esto, quedaba lejos del
+        // viewport dando la falsa impresión de que "no generó nada" —
+        // parte del mismo bug de proyección que rompía el fit.
+        const view = useMapStore.getState().mapInstance?.getView();
+        const center = (view?.getCenter() as [number, number] | undefined) ?? [0, 0];
+        const { collection, generateMs } = generateSyntheticLots(size, center);
         useMapStore.getState().restoreDrawFeatures(collection);
-
-        // Fit robusto a la grilla: reintenta por frame hasta que el mapa esté
-        // listo (hasta ~2s), y usa el extent real del drawSource con fallback
-        // al del generador. Garantiza que la grilla quede en pantalla sin
-        // importar dónde estaba la vista ni cuándo se montó el mapa.
-        const fitLoaded = (): boolean => {
-          const m = useMapStore.getState().mapInstance;
-          const v = m?.getView();
-          const src = useMapStore.getState().drawSource;
-          if (!v || !src) return false;
-          const srcExtent = src.getExtent();
-          const valid = (e: number[] | null | undefined): boolean =>
-            e != null && e.length >= 4 && Number.isFinite(e[0]) && Number.isFinite(e[1]);
-          const target = valid(srcExtent) ? srcExtent : extent;
-          if (!target) return false;
-          v.fit(target as number[], { padding: [40, 40, 40, 40], maxZoom: 19 });
-          return true;
-        };
-        if (!fitLoaded()) {
-          let attempts = 0;
-          const retryFit = () => {
-            attempts++;
-            if (fitLoaded() || attempts > 120) return;
-            requestAnimationFrame(retryFit);
-          };
-          requestAnimationFrame(retryFit);
-        }
-
+        useMapStore.getState().fitToExtent();
         const load = readProjectLoadStats();
         setLastGen({ size, generateMs, loadMs: load.lastMs });
         setProjectLoad(load);
