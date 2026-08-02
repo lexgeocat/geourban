@@ -218,12 +218,20 @@ pub fn spatial_index_load(
     let envelopes: Vec<IndexedEnvelope> = items
         .into_iter()
         .filter_map(|it| {
-            if !it.min_x.is_finite() || !it.min_y.is_finite() || !it.max_x.is_finite() || !it.max_y.is_finite()
+            if !it.min_x.is_finite()
+                || !it.min_y.is_finite()
+                || !it.max_x.is_finite()
+                || !it.max_y.is_finite()
             {
-                log::warn!("spatial_index_load[{slot}]: item con bbox no-finito descartado (id={:?})", it.id);
+                log::warn!(
+                    "spatial_index_load[{slot}]: item con bbox no-finito descartado (id={:?})",
+                    it.id
+                );
                 return None;
             }
-            Some(IndexedEnvelope::new(it.id, it.min_x, it.min_y, it.max_x, it.max_y))
+            Some(IndexedEnvelope::new(
+                it.id, it.min_x, it.min_y, it.max_x, it.max_y,
+            ))
         })
         .collect();
     let index = SpatialIndex::bulk_load(envelopes);
@@ -236,7 +244,10 @@ pub fn spatial_index_load(
 /// <- `spatialIndexClearInWorker`. Descarta el índice de un slot (p. ej. al
 /// cerrar proyecto o volver a un dataset donde manda el RBush JS).
 #[tauri::command]
-pub fn spatial_index_clear(state: State<'_, SpatialIndexState>, slot: String) -> Result<(), String> {
+pub fn spatial_index_clear(
+    state: State<'_, SpatialIndexState>,
+    slot: String,
+) -> Result<(), String> {
     let mut guard = state.0.lock().map_err(|e| e.to_string())?;
     guard.remove(&slot);
     Ok(())
@@ -252,6 +263,20 @@ pub struct SpatialIndexQueryResult {
     pub query_ms: f64,
 }
 
+/// Simetría con `spatial_index_load`, que ya descarta bboxes no-finitos
+/// al cargar: sin esta guarda, un extent NaN/Infinity (viewport inválido
+/// en el primer frame, o un cálculo de extent roto del lado JS) entraba
+/// directo a `AABB::from_corners` y podía devolver 0 resultados en
+/// silencio, sin ningún error visible para el caller.
+fn validate_finite_bbox(min_x: f64, min_y: f64, max_x: f64, max_y: f64) -> Result<(), String> {
+    if !min_x.is_finite() || !min_y.is_finite() || !max_x.is_finite() || !max_y.is_finite() {
+        return Err(format!(
+            "bbox de consulta no-finito (minX={min_x}, minY={min_y}, maxX={max_x}, maxY={max_y})"
+        ));
+    }
+    Ok(())
+}
+
 /// <- `spatialIndexQueryInWorker`. Consulta de viewport: devuelve ids,
 /// no geometrías — el caller resuelve cada feature en su propia capa.
 #[tauri::command]
@@ -263,6 +288,9 @@ pub fn spatial_index_query(
     max_x: f64,
     max_y: f64,
 ) -> Result<SpatialIndexQueryResult, String> {
+    validate_finite_bbox(min_x, min_y, max_x, max_y)
+        .map_err(|e| format!("spatial_index_query[{slot}]: {e}"))?;
+
     let guard = state.0.lock().map_err(|e| e.to_string())?;
     let Some(index) = guard.get(&slot) else {
         return Err(format!(

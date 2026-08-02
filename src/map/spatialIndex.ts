@@ -1,6 +1,7 @@
 import Feature from 'ol/Feature';
 import Polygon from 'ol/geom/Polygon';
 import RBush from 'rbush';
+import { recordGeometrySanitizeEvent } from '../store/debug/geometryTelemetry';
 
 interface RBushItem {
   minX: number;
@@ -8,6 +9,26 @@ interface RBushItem {
   maxX: number;
   maxY: number;
   featureId: string | number;
+}
+
+/**
+ * Simetría con `isFiniteExtent` de `mapStore.ts` y con el filtro que ya
+ * aplica el lado Rust en `spatial_index_load` (geo_bridge.rs). Sin esto,
+ * una geometría momentáneamente degenerada (p.ej. mid-drag en EditMode,
+ * o un cero-length edge durante ModifyGeometryCommand) inserta un bbox
+ * NaN/Infinity en el RBush, corrompiendo silenciosamente las invariantes
+ * internas del árbol — search() puede devolver resultados incorrectos
+ * para TODO el resto del índice, no solo para ese feature.
+ */
+function isFiniteExtent(e: number[] | null | undefined): e is [number, number, number, number] {
+  return (
+    !!e &&
+    e.length === 4 &&
+    Number.isFinite(e[0]) &&
+    Number.isFinite(e[1]) &&
+    Number.isFinite(e[2]) &&
+    Number.isFinite(e[3])
+  );
 }
 
 export class SpatialIndex {
@@ -25,16 +46,24 @@ export class SpatialIndex {
     const items: RBushItem[] = [];
     this.featureMap.clear();
     this.itemMap.clear();
+    let dropped = 0;
     for (const f of features) {
       const geom = f.getGeometry();
       if (!geom) continue;
-      const extent = geom.getExtent();
       const id = f.getId();
       if (id === undefined) continue;
+      const extent = geom.getExtent();
+      if (!isFiniteExtent(extent)) {
+        dropped++;
+        continue;
+      }
       const item: RBushItem = { minX: extent[0], minY: extent[1], maxX: extent[2], maxY: extent[3], featureId: id };
       items.push(item);
       this.featureMap.set(id, f);
       this.itemMap.set(id, item);
+    }
+    if (dropped > 0) {
+      recordGeometrySanitizeEvent('spatialIndex.load.nonFiniteBbox', { dropped, total: features.length });
     }
     this.tree.clear();
     this.tree.load(items);
@@ -48,6 +77,13 @@ export class SpatialIndex {
     if (id === undefined) return;
     if (this.itemMap.has(id)) this.removeById(id);
     const extent = geom.getExtent();
+    if (!isFiniteExtent(extent)) {
+      // La entrada previa (si existía) ya se removió arriba: el feature
+      // simplemente desaparece de las consultas espaciales hasta volver
+      // a tener geometría válida, en vez de envenenar el árbol.
+      recordGeometrySanitizeEvent('spatialIndex.insert.nonFiniteBbox', { featureId: id });
+      return;
+    }
     const item: RBushItem = { minX: extent[0], minY: extent[1], maxX: extent[2], maxY: extent[3], featureId: id };
     this.tree.insert(item);
     this.itemMap.set(id, item);

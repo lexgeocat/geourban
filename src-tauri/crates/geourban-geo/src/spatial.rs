@@ -13,7 +13,7 @@
 //! puede ser `string | number` y acá no se interpreta, solo hace ida y
 //! vuelta (mismo criterio que `SubdivideManzanoBatchItem` en geo_bridge).
 
-use rstar::{AABB, RTree, RTreeObject};
+use rstar::{RTree, RTreeObject, AABB};
 use serde_json::Value;
 use std::collections::HashMap;
 
@@ -118,8 +118,15 @@ impl SpatialIndex {
     }
 
     /// Remueve por id. Devuelve `true` si existía.
+    ///
+    /// Canonicaliza `id` antes de buscar: sin esto, remover con un id
+    /// numérico no-canónico (p.ej. `1.0` cuando se insertó como `1`)
+    /// fallaba en silencio (`by_id.remove` no encontraba la clave) y
+    /// dejaba una entrada fantasma en el árbol — inalcanzable por
+    /// `remove`, pero que `search()` seguía devolviendo.
     pub fn remove(&mut self, id: &Value) -> bool {
-        match self.by_id.remove(id) {
+        let canonical = canonicalize_id(id.clone());
+        match self.by_id.remove(&canonical) {
             Some(old) => {
                 self.tree.remove(&old);
                 true
@@ -187,7 +194,10 @@ mod tests {
                 items
                     .iter()
                     .filter(|it| {
-                        it.min_x <= *max_x && it.max_x >= *min_x && it.min_y <= *max_y && it.max_y >= *min_y
+                        it.min_x <= *max_x
+                            && it.max_x >= *min_x
+                            && it.min_y <= *max_y
+                            && it.max_y >= *min_y
                     })
                     .map(|it| it.id.clone())
                     .collect()
@@ -217,12 +227,12 @@ mod tests {
         let items = grid_items(25, 25);
         let index = SpatialIndex::bulk_load(items.clone());
         let queries = [
-            (5.0, 5.0, 95.0, 95.0),     // casi toda la grilla
-            (30.0, 30.0, 49.9, 49.9),   // interior chico (bordes excluidos)
-            (0.0, 0.0, 249.0, 249.0),   // todo
+            (5.0, 5.0, 95.0, 95.0),       // casi toda la grilla
+            (30.0, 30.0, 49.9, 49.9),     // interior chico (bordes excluidos)
+            (0.0, 0.0, 249.0, 249.0),     // todo
             (100.0, 100.0, 101.0, 101.0), // entre celdas — sin hits
-            (0.0, 0.0, 0.5, 0.5),       // esquina mínima
-            (99.0, 99.0, 200.0, 120.0), // banda vertical
+            (0.0, 0.0, 0.5, 0.5),         // esquina mínima
+            (99.0, 99.0, 200.0, 120.0),   // banda vertical
         ];
         let expected = brute_force(&queries, &items);
         for (i, (q, exp)) in queries.iter().zip(expected.iter()).enumerate() {
@@ -242,7 +252,13 @@ mod tests {
         assert!(index.is_empty());
 
         index.insert(IndexedEnvelope::new(Value::from("a"), 0.0, 0.0, 10.0, 10.0));
-        index.insert(IndexedEnvelope::new(Value::from("b"), 20.0, 20.0, 30.0, 30.0));
+        index.insert(IndexedEnvelope::new(
+            Value::from("b"),
+            20.0,
+            20.0,
+            30.0,
+            30.0,
+        ));
         assert_eq!(index.len(), 2);
 
         let mut out = Vec::new();
@@ -250,7 +266,10 @@ mod tests {
         assert_eq!(out.len(), 2);
 
         assert!(index.remove(&Value::from("a")));
-        assert!(!index.remove(&Value::from("a")), "segunda remoción no existe");
+        assert!(
+            !index.remove(&Value::from("a")),
+            "segunda remoción no existe"
+        );
         assert_eq!(index.len(), 1);
 
         let mut out = Vec::new();
@@ -262,7 +281,13 @@ mod tests {
     fn insert_replaces_same_id() {
         let mut index = SpatialIndex::default();
         index.insert(IndexedEnvelope::new(Value::from("a"), 0.0, 0.0, 10.0, 10.0));
-        index.insert(IndexedEnvelope::new(Value::from("a"), 100.0, 100.0, 110.0, 110.0));
+        index.insert(IndexedEnvelope::new(
+            Value::from("a"),
+            100.0,
+            100.0,
+            110.0,
+            110.0,
+        ));
         assert_eq!(index.len(), 1, "id duplicado reemplaza, no suma");
 
         // El bbox viejo no debe responder más.
@@ -289,6 +314,17 @@ mod tests {
         assert!(index.is_empty());
         assert_eq!(index.len(), 0);
     }
+    #[test]
+    fn remove_with_non_canonical_numeric_id_still_finds_entry() {
+        let mut index = SpatialIndex::default();
+        index.insert(IndexedEnvelope::new(Value::from(1), 0.0, 0.0, 10.0, 10.0));
+        assert_eq!(index.len(), 1);
+
+        // Antes del fix: remove(&Value::from(1.0)) devolvía false y
+        // dejaba una entrada fantasma en el árbol.
+        assert!(index.remove(&Value::from(1.0)));
+        assert!(index.is_empty());
+    }
 
     #[test]
     fn bulk_load_dedupes_duplicate_ids_last_wins() {
@@ -306,7 +342,11 @@ mod tests {
         index.search(0.0, 0.0, 20.0, 20.0, &mut out);
         assert!(out.is_empty());
         index.search(95.0, 95.0, 115.0, 115.0, &mut out);
-        assert_eq!(out, vec![Value::from("a")], "un solo hit para el id dedupeado");
+        assert_eq!(
+            out,
+            vec![Value::from("a")],
+            "un solo hit para el id dedupeado"
+        );
 
         // remove() elimina sin dejar nodos fantasma (sin panics ni hits extra).
         let mut index = index;
