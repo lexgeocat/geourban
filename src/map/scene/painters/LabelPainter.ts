@@ -1,6 +1,7 @@
 import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
 import type { Extent } from 'ol/extent.js';
+import type VectorSource from 'ol/source/Vector.js';
 import Polygon from 'ol/geom/Polygon.js';
 import LineString from 'ol/geom/LineString.js';
 import { useSelectionStore } from '../../../store/map/selectionStore';
@@ -103,6 +104,15 @@ function isColliding(
 const LOD_TIER1_FEATURE_THRESHOLD = 350;
 const LOD_TIER2_FEATURE_THRESHOLD = 900;
 
+/**
+ * Por encima de esto, ni siquiera se recorre la lista completa de features
+ * visibles: con un viewport que muestra decenas de miles de polígonos las
+ * etiquetas son ilegibles de todos modos, y el solo O(n) de iterar (sin
+ * dibujar nada) ya cuesta decenas de ms por frame en un dataset de 500k.
+ * Se resuelve la selección directo por id en vez de escanear.
+ */
+const HARD_VISIBLE_CAP = 15_000;
+
 function computeLodTier(visibleCount: number): 0 | 1 | 2 {
   if (visibleCount > LOD_TIER2_FEATURE_THRESHOLD) return 2;
   if (visibleCount > LOD_TIER1_FEATURE_THRESHOLD) return 1;
@@ -120,15 +130,8 @@ const SCREEN_AREA_CACHE_MAX = 6000;
 export class LabelPainter {
   private lotGroupCounts = new globalThis.Map<string, number>();
   private readonly collisionGrid = new LabelCollisionGrid();
-
   private readonly screenAreaCache = new globalThis.Map<string | number, ScreenAreaCacheEntry>();
 
-  // ─── Caché de ops (Fase 4.3) ────────────────────────────────────────────
-  // El pase de etiquetas (colisiones + decisiones) es O(n) y corre en cada
-  // postrender aunque el viewport y los datos no hayan cambiado (el pulse
-  // de selección redibuja a 24fps, streetPainter llama map.render(), etc.).
-  // Gateamos la reconstrucción con una firma: si nada cambió, re-ejecutamos
-  // las ops de dibujo ya decididas (solo canvas, sin medir ni colisionar).
   private dataVersion = 0;
   private lastKey: string | null = null;
   private cachedOps: Array<(ctx: CanvasRenderingContext2D, toPx: (c: number[]) => [number, number]) => void> = [];
@@ -139,8 +142,6 @@ export class LabelPainter {
     this.cachedOps.push(op);
   }
 
-  /** Hash de la selección: tamaño + primeros ids (la selección de edición es
-   *  chica; para selecciones masivas el tamaño + ventana cubren el cambio). */
   private selectionKey(): number {
     const ids = useSelectionStore.getState().selectedIds;
     let h = ids.size;
@@ -154,18 +155,6 @@ export class LabelPainter {
     return h;
   }
 
-// src/map/scene/painters/LabelPainter.ts
-// Reemplazar el método `layersKey` existente por este:
-
-  /**
-   * Firma de capas relevante para el caché de ops (Fase 4.3).
-   * IMPORTANTE: debe incluir TODO campo de `Layer` que `paintFeatureLabels`
-   * lea directamente de `featureLayer` — hoy son `visible`, `showLabel` y
-   * `showCota`. Si en el futuro se lee algún campo nuevo de la capa acá
-   * (p.ej. opacity para labels), hay que sumarlo también a esta firma o
-   * el toggle correspondiente quedará "pisado" por un cache hit stale,
-   * igual que pasaba antes con showLabel/showCota (bug corregido acá).
-   */
   private layersKey(): string {
     let sig = '';
     for (const layer of useLayersStore.getState().layers) {
@@ -208,6 +197,7 @@ export class LabelPainter {
     toPx: (c: number[]) => [number, number],
     interacting: boolean,
     extent: Extent | null,
+    drawSource: VectorSource,
   ): void {
     if (interacting) return;
     const key = this.computeCacheKey(features, zoom, resolution, extent);
@@ -219,11 +209,10 @@ export class LabelPainter {
     recordLabelCacheMiss();
     this.lastKey = key;
     this.cachedOps = [];
-    this.paintFeatureLabels(ctx, features, zoom, resolution, toPx);
+    this.paintFeatureLabels(ctx, features, zoom, resolution, toPx, drawSource);
     for (const op of this.cachedOps) op(ctx, toPx);
   }
 
-  /** Mismo criterio de bucket que geo/math/lod.ts, por consistencia. */
   private resolutionBucket(resolution: number): number {
     return Math.round(Math.log(resolution) / Math.log(1.35));
   }
@@ -252,131 +241,156 @@ export class LabelPainter {
     zoom: number,
     resolution: number,
     toPx: (c: number[]) => [number, number],
+    drawSource: VectorSource,
   ): void {
     const selectedIds = useSelectionStore.getState().selectedIds;
     this.collisionGrid.clear();
     const zoomFade = computeCotaOpacity(zoom);
-    const lodTier = computeLodTier(features.length);
     const registry = useLayersStore.getState();
 
+    if (features.length > HARD_VISIBLE_CAP) {
+      if (selectedIds.size === 0) return;
+      for (const id of selectedIds) {
+        const feature = drawSource.getFeatureById(id) as Feature<Geometry> | null;
+        if (!feature) continue;
+        this.paintOneFeature(ctx, feature, true, zoom, resolution, zoomFade, 2, registry, toPx);
+      }
+      return;
+    }
+
+    const lodTier = computeLodTier(features.length);
     for (let fi = 0; fi < features.length; fi++) {
       const feature = features[fi];
-      const rawKind = feature.get('kind') as string | undefined;
-      if (rawKind === 'cota') continue;
-      const geometry = feature.getGeometry();
-      if (!geometry) continue;
-
-      const layerId = feature.get('layerId') as string | undefined;
-      const featureLayer = layerId ? registry.getById(layerId) : undefined;
-      if (featureLayer && !featureLayer.visible) continue;
-
-      const featureKind = getFeatureKind(feature);
-      const isManzana = featureKind === 'manzana';
-      if (isManzana && getLotStatus(feature) === 'subdivided') continue;
-      const isLote = featureKind === 'lote';
-      const colorIdx = feature.get('colorIdx') ?? 0;
       const featureId = feature.getId();
       const isSelected = featureId != null && selectedIds.has(featureId as string | number);
+      this.paintOneFeature(ctx, feature, isSelected, zoom, resolution, zoomFade, lodTier, registry, toPx);
+    }
+  }
 
-      const allowSegmentCotas = lodTier === 0 || isSelected;
-      const allowLabels = lodTier < 2 || isSelected;
+  private paintOneFeature(
+    ctx: CanvasRenderingContext2D,
+    feature: Feature<Geometry>,
+    isSelected: boolean,
+    zoom: number,
+    resolution: number,
+    zoomFade: number,
+    lodTier: 0 | 1 | 2,
+    registry: ReturnType<typeof useLayersStore.getState>,
+    toPx: (c: number[]) => [number, number],
+  ): void {
+    const rawKind = feature.get('kind') as string | undefined;
+    if (rawKind === 'cota') return;
+    const geometry = feature.getGeometry();
+    if (!geometry) return;
 
-      const labelOp = (featureLayer?.showLabel ?? false) ? 1 : 0;
-      const cotaOp = (featureLayer?.showCota ?? false ? 1 : 0) * zoomFade;
+    const layerId = feature.get('layerId') as string | undefined;
+    const featureLayer = layerId ? registry.getById(layerId) : undefined;
+    if (featureLayer && !featureLayer.visible) return;
 
-      const orientation = resolveDimensionOrientation(feature, this.lotGroupCounts);
-      const labelPoint = feature.get('labelPoint') as [number, number] | undefined;
+    const featureKind = getFeatureKind(feature);
+    const isManzana = featureKind === 'manzana';
+    if (isManzana && getLotStatus(feature) === 'subdivided') return;
+    const isLote = featureKind === 'lote';
+    const colorIdx = feature.get('colorIdx') ?? 0;
 
-      if (geometry instanceof Polygon) {
-        const coordinates = geometry.getCoordinates()[0] ?? [];
-        if (coordinates.length < 3) continue;
+    const allowSegmentCotas = lodTier === 0 || isSelected;
+    const allowLabels = lodTier < 2 || isSelected;
 
-        const areaM2 = feature.get('areaM2') as number | undefined;
-        const areaText = areaM2 !== undefined ? formatMetricArea(areaM2) : null;
-        const screenArea = this.getCachedScreenArea(feature, geometry, resolution);
+    const labelOp = (featureLayer?.showLabel ?? false) ? 1 : 0;
+    const cotaOp = (featureLayer?.showCota ?? false ? 1 : 0) * zoomFade;
 
-        if (isManzana) {
-          const baseShow = isSelected || zoom > 15.5 || screenArea >= 4200;
-          const showTitle = baseShow && labelOp > 0.002 && allowLabels;
-          const showArea = areaText != null && cotaOp > 0.002 && allowLabels;
-          if ((showTitle || showArea) && labelPoint) {
-            const text = `Mzo. ${colorIdx + 1}`;
-            if (!isColliding(ctx, labelPoint, text, this.collisionGrid, toPx)) {
-              const mznColor = manzanoDisplayColor(colorIdx);
-              this.recordOp((c, px) =>
-                drawMainMetricLabel(c, labelPoint, px, text, true, {
-                  extraLine: areaText ?? undefined,
-                  color: mznColor,
-                  mainOpacity: showTitle ? labelOp : 0,
-                  extraLineOpacity: showArea ? cotaOp : 0,
-                }),
-              );
-            }
-          }
-        } else if (isLote) {
-          const baseShow = isSelected || zoom > 15.5 || screenArea >= 4200;
-          const showBadge = baseShow && labelOp > 0.002 && allowLabels;
-          const showCaption = areaText != null && cotaOp > 0.002 && allowLabels;
-          if ((showBadge || showCaption) && labelPoint) {
-            const collisionText = areaText ?? '?';
-            if (!isColliding(ctx, labelPoint, collisionText, this.collisionGrid, toPx)) {
-              if (showBadge) {
-                const numberText = extractLotNumberText(feature.get('label') as string | undefined);
-                const isRemnant = !!feature.get('isRemnant');
-                this.recordOp((c, px) => drawLotNumberBadge(c, labelPoint, px, numberText, isRemnant, labelOp));
-              }
-              if (showCaption) {
-                this.recordOp((c, px) => drawLotAreaCaption(c, labelPoint, px, areaText!, cotaOp));
-              }
-            }
-          }
-        } else if (labelPoint && areaText && cotaOp > 0.002 && allowLabels) {
-          if (!isColliding(ctx, labelPoint, areaText, this.collisionGrid, toPx)) {
-            this.recordOp((c, px) => drawMainMetricLabel(c, labelPoint, px, areaText, false, { mainOpacity: cotaOp }));
+    const orientation = resolveDimensionOrientation(feature, this.lotGroupCounts);
+    const labelPoint = feature.get('labelPoint') as [number, number] | undefined;
+
+    if (geometry instanceof Polygon) {
+      const coordinates = geometry.getCoordinates()[0] ?? [];
+      if (coordinates.length < 3) return;
+
+      const areaM2 = feature.get('areaM2') as number | undefined;
+      const areaText = areaM2 !== undefined ? formatMetricArea(areaM2) : null;
+      const screenArea = this.getCachedScreenArea(feature, geometry, resolution);
+
+      if (isManzana) {
+        const baseShow = isSelected || zoom > 15.5 || screenArea >= 4200;
+        const showTitle = baseShow && labelOp > 0.002 && allowLabels;
+        const showArea = areaText != null && cotaOp > 0.002 && allowLabels;
+        if ((showTitle || showArea) && labelPoint) {
+          const text = `Mzo. ${colorIdx + 1}`;
+          if (!isColliding(ctx, labelPoint, text, this.collisionGrid, toPx)) {
+            const mznColor = manzanoDisplayColor(colorIdx);
+            this.recordOp((c, px) =>
+              drawMainMetricLabel(c, labelPoint, px, text, true, {
+                extraLine: areaText ?? undefined,
+                color: mznColor,
+                mainOpacity: showTitle ? labelOp : 0,
+                extraLineOpacity: showArea ? cotaOp : 0,
+              }),
+            );
           }
         }
-
-        if (allowSegmentCotas) {
-          this.recordOp((c, px) =>
-            drawSegmentLabels(
-              c,
-              feature.get('segmentLengths') as SegmentMetric[] | undefined,
-              labelPoint,
-              orientation,
-              px,
-              isManzana,
-              cotaOp,
-              !isLote,
-              !isLote,
-            ),
-          );
-        }
-      } else if (geometry instanceof LineString) {
-        const coordinates = geometry.getCoordinates() ?? [];
-        if (coordinates.length < 2) continue;
-        const showMainLabel = (isSelected || zoom > 15.5) && cotaOp > 0.002 && allowLabels;
-        if (showMainLabel && labelPoint) {
-          const lengthM = feature.get('lengthM') as number | undefined;
-          if (lengthM !== undefined) {
-            const text = formatMetricLength(lengthM);
-            if (!isColliding(ctx, labelPoint, text, this.collisionGrid, toPx)) {
-              this.recordOp((c, px) => drawMainMetricLabel(c, labelPoint, px, text, false, { mainOpacity: cotaOp }));
+      } else if (isLote) {
+        const baseShow = isSelected || zoom > 15.5 || screenArea >= 4200;
+        const showBadge = baseShow && labelOp > 0.002 && allowLabels;
+        const showCaption = areaText != null && cotaOp > 0.002 && allowLabels;
+        if ((showBadge || showCaption) && labelPoint) {
+          const collisionText = areaText ?? '?';
+          if (!isColliding(ctx, labelPoint, collisionText, this.collisionGrid, toPx)) {
+            if (showBadge) {
+              const numberText = extractLotNumberText(feature.get('label') as string | undefined);
+              const isRemnant = !!feature.get('isRemnant');
+              this.recordOp((c, px) => drawLotNumberBadge(c, labelPoint, px, numberText, isRemnant, labelOp));
+            }
+            if (showCaption) {
+              this.recordOp((c, px) => drawLotAreaCaption(c, labelPoint, px, areaText!, cotaOp));
             }
           }
         }
-        if (allowSegmentCotas) {
-          this.recordOp((c, px) =>
-            drawSegmentLabels(
-              c,
-              feature.get('segmentLengths') as SegmentMetric[] | undefined,
-              labelPoint,
-              orientation,
-              px,
-              false,
-              cotaOp,
-            ),
-          );
+      } else if (labelPoint && areaText && cotaOp > 0.002 && allowLabels) {
+        if (!isColliding(ctx, labelPoint, areaText, this.collisionGrid, toPx)) {
+          this.recordOp((c, px) => drawMainMetricLabel(c, labelPoint, px, areaText, false, { mainOpacity: cotaOp }));
         }
+      }
+
+      if (allowSegmentCotas) {
+        this.recordOp((c, px) =>
+          drawSegmentLabels(
+            c,
+            feature.get('segmentLengths') as SegmentMetric[] | undefined,
+            labelPoint,
+            orientation,
+            px,
+            isManzana,
+            cotaOp,
+            !isLote,
+            !isLote,
+          ),
+        );
+      }
+    } else if (geometry instanceof LineString) {
+      const coordinates = geometry.getCoordinates() ?? [];
+      if (coordinates.length < 2) return;
+      const showMainLabel = (isSelected || zoom > 15.5) && cotaOp > 0.002 && allowLabels;
+      if (showMainLabel && labelPoint) {
+        const lengthM = feature.get('lengthM') as number | undefined;
+        if (lengthM !== undefined) {
+          const text = formatMetricLength(lengthM);
+          if (!isColliding(ctx, labelPoint, text, this.collisionGrid, toPx)) {
+            this.recordOp((c, px) => drawMainMetricLabel(c, labelPoint, px, text, false, { mainOpacity: cotaOp }));
+          }
+        }
+      }
+      if (allowSegmentCotas) {
+        this.recordOp((c, px) =>
+          drawSegmentLabels(
+            c,
+            feature.get('segmentLengths') as SegmentMetric[] | undefined,
+            labelPoint,
+            orientation,
+            px,
+            false,
+            cotaOp,
+          ),
+        );
       }
     }
   }

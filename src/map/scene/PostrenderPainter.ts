@@ -53,7 +53,8 @@ export class PostrenderPainter {
     this.postrenderLayer = opts.postrenderLayer;
     this.snapGuidePainter = new SnapGuidePainter(this.map);
     this.streetPainter = new StreetPainter(() => this.map.render());
-    this.selectionHighlightPainter.attach(this.map); // ← agregar
+    this.selectionHighlightPainter.attach(this.map, () => this.drawSource.getFeatures().length);
+ 
 
     const onFeatureChange = () => { this.dirty = true; };
     this.drawSource.on('addfeature', onFeatureChange);
@@ -150,7 +151,8 @@ export class PostrenderPainter {
     const size = this.map.getSize();
     const viewportExtent = size ? this.map.getView().calculateExtent(size) : null;
 
-    this.labelPainter.paint(ctx, visibleFeatures, zoom, resolution, toPx, this.interacting, viewportExtent);
+    // antes: this.labelPainter.paint(ctx, visibleFeatures, zoom, resolution, toPx, this.interacting, viewportExtent);
+    this.labelPainter.paint(ctx, visibleFeatures, zoom, resolution, toPx, this.interacting, viewportExtent, this.drawSource);
     const t4 = performance.now();
     this.streetPainter.paint(ctx, zoom, resolution, toPx, this.interacting);
     const t5 = performance.now();

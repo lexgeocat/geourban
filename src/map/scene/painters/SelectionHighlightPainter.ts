@@ -7,17 +7,23 @@ import { useRoundaboutStore } from '../../../store/entities/roundaboutStore';
 import { useSelectionStore } from '../../../store/map/selectionStore';
 import { roundaboutGeometry } from '../../../geo/roundabout/roundaboutEngine';
 
-/** Color base de foco — distinto del cyan de dibujo para que se note claro cuál está seleccionado. */
 const GLOW_HUE = '255, 196, 0';
 
-/** Duración de un ciclo completo de "respiración" del glow (ms). */
 const PULSE_PERIOD_MS = 1400;
-/** Rango de intensidad del glow durante el pulso (0-1). Nunca baja del mínimo para que siempre se vea nítido. */
 const PULSE_MIN = 0.62;
 const PULSE_MAX = 1;
-/** Techo de refresco propio del pulso — no necesita 60fps para verse fluido; así se ahorra CPU/GPU. */
+
+/** FPS normal del pulso — datasets chicos, el costo de un map.render() es despreciable. */
 const PULSE_RENDER_FPS = 24;
+/** FPS reducido — evita forzar redraws WebGL caros a 24/s cuando el dataset es grande. */
+const PULSE_RENDER_FPS_HEAVY = 5;
 const PULSE_RENDER_INTERVAL_MS = 1000 / PULSE_RENDER_FPS;
+const PULSE_RENDER_INTERVAL_MS_HEAVY = 1000 / PULSE_RENDER_FPS_HEAVY;
+
+/** Por encima de esto, el pulso baja a PULSE_RENDER_FPS_HEAVY. */
+const HEAVY_DATASET_THRESHOLD = 20_000;
+/** Por encima de esto, se corta la animación: un solo render al cambiar selección, sin loop. */
+const STATIC_HIGHLIGHT_THRESHOLD = 150_000;
 
 function streetCoords(s: Street): Array<[number, number]> {
   const c: Array<[number, number]> = [s.start];
@@ -32,6 +38,8 @@ export class SelectionHighlightPainter {
   private rafHandle: number | null = null;
   private lastRenderAt = 0;
   private pulseStart = 0;
+  /** Tamaño del dataset — decide si el pulso anima o queda estático. Inyectado en attach(). */
+  private getFeatureCount: () => number = () => 0;
 
   private readonly onVisibilityChange = (): void => {
     if (document.visibilityState === 'visible' && useSelectionStore.getState().selectedIds.size > 0) {
@@ -41,9 +49,10 @@ export class SelectionHighlightPainter {
     }
   };
 
-  /** Conectar al mapa vivo. Idempotente-friendly: llamar una vez por instancia. */
-  attach(map: Map): void {
+  /** Conectar al mapa vivo. `getFeatureCount` permite adaptar el costo del pulso al tamaño real del proyecto. */
+  attach(map: Map, getFeatureCount: () => number = () => 0): void {
     this.map = map;
+    this.getFeatureCount = getFeatureCount;
     this.pulseStart = performance.now();
 
     this.unsubscribe = useSelectionStore.subscribe((state, prev) => {
@@ -55,7 +64,6 @@ export class SelectionHighlightPainter {
       document.addEventListener('visibilitychange', this.onVisibilityChange);
     }
 
-    // Si al montar ya había selección viva (HMR / remount), arrancamos el loop.
     if (useSelectionStore.getState().selectedIds.size > 0) this.startPulseLoop();
   }
 
@@ -73,17 +81,25 @@ export class SelectionHighlightPainter {
     this.pulseStart = performance.now();
     if (useSelectionStore.getState().selectedIds.size > 0) {
       this.startPulseLoop();
-      this.map?.render(); // reacción inmediata, no esperar al próximo tick del loop
+      this.map?.render();
     } else {
       this.stopPulseLoop();
-      this.map?.render(); // último render: borra el highlight que hubiera quedado pintado
+      this.map?.render();
     }
   }
 
   private startPulseLoop(): void {
     if (this.rafHandle != null || !this.map) return;
+    // Dataset enorme: un render al cambiar selección alcanza. Animar acá
+    // significa forzar redraw WebGL completo (500k+ features) 5-24 veces
+    // por segundo sin que nada visual lo justifique.
+    if (this.getFeatureCount() > STATIC_HIGHLIGHT_THRESHOLD) return;
+
+    const heavy = this.getFeatureCount() > HEAVY_DATASET_THRESHOLD;
+    const intervalMs = heavy ? PULSE_RENDER_INTERVAL_MS_HEAVY : PULSE_RENDER_INTERVAL_MS;
+
     const tick = (now: number) => {
-      if (now - this.lastRenderAt >= PULSE_RENDER_INTERVAL_MS) {
+      if (now - this.lastRenderAt >= intervalMs) {
         this.lastRenderAt = now;
         this.map?.render();
       }
@@ -99,8 +115,9 @@ export class SelectionHighlightPainter {
     }
   }
 
-  /** Intensidad actual del glow (0..1), como onda suave (coseno, sin saltos). */
+  /** Intensidad del glow. Datasets enormes: valor fijo (sin animación, sin loop de render). */
   private currentPulse(): number {
+    if (this.getFeatureCount() > STATIC_HIGHLIGHT_THRESHOLD) return PULSE_MAX;
     const elapsed = performance.now() - this.pulseStart;
     const t = (elapsed % PULSE_PERIOD_MS) / PULSE_PERIOD_MS;
     const wave = 0.5 - 0.5 * Math.cos(t * Math.PI * 2);
@@ -194,7 +211,6 @@ export class SelectionHighlightPainter {
     ctx.save();
     ctx.lineJoin = 'round';
     ctx.lineCap = 'round';
-    // Halo exterior (glow, pulsante) + trazo interior nítido — foco GIS "vivo".
     ctx.strokeStyle = outerColor;
     ctx.lineWidth = outerWidth;
     trace();
