@@ -84,7 +84,13 @@ export default function DebugPanel() {
   const [nativeStats, setNativeStats] = useState<NativeEngineStatsSnapshot[]>([]);
 
   const [genBusy, setGenBusy] = useState<number | null>(null);
-  const [lastGen, setLastGen] = useState<{ size: number; generateMs: number; loadMs: number } | null>(null);
+  const [lastGen, setLastGen] = useState<{
+    size: number;
+    generateMs: number;
+    loadMs: number;
+    manzanoCount: number;
+    lotCount: number;
+  } | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -111,19 +117,45 @@ export default function DebugPanel() {
     setTimeout(() => {
       try {
         ensureSyntheticLotLayer();
-        // Fase 3.4 — centra la grilla sintética en el centro de vista
-        // actual (unidades internas del proyecto, no lon/lat) en vez de
-        // partir siempre desde el origen absoluto: con 100k+ features el
-        // lado de la grilla mide varios km y, sin esto, quedaba lejos del
-        // viewport dando la falsa impresión de que "no generó nada" —
-        // parte del mismo bug de proyección que rompía el fit.
+        // Fase 3.4 — la grilla sintética se centra en el centro de vista actual
+        // (coordenadas internas del proyecto, EPSG:3857) en vez de partir del
+        // origen absoluto (0,0 = golfo de Guinea). NOTA: NO usar fitToExtent()
+        // del store acá: su extent incluye la capa base raster (el mundo
+        // entero) y deja el view en zoom ~2.4.
         const view = useMapStore.getState().mapInstance?.getView();
         const center = (view?.getCenter() as [number, number] | undefined) ?? [0, 0];
-        const { collection, generateMs } = generateSyntheticLots(size, center);
+        const { collection, generateMs, extent, manzanoCount, lotCount } = generateSyntheticManzanos(size, center);
         useMapStore.getState().restoreDrawFeatures(collection);
-        useMapStore.getState().fitToExtent();
+
+        // Fit robusto a la grilla: reintenta por frame hasta que el mapa esté
+        // listo (hasta ~2s), con el extent real del drawSource como fuente y
+        // el del generador como respaldo. La vista queda SIEMPRE sobre la
+        // grilla recién generada.
+        const fitLoaded = (): boolean => {
+          const m = useMapStore.getState().mapInstance;
+          const v = m?.getView();
+          const src = useMapStore.getState().drawSource;
+          if (!v || !src) return false;
+          const srcExtent = src.getExtent();
+          const valid = (e: number[] | null | undefined): boolean =>
+            e != null && e.length >= 4 && Number.isFinite(e[0]) && Number.isFinite(e[1]);
+          const target = valid(srcExtent) ? srcExtent : extent;
+          if (!target) return false;
+          v.fit(target as number[], { padding: [40, 40, 40, 40], maxZoom: 19 });
+          return true;
+        };
+        if (!fitLoaded()) {
+          let attempts = 0;
+          const retryFit = () => {
+            attempts++;
+            if (fitLoaded() || attempts > 120) return;
+            requestAnimationFrame(retryFit);
+          };
+          requestAnimationFrame(retryFit);
+        }
+
         const load = readProjectLoadStats();
-        setLastGen({ size, generateMs, loadMs: load.lastMs });
+        setLastGen({ size, generateMs, loadMs: load.lastMs, manzanoCount, lotCount });
         setProjectLoad(load);
       } finally {
         setGenBusy(null);
@@ -232,7 +264,7 @@ export default function DebugPanel() {
   salen por consola y se propagan al comando (sin reintento JS).
 </div>
 
-      <SectionTitle>Dataset sintético (Fase 0)</SectionTitle>
+      <SectionTitle>Dataset sintético (manzanos + lotes)</SectionTitle>
       <div style={{ display: 'flex', gap: 4, marginBottom: 4 }}>
         {SYNTHETIC_SIZES.map((size) => (
           <button
@@ -256,7 +288,7 @@ export default function DebugPanel() {
       </div>
       {lastGen && (
         <>
-          <Row label="Última gen." value={`${lastGen.size / 1000}k lotes`} />
+          <Row label="Última gen." value={`${lastGen.manzanoCount} manzanos · ${lastGen.lotCount} lotes`} />
           <Row label="Tiempo generación" value={`${lastGen.generateMs.toFixed(0)} ms`} />
           <Row label="Tiempo carga" value={`${lastGen.loadMs.toFixed(0)} ms`} />
         </>
