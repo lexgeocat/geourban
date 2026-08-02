@@ -45,25 +45,28 @@ export function readWorkerStats(): WorkerStatSnapshot[] {
     .sort((a, b) => a.type.localeCompare(b.type));
 }
 
-// ─── Snapshot de undo (GeoJSON completo — ver AddStreetCommand/AddRoundaboutCommand) ──
+// ─── Memoria retenida por el último comando de undo (diff estructural desde Fase 3) ──
 
-interface SnapshotStat {
+interface UndoCommandStat {
   lastBytes: number;
   lastMs: number;
   count: number;
   totalBytes: number;
 }
 
-const snapshotStat: SnapshotStat = { lastBytes: 0, lastMs: 0, count: 0, totalBytes: 0 };
+const snapshotStat: UndoCommandStat = { lastBytes: 0, lastMs: 0, count: 0, totalBytes: 0 };
 
-export function recordUndoSnapshot(bytes: number, ms: number): void {
+/** Registra el costo del último comando ejecutado: bytes que retiene para su undo
+ * (approxMemoryBytes — para AddStreetCommand/AddRoundaboutCommand es el diff
+ * estructural, proporcional al cambio, no al tamaño del proyecto) y ms de execute. */
+export function recordUndoCommand(bytes: number, ms: number): void {
   snapshotStat.lastBytes = bytes;
   snapshotStat.lastMs = ms;
   snapshotStat.count++;
   snapshotStat.totalBytes += bytes;
 }
 
-export function readUndoSnapshotStats(): SnapshotStat {
+export function readUndoCommandStats(): UndoCommandStat {
   return { ...snapshotStat };
 }
 

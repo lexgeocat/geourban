@@ -7,7 +7,7 @@ import type VectorSource from 'ol/source/Vector.js';
  * estructural para undo/redo.
  *
  * Reemplaza el snapshot GeoJSON del proyecto COMPLETO
- * (`commands/core/drawSourceSnapshot.ts`, usado hasta ahora por
+ * (snapshot eliminado en la Fase 3.4 — hasta la 3.2 lo usaban
  * AddStreetCommand/AddRoundaboutCommand — el bug crítico de §2.1) por un
  * registro de SOLO los features realmente tocados por una operación:
  * proporcional al tamaño del cambio, no al tamaño total del proyecto.

@@ -1,6 +1,7 @@
 ﻿import { create } from 'zustand';
 import { Command, type CommandContext, getCommandContext } from './Command';
 import { useSelectionStore } from '../../store/map/selectionStore';
+import { recordUndoCommand } from '../../store/debug/perfTelemetry';
 
 type RunResult =
   | { ok: true; command: Command }
@@ -55,6 +56,7 @@ export const useCommandStack = create<CommandStackState>()((set) => ({
     const ctx = getCommandContext();
     if (!ctx) return { ok: false, error: 'drawSource no inicializado' };
 
+    const t0 = performance.now();
     try {
       await command.execute(ctx);
     } catch (err) {
@@ -84,6 +86,7 @@ export const useCommandStack = create<CommandStackState>()((set) => ({
 
     lastCoalesceKey = key;
     lastCommandAt = now;
+    recordUndoCommand(command.approxMemoryBytes(), performance.now() - t0);
     syncFlags(set);
     return { ok: true, command };
   },

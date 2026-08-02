@@ -24,8 +24,9 @@ interface StreetEntry {
 
 /**
  * Fase 3.2 (auditoria-para-mejora.md, §6, Fase 3) — ya no serializa el
- * drawSource COMPLETO en cada trazo de calle (antes/después vía
- * `drawSourceSnapshot.ts` — el bug crítico de §2.1). El undo/redo se arma
+ * drawSource COMPLETO en cada trazo de calle (antes/después vía snapshot
+ * GeoJSON del proyecto — el bug crítico de §2.1; ese snapshot fue
+ * eliminado en la Fase 3.4). El undo/redo se arma
  * a partir del `StructuralDiff` que devuelve `recomputeManzanos()`: solo
  * los manzanos/lotes que esta calle realmente afectó, sin importar el
  * tamaño total del proyecto.

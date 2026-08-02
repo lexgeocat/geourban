@@ -6,7 +6,7 @@ import type { DebugCountersSnapshot } from '../../store/debug/debugCounters';
 import { readGeometryTelemetry } from '../../store/debug/geometryTelemetry';
 import {
   readWorkerStats,
-  readUndoSnapshotStats,
+  readUndoCommandStats,
   readProjectLoadStats,
   readHeapSnapshot,
   type WorkerStatSnapshot,
@@ -78,7 +78,7 @@ export default function DebugPanel() {
   const [featureCount, setFeatureCount] = useState(0);
   const [geoTelemetry, setGeoTelemetry] = useState<ReturnType<typeof readGeometryTelemetry> | null>(null);
   const [workerStats, setWorkerStats] = useState<WorkerStatSnapshot[]>([]);
-  const [undoSnap, setUndoSnap] = useState(readUndoSnapshotStats());
+  const [undoSnap, setUndoSnap] = useState(readUndoCommandStats());
   const [projectLoad, setProjectLoad] = useState(readProjectLoadStats());
   const [heap, setHeap] = useState(readHeapSnapshot());
   const [nativeStats, setNativeStats] = useState<NativeEngineStatsSnapshot[]>([]);
@@ -92,7 +92,7 @@ export default function DebugPanel() {
       setCounters(readDebugCounters());
       setGeoTelemetry(readGeometryTelemetry());
       setWorkerStats(readWorkerStats());
-      setUndoSnap(readUndoSnapshotStats());
+      setUndoSnap(readUndoCommandStats());
       setProjectLoad(readProjectLoadStats());
       setHeap(readHeapSnapshot());
       setNativeStats(readNativeEngineStats());
@@ -111,8 +111,41 @@ export default function DebugPanel() {
     setTimeout(() => {
       try {
         ensureSyntheticLotLayer();
-        const { collection, generateMs } = generateSyntheticLots(size);
+        const map = useMapStore.getState().mapInstance;
+        const center = map?.getView().getCenter();
+        const { collection, generateMs, extent } = generateSyntheticLots(
+          size,
+          center ? ([center[0], center[1]] as [number, number]) : undefined,
+        );
         useMapStore.getState().restoreDrawFeatures(collection);
+
+        // Fit robusto a la grilla: reintenta por frame hasta que el mapa esté
+        // listo (hasta ~2s), y usa el extent real del drawSource con fallback
+        // al del generador. Garantiza que la grilla quede en pantalla sin
+        // importar dónde estaba la vista ni cuándo se montó el mapa.
+        const fitLoaded = (): boolean => {
+          const m = useMapStore.getState().mapInstance;
+          const v = m?.getView();
+          const src = useMapStore.getState().drawSource;
+          if (!v || !src) return false;
+          const srcExtent = src.getExtent();
+          const valid = (e: number[] | null | undefined): boolean =>
+            e != null && e.length >= 4 && Number.isFinite(e[0]) && Number.isFinite(e[1]);
+          const target = valid(srcExtent) ? srcExtent : extent;
+          if (!target) return false;
+          v.fit(target as number[], { padding: [40, 40, 40, 40], maxZoom: 19 });
+          return true;
+        };
+        if (!fitLoaded()) {
+          let attempts = 0;
+          const retryFit = () => {
+            attempts++;
+            if (fitLoaded() || attempts > 120) return;
+            requestAnimationFrame(retryFit);
+          };
+          requestAnimationFrame(retryFit);
+        }
+
         const load = readProjectLoadStats();
         setLastGen({ size, generateMs, loadMs: load.lastMs });
         setProjectLoad(load);
@@ -180,7 +213,7 @@ export default function DebugPanel() {
       <Row label="Features cargadas" value={String(projectLoad.lastFeatureCount)} />
       <Row label="Tamaño estimado" value={formatKB(projectLoad.lastBytes)} />
 
-      <SectionTitle>Snapshot de undo (GeoJSON)</SectionTitle>
+      <SectionTitle>Undo último comando (diff estructural)</SectionTitle>
       <Row label="Último tamaño" value={formatKB(undoSnap.lastBytes)} />
       <Row label="Último tiempo" value={`${undoSnap.lastMs.toFixed(1)} ms`} />
       <Row label="Snapshots totales" value={String(undoSnap.count)} />
