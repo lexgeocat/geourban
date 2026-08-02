@@ -1,14 +1,16 @@
+// src/store/debug/nativeEngineTelemetry.ts
+//
+// Fase 2.7 — telemetría del motor nativo (Rust/GEOS vía Tauri). Desde que
+// el motor JS fue retirado no hay sombra ni fallback: cada operación se
+// cuenta como éxito nativo o no se cuenta (los errores van por consola).
+
 const ROLLING_WINDOW_MS = 10 * 60_000; // 10 minutos — una sesión de uso real
 
-export type NativeEngineOutcome = 'native' | 'fallback' | 'shadowMatch' | 'shadowMismatch';
+export type NativeEngineOutcome = 'native' | 'fallback';
 
 interface OpStats {
   native: number;
   fallback: number;
-  shadowMatch: number;
-  shadowMismatch: number;
-  lastMismatchDetail: string | null;
-  lastMismatchAt: number | null;
   windowStart: number;
 }
 
@@ -18,10 +20,6 @@ function freshStats(): OpStats {
   return {
     native: 0,
     fallback: 0,
-    shadowMatch: 0,
-    shadowMismatch: 0,
-    lastMismatchDetail: null,
-    lastMismatchAt: null,
     windowStart: Date.now(),
   };
 }
@@ -33,37 +31,21 @@ function getOrCreate(opType: string): OpStats {
     statsByOp.set(opType, s);
   }
   if (Date.now() - s.windowStart >= ROLLING_WINDOW_MS) {
-    const detail = s.lastMismatchDetail;
-    const detailAt = s.lastMismatchAt;
     s = freshStats();
-    // Conservamos el último mismatch aunque rote la ventana — es la
-    // señal más valiosa para depurar y no queremos perderla solo porque
-    // pasaron 10 minutos.
-    s.lastMismatchDetail = detail;
-    s.lastMismatchAt = detailAt;
     statsByOp.set(opType, s);
   }
   return s;
 }
 
-export function recordNativeEngineOutcome(opType: string, outcome: NativeEngineOutcome, detail?: string): void {
+export function recordNativeEngineOutcome(opType: string, outcome: NativeEngineOutcome): void {
   const s = getOrCreate(opType);
   s[outcome]++;
-  if (outcome === 'shadowMismatch') {
-    s.lastMismatchDetail = detail ?? null;
-    s.lastMismatchAt = Date.now();
-    console.warn(`[nativeEngine] shadow mismatch en "${opType}"${detail ? `: ${detail}` : ''}`);
-  }
 }
 
 export interface NativeEngineStatsSnapshot {
   opType: string;
   native: number;
   fallback: number;
-  shadowMatch: number;
-  shadowMismatch: number;
-  lastMismatchDetail: string | null;
-  lastMismatchAt: number | null;
 }
 
 export function readNativeEngineStats(): NativeEngineStatsSnapshot[] {
@@ -72,10 +54,6 @@ export function readNativeEngineStats(): NativeEngineStatsSnapshot[] {
       opType,
       native: s.native,
       fallback: s.fallback,
-      shadowMatch: s.shadowMatch,
-      shadowMismatch: s.shadowMismatch,
-      lastMismatchDetail: s.lastMismatchDetail,
-      lastMismatchAt: s.lastMismatchAt,
     }))
     .sort((a, b) => a.opType.localeCompare(b.opType));
 }

@@ -7,7 +7,7 @@ import { subdivideInWorker } from '../../workers/geoWorkerClient';
 import { ensureKind } from '../../core/objectModel';
 import { resolveLayerId } from '../features/AddFeatureCommand';
 import { newId } from '../../lib/id';
-import type { SubdivisionOptions } from '../../geo/subdivision/subdivisionAlgorithms';
+import type { SubdivisionOptions } from '../../geo/subdivision/types';
 import type { Polygon as GeoJsonPolygon } from 'geojson';
 import { estimateGeometryBytes } from '../core/memoryEstimate';
 

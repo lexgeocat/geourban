@@ -12,7 +12,6 @@ import {
   type WorkerStatSnapshot,
 } from '../../store/debug/perfTelemetry';
 import { generateSyntheticLots, ensureSyntheticLotLayer } from '../../geo/debug/syntheticDataset';
-import { useNativeGeoEngineStore } from '../../store/debug/nativeEngineStore';
 import { readNativeEngineStats, type NativeEngineStatsSnapshot } from '../../store/debug/nativeEngineTelemetry';
 
 const REFRESH_MS = 400;
@@ -82,12 +81,6 @@ export default function DebugPanel() {
   const [undoSnap, setUndoSnap] = useState(readUndoSnapshotStats());
   const [projectLoad, setProjectLoad] = useState(readProjectLoadStats());
   const [heap, setHeap] = useState(readHeapSnapshot());
-const nativeEngineEnabled = useNativeGeoEngineStore((s) => s.enabled);
-  const toggleNativeEngine = useNativeGeoEngineStore((s) => s.toggle);
-  const shadowValidationEnabled = useNativeGeoEngineStore((s) => s.shadowValidationEnabled);
-  const setShadowValidationEnabled = useNativeGeoEngineStore((s) => s.setShadowValidationEnabled);
-  const shadowSampleRate = useNativeGeoEngineStore((s) => s.shadowSampleRate);
-  const setShadowSampleRate = useNativeGeoEngineStore((s) => s.setShadowSampleRate);
   const [nativeStats, setNativeStats] = useState<NativeEngineStatsSnapshot[]>([]);
 
   const [genBusy, setGenBusy] = useState<number | null>(null);
@@ -205,58 +198,12 @@ const nativeEngineEnabled = useNativeGeoEngineStore((s) => s.enabled);
         ))
       )}
 
-      <SectionTitle>Motor de geometría (Fase 2.7)</SectionTitle>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-        <span style={{ color: 'var(--cad-text-dim)' }}>
-          {nativeEngineEnabled ? 'Nativo (Rust, Tauri) — default' : 'Worker (JS, JSTS)'}
-        </span>
-        <button
-          onClick={toggleNativeEngine}
-          className="cad-icon-btn"
-          style={{
-            width: 'auto', height: 'auto', padding: '3px 10px', fontSize: '0.6rem',
-            color: nativeEngineEnabled ? 'var(--cad-accent-green)' : 'var(--cad-text-dim)',
-            border: `1px solid ${nativeEngineEnabled ? 'var(--cad-accent-green)' : 'var(--cad-border)'}`,
-          }}
-        >
-          {nativeEngineEnabled ? 'ON' : 'OFF'}
-        </button>
-      </div>
-
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
-        <span style={{ color: 'var(--cad-text-dim)' }}>Validación en sombra</span>
-        <button
-          onClick={() => setShadowValidationEnabled(!shadowValidationEnabled)}
-          className="cad-icon-btn"
-          style={{
-            width: 'auto', height: 'auto', padding: '3px 10px', fontSize: '0.6rem',
-            color: shadowValidationEnabled ? 'var(--cad-accent-green)' : 'var(--cad-text-dim)',
-            border: `1px solid ${shadowValidationEnabled ? 'var(--cad-accent-green)' : 'var(--cad-border)'}`,
-          }}
-        >
-          {shadowValidationEnabled ? 'ON' : 'OFF'}
-        </button>
-      </div>
-      {shadowValidationEnabled && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-          <span style={{ color: 'var(--cad-text-muted)', fontSize: '0.6rem' }}>Muestreo</span>
-          <input
-            type="range" min={0} max={1} step={0.05} value={shadowSampleRate}
-            onChange={(e) => setShadowSampleRate(Number.parseFloat(e.target.value))}
-            style={{ flex: 1, height: 4, accentColor: 'var(--cad-accent)' }}
-          />
-          <span style={{ color: 'var(--cad-accent)', fontSize: '0.6rem', fontFamily: 'JetBrains Mono, monospace' }}>
-            {Math.round(shadowSampleRate * 100)}%
-          </span>
-        </div>
-      )}
-
+      <SectionTitle>Motor de geometría (Fase 2.7 completa)</SectionTitle>
+      <Row label="Vía" value="Nativo (Rust, GEOS) — única" />
       <div style={{ color: 'var(--cad-text-muted)', fontSize: '0.6rem', marginBottom: 4 }}>
-        subdivide / subdivideManzano / computeManzanos / computeRoadNetworkNet
-        corren en sombra contra el motor JS con el muestreo de arriba —
-        confirma paridad con datos reales antes de retirar el fallback
-        (auditoria-para-mejora.md, Fase 2.7). Los batch (subdivideManzanoBatch,
-        matchFragmentsBatch) solo registran nativo/fallback, sin sombra.
+        El motor JS (jsts/polygon-clipping) fue retirado tras validar la
+        paridad con datos reales (0 mismatches / 0 fallbacks). Sin runtime
+        Tauri no hay motor: la versión web quedó en el branch web-version.
       </div>
 
       {nativeStats.length === 0 ? (
@@ -266,23 +213,14 @@ const nativeEngineEnabled = useNativeGeoEngineStore((s) => s.enabled);
       ) : (
         nativeStats.map((s) => (
           <div key={s.opType} style={{ marginBottom: 3 }}>
-            <Row
-              label={s.opType}
-              value={`nativo=${s.native} fallback=${s.fallback} sombra✓=${s.shadowMatch} sombra✗=${s.shadowMismatch}`}
-            />
-            {s.shadowMismatch > 0 && s.lastMismatchDetail && (
-              <div style={{ color: 'var(--cad-accent-red)', fontSize: '0.58rem', paddingLeft: 4 }}>
-                último mismatch: {s.lastMismatchDetail}
-              </div>
-            )}
+            <Row label={s.opType} value={`nativo=${s.native} fallback=${s.fallback}`} />
           </div>
         ))
       )}
 <div style={{ color: 'var(--cad-text-muted)', fontSize: '0.6rem', marginBottom: 2 }}>
   subdivide / subdivideManzano / subdivideManzanoBatch / computeManzanos /
-  computeRoadNetworkNet / matchFragmentsBatch. Si falla, cae solo al worker
-  JS. Compará contra "Worker roundtrip por tipo" — las entradas con sufijo
-  ":native" son este motor.
+  computeRoadNetworkNet / matchFragmentsBatch. Los errores del motor nativo
+  salen por consola y se propagan al comando (sin reintento JS).
 </div>
 
       <SectionTitle>Dataset sintético (Fase 0)</SectionTitle>

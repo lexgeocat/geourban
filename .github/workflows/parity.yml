@@ -1,31 +1,13 @@
 name: geometry-engine-parity
 on: [push, pull_request]
 
+# Fase 2.7 — el motor JS (jsts/polygon-clipping) fue retirado. Los fixtures
+# de parity quedaron congelados en src-tauri/crates/geourban-geo/tests/fixtures/
+# (ya no se regeneran desde TS; no hay motor TS que los produzca). El único
+# motor es el nativo, validado por la suite Rust.
+
 jobs:
-  ts-and-parity-sync:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: 20 }
-      - run: npm ci
-      - run: npm run parity:sync
-      - run: npm test
-      - name: fallar si parity:sync dejó el repo sucio
-        run: git diff --exit-code -- src-tauri/crates/geourban-geo/tests/fixtures
-
-  fuzz:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: 20 }
-      - run: npm ci
-      - name: fuzzing de geometria degenerada (Fase 2.6)
-        run: npm run test:fuzz
-
   rust-parity:
-    needs: ts-and-parity-sync
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

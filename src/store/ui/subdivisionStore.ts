@@ -1,6 +1,6 @@
 ﻿import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
-import type { SubdivisionMethod, SubdivisionOptions } from '../../geo/subdivision/subdivisionAlgorithms';
+import type { SubdivisionMethod, SubdivisionOptions } from '../../geo/subdivision/types';
 
 type SubdivisionState = {
   isOpen: boolean;

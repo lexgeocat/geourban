@@ -4,7 +4,7 @@ import GeoJSON from 'ol/format/GeoJSON.js';
 import PolygonGeom from 'ol/geom/Polygon.js';
 import FeatureOL from 'ol/Feature.js';
 import { Command, type CommandContext } from '../core/Command';
-import type { ManzanoLoteMethod } from '../../geo/subdivision/subdivisionAlgorithms';
+import type { ManzanoLoteMethod } from '../../geo/subdivision/types';
 import { updateFeatureMetrics } from '../../geo/metrics';
 import {
   ensureKind,

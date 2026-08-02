@@ -21,10 +21,9 @@ import {
 } from '../workers/geoWorkerClient';
 import { confirmAsync } from '../store/ui/confirmDialogStore';
 import { ensureKind, getFeatureKind, getLotStatus, setLotStatus } from '../core/objectModel';
-import type { ManzanoLoteMethod } from './subdivision/subdivisionAlgorithms';
+import type { ManzanoLoteMethod } from './subdivision/types';
 import { buildRoadNetworkRings } from './roads/roadNetworkEngine';
 import { roundRingReflex, pointOnRing } from './roads/ringFillet';
-import { matchFragmentsToMembers } from './roads/fragmentReconciliation';
 import { autoCreateLayerForKind, resolveOrCreateLayerForKind } from '../store/entities/layerAutoCreate';
 import { sanitizeFeatureCollectionRings } from './sanitizeGeoJson';
 import { newId } from '../lib/id';
@@ -449,7 +448,7 @@ let result: FeatureCollection;
   const targetAreaM2 = useManzanoStore.getState().targetAreaM2;
   const frontMinM = useManzanoStore.getState().frontMinM;
 
-  const assignmentsByGroupIdx = new globalThis.Map<number, ReturnType<typeof matchFragmentsToMembers<Feature<Geometry>>>>();
+  const assignmentsByGroupIdx = new globalThis.Map<number, FragmentAssignment[]>();
   const memberAreaByRefPerGroup = new globalThis.Map<number, globalThis.Map<Feature<Geometry>, number>>();
   const relotCandidates: Array<{ featureId: string; method: ManzanoLoteMethod; dirPref?: { ax: number; ay: number } }> = [];
 
@@ -459,6 +458,12 @@ let result: FeatureCollection;
     existingMembers: Array<{ ring: Pt[]; ref: Feature<Geometry> }>;
   }
   const reconTasks: ReconTask[] = [];
+
+  interface FragmentAssignment {
+    fragmentIdx: number;
+    member: Feature<Geometry> | null;
+    overlapArea: number;
+  }
 
 
   for (let idx = 0; idx < parcelIndexToGroup.length; idx++) {
@@ -501,16 +506,10 @@ let result: FeatureCollection;
       );
     } catch (err) {
       console.error(
-        'recomputeManzanos: matchFragmentsBatch en worker falló — se recalcula en el hilo principal como respaldo (más lento, pero funcional).',
+        'recomputeManzanos: matchFragmentsBatch falló en el motor nativo (sin fallback desde 2.7) — se aborta el recompute.',
         err,
       );
-      batchResults = reconTasks.map((t) => ({
-        groupIdx: t.idx,
-        assignments: matchFragmentsToMembers(t.fragments, t.existingMembers).map((a) => {
-          const foundIdx = a.member != null ? t.existingMembers.findIndex((m) => m.ref === a.member) : -1;
-          return { fragmentIdx: a.fragmentIdx, memberIdx: foundIdx >= 0 ? foundIdx : null, overlapArea: a.overlapArea };
-        }),
-      }));
+      return;
     }
 
 
@@ -901,16 +900,10 @@ export async function reapplyRoadCornerMode(): Promise<void> {
         );
       } catch (err) {
         console.error(
-          'reapplyRoadCornerMode: matchFragmentsBatch en worker falló — se recalcula en el hilo principal como respaldo.',
+          'reapplyRoadCornerMode: matchFragmentsBatch falló en el motor nativo (sin fallback desde 2.7) — se aborta la reaplicación.',
           err,
         );
-        batchResults = reconTasks.map((t) => ({
-          groupIdx: t.groupIdx,
-          assignments: matchFragmentsToMembers(t.fragments, t.existingMembers).map((a) => {
-            const foundIdx = a.member != null ? t.existingMembers.findIndex((m) => m.ref === a.member) : -1;
-            return { fragmentIdx: a.fragmentIdx, memberIdx: foundIdx >= 0 ? foundIdx : null, overlapArea: a.overlapArea };
-          }),
-        }));
+        return;
       }
     }
 

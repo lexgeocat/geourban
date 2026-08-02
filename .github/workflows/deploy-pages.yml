@@ -1,8 +1,11 @@
 name: Deploy to GitHub Pages
 
+# Fase 2.7 — main es desktop-only (motor Rust/GEOS vía Tauri, sin fallback
+# JS). La versión web (motor JS + persistencia de navegador) quedó congelada
+# en el branch `web-version`; por eso el deploy de Pages solo corre ahí.
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "web-version" ]
 
 permissions:
   contents: read

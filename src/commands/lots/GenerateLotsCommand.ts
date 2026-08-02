@@ -9,7 +9,7 @@ import { resolveLayerId } from '../features/AddFeatureCommand';
 import { subdivideManzanoBatchInWorker } from '../../workers/geoWorkerClient';
 import PolygonGeom from 'ol/geom/Polygon.js';
 import FeatureOL from 'ol/Feature.js';
-import type { ManzanoLoteMethod } from '../../geo/subdivision/subdivisionAlgorithms';
+import type { ManzanoLoteMethod } from '../../geo/subdivision/types';
 import { polyArea, ringPerimeter, centroid, type LotResult } from '../../geo/math/polygonEngine';
 import { useGenerateLotsProgressStore } from '../../store/ui/generateLotsProgressStore';
 import { estimateGeometryBytes } from '../core/memoryEstimate';

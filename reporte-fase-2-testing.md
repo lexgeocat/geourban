@@ -1,6 +1,29 @@
 # Reporte de testing — Fase 2 (Motor de geometría y parity TS/Rust)
 
-Fecha de ejecución: **2026-08-01** · Commit de referencia: `c58f64b` ("2.6 completo") + fixes de CI en `parity.yml` (sin commitear)
+Fecha de ejecución: **2026-08-01** · Estado final: **Fase 2 completa (2.7 incluida — retiro del motor JS)**
+
+## 0. Estado de la Fase 2.7 (actualización del mismo día)
+
+La validación A/B en la app real (`npm run tauri dev`, datos de producción) dio **GO**:
+
+- **72+ comparaciones en sombra** (subdivide, subdivideManzano, computeManzanos, computeRoadNetworkNet): `sombra✗ = 0`.
+- **`fallback = 0`** en las 6 operaciones (incluidas las batch, que se validaron por A/B manual ON/OFF: misma cantidad de features y áreas).
+- Rendimiento medido en la A/B: `subdivideManzanoBatch` nativo **14 ms** vs JS 108 ms (~7.7x); `computeRoadNetworkNet` nativo **12 ms** vs JS 264 ms (~22x).
+
+Con el GO se ejecutó el **retiro del motor JS**:
+
+| Acción | Detalle |
+|---|---|
+| `geoWorkerClient.ts` | Reescrito: motor nativo como vía única (`requireNativeRuntime()`), sin fallback ni shadow. API pública intacta. |
+| Eliminados | `geoWorker.ts`, `geoOperations.ts`, `geoEngineDiagnostics.ts`, `subdivisionAlgorithms.ts`, `subdivisionCabeceraCuerpo.ts`, `roadNetworkNet.ts`, `fragmentReconciliation.ts`, `nativeEngineStore.ts`, fuzz TS (`src/geo/__fuzz__/`), tests de parity TS↔JS y sus snapshots/generadores, `parity-sync.mjs`, `vitest.parity-sync.config.mjs`, `vitest.fuzz.config.mjs` (31 archivos). |
+| Creados | `src/geo/subdivision/types.ts` y `src/geo/roads/types.ts` (tipos compartidos con la crate; antes vivían en el motor JS). |
+| Dependencias | `jsts` y `polygon-clipping` fuera de `package.json` (lockfile limpio, 0 referencias). |
+| Bundle | Main chunk 1,177 → **1,140 kB** (349 → 338 kB gzip); desaparecieron los chunks lazy del worker JS. |
+| Fallback JS en `recomputeManzanos.ts` | Eliminado el recalculo local con `matchFragmentsToMembers` (hilo principal): ahora un fallo del motor nativo aborta la operación con error en consola. |
+| CI | `parity.yml` queda solo con `rust-parity` (fixtures congelados en `tests/fixtures/` del crate, ya no se regeneran desde TS); `deploy-pages.yml` dispara solo desde `web-version` (main es desktop-only). |
+| Web | La versión web (motor JS + persistencia de navegador) quedó congelada en el branch `web-version`. |
+
+Regresión post-retiro: **todo verde** — `tsc` 0 errores, lint 0, `npm run build` OK, `cargo test -p geourban-geo` 70/70, `--features geos-backend` 77/77 (fuzz Rust incluido). `npm test` queda sin tests TS (los de parity eran TS↔JS) con `passWithNoTests`.
 
 ## 1. Resumen ejecutivo
 
@@ -61,16 +84,14 @@ Fecha de ejecución: **2026-08-01** · Commit de referencia: `c58f64b` ("2.6 com
 
 ## 5. Estado del motor dual
 
-- **Rust/GEOS** (`geos-backend`, ON por defecto en `src-tauri/Cargo.toml`): motor por defecto en desktop/Tauri. Requiere libgeos: local Windows vcpkg `x64-windows-static`; CI Ubuntu `libgeos-dev`.
-- **JS** (`jsts` + `polygon-clipping`): fallback automático (router `shouldUseNative()` en `src/workers/geoWorkerClient.ts:195`). Es lo único que puede correr en navegador/GitHub Pages (sin `invoke`/Tauri en web).
-- **Parity TS↔Rust:** fixtures compartidos + tests de parity en ambos lados; ambos motores pasan el mismo corpus de fuzz.
+- **Rust/GEOS** (`geos-backend`, ON por defecto en `src-tauri/Cargo.toml`): **motor único desde la Fase 2.7** (se retiró el fallback JS tras validar paridad con datos reales). Requiere libgeos: local Windows vcpkg `x64-windows-static`; CI Ubuntu `libgeos-dev`.
+- **JS** (`jsts` + `polygon-clipping`): **retirado** (deps, worker, algoritmos y tests eliminados). Sin runtime Tauri no hay motor: la versión web quedó congelada en el branch `web-version`.
+- **Parity TS↔Rust:** los fixtures quedaron congelados en `src-tauri/crates/geourban-geo/tests/fixtures/` (ya no se regeneran desde TS); los tests Rust los siguen validando en ambas configuraciones.
 
 ## 6. Pendientes (fuera de esta corrida)
 
-1. **Fase 2.7** (no iniciada): validación A/B con datos reales (`npm run tauri dev`) antes de retirar `jsts`/`polygon-clipping` del bundle.
-2. `README-fase-2.0.md:35` — afirma `geos-backend` desactivado por default (FALSO desde 2.3; está ON). Falta nota sobre `cargo test --features geos-backend`.
-3. `subdivision.rs:1000` — doc comment duplicado (cosmético).
-4. Web: `src/persistence/projectFile.ts:139-152` usa `invoke()` Tauri sin fallback de navegador → persistencia rota en GitHub Pages (estratégico, ver branch `web-version`).
+1. ~~Fase 2.7~~ — **completada** (ver §0).
+2. Web: la versión web congelada en `web-version` (motor JS + persistencia IndexedDB/archivo) queda como producto web; `main` es desktop-only. Si en el futuro se quiere web actualizada, hay que re-crearla desde `main` con un adaptador no-Tauri — fuera de alcance actual.
 
 ## 7. Cómo reproducir
 

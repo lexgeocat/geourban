@@ -14,12 +14,12 @@ export default defineConfig({
       '**/node_modules/**',
       '**/dist/**',
       '**/__generator__/**',
-      // Fase 2.6 — fuzzing: puede tardar mucho y, en el peor caso, colgarse
-      // por robustez de JSTS ante geometría patológica. No corre en
-      // `npm test`; se corre a demanda con `npm run test:fuzz`, que además
-      // usa el watchdog de proceso (ver script abajo).
-      'src/geo/__fuzz__/**',
     ],
+    // Fase 2.7: el motor JS (jsts/polygon-clipping) fue retirado y con él
+    // los tests de parity TS↔JS y el fuzz TS (el fuzz vive en Rust,
+    // tests/fuzz_degenerate_geometry.rs). Los fixtures de parity quedaron
+    // congelados en src-tauri/crates/geourban-geo/tests/fixtures/.
+    passWithNoTests: true,
     testTimeout: 20000,
     hookTimeout: 20000,
   },

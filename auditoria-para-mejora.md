@@ -341,14 +341,14 @@ Desglose ampliado (el documento original la trataba como bloque único de 2 sema
 | 2.3 — Booleanas                    | ✅ Activa: GEOS on, build validado, paridad incl. MultiPolygon | —                                    |
 | 2.4 — Reconciliación de fragmentos | ✅ Completa (portada + paridad 6 fixtures)       | —                                                  |
 | 2.5 — Cableado Tauri               | ✅ Completa (los 7 comandos registrados + fallback JS) | —                                              |
-| 2.6 — Fuzzing/paridad              | 🟡 Paridad completa; fuzzing pendiente           | 2-3 días                                           |
-| 2.7 — Limpieza JS                  | ❌ No iniciada (único pendiente de Fase 2)       | 1 semana (A/B en app real + retiro de jsts/polygon-clipping) |
+| 2.6 — Fuzzing/paridad              | ✅ Completa (fuzz TS 236 casos + fuzz Rust con timeout, 0 cuelgues) | —                                              |
+| 2.7 — Limpieza JS                  | ✅ **Completa (1-ago-2026):** A/B validado en la app real (72+ comparaciones en sombra, 0 mismatches, 0 fallbacks; batch por A/B manual ON/OFF con resultados idénticos) y motor JS retirado — jsts/polygon-clipping fuera de package.json, worker/algoritmos/tests eliminados, motor nativo como vía única | — (regresión post-retiro verde) |
 | 3 — Undo/redo estructural          | ❌ No iniciada                                   | 2-2.5 semanas                                      |
 | 4 — Índice espacial + render       | ❌ No iniciada (bug 5.1 pendiente)               | 3-3.5 semanas                                      |
 | 5 — CRS afín                       | ❌ No iniciada                                   | 1.5-2 semanas                                      |
 | 6 — Estrés                         | ❌ No iniciada                                   | 2.5-3 semanas                                      |
 
-**Total restante estimado: ~11-13 semanas** desde hoy, asumiendo 1-2 ingenieros senior dedicados — **menor que las 14-16 semanas que proyectaba la revisión anterior**, porque el cierre de 2.2-2.5 descontó el bloque más grande que quedaba (cableado + validación de la Fase 2). El trabajo que sigue es, en orden de impacto: 2.7 (retirar el JS de producción), Fase 3 (undo estructural, el otro cuello de botella crítico de §2.1) y Fase 4 (índice + render a escala, que además necesita el bug de §5.1 resuelto).
+**Total restante estimado: ~9-11 semanas** desde hoy, asumiendo 1-2 ingenieros senior dedicados — **menor que las 14-16 semanas que proyectaba la revisión anterior**, porque la Fase 2 quedó completa (2.2-2.7, incluido el retiro del JS). El trabajo que sigue es, en orden de impacto: Fase 3 (undo estructural, el otro cuello de botella crítico de §2.1) y Fase 4 (índice + render a escala, que además necesita el bug de §5.1 resuelto).
 
 ---
 
@@ -385,7 +385,7 @@ _(Preservado del original, con un ítem nuevo al final.)_
 5. No optimices el pipeline de labels/SDF antes de tener el dato de que lo necesitás.
 6. No parchees la race condition del índice espacial con más `console.warn` — **sigue sin resolverse, ver §5.1. Este es el ítem más urgente de toda la lista de anti-patrones, porque es el único que ya lleva tres revisiones señalado sin acción.**
 7. No avances de una sub-fase de la Fase 2 a la siguiente sin su criterio de éxito verificado — **resuelto en la práctica (1-ago-2026):** las sub-fases 2.2-2.5 se cerraron con tests de paridad verdes en ambos lados, y la cobertura de tests del crate quedó pareja (§5.3). La regla sigue aplicando para 2.6/2.7 y para cualquier trabajo futuro del motor.
-8. **Nuevo en la revisión anterior: no sigas escribiendo más código Rust nuevo (2.4 en adelante) mientras 2.5.a siga sin hacerse.** — **cumplido (1-ago-2026):** 2.5 quedó completa (los 7 comandos geométricos registrados y consumidos desde el frontend con fallback). El anti-patrón se actualiza: **no retires `jsts`/`polygon-clipping` de `package.json` hasta validar el A/B nativo vs JS en la app real con datos de producción** (Fase 2.7) — retirar el fallback antes de esa validación reintroduciría silenciosamente el riesgo que este punto prevenía.
+8. **Nuevo en la revisión anterior: no sigas escribiendo más código Rust nuevo (2.4 en adelante) mientras 2.5.a siga sin hacerse.** — **cumplido (1-ago-2026):** 2.5 quedó completa (los 7 comandos geométricos registrados y consumidos desde el frontend con fallback). El anti-patrón se actualizó: **no retires `jsts`/`polygon-clipping` de `package.json` hasta validar el A/B nativo vs JS en la app real con datos de producción** (Fase 2.7) — retirar el fallback antes de esa validación reintroduciría silenciosamente el riesgo que este punto prevenía. **Cumplido (1-ago-2026, tarde):** el A/B se validó (0 mismatches / 0 fallbacks con datos reales) y el motor JS fue retirado. **Anti-patrón cerrado y cerrado el ítem.**
 
 ---
 
@@ -398,7 +398,7 @@ _(Preservado del original, con un ítem nuevo al final.)_
 | Unión de red vial, 5.000 segmentos          | 🟡 Medible vía flag "motor nativo" (A/B desde el panel de debug); paridad correcta, benchmark de rendimiento aún sin correr | < 100ms |
 | FPS con 200k features en viewport           | ❌ Sin cambios — LOD tiers degradan desde 350-900 features                               | 60fps sostenidos                                                             |
 | Memoria con dataset de 1M features          | ⏸ Sin medir (heap de JS sí se mide; memoria nativa del proceso, no)                      | < 2GB confirmado con profiler nativo                                         |
-| Motor de geometría en producción            | 🟡 Motor Rust cableado y activable por flag (Tauri + `useNativeGeoEngineStore`), con fallback automático a JSTS/polygon-clipping — el JS sigue siendo lo que corre por defecto | GEOS/`geo` nativo vía Rust como vía única |
+| Motor de geometría en producción            | ✅ **Motor Rust/GEOS como vía única (Fase 2.7 completa, 1-ago-2026):** motor JS retirado; sin runtime Tauri no hay motor (la versión web quedó en el branch `web-version`) | GEOS/`geo` nativo vía Rust como vía única |
 | Índice espacial                             | RBush JS, con bug de resincronización activo (§5.1) sin resolver                         | RBush JS + `rstar` nativo, con causa raíz del bug corregida antes de escalar |
 | Cobertura de tests de paridad JS↔Rust       | ✅ 4 de 4 módulos del motor con paridad automática (subdivisión auto/exact/modo2, fragmentos, computeManzanos) + tests unitarios en los 9 archivos del crate | Fuzzing sistemático + corpus ampliado con dataset sintético (Fase 6.1) |
 

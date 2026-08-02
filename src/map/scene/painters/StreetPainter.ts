@@ -1,7 +1,7 @@
 import { useStreetStore, type Street } from '../../../store/entities/streetStore';
 import { useRoadCornerStore } from '../../../store/map/roadCornerStore';
 import { type CornerMode } from '../../../geo/roads/ringFillet';
-import type { RoadNetworkNet } from '../../../geo/roads/roadNetworkNet';
+import type { RoadNetworkNet } from '../../../geo/roads/types';
 import { computeRoadNetworkNetInWorker } from '../../../workers/geoWorkerClient';
 import { type Pt } from '../../../geo/math/polygonEngine';
 import { measureCachedWidth } from '../../textMeasureCache';
