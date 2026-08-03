@@ -6,7 +6,11 @@ import VectorSource from 'ol/source/Vector.js';
 import { useProjectCrsStore } from '../store/project/projectCrsStore';
 import { ensureUtmZoneRegistered } from './crs/utmZones';
 import { pathLength } from './math/polygonEngine';
-import { getMetricPlaneAffine, LOCAL_TANGENT_PLANE_KEY } from './crs/affineCache';
+import {
+  getMetricPlaneAffine,
+  LOCAL_TANGENT_PLANE_KEY,
+  projectPathThroughUtmTiles,
+} from './crs/affineCache';
 import { applyAffineBatch, extentOfPoints } from './crs/affineApprox';
 
 export type SegmentMetric = {
@@ -29,22 +33,22 @@ export type FeatureMetrics = {
 };
 
 /**
- * Fase 5.1-5.3 — en ambos modos de CRS ('utm' y 'none') este es el ÚNICO
- * punto de entrada al plano métrico, y en ambos casos pasa por la matriz
- * afín cacheada (`affineCache.ts`): el costo se paga solo cuando el
- * extent del proyecto crece más allá del margen cacheado (Fase 5.2),
- * nunca por vértice en el hot path de cada edición. Modo 'utm' ajusta
- * contra el EPSG real (proj4, ~25 muestras); modo 'none' ajusta un plano
- * tangente local en forma cerrada (`fitLocalTangentPlane`, sin proj4).
+ * Fase 5 robustecida — 'utm' usa el caché en mosaico (cada punto se
+ * resuelve contra el tile de ~1km que lo cubre); 'none' sigue con el
+ * único plano local del proyecto (ver nota en affineCache.ts sobre por
+ * qué ese modo no se tilea). En ambos casos: cero proj4 por vértice en
+ * el hot path — el costo se paga solo al tocar un tile/extent nuevo.
  */
 export function projectPathToMetricPlane(path3857: Array<[number, number]>): [number, number][] {
   const crs = useProjectCrsStore.getState();
-  const key = crs.mode === 'utm'
-    ? ensureUtmZoneRegistered(crs.utmZone, crs.utmHemisphere)
-    : LOCAL_TANGENT_PLANE_KEY;
+
+  if (crs.mode === 'utm') {
+    const epsg = ensureUtmZoneRegistered(crs.utmZone, crs.utmHemisphere);
+    return projectPathThroughUtmTiles(epsg, path3857);
+  }
 
   const extentHint = extentOfPoints(path3857);
-  const affine = getMetricPlaneAffine(key, extentHint);
+  const affine = getMetricPlaneAffine(LOCAL_TANGENT_PLANE_KEY, extentHint);
   return applyAffineBatch(path3857, affine);
 }
 

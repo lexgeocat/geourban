@@ -17,7 +17,7 @@ import { readNativeEngineStats, type NativeEngineStatsSnapshot } from '../../sto
 import { readAffineStats, type AffineStatsSnapshot } from '../../store/debug/affineTelemetry';
 import { runStreetUndoBenchmarkSuite, type StreetUndoBenchmarkResult } from '../../geo/debug/undoRedoBenchmark';
 import { runSpatialIndexBenchmarkSuite, type SpatialIndexBenchmarkResult } from '../../geo/debug/spatialIndexBenchmark';
-import { LOCAL_TANGENT_PLANE_KEY } from '../../geo/crs/affineCache';
+import { LOCAL_TANGENT_PLANE_KEY, MAX_ACCEPTABLE_ERROR_M, utmTileCache } from '../../geo/crs/affineCache';
 import { runAffineAccuracySuite, type AffineAccuracyResult } from '../../geo/debug/affineAccuracyBenchmark';
 
 const REFRESH_MS = 400;
@@ -331,13 +331,13 @@ export default function DebugPanel() {
   salen por consola y se propagan al comando (sin reintento JS).
 </div>
 
-      <SectionTitle>CRS afín (Fase 5.1-5.3 — linealización UTM + plano local)</SectionTitle>
+     <SectionTitle>CRS afín (Fase 5 — mosaico UTM + plano local, robustecido)</SectionTitle>
 <div style={{ color: 'var(--cad-text-muted)', fontSize: '0.6rem', marginBottom: 4 }}>
-  `projectPathToMetricPlane` usa una matriz afín cacheada en AMBOS modos
-  ('utm' y 'none'/plano local): cero proj4 por vértice. "Reuses" debería
-  dominar sobre "refits" en uso normal — un refit por sesión/zona es
-  esperable, docenas por minuto indicarían que el padding (Fase 5.2) no
-  está funcionando.
+  UTM usa un caché en mosaico (tiles de ~1km, con refinamiento adaptativo):
+  cada tile se ajusta una sola vez y queda cacheado indefinidamente — el
+  "reuses" debería dominar fuertemente en cuanto se trabaja en la misma
+  zona, muy por encima del caché de extent único anterior. El plano local
+  sigue con un único ajuste global (no se tilea a propósito).
 </div>
 {affineStats.length === 0 ? (
   <div style={{ color: 'var(--cad-text-muted)', fontStyle: 'italic', fontSize: '0.6rem' }}>
@@ -351,9 +351,16 @@ export default function DebugPanel() {
         value={`refits=${s.refits} reuses=${s.reuses} degraded=${s.degraded} (${(s.reuseRatio * 100).toFixed(1)}% reuse)`}
       />
       <Row
-        label="Último refit"
+        label="Último ajuste"
         value={`err=${s.lastMaxErrorM < 1 ? (s.lastMaxErrorM * 1000).toFixed(2) + 'mm' : s.lastMaxErrorM.toFixed(2) + 'm'} · extent=${(s.lastExtentWidthM / 1000).toFixed(1)}x${(s.lastExtentHeightM / 1000).toFixed(1)}km`}
       />
+      <Row
+        label="Peor error observado"
+        value={`${s.worstMaxErrorM < 1 ? (s.worstMaxErrorM * 1000).toFixed(2) + 'mm' : s.worstMaxErrorM.toFixed(2) + 'm'} ${s.worstMaxErrorM < MAX_ACCEPTABLE_ERROR_M ? '✓' : '⚠'}`}
+      />
+      {s.epsg !== LOCAL_TANGENT_PLANE_KEY && (
+        <Row label="Tiles cacheados" value={String(utmTileCache.sizeForKey(s.epsg))} />
+      )}
     </div>
   ))
 )}
