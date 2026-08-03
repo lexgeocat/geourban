@@ -1,0 +1,26 @@
+﻿src/commands/core/CommandStack.ts:109:        console.warn(`CommandStack: "${command.label}" no implementa undo() ÔÇö se ignora.`);
+src/commands/core/CommandStack.ts:113:      console.error(`CommandStack: fall├│ el undo de "${command.label}" ÔÇö el historial no avanza.`, err);
+src/commands/core/CommandStack.ts:153:      console.error(`CommandStack: fall├│ el redo de "${command.label}" ÔÇö el historial no avanza.`, err);
+src/geo/crs/affineCache.ts:79:    console.warn(
+src/geo/recomputeManzanos.ts:551:    console.error('recomputeManzanos: fallo la uni├│n/diferencia de la red vial', err);
+src/geo/recomputeManzanos.ts:560:      console.warn(`recomputeManzanos: se descartaron ${droppedCount} fragmento(s) de manzano por geometr├¡a degenerada.`);
+src/geo/recomputeManzanos.ts:626:      console.error(
+src/geo/recomputeManzanos.ts:732:          console.warn(
+src/geo/recomputeManzanos.ts:884:      console.error('recomputeManzanos: fallo la re-lotizaci├│n autom├ítica', err);
+src/geo/recomputeManzanos.ts:990:      console.error('reapplyRoadCornerMode: fallo la uni├│n/diferencia de la red vial', err);
+src/geo/recomputeManzanos.ts:1000:        console.warn(`reapplyRoadCornerMode: se descartaron ${droppedCount} fragmento(s) de manzano por geometr├¡a degenerada.`);
+src/geo/recomputeManzanos.ts:1056:        console.error(
+src/hooks/useManzanoActions.ts:75:        console.error('Preview de lotes fall├│', err);
+src/map/scene/DrawLayerRenderer.ts:43:    console.warn(
+src/map/scene/PostrenderPainter.ts:196:        console.warn(
+src/map/scene/modes/EditMode.ts:41:      console.warn('Modify: modifyend sin modifystart previo ÔÇö undo no ser├í exacto para este cambio.');
+src/map/scene/modes/EditMode.ts:68:      console.warn('Translate: translateend sin translatestart previo ÔÇö undo no ser├í exacto para este cambio.');
+src/map/scene/painters/StreetPainter.ts:280:          console.error(`StreetPainter: no se pudo calcular la red vial de la capa "${group.layerId}"`, err);
+src/store/debug/geometryTelemetry.ts:56:    console.warn('[geometry-sanitize]', JSON.stringify({ context, ...detail }));
+src/store/map/mapStore.ts:110:        console.warn(
+src/workers/geoWorkerClient.ts:204:    console.error('geoWorkerClient: "computeManzanos" fall├│ en el motor nativo (sin fallback desde 2.7):', err);
+src/workers/geoWorkerClient.ts:219:    console.error('geoWorkerClient: "subdivide" fall├│ en el motor nativo (sin fallback desde 2.7):', err);
+src/workers/geoWorkerClient.ts:237:    console.error('geoWorkerClient: "subdivide_manzano" fall├│ en el motor nativo (sin fallback desde 2.7):', err);
+src/workers/geoWorkerClient.ts:258:    console.error('geoWorkerClient: "subdivide_manzano_batch" fall├│ en el motor nativo (sin fallback desde 2.7):', err);
+src/workers/geoWorkerClient.ts:275:    console.error('geoWorkerClient: "computeRoadNetworkNet" fall├│ en el motor nativo (sin fallback desde 2.7):', err);
+src/workers/geoWorkerClient.ts:301:    console.error('geoWorkerClient: "matchFragmentsBatch" fall├│ en el motor nativo (sin fallback desde 2.7):', err);

@@ -1,0 +1,38 @@
+﻿src/commands/core/structuralDiff.test.ts:22:  private byId = new Map<string | number, Feature<any>>();
+src/commands/core/structuralDiff.test.ts:26:  addFeature(f: Feature<any>) {
+src/commands/core/structuralDiff.test.ts:29:  removeFeature(f: Feature<any>) {
+src/commands/core/structuralDiff.test.ts:173:    expect(isEmptyStructuralDiff(composeStructuralDiffs(base as any, next as any))).toBe(true);
+src/commands/core/structuralDiff.test.ts:183:    const composed = composeStructuralDiffs(base as any, next as any);
+src/commands/core/structuralDiff.test.ts:195:    applyStructuralDiffForward(src, diff as any);
+src/commands/core/structuralDiff.test.ts:198:    revertStructuralDiff(src, diff as any);
+src/commands/core/structuralDiff.test.ts:201:    applyStructuralDiffForward(src, diff as any);
+src/components/modals/OpenProjectModal.tsx:93:                <div style={{ fontSize: '0.78rem', color: 'var(--cad-text)', fontWeight: 600, overflowWrap: 'anywhere' }}>{p.name}</div>
+src/components/panels/LayerPanel.tsx:401:            <span style={{ whiteSpace: 'normal', overflowWrap: 'anywhere', wordBreak: 'break-word' }}>{data.name}</span>
+src/components/panels/LayerPanel.tsx:419:        <span style={{ flex: '1 1 140px', fontSize: '0.72rem', color: data.visible ? 'var(--cad-text)' : 'var(--cad-text-dim)', whiteSpace: 'normal', overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+src/components/panels/LayerPanel.tsx:819:              <span style={{ color: 'var(--cad-accent)', fontWeight: 700, flex: 1, whiteSpace: 'normal', overflowWrap: 'anywhere' }}>
+src/components/panels/LayerPanel.tsx:854:                <span style={{ whiteSpace: 'normal', overflowWrap: 'anywhere' }}>{r.name}</span>
+src/components/panels/PropertyPanel.tsx:67:  const feat = drawSource.getFeatureById(primaryId) as any;
+src/components/panels/SnapPanel.tsx:64:  const anyEnabled = enabled && Object.values(settings).some(Boolean);
+src/components/panels/SnapPanel.tsx:78:          background: open || anyEnabled ? 'var(--cad-bg-active)' : 'transparent',
+src/components/panels/SnapPanel.tsx:80:          color: anyEnabled ? 'var(--cad-accent)' : 'var(--cad-text-dim)',
+src/components/panels/StatsPanel.tsx:36:function computeStats(drawSource: any, streets: any[]): StatsData {
+src/hooks/useTopBarActions.ts:75:    const feat = src?.getFeatureById(primaryId) as any;
+src/hooks/useTopBarActions.ts:99:      if (getFeatureKind(f as any) === 'manzana') manzanoCount++;
+src/hooks/useTopBarActions.ts:121:        const k = getFeatureKind(f as any);
+src/map/Map.tsx:112:    const toRemove: any[] = [];
+src/map/Map.tsx:242:    const onSpatialInsert = (evt: any) => {
+src/map/Map.tsx:245:    const onSpatialRemove = (evt: any) => {
+src/map/Map.tsx:253:    const onSpatialChange = (evt: any) => {
+src/map/Map.tsx:414:    const anyCalleVisible = state.layers.some((l) => l.kind === 'calle' && l.visible);
+src/map/Map.tsx:415:    if (streetLayerRef.current) streetLayerRef.current.setVisible(anyCalleVisible);
+src/map/scene/PostrenderPainter.ts:31:  private readonly listener: (event: any) => void;
+src/map/scene/PostrenderPainter.ts:70:    this.listener = (event: any) => this.handle(event);
+src/map/scene/PostrenderPainter.ts:126:  private handle(event: any): void {
+src/map/scene/modes/EditMode.ts:58:  translate.on('translatestart' as any, (event: any) => {
+src/map/scene/modes/SelectEditMode.ts:113:          const coords = (g as any).getCoordinates();
+src/store/entities/layersRegistryStore.ts:58:          colorMode: (layer as any).colorMode ?? (safeKind === 'manzana' ? 'colorIdx' : 'solid'),
+src/store/entities/layersRegistryStore.ts:177:          colorMode: ((l as any).colorMode as string) === 'colorIdx'
+src/store/map/mapStore.ts:47:  restoreDrawFeatures: (geojson: any) => void;
+src/store/map/mapStore.ts:116:      src.addFeatures(finiteFeatures as any);
+src/store/map/mapStore.ts:149:        const src = (layer as any).getSource?.();
+src/store/ui/subdivisionStore.ts:66:        (state.options as any)[k] = v;
