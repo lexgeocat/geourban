@@ -321,14 +321,13 @@ El A/B se validó en la app real con datos de producción: **72+ comparaciones e
 
 ---
 
-### Fase 5 — CRS y métricas de alto rendimiento — ❌ NO INICIADA
+### Fase 5 — CRS y métricas de alto rendimiento — ✅ COMPLETA (3-ago-2026)
 
-- **5.1 — Cálculo de matriz afín** (3-4 días): al fijar la zona UTM (o cuando el centro del proyecto se mueve más de cierto umbral), calcular una matriz afín 2×2 + offset que aproxime la transformación dentro del bounding box del proyecto.
-- **5.2 — Invalidación de la matriz** (2 días): recalcular solo cuando cambia la zona UTM o el centro se mueve significativamente — no en cada edición.
-- **5.3 — Reemplazo del hot path** (3-4 días): `getSegmentMetrics`/cálculo de área en `src/geo/metrics.ts` pasan a usar la matriz en vez de `transform()` de proj4 por vértice.
-- **5.4 — Validación de error acumulado** (2 días): confirmar que el error introducido por la aproximación afín es submilimétrico a escala urbana, comparando contra proj4 completo sobre el dataset sintético.
+**Estado real:** el caché de extent único (5.1-5.2 original) tenía un bug de escala no detectado hasta producción: el error de la aproximación afín+cuadrática crece ~O(lado²) con el tamaño del extent ajustado, así que cualquier proyecto UTM que creciera (o cualquier trazo alargado, ej. una calle punta a punta) terminaba degradando silenciosamente (medido en producción: degraded=4004, reuse 85.6%, error de hasta 300.20mm en un extent de 11.2×0.9km).
 
-**Total estimado:** 1.5-2 semanas, sin cambios respecto al original, con el trabajo desglosado.
+**Fix aplicado:** reemplazo del caché de extent único por un caché en mosaico (`TiledAffineCache`, `affineCache.ts`) para el modo 'utm' — tiles fijos de ~1km con refinamiento adaptativo (subdivisión hasta 125m si un tile no cumple el margen). UTM es una función global fija, así que piezas de mosaico cacheadas indefinidamente son matemáticamente correctas y continuas en los bordes. El modo 'none' (plano local) no se tileó — su origen depende del extent por diseño, tilearlo rompería la consistencia de coordenadas — y no lo necesitaba: ya era sub-mm a cualquier escala medida.
+
+**Validado en producción (3-ago-2026):** degraded 4004→0, reuse 85.6%→99.9%, error máximo medido 300.20mm→0.36mm. La suite 5.4 confirma que el error dejó de escalar con el extent del proyecto (0.8km→0.257mm, 2.5km→0.293mm, 7.9km→0.315mm — prácticamente plano donde antes era 0.257mm→11.491mm→113.858mm).
 
 ---
 
@@ -358,10 +357,10 @@ El A/B se validó en la app real con datos de producción: **72+ comparaciones e
 | 2.7 — Limpieza JS                  | ✅ **Completa (1-ago-2026):** A/B validado en la app real (72+ comparaciones en sombra, 0 mismatches, 0 fallbacks; batch por A/B manual ON/OFF con resultados idénticos) y motor JS retirado — jsts/polygon-clipping fuera de package.json, worker/algoritmos/tests eliminados, motor nativo como vía única | — (regresión post-retiro verde) |
 | 3 — Undo/redo estructural          | ✅ **Completa (2-ago-2026):** 3.0-3.4 — diffs estructurales en producción + medición cumplida (ratio undo/snapshot 0.47% @ 500k, decreciente con n); quedan 4 deudas menores | ~2-3 días (+deuda 4 opcional) |
 | 4 — Índice espacial + render       | ✅ **Cerrada (2-ago-2026)**: 4.1 rstar archivado validado-no-adoptado, 4.2 medido en release, 4.3 caché labels + getVisibleFeatures, 4.4 pool WebGL 48 capas | 0 (terminada) |
-| 5 — CRS afín                       | ❌ No iniciada                                   | 1.5-2 semanas                                      |
+| 5 — CRS afín                       | ✅ Completa (3-ago-2026): TiledAffineCache validado | 0 (terminada)                                      |
 | 6 — Estrés                         | ❌ No iniciada                                   | 2.5-3 semanas                                      |
 
-**Total restante estimado: ~5-6 semanas** desde hoy, asumiendo 1-2 ingenieros senior dedicados — **menor que las 7-8 semanas que figuraban ayer**, porque la Fase 3 quedó **cerrada en su totalidad (2-ago-2026, 3.4 medida y criterio cumplido)**, el bug de sincronización del índice (§5.1), que bloqueaba el arranque de la Fase 4, resultó **ya resuelto en código** (2-ago-2026: `load()` explícito en los dos puntos de entrada masivo + telemetría de producción), y la Fase 4 **avanzó el mismo día**: esqueleto `rstar` + harness del benchmark 4.2 armados, y el benchmark **medido en release (2-ago-2026)** — veredicto: **rstar archivado como validado-no-adoptado**, el índice JS RBush se queda como única vía (ver 4.2); además **4.3 (caché de `LabelPainter` por firma + caché de `getVisibleFeatures`) quedó aplicada y medida**, y **4.4 (pool WebGL 48 capas) aplicada y cerrada**. El trabajo que sigue es, en orden de impacto: saldar las deudas de la Fase 3 (~2-3 días) y después Fase 5.
+**Total restante estimado: ~3-4 semanas** desde hoy, asumiendo 1-2 ingenieros senior dedicados — **menor que las 7-8 semanas que figuraban ayer**, porque la Fase 3 quedó **cerrada en su totalidad (2-ago-2026, 3.4 medida y criterio cumplido)**, el bug de sincronización del índice (§5.1), que bloqueaba el arranque de la Fase 4, resultó **ya resuelto en código** (2-ago-2026: `load()` explícito en los dos puntos de entrada masivo + telemetría de producción), la Fase 4 **avanzó y cerró el mismo día**: 4.1 rstar archivado, 4.2 medido en release, 4.3 caché labels + getVisibleFeatures validado, 4.4 pool WebGL 48 capas; y la Fase 5 **cerró el 3-ago-2026** con `TiledAffineCache` (error max 300.20mm→0.36mm, degraded 4004→0). El trabajo que sigue es, en orden de impacto: saldar las deudas de la Fase 3 (~2-3 días) y después Fase 6 (2.5-3 semanas).
 
 ---
 
