@@ -39,6 +39,25 @@ function closeGeoRing(ring: Pt[]): Pt[] {
   return ring;
 }
 
+const GEOMETRY_NOCHANGE_TOL = 1e-6;
+
+function ringsApproxEqual(a: Pt[], b: Pt[], tol = GEOMETRY_NOCHANGE_TOL): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (Math.abs(a[i][0] - b[i][0]) > tol || Math.abs(a[i][1] - b[i][1]) > tol) return false;
+  }
+  return true;
+}
+
+function currentRingOf(feature: Feature<Geometry>): Pt[] | null {
+  const geom = feature.getGeometry();
+  if (!(geom instanceof PolygonGeom)) return null;
+  const ring = (geom.getCoordinates()[0] ?? []) as number[][];
+  if (ring.length < 3) return null;
+  return ring.map((c) => [c[0], c[1]] as Pt);
+}
+
+/** Fase 3.2 — todo mutation point de este helper queda envuelto en el recorder. */
 /** Fase 3.2 — todo mutation point de este helper queda envuelto en el recorder. */
 function restoreMemberToParcel(
   member: Feature<Geometry>,
@@ -47,9 +66,17 @@ function restoreMemberToParcel(
   src: VectorSource,
   recorder: StructuralDiffRecorder,
 ): void {
+  const alreadyLote = getFeatureKind(member) === 'lote';
+  const currentRing = currentRingOf(member);
+  const targetRing = closeGeoRing(origPts);
+  if (alreadyLote && currentRing && ringsApproxEqual(currentRing, targetRing)) {
+    // Ya está en su forma de parcela completa y sin cambios reales —
+    // no registrar una "modificación" falsa en el diff estructural.
+    return;
+  }
   recorder.recordModifyBefore(member);
-  member.setGeometry(new PolygonGeom([closeGeoRing(origPts)]));
-  if (getFeatureKind(member) !== 'lote') member.set('kind', 'lote', true);
+  member.setGeometry(new PolygonGeom([targetRing]));
+  if (!alreadyLote) member.set('kind', 'lote', true);
   member.unset('lotStatus', true);
   member.set('origParcelId', origId, true);
   member.set('origPts', origPts, true);
@@ -640,9 +667,24 @@ async function recomputeManzanosImmediate(recorder: StructuralDiffRecorder): Pro
         const ratioFrag = fragArea > 0 ? (assignment!.overlapArea / fragArea) : 0;
         const barelyChanged = Math.min(ratioOld, ratioFrag) >= 0.92;
 
+        const alreadyManzana = getFeatureKind(reused) === 'manzana';
+        const currentRing = currentRingOf(reused);
+        const geometryUnchanged =
+          alreadyManzana && currentRing != null && ringsApproxEqual(currentRing, rounded);
+
+        if (geometryUnchanged) {
+          // El fragmento reconciliado es geométricamente idéntico al
+          // manzano actual (típico: manzanos lejos del tramo nuevo, que
+          // vuelven a salir igual de computeManzanos). No tocar el
+          // feature ni registrar una modificación falsa en el diff —
+          // esto es lo que hacía que un trazado lejano infle el
+          // undo/redo con manzanos que en realidad no cambiaron.
+          continue;
+        }
+
         recorder.recordModifyBefore(reused);
         reused.setGeometry(new PolygonGeom([rounded]));
-        if (getFeatureKind(reused) !== 'manzana') {
+        if (!alreadyManzana) {
           reused.set('kind', 'manzana', true);
           reused.set('layerId', resolveManzanaLayerId(), true);
           manzanoCreated = true;
