@@ -17,6 +17,7 @@ import { readNativeEngineStats, type NativeEngineStatsSnapshot } from '../../sto
 import { readAffineStats, type AffineStatsSnapshot } from '../../store/debug/affineTelemetry';
 import { runStreetUndoBenchmarkSuite, type StreetUndoBenchmarkResult } from '../../geo/debug/undoRedoBenchmark';
 import { runSpatialIndexBenchmarkSuite, type SpatialIndexBenchmarkResult } from '../../geo/debug/spatialIndexBenchmark';
+import { LOCAL_TANGENT_PLANE_KEY } from '../../geo/crs/affineCache';
 
 const REFRESH_MS = 400;
 const SYNTHETIC_SIZES = [100_000, 500_000, 1_000_000] as const;
@@ -311,31 +312,32 @@ export default function DebugPanel() {
   salen por consola y se propagan al comando (sin reintento JS).
 </div>
 
-      <SectionTitle>CRS afín (Fase 5.1/5.2 — linealización UTM)</SectionTitle>
-      <div style={{ color: 'var(--cad-text-muted)', fontSize: '0.6rem', marginBottom: 4 }}>
-        `projectPathToMetricPlane` en modo UTM usa una matriz afín cacheada en
-        vez de proj4 por vértice. "Reuses" debería dominar sobre "refits" en
-        uso normal — un refit por sesión/zona es esperable, docenas por
-        minuto indicarían que el padding (Fase 5.2) no está funcionando.
-      </div>
-      {affineStats.length === 0 ? (
-        <div style={{ color: 'var(--cad-text-muted)', fontStyle: 'italic', fontSize: '0.6rem' }}>
-          Sin cálculos afines todavía en esta sesión (modo CRS no-UTM, o sin ediciones)
-        </div>
-      ) : (
-        affineStats.map((s) => (
-          <div key={s.epsg} style={{ marginBottom: 4 }}>
-            <Row
-              label={s.epsg}
-              value={`refits=${s.refits} reuses=${s.reuses} (${(s.reuseRatio * 100).toFixed(1)}% reuse)`}
-            />
-            <Row
-              label="Último refit"
-              value={`err=${s.lastMaxErrorM < 1 ? (s.lastMaxErrorM * 1000).toFixed(2) + 'mm' : s.lastMaxErrorM.toFixed(2) + 'm'} · extent=${(s.lastExtentWidthM / 1000).toFixed(1)}x${(s.lastExtentHeightM / 1000).toFixed(1)}km`}
-            />
-          </div>
-        ))
-      )}
+      <SectionTitle>CRS afín (Fase 5.1-5.3 — linealización UTM + plano local)</SectionTitle>
+<div style={{ color: 'var(--cad-text-muted)', fontSize: '0.6rem', marginBottom: 4 }}>
+  `projectPathToMetricPlane` usa una matriz afín cacheada en AMBOS modos
+  ('utm' y 'none'/plano local): cero proj4 por vértice. "Reuses" debería
+  dominar sobre "refits" en uso normal — un refit por sesión/zona es
+  esperable, docenas por minuto indicarían que el padding (Fase 5.2) no
+  está funcionando.
+</div>
+{affineStats.length === 0 ? (
+  <div style={{ color: 'var(--cad-text-muted)', fontStyle: 'italic', fontSize: '0.6rem' }}>
+    Sin cálculos afines todavía en esta sesión
+  </div>
+) : (
+  affineStats.map((s) => (
+    <div key={s.epsg} style={{ marginBottom: 4 }}>
+      <Row
+        label={s.epsg === LOCAL_TANGENT_PLANE_KEY ? 'Plano local (sin CRS)' : s.epsg}
+        value={`refits=${s.refits} reuses=${s.reuses} (${(s.reuseRatio * 100).toFixed(1)}% reuse)`}
+      />
+      <Row
+        label="Último refit"
+        value={`err=${s.lastMaxErrorM < 1 ? (s.lastMaxErrorM * 1000).toFixed(2) + 'mm' : s.lastMaxErrorM.toFixed(2) + 'm'} · extent=${(s.lastExtentWidthM / 1000).toFixed(1)}x${(s.lastExtentHeightM / 1000).toFixed(1)}km`}
+      />
+    </div>
+  ))
+)}
 
       <SectionTitle>Dataset sintético (manzanos + lotes)</SectionTitle>
       <div style={{ display: 'flex', gap: 4, marginBottom: 4 }}>

@@ -1,12 +1,13 @@
 // src/geo/crs/affineCache.ts
 import { containsExtent, buffer as bufferExtent, type Extent } from 'ol/extent.js';
-import { fitAffineForExtent, IDENTITY_AFFINE, type AffineTransform } from './affineApprox';
+import { fitAffineForExtent, fitLocalTangentPlane, IDENTITY_AFFINE, type AffineTransform, type AffineFitResult } from './affineApprox';
 import { recordAffineReuse, recordAffineRefit } from '../../store/debug/affineTelemetry';
 
 /** Margen de error aceptado (5.4): a escala urbana (extents de hasta
  * decenas de km) la aproximación afín de una proyección conforme
- * (Mercator → UTM) da error residual sub-milimétrico; este umbral es
- * solo una alarma de diagnóstico, no bloquea el uso de la matriz. */
+ * (Mercator → UTM, o Mercator → plano tangente local) da error residual
+ * sub-milimétrico; este umbral es solo una alarma de diagnóstico, no
+ * bloquea el uso de la matriz. */
 const MAX_ACCEPTABLE_ERROR_M = 0.01;
 
 /** Padding relativo aplicado al extent objetivo antes de ajustar (Fase
@@ -18,6 +19,15 @@ const PADDING_FACTOR = 0.35;
 /** Padding mínimo absoluto (unidades de EPSG:3857 ≈ m) para extents
  * degenerados (un solo punto, o un trazo muy corto). */
 const MIN_PADDING_M = 250;
+
+/**
+ * Fase 5.3 — key sentinel para el modo CRS 'none' (dibujo libre, sin
+ * EPSG real). `getMetricPlaneAffine` la reconoce y ajusta un plano
+ * tangente local en forma cerrada (`fitLocalTangentPlane`) en vez de
+ * pedirle a proj4 una proyección real — mismo mecanismo de caché/reuse
+ * que el modo UTM, así que ambos modos comparten el mismo hot path.
+ */
+export const LOCAL_TANGENT_PLANE_KEY = '__local-tangent-plane__';
 
 interface CacheEntry {
   key: string;
@@ -35,45 +45,48 @@ function paddedExtent(extent: Extent): Extent {
   return bufferExtent(extent, pad);
 }
 
+function fitForKey(key: string, fitExtent: Extent): AffineFitResult | null {
+  return key === LOCAL_TANGENT_PLANE_KEY
+    ? fitLocalTangentPlane(fitExtent)
+    : fitAffineForExtent(fitExtent, key);
+}
+
 /**
- * Devuelve la matriz afín vigente para `dstEpsg` que cubre `extentHint`
+ * Devuelve la matriz afín vigente para `key` (un EPSG real en modo UTM,
+ * o `LOCAL_TANGENT_PLANE_KEY` en modo 'none') que cubre `extentHint`
  * (extent en EPSG:3857 del path/anillo a proyectar).
  *
- * Fase 5.2 — Invalidación de la matriz. Recalcula (refit, costoso: ~25
- * llamadas a proj4) únicamente si:
- *   1. cambió `dstEpsg` — la zona/hemisferio UTM ya está codificada en
- *      el string EPSG, así que un cambio de zona invalida por key
- *      mismatch sin lógica adicional; o
+ * Fase 5.2 — Invalidación de la matriz. Recalcula (refit) únicamente si:
+ *   1. cambió `key` — zona/hemisferio UTM distinta, o se pasó de UTM a
+ *      local (o viceversa) — invalida por key mismatch sin lógica extra; o
  *   2. `extentHint` no está contenido en la región para la que se
  *      ajustó la matriz vigente (el proyecto creció más allá del
  *      margen de padding con el que se calculó la última vez).
  *
- * En cualquier otro caso (la inmensa mayoría de las llamadas — cada
- * edición de geometría dentro del área ya cubierta) reutiliza la
- * matriz cacheada sin tocar proj4: el costo real se paga solo al
- * (re)ajustar, nunca por vértice ni por edición. `recordAffineReuse`/
- * `recordAffineRefit` alimentan el panel de debug para confirmar en
- * uso real que los refits son raros comparados con los reuses.
+ * En cualquier otro caso reutiliza la matriz cacheada sin tocar proj4 ni
+ * trigonometría esférica: el costo real se paga solo al (re)ajustar,
+ * nunca por vértice ni por edición. `recordAffineReuse`/`recordAffineRefit`
+ * alimentan el panel de debug — ambos modos comparten la misma telemetría.
  */
-export function getMetricPlaneAffine(dstEpsg: string, extentHint: Extent): AffineTransform {
+export function getMetricPlaneAffine(key: string, extentHint: Extent): AffineTransform {
   if (
     currentEntry &&
-    currentEntry.key === dstEpsg &&
+    currentEntry.key === key &&
     containsExtent(currentEntry.fitExtent, extentHint)
   ) {
-    recordAffineReuse(dstEpsg);
+    recordAffineReuse(key);
     return currentEntry.transform;
   }
 
   const fitExtent = paddedExtent(extentHint);
-  const fit = fitAffineForExtent(fitExtent, dstEpsg);
+  const fit = fitForKey(key, fitExtent);
 
   if (!fit) {
     // Extent degenerado (área ~0 incluso tras el padding — no debería
     // pasar dado MIN_PADDING_M, pero por robustez ante entradas
     // patológicas caemos a identidad en vez de propagar null.
-    currentEntry = { key: dstEpsg, fitExtent, transform: IDENTITY_AFFINE, maxErrorM: Infinity };
-    recordAffineRefit(dstEpsg, Infinity, fitExtent[2] - fitExtent[0], fitExtent[3] - fitExtent[1]);
+    currentEntry = { key, fitExtent, transform: IDENTITY_AFFINE, maxErrorM: Infinity };
+    recordAffineRefit(key, Infinity, fitExtent[2] - fitExtent[0], fitExtent[3] - fitExtent[1]);
     return IDENTITY_AFFINE;
   }
 
@@ -87,9 +100,9 @@ export function getMetricPlaneAffine(dstEpsg: string, extentHint: Extent): Affin
     );
   }
 
-  currentEntry = { key: dstEpsg, fitExtent, transform: fit.transform, maxErrorM: fit.maxErrorM };
+  currentEntry = { key, fitExtent, transform: fit.transform, maxErrorM: fit.maxErrorM };
   recordAffineRefit(
-    dstEpsg,
+    key,
     fit.maxErrorM,
     fitExtent[2] - fitExtent[0],
     fitExtent[3] - fitExtent[1],

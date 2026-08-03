@@ -6,6 +6,7 @@ import { fromLonLat } from 'ol/proj.js';
 import type { Extent } from 'ol/extent.js';
 import { getMetricPlaneAffine, invalidateAffineCache, _getAffineCacheEntryForTests } from './affineCache';
 import { _resetAffineTelemetryForTests, readAffineStats } from '../../store/debug/affineTelemetry';
+import { LOCAL_TANGENT_PLANE_KEY } from './affineCache';
 
 const EPSG_32719 = 'EPSG:32719';
 const EPSG_32718 = 'EPSG:32718';
@@ -109,5 +110,42 @@ describe('affineCache — Fase 5.2 invalidación', () => {
     const stats = readAffineStats().find((s) => s.epsg === EPSG_32719)!;
     expect(stats.refits).toBe(1);
     expect(stats.reuses).toBe(20);
+  });
+});
+describe('affineCache — Fase 5.3 modo local (sin EPSG)', () => {
+  const center = fromLonLat([-68.3, -16.5]) as [number, number];
+
+  beforeEach(() => {
+    invalidateAffineCache();
+    _resetAffineTelemetryForTests();
+  });
+
+  it('reutiliza la matriz del plano local para extents sucesivos contenidos', () => {
+    const e1 = smallExtentAround(center, 500);
+    getMetricPlaneAffine(LOCAL_TANGENT_PLANE_KEY, e1);
+    const e2 = smallExtentAround(center, 50);
+    getMetricPlaneAffine(LOCAL_TANGENT_PLANE_KEY, e2);
+
+    const stats = readAffineStats().find((s) => s.epsg === LOCAL_TANGENT_PLANE_KEY)!;
+    expect(stats.refits).toBe(1);
+    expect(stats.reuses).toBe(1);
+  });
+
+  it('cambiar entre modo UTM y modo local siempre dispara un refit (key distinta)', () => {
+    const e1 = smallExtentAround(center, 500);
+    getMetricPlaneAffine(EPSG_32719, e1);
+    getMetricPlaneAffine(LOCAL_TANGENT_PLANE_KEY, e1);
+
+    const statsUtm = readAffineStats().find((s) => s.epsg === EPSG_32719)!;
+    const statsLocal = readAffineStats().find((s) => s.epsg === LOCAL_TANGENT_PLANE_KEY)!;
+    expect(statsUtm.refits).toBe(1);
+    expect(statsLocal.refits).toBe(1);
+  });
+
+  it('no requiere ninguna zona UTM registrada en proj4', () => {
+    const e1 = smallExtentAround(center, 300);
+    const t = getMetricPlaneAffine(LOCAL_TANGENT_PLANE_KEY, e1);
+    expect(Number.isFinite(t.a)).toBe(true);
+    expect(Number.isFinite(t.e)).toBe(true);
   });
 });

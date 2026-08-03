@@ -14,6 +14,7 @@ import {
   IDENTITY_AFFINE,
 } from './affineApprox';
 import { DISPLAY_PROJECTION } from './projections';
+import { fitLocalTangentPlane } from './affineApprox';
 
 const EPSG_32719 = 'EPSG:32719'; // UTM 19S — misma zona que el default del store
 
@@ -81,5 +82,30 @@ describe('maxResidual', () => {
     const dst: [number, number][] = [[5, 5], [15, 5], [5, 15], [15, 15]];
     const fit = fitAffineLeastSquares(src, dst)!;
     expect(maxResidual(fit, src, dst)).toBeLessThan(1e-9);
+  });
+});
+describe('fitLocalTangentPlane (Fase 5.3 — modo CRS "none")', () => {
+  it('aproxima el plano tangente local con error sub-centimétrico a escala urbana (~5km), sin proj4', () => {
+    const center = fromLonLat([-68.3, -16.5]) as [number, number];
+    const half = 2500;
+    const extent: [number, number, number, number] = [
+      center[0] - half, center[1] - half, center[0] + half, center[1] + half,
+    ];
+
+    const fit = fitLocalTangentPlane(extent);
+    expect(fit.maxErrorM).toBeLessThan(0.01);
+
+    const expectedScale = Math.cos((-16.5 * Math.PI) / 180);
+    expect(fit.transform.a).toBeCloseTo(expectedScale, 3);
+    expect(fit.transform.e).toBeCloseTo(expectedScale, 3);
+  });
+
+  it('en el ecuador la escala es ~1 (sin distorsión de Mercator)', () => {
+    const center = fromLonLat([-68.3, 0]) as [number, number];
+    const extent: [number, number, number, number] = [
+      center[0] - 1000, center[1] - 1000, center[0] + 1000, center[1] + 1000,
+    ];
+    const fit = fitLocalTangentPlane(extent);
+    expect(fit.transform.a).toBeCloseTo(1, 3);
   });
 });

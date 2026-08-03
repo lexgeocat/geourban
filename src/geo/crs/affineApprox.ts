@@ -165,3 +165,58 @@ export function fitAffineForExtent(
   const maxErrorM = maxResidual(fit, src, dst);
   return { transform: fit, maxErrorM, extent: extent3857 };
 }
+// ─── Plano tangente local (modo CRS 'none') ──────────────────────────
+// Fase 5.3 — mismo principio que fitAffineForExtent, pero sin depender
+// de proj4: la relación EPSG:3857 -> plano tangente centrado en el
+// extent es derivable en forma cerrada a partir de la fórmula esférica
+// de Mercator que ya usa EPSG:3857 (radio WGS84 6378137m, la misma que
+// usa internamente ol/proj para 3857<->4326). Un solo atan/exp por
+// (re)fit, cero transform() por vértice — mismo hot path que el modo UTM.
+
+/** Radio de la esfera que usa EPSG:3857 (Pseudo-Mercator, semieje mayor WGS84). */
+const WEB_MERCATOR_RADIUS_M = 6378137;
+
+function mercatorYToLatRad(y: number): number {
+  return 2 * Math.atan(Math.exp(y / WEB_MERCATOR_RADIUS_M)) - Math.PI / 2;
+}
+
+/** Punto "exacto" en el plano tangente (sin linealizar en Y) — solo para medir el residuo. */
+function exactTangentPoint(p: readonly [number, number], centerX: number, lat0: number): [number, number] {
+  const lon0 = centerX / WEB_MERCATOR_RADIUS_M;
+  const lon = p[0] / WEB_MERCATOR_RADIUS_M;
+  const lat = mercatorYToLatRad(p[1]);
+  return [
+    WEB_MERCATOR_RADIUS_M * (lon - lon0) * Math.cos(lat0),
+    WEB_MERCATOR_RADIUS_M * (lat - lat0),
+  ];
+}
+
+/**
+ * Ajusta, en forma cerrada, la afín EPSG:3857 -> plano tangente local
+ * centrado en `extent3857`. Reemplazo directo de
+ * `path.map(c => transform(c,'EPSG:3857','EPSG:4326')) + escala en grados`
+ * (lo que usaba `projectPathToMetricPlane` en modo 'none'): en vez de un
+ * atan/exp por vértice, se paga una sola vez por (re)fit y el resto es
+ * una multiplicación — igual que el modo UTM.
+ *
+ * Exacta en X (x_3857 es exactamente proporcional a la longitud); de
+ * primer orden en Y (válida a escala urbana — `maxErrorM` cuantifica el
+ * residuo real contra la fórmula esférica exacta, no una promesa).
+ */
+export function fitLocalTangentPlane(extent3857: Extent): AffineFitResult {
+  const [minX, minY, maxX, maxY] = extent3857;
+  const centerX = (minX + maxX) / 2;
+  const centerY = (minY + maxY) / 2;
+  const lat0 = mercatorYToLatRad(centerY);
+  const scale = Math.cos(lat0);
+
+  const transform: AffineTransform = {
+    a: scale, b: 0, c: -centerX * scale,
+    d: 0, e: scale, f: -centerY * scale,
+  };
+
+  const src = sampleGrid(extent3857, 5);
+  const dst = src.map((p) => exactTangentPoint(p, centerX, lat0));
+  const maxErrorM = maxResidual(transform, src, dst);
+  return { transform, maxErrorM, extent: extent3857 };
+}
