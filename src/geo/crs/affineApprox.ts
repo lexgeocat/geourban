@@ -220,3 +220,23 @@ export function fitLocalTangentPlane(extent3857: Extent): AffineFitResult {
   const maxErrorM = maxResidual(transform, src, dst);
   return { transform, maxErrorM, extent: extent3857 };
 }
+/**
+ * Fase 5.4 — punto de referencia EXACTO del plano tangente local (misma
+ * fórmula esférica que usa fitLocalTangentPlane para medir su propio
+ * residuo). Expuesta para que affineAccuracyBenchmark.ts pueda comparar
+ * la matriz afín contra la referencia real en cualquier vértice del
+ * dataset, no solo en la grilla 5x5 usada para el ajuste. `extent3857`
+ * debe ser el mismo extent (ya con padding aplicado) con el que se
+ * calculó la matriz que se está validando — center y lat0 se derivan de
+ * él, igual que adentro de fitLocalTangentPlane.
+ */
+export function referenceLocalTangentPoint(
+  pt: readonly [number, number],
+  extent3857: Extent,
+): [number, number] {
+  const [minX, minY, maxX, maxY] = extent3857;
+  const centerX = (minX + maxX) / 2;
+  const centerY = (minY + maxY) / 2;
+  const lat0 = mercatorYToLatRad(centerY);
+  return exactTangentPoint(pt, centerX, lat0);
+}

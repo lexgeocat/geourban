@@ -8,7 +8,7 @@ import { recordAffineReuse, recordAffineRefit } from '../../store/debug/affineTe
  * (Mercator → UTM, o Mercator → plano tangente local) da error residual
  * sub-milimétrico; este umbral es solo una alarma de diagnóstico, no
  * bloquea el uso de la matriz. */
-const MAX_ACCEPTABLE_ERROR_M = 0.01;
+export const MAX_ACCEPTABLE_ERROR_M = 0.01;
 
 /** Padding relativo aplicado al extent objetivo antes de ajustar (Fase
  * 5.2, "hysteresis"): evita recalcular la matriz por cada feature nueva
@@ -114,6 +114,16 @@ export function getMetricPlaneAffine(key: string, extentHint: Extent): AffineTra
  * la configuración de CRS del proyecto (zona/hemisferio UTM, modo). */
 export function invalidateAffineCache(): void {
   currentEntry = null;
+}
+/**
+ * Extent (ya con padding aplicado, Fase 5.2) sobre el que se ajustó la
+ * matriz vigente — `null` si todavía no se calculó ninguna. La usa
+ * affineAccuracyBenchmark.ts (Fase 5.4) para calcular la referencia
+ * exacta del plano local en el MISMO extent que se usó al ajustar (no el
+ * extent crudo del caller, que sería distinto tras el padding).
+ */
+export function getCurrentFitExtent(): Extent | null {
+  return currentEntry?.fitExtent ?? null;
 }
 
 /** Solo para tests/depuración. */

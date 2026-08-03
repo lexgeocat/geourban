@@ -18,6 +18,7 @@ import { readAffineStats, type AffineStatsSnapshot } from '../../store/debug/aff
 import { runStreetUndoBenchmarkSuite, type StreetUndoBenchmarkResult } from '../../geo/debug/undoRedoBenchmark';
 import { runSpatialIndexBenchmarkSuite, type SpatialIndexBenchmarkResult } from '../../geo/debug/spatialIndexBenchmark';
 import { LOCAL_TANGENT_PLANE_KEY } from '../../geo/crs/affineCache';
+import { runAffineAccuracySuite, type AffineAccuracyResult } from '../../geo/debug/affineAccuracyBenchmark';
 
 const REFRESH_MS = 400;
 const SYNTHETIC_SIZES = [100_000, 500_000, 1_000_000] as const;
@@ -97,6 +98,9 @@ export default function DebugPanel() {
   const [spatialBusy, setSpatialBusy] = useState(false);
   const [spatialResults, setSpatialResults] = useState<SpatialIndexBenchmarkResult[]>([]);
   const [spatialError, setSpatialError] = useState<string | null>(null);
+  const [affineAccBusy, setAffineAccBusy] = useState(false);
+  const [affineAccResults, setAffineAccResults] = useState<AffineAccuracyResult[]>([]);
+  const [affineAccError, setAffineAccError] = useState<string | null>(null);
 
   const [genBusy, setGenBusy] = useState<number | null>(null);
   const [lastGen, setLastGen] = useState<{
@@ -145,6 +149,21 @@ export default function DebugPanel() {
       .then(setSpatialResults)
       .catch((err) => setSpatialError(err instanceof Error ? err.message : String(err)))
       .finally(() => setSpatialBusy(false));
+  };
+  const handleRunAffineAccuracy = () => {
+    if (affineAccBusy) return;
+    setAffineAccBusy(true);
+    setAffineAccError(null);
+    setTimeout(() => {
+      try {
+        const results = runAffineAccuracySuite([1_000, 10_000, 100_000]);
+        setAffineAccResults(results);
+      } catch (err) {
+        setAffineAccError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setAffineAccBusy(false);
+      }
+    }, 30);
   };
 
   const handleGenerateSynthetic = (size: number) => {
@@ -338,6 +357,40 @@ export default function DebugPanel() {
     </div>
   ))
 )}
+<SectionTitle>Fase 5.4 — validación de error acumulado (afín vs. referencia exacta)</SectionTitle>
+      <div style={{ color: 'var(--cad-text-muted)', fontSize: '0.6rem', marginBottom: 4 }}>
+        Compara la matriz afín contra proj4 completo (UTM) / fórmula esférica
+        exacta (plano local) en CADA vértice del dataset sintético generado
+        para cada tamaño — no solo la grilla 5x5 de ajuste. ✓ = por debajo de
+        MAX_ACCEPTABLE_ERROR_M (1cm); "sub-mm" es informativo, no bloqueante.
+      </div>
+      <button
+        onClick={handleRunAffineAccuracy}
+        disabled={affineAccBusy}
+        className="cad-icon-btn"
+        style={{ width: '100%', height: 24, fontSize: '0.62rem', marginBottom: 4 }}
+      >
+        {affineAccBusy ? <><span className="cad-spinner" /> Corriendo…</> : '▶ Correr suite (1k/10k/100k)'}
+      </button>
+      {affineAccError && (
+        <div style={{ color: 'var(--cad-accent-red)', fontSize: '0.6rem', marginBottom: 4 }}>{affineAccError}</div>
+      )}
+      {affineAccResults.map((r, i) => (
+        <div key={`${r.key}-${r.datasetSize}-${i}`} style={{ marginBottom: 4 }}>
+          <Row
+            label={`${r.label} · ${r.datasetSize / 1000}k feat.`}
+            value={`max=${(r.maxErrorM * 1000).toFixed(3)}mm ${r.withinAcceptableError ? '✓' : '⚠ EXCEDE 1cm'}${r.subMillimeter ? ' · sub-mm' : ''}`}
+          />
+          <Row
+            label="avg / p95 / p99"
+            value={`${(r.avgErrorM * 1000).toFixed(3)} / ${(r.p95ErrorM * 1000).toFixed(3)} / ${(r.p99ErrorM * 1000).toFixed(3)} mm`}
+          />
+          <Row
+            label="vértices · extent"
+            value={`${r.vertexCount} · ${r.extentWidthKm.toFixed(1)}x${r.extentHeightKm.toFixed(1)}km · ${r.elapsedMs.toFixed(0)}ms`}
+          />
+        </div>
+      ))}
 
       <SectionTitle>Dataset sintético (manzanos + lotes)</SectionTitle>
       <div style={{ display: 'flex', gap: 4, marginBottom: 4 }}>
