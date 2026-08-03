@@ -1,0 +1,13 @@
+﻿
+FullName                                                           Length
+--------                                                           ------
+F:\lexgeocat-geourban\docs\phase-0-baseline\build.txt                2864
+F:\lexgeocat-geourban\docs\phase-0-baseline\bundle-sizes.txt          123
+F:\lexgeocat-geourban\docs\phase-0-baseline\cargo-test-geos.txt     17692
+F:\lexgeocat-geourban\docs\phase-0-baseline\cargo-test-no-geos.txt  16244
+F:\lexgeocat-geourban\docs\phase-0-baseline\file-list.txt               0
+F:\lexgeocat-geourban\docs\phase-0-baseline\lint.txt                 3498
+F:\lexgeocat-geourban\docs\phase-0-baseline\vitest.txt               6666
+
+
+
