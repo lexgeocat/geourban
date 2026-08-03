@@ -1,9 +1,3 @@
-// src/store/debug/nativeEngineTelemetry.ts
-//
-// Fase 2.7 — telemetría del motor nativo (Rust/GEOS vía Tauri). Desde que
-// el motor JS fue retirado no hay sombra ni fallback: cada operación se
-// cuenta como éxito nativo o no se cuenta (los errores van por consola).
-
 const ROLLING_WINDOW_MS = 10 * 60_000; // 10 minutos — una sesión de uso real
 
 export type NativeEngineOutcome = 'native' | 'fallback';

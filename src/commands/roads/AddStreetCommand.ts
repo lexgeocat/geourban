@@ -22,19 +22,8 @@ interface StreetEntry {
   layerId?: string;
 }
 
-/**
- * Fase 3.2 (auditoria-para-mejora.md, §6, Fase 3) — ya no serializa el
- * drawSource COMPLETO en cada trazo de calle (antes/después vía snapshot
- * GeoJSON del proyecto — el bug crítico de §2.1; ese snapshot fue
- * eliminado en la Fase 3.4). El undo/redo se arma
- * a partir del `StructuralDiff` que devuelve `recomputeManzanos()`: solo
- * los manzanos/lotes que esta calle realmente afectó, sin importar el
- * tamaño total del proyecto.
- */
 export class AddStreetCommand extends Command {
   readonly label = 'Trazar calle';
-  /** Una key por sesión de trazo (cambia en cada `drawstart` de StreetMode).
-   * Garantiza que dos trazos consecutivos NO se fusionen en un único undo. */
   readonly coalesceKey: string;
 
   private entries: StreetEntry[];
@@ -62,9 +51,6 @@ export class AddStreetCommand extends Command {
   }
 
   override async execute(_ctx: CommandContext): Promise<void> {
-    // Esperar cualquier recompute en curso antes de arrancar el propio:
-    // evita que el diff de esta operación se contamine con cambios de
-    // otro comando corriendo en simultáneo.
     await waitForPendingRecompute();
     const entry = this.entries[this.entries.length - 1];
     entry.id = useStreetStore.getState().addStreet({

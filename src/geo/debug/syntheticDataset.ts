@@ -19,7 +19,6 @@ export interface SyntheticDatasetResult {
   manzanoCount: number;
   lotCount: number;
   generateMs: number;
-  /** Bounding box [minX, minY, maxX, maxY] en EPSG:3857 de la grilla completa. */
   extent: [number, number, number, number];
 }
 
@@ -46,18 +45,6 @@ function makeLote(id: string, lotGroupId: string, x0: number, y0: number): GeoJs
   };
 }
 
-/**
- * Grilla de manzanos (kind 'manzana') con sus lotes (kind 'lote', lotGroupId
- * apuntando al manzano padre), en EPSG:3857 — sin dependencias pesadas,
- * pensado para 10^6 features. La grilla se genera alrededor de `center`
- * (EPSG:3857) si se pasa; sin él, desde (0,0).
- *
- * Fase 3.4/6.1 (auditoria-para-mejora.md): el dataset anterior generaba solo
- * lotes sueltos sin manzanos, con lo que `recomputeManzanos()` no tenía nada
- * que recomputar al trazar una calle (diff de undo vacío). Con manzanos +
- * lotes reales, trazar una calle cruza N manzanos y el diff del undo queda
- * proporcional a ese cambio, medible a escala.
- */
 export function generateSyntheticManzanos(totalFeatures: number, center?: [number, number]): SyntheticDatasetResult {
   const t0 = performance.now();
 
@@ -126,7 +113,6 @@ export function generateSyntheticManzanos(totalFeatures: number, center?: [numbe
   };
 }
 
-/** Crea la capa de benchmark directo en el store (sin Command/undo — es tooling de debug). */
 export function ensureSyntheticLotLayer(): string {
   const store = useLayersStore.getState();
   if (store.getById(SYNTHETIC_LAYER_ID)) return SYNTHETIC_LAYER_ID;

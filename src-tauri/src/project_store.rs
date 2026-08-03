@@ -27,7 +27,6 @@ pub struct FeatureDto {
     pub id: String,
     pub layer_id: Option<String>,
     pub kind: String,
-    /// WKB base64 — evita tokenizar coordenadas como números JSON individuales.
     pub geometry_wkb_b64: String,
     pub properties_json: String,
 }
@@ -86,7 +85,8 @@ fn projects_dir(app: &AppHandle) -> Result<PathBuf, String> {
         .app_data_dir()
         .map_err(|e| format!("No se pudo resolver el directorio de datos de la app: {e}"))?;
     let dir = base.join("projects");
-    fs::create_dir_all(&dir).map_err(|e| format!("No se pudo crear el directorio de proyectos: {e}"))?;
+    fs::create_dir_all(&dir)
+        .map_err(|e| format!("No se pudo crear el directorio de proyectos: {e}"))?;
     Ok(dir)
 }
 
@@ -155,7 +155,8 @@ fn open_fresh(path: &PathBuf) -> Result<Connection, String> {
         fs::remove_file(path).map_err(|e| format!("No se pudo limpiar el archivo previo: {e}"))?;
     }
     let conn = Connection::open(path).map_err(|e| e.to_string())?;
-    conn.execute_batch("PRAGMA synchronous = NORMAL;").map_err(|e| e.to_string())?;
+    conn.execute_batch("PRAGMA synchronous = NORMAL;")
+        .map_err(|e| e.to_string())?;
     conn.execute_batch(SCHEMA).map_err(|e| e.to_string())?;
     Ok(conn)
 }
@@ -194,8 +195,18 @@ pub fn project_save(app: AppHandle, name: String, payload: ProjectPayload) -> Re
             .map_err(|e| e.to_string())?;
         for l in &payload.layers {
             stmt.execute(params![
-                l.id, l.name, l.kind, l.z_index, l.color, l.fill_color,
-                l.visible, l.locked, l.opacity, l.show_label, l.show_cota, l.color_mode,
+                l.id,
+                l.name,
+                l.kind,
+                l.z_index,
+                l.color,
+                l.fill_color,
+                l.visible,
+                l.locked,
+                l.opacity,
+                l.show_label,
+                l.show_cota,
+                l.color_mode,
             ])
             .map_err(|e| e.to_string())?;
         }
@@ -221,8 +232,16 @@ pub fn project_save(app: AppHandle, name: String, payload: ProjectPayload) -> Re
             .map_err(|e| e.to_string())?;
         for s in &payload.streets {
             stmt.execute(params![
-                s.id, s.name, s.start_x, s.start_y, s.end_x, s.end_y,
-                s.width_m, s.side_width_m, s.waypoints_json, s.layer_id,
+                s.id,
+                s.name,
+                s.start_x,
+                s.start_y,
+                s.end_x,
+                s.end_y,
+                s.width_m,
+                s.side_width_m,
+                s.waypoints_json,
+                s.layer_id,
             ])
             .map_err(|e| e.to_string())?;
         }
@@ -237,15 +256,26 @@ pub fn project_save(app: AppHandle, name: String, payload: ProjectPayload) -> Re
             .map_err(|e| e.to_string())?;
         for r in &payload.roundabouts {
             stmt.execute(params![
-                r.id, r.name, r.center_x, r.center_y, r.radius_m, r.sides,
-                r.rotation, r.road_width_m, r.sidewalk_width_m, r.layer_id,
+                r.id,
+                r.name,
+                r.center_x,
+                r.center_y,
+                r.radius_m,
+                r.sides,
+                r.rotation,
+                r.road_width_m,
+                r.sidewalk_width_m,
+                r.layer_id,
             ])
             .map_err(|e| e.to_string())?;
         }
     }
 
-    tx.execute("INSERT INTO project_meta (key, value) VALUES ('meta', ?1)", params![payload.meta_json])
-        .map_err(|e| e.to_string())?;
+    tx.execute(
+        "INSERT INTO project_meta (key, value) VALUES ('meta', ?1)",
+        params![payload.meta_json],
+    )
+    .map_err(|e| e.to_string())?;
 
     tx.commit().map_err(|e| e.to_string())?;
     Ok(())
@@ -264,9 +294,18 @@ pub fn project_load(app: AppHandle, name: String) -> Result<ProjectPayload, Stri
         let rows = stmt
             .query_map([], |row| {
                 Ok(LayerDto {
-                    id: row.get(0)?, name: row.get(1)?, kind: row.get(2)?, z_index: row.get(3)?,
-                    color: row.get(4)?, fill_color: row.get(5)?, visible: row.get(6)?, locked: row.get(7)?,
-                    opacity: row.get(8)?, show_label: row.get(9)?, show_cota: row.get(10)?, color_mode: row.get(11)?,
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    kind: row.get(2)?,
+                    z_index: row.get(3)?,
+                    color: row.get(4)?,
+                    fill_color: row.get(5)?,
+                    visible: row.get(6)?,
+                    locked: row.get(7)?,
+                    opacity: row.get(8)?,
+                    show_label: row.get(9)?,
+                    show_cota: row.get(10)?,
+                    color_mode: row.get(11)?,
                 })
             })
             .map_err(|e| e.to_string())?;
@@ -284,8 +323,11 @@ pub fn project_load(app: AppHandle, name: String) -> Result<ProjectPayload, Stri
             .query_map([], |row| {
                 let geom: Vec<u8> = row.get(3)?;
                 Ok(FeatureDto {
-                    id: row.get(0)?, layer_id: row.get(1)?, kind: row.get(2)?,
-                    geometry_wkb_b64: base64_encode(&geom), properties_json: row.get(4)?,
+                    id: row.get(0)?,
+                    layer_id: row.get(1)?,
+                    kind: row.get(2)?,
+                    geometry_wkb_b64: base64_encode(&geom),
+                    properties_json: row.get(4)?,
                 })
             })
             .map_err(|e| e.to_string())?;
@@ -302,9 +344,16 @@ pub fn project_load(app: AppHandle, name: String) -> Result<ProjectPayload, Stri
         let rows = stmt
             .query_map([], |row| {
                 Ok(StreetDto {
-                    id: row.get(0)?, name: row.get(1)?, start_x: row.get(2)?, start_y: row.get(3)?,
-                    end_x: row.get(4)?, end_y: row.get(5)?, width_m: row.get(6)?, side_width_m: row.get(7)?,
-                    waypoints_json: row.get(8)?, layer_id: row.get(9)?,
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    start_x: row.get(2)?,
+                    start_y: row.get(3)?,
+                    end_x: row.get(4)?,
+                    end_y: row.get(5)?,
+                    width_m: row.get(6)?,
+                    side_width_m: row.get(7)?,
+                    waypoints_json: row.get(8)?,
+                    layer_id: row.get(9)?,
                 })
             })
             .map_err(|e| e.to_string())?;
@@ -321,9 +370,16 @@ pub fn project_load(app: AppHandle, name: String) -> Result<ProjectPayload, Stri
         let rows = stmt
             .query_map([], |row| {
                 Ok(RoundaboutDto {
-                    id: row.get(0)?, name: row.get(1)?, center_x: row.get(2)?, center_y: row.get(3)?,
-                    radius_m: row.get(4)?, sides: row.get(5)?, rotation: row.get(6)?,
-                    road_width_m: row.get(7)?, sidewalk_width_m: row.get(8)?, layer_id: row.get(9)?,
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    center_x: row.get(2)?,
+                    center_y: row.get(3)?,
+                    radius_m: row.get(4)?,
+                    sides: row.get(5)?,
+                    rotation: row.get(6)?,
+                    road_width_m: row.get(7)?,
+                    sidewalk_width_m: row.get(8)?,
+                    layer_id: row.get(9)?,
                 })
             })
             .map_err(|e| e.to_string())?;
@@ -333,10 +389,20 @@ pub fn project_load(app: AppHandle, name: String) -> Result<ProjectPayload, Stri
     }
 
     let meta_json: String = conn
-        .query_row("SELECT value FROM project_meta WHERE key = 'meta'", [], |row| row.get(0))
+        .query_row(
+            "SELECT value FROM project_meta WHERE key = 'meta'",
+            [],
+            |row| row.get(0),
+        )
         .unwrap_or_else(|_| "{}".to_string());
 
-    Ok(ProjectPayload { layers, features, streets, roundabouts, meta_json })
+    Ok(ProjectPayload {
+        layers,
+        features,
+        streets,
+        roundabouts,
+        meta_json,
+    })
 }
 
 #[tauri::command]
@@ -360,7 +426,11 @@ pub fn project_list(app: AppHandle) -> Result<Vec<ProjectSummary>, String> {
             .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
             .map(|d| d.as_millis() as i64)
             .unwrap_or(0);
-        out.push(ProjectSummary { name, modified_at_ms, size_bytes: metadata.len() as i64 });
+        out.push(ProjectSummary {
+            name,
+            modified_at_ms,
+            size_bytes: metadata.len() as i64,
+        });
     }
     out.sort_by(|a, b| b.modified_at_ms.cmp(&a.modified_at_ms));
     Ok(out)

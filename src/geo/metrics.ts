@@ -14,9 +14,7 @@ import {
 import { applyAffineBatch, extentOfPoints } from './crs/affineApprox';
 
 export type SegmentMetric = {
-  /** Punto inicial del lado lógico (mismas unidades que la geometría, ej. EPSG:3857). */
   p0: [number, number];
-  /** Punto final del lado lógico. */
   p1: [number, number];
   midpoint: [number, number];
   lengthM: number;
@@ -32,13 +30,6 @@ export type FeatureMetrics = {
   metricsUpdatedAt: number;
 };
 
-/**
- * Fase 5 robustecida — 'utm' usa el caché en mosaico (cada punto se
- * resuelve contra el tile de ~1km que lo cubre); 'none' sigue con el
- * único plano local del proyecto (ver nota en affineCache.ts sobre por
- * qué ese modo no se tilea). En ambos casos: cero proj4 por vértice en
- * el hot path — el costo se paga solo al tocar un tile/extent nuevo.
- */
 export function projectPathToMetricPlane(path3857: Array<[number, number]>): [number, number][] {
   const crs = useProjectCrsStore.getState();
 
@@ -74,7 +65,6 @@ function normalizeTextAngle(angleRad: number) {
 }
 
 const ARC_MERGE_BREAK_RAD = (12 * Math.PI) / 180;
-/** Tope de seguridad: nunca fusionar más de N aristas crudas en un lado. */
 const ARC_MERGE_MAX_RUN = 48;
 
 function getSegmentMetrics(
@@ -246,11 +236,6 @@ export type StreetPathLike = {
   waypoints?: Array<[number, number]>;
 };
 
-/**
- * Largo de una calle (eje) en metros sobre el plano métrico del proyecto
- * (UTM si está configurado, o tangente local con corrección por latitud si no).
- * Acepta waypoints intermedios: el camino recorrido es start → ...waypoints → end.
- */
 export function streetLengthMetricM(street: StreetPathLike): number {
   const path: [number, number][] = [street.start, ...(street.waypoints ?? []), street.end];
   if (path.length < 2) return 0;

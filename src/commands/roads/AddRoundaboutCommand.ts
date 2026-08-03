@@ -18,15 +18,8 @@ interface RoundaboutEntry {
   params: RoundaboutParams;
 }
 
-/**
- * Fase 3.2 (auditoria-para-mejora.md) — mismo criterio que
- * AddStreetCommand: undo/redo vía StructuralDiff, no snapshot completo
- * del drawSource.
- */
 export class AddRoundaboutCommand extends Command {
   readonly label = 'Trazar rotonda';
-  /** Id por sesión de trazo (comparte store con AddStreetCommand). Dos
-   * rotondas consecutivas NO se fusionan en un único undo. */
   readonly coalesceKey: string;
 
   private entries: RoundaboutEntry[];

@@ -22,7 +22,6 @@ export interface CutResult {
 
 // ─── Primitivas geométricas ─────────────────────────────────────────
 
-/** Área de un polígono en unidades internas (fórmula de Shoelace) */
 export function polyArea(pts: Pt[]): number {
   let a = 0;
   const n = pts.length;
@@ -129,13 +128,6 @@ export function pointInPoly(x: number, y: number, poly: Pt[]): boolean {
   return inside;
 }
 
-/**
- * Intersección segmento vs polígono (anillo abierto o cerrado).
- * Devuelve true si el segmento toca el polígono — sea porque un extremo
- * cae adentro, o porque una arista del polígono cruza el segmento.
- * Pensado para tests de selección por lazo: una línea larga puede
- * "atravesar" el lazo aunque ambos extremos queden afuera.
- */
 export function segmentIntersectsPoly(a: Pt, b: Pt, poly: Pt[]): boolean {
   if (pointInPoly(a[0], a[1], poly) || pointInPoly(b[0], b[1], poly)) return true;
 
@@ -152,9 +144,6 @@ export function segmentIntersectsPoly(a: Pt, b: Pt, poly: Pt[]): boolean {
     if (denom === 0) continue; // paralelos
     const qx = a[0] - xi;
     const qy = a[1] - yi;
-    // q = A - C, por lo que las formulas estandar t = cross(C-A, d)/cross(ab, d)
-    // y u = cross(C-A, ab)/cross(ab, d) quedan con signo invertido (cross(C-A,·) = -cross(q,·)).
-    // Sin la negacion, las intersecciones validas caen en [-1, 0] y se descartan.
     const t = -(qx * dy - qy * dx) / denom;
     const u = -(qx * aby - qy * abx) / denom;
     if (t >= 0 && t <= 1 && u >= 0 && u <= 1) return true;
@@ -228,11 +217,9 @@ export function buildCutPolys(
 
 // ─── Operaciones sobre strips ───────────────────────────────────────
 
-/** Clip de polígono a una franja entre minT y maxT a lo largo del eje (ax, ay) */
 export function clipToStrip(pts: Pt[], ax: number, ay: number, minT: number, maxT: number): Pt[] {
   if (pts.length < 3) return [];
   const nx = -ay, ny = ax;
-  // Límite inferior
   const minPt: Pt = [minT * ax, minT * ay];
   const p1: Pt = [minPt[0] + nx, minPt[1] + ny];
   const p2: Pt = [minPt[0] - nx, minPt[1] - ny];
@@ -240,7 +227,6 @@ export function clipToStrip(pts: Pt[], ax: number, ay: number, minT: number, max
   const sMin = side(testMin, p1, p2);
   let clipped = clipHalfPlane(pts, p1, p2, sMin >= 0 ? +1 : -1);
   if (clipped.length < 3) return [];
-  // Límite superior
   const maxPt: Pt = [maxT * ax, maxT * ay];
   const p3: Pt = [maxPt[0] + nx, maxPt[1] + ny];
   const p4: Pt = [maxPt[0] - nx, maxPt[1] - ny];
@@ -252,7 +238,6 @@ export function clipToStrip(pts: Pt[], ax: number, ay: number, minT: number, max
 
 // ─── Eje principal (PCA) ────────────────────────────────────────────
 
-/** Eje principal del polígono vía análisis de componentes principales */
 export function principalAxis(pts: Pt[]): { ux: number; uy: number } {
   const n = pts.length;
   let mx = 0, my = 0;

@@ -1,12 +1,3 @@
-// src/geo/debug/affineAccuracyBenchmark.ts
-//
-// Fase 5.4 robustecida — valida el camino REAL que usa producción para
-// cada modo: 'utm' vía `TiledAffineCache` (mosaico), 'none' vía
-// `computeMetricPlaneAffineStandalone` (plano local, sin cambios — nunca
-// tuvo el bug de extent-único que sí tenía UTM). Instancias aisladas:
-// nunca tocan el caché en vivo (`utmTileCache`/`currentEntry`) ni la
-// telemetría de producción.
-
 import { transform, fromLonLat } from 'ol/proj.js';
 import type { Extent } from 'ol/extent.js';
 import type { FeatureCollection } from 'geojson';
@@ -98,11 +89,6 @@ function buildResult(
   };
 }
 
-/**
- * Valida el camino REAL de producción para modo 'utm': el mosaico de
- * tiles, comparado punto a punto contra proj4 completo (referencia
- * global fija, no depende del extent — a diferencia del plano local).
- */
 function runUtmTiled(epsg: string, datasetSize: number, center: [number, number]): AffineAccuracyResult {
   const t0 = performance.now();
   const { collection, extent } = generateSyntheticManzanos(datasetSize, center);
@@ -119,7 +105,6 @@ function runUtmTiled(epsg: string, datasetSize: number, center: [number, number]
   return buildResult(epsg, epsg, datasetSize, vertices.length, errors, extent as Extent, performance.now() - t0);
 }
 
-/** Modo 'none' (plano local) — sin cambios: ya era preciso a cualquier escala medida. */
 function runLocalPlane(
   label: string,
   key: string,
@@ -146,12 +131,6 @@ function runLocalPlane(
   return buildResult(label, key, datasetSize, vertices.length, errors, extent as Extent, performance.now() - t0);
 }
 
-/**
- * Corre la validación de error acumulado para AMBOS modos de CRS sobre
- * varios tamaños del dataset sintético, anclado a una ubicación real
- * (default: La Paz, misma zona que `EPSG:32719` y el centro default de
- * la app en `mapStore.ts`).
- */
 export function runAffineAccuracySuite(
   sizes: number[] = [1_000, 10_000, 100_000],
   utmEpsgList: string[] = ['EPSG:32719'],

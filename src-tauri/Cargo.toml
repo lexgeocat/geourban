@@ -10,9 +10,6 @@ license = "MIT"
 repository = "https://github.com/anomalyco/geourban"
 edition = "2021"
 rust-version = "1.77.2"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [lib]
 name = "app_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
@@ -28,17 +25,7 @@ tauri = { version = "2.11.3", features = [] }
 tauri-plugin-log = "2"
 rusqlite = { version = "0.31", features = ["bundled"] }
 base64 = "0.22"
-
-# Fase 2.0 — motor de geometria nativo (auditoria-para-mejora.md, §Fase 2).
-# La feature `geos-backend` activa la dependencia opcional `geos` (bindings
-# Rust a libgeos) y los comandos de Fase 2.5.b (`compute_manzanos`).
-# Mantenerla activada por default porque la app linkea contra libgeos para
-# ofrecer booleanas robustas de polígonos. Requiere libgeos instalada en
-# el sistema (en este repo se gestiona via vcpkg — ver src-tauri/.cargo/config.toml).
 geourban-geo = { path = "crates/geourban-geo", features = ["geos-backend"] }
-
-# Fase 6.2 — profiling de memoria nativa (auditoria-para-mejora.md, §6).
-# GetProcessMemoryInfo para RSS/privados/pico del proceso Rust.
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = [
     "Win32_Foundation",

@@ -36,19 +36,6 @@ export function withAlpha(color: string, alpha: number): string {
   return `rgba(${r},${g},${b},${alpha})`;
 }
 
-/**
- * BUGFIX: WebGLVectorLayer.dispose() de OL asume que el WebGLHelper interno
- * ya se inicializó (helper_ no-undefined). Si la capa se crea y se destruye
- * sin que corra un frame de render real entre medio — típico en resets
- * consecutivos rápidos como resetToEmpty() encadenado a invoke()s de Tauri
- * (que resuelven sin esperar un requestAnimationFrame), o en benchmarks que
- * recrean capas en ráfaga — el helper nunca llegó a existir y dispose()
- * tira "Cannot read properties of undefined (reading 'deleteBuffer')".
- * Se degrada a warning: el layer igual se sacó del mapa con removeLayer(),
- * así que no queda visible ni referenciado; lo único que se pierde es la
- * liberación explícita de buffers GL de una capa que nunca alcanzó a
- * asignarlos.
- */
 function safeDisposeLayer(layer: { dispose: () => void }): void {
   try {
     layer.dispose();
@@ -102,11 +89,6 @@ const FALLBACK_KEY = '__geourban_unassigned_mirror__';
 
 const STREET_SKETCH_Z_INDEX = 10_000;
 const POSTRENDER_Z_INDEX = 10_001;
-
-/** Número máximo de capas WebGL que OpenLayers admite con fluidez.
- * Por encima de este límite, Fase 4.4 activa el pool compartido:
- * varias capas lógicas comparten la misma capa WebGL física,
- * resolviendo el color por feature vía `webglSlotIdx`. */
 export const MAX_WEBGL_LAYERS = 48;
 
 interface MirrorEntry {
@@ -119,16 +101,12 @@ interface PoolLayerColor {
   fillColor: string;
   opacity: number;
   suppressIfSubdivided: boolean;
-  /** BUGFIX (Fase 4.4): sin esto, el modo pool ignoraba 'colorIdx' y
-   * pintaba color plano para manzanos configurados como "color por
-   * manzano" apenas el proyecto superaba MAX_WEBGL_LAYERS capas. */
   colorMode: 'solid' | 'colorIdx';
 }
 
 interface PoolSlot {
   source: VectorSource;
   layer: WebGLVectorLayer;
-  /** Colores indexados por `webglSlotIdx`: slotColor[i] = color de la i‑ésima capa user dentro de este slot. */
   colorTable: PoolLayerColor[];
   lastSig: string;
 }
@@ -148,10 +126,8 @@ export class LayeredWebglRenderer {
   private onChange?: (evt: { feature?: Feature<Geometry> }) => void;
   private lastStyleSignatures = new globalThis.Map<string, string>();
 
-  // ─── Pool mode (Fase 4.4) ───────────────────────────────────────────
   private poolMode = false;
   private poolSlots: PoolSlot[] = [];
-  /** layerId → { slot, idxInSlot } */
   private layerSlotMap = new globalThis.Map<string, { slot: number; idx: number }>();
   private poolFallbackSource: VectorSource | null = null;
   private poolFallbackLayer: WebGLVectorLayer | null = null;
@@ -196,7 +172,6 @@ export class LayeredWebglRenderer {
   }
 
   private place(feature: Feature<Geometry>, byId: globalThis.Map<string, Layer>): void {
-    // Quitar de donde sea que esté — mirror o pool
     this.unplaceOnly(feature);
 
     if (this.poolMode) {
@@ -220,7 +195,6 @@ export class LayeredWebglRenderer {
       return;
     }
 
-    // per-layer mode (existing behavior)
     const key = this.resolveMirrorKey(feature, byId);
     this.entryFor(key)?.source.addFeature(feature);
     this.placement.set(feature, key);
@@ -260,8 +234,6 @@ export class LayeredWebglRenderer {
       this.syncPerLayerSet(layers);
     }
   }
-
-  // ─── Per‑layer sync (código existente, sin cambios funcionales) ─────
 
   private syncPerLayerSet(layers: Layer[]): void {
     recordSyncLayerSetCall();
@@ -319,17 +291,12 @@ export class LayeredWebglRenderer {
     recordWebglLayerCount(this.mirrors.size + 1);
   }
 
-  // ─── Pooled mode (Fase 4.4) ──────────────────────────────────────────
-
   private static poolSlotSig(layers: PoolLayerColor[]): string {
   return layers
     .map((l) => `${l.color}|${l.fillColor}|${l.opacity}|${l.suppressIfSubdivided ? 1 : 0}|${l.colorMode}`)
     .join(',');
 }
 
-/** Construye el estilo WebGL de un slot físico. Espeja buildSingleLayerStyle:
- * un feature con colorMode='colorIdx' se pinta por su colorIdx propio
- * (paleta MZN_COLORS), no por el color plano de su capa. */
 private static buildPoolSlotStyle(colors: PoolLayerColor[]): Record<string, unknown> {
   const fillMatch: unknown[] = ['match', ['get', 'webglSlotIdx']];
   const strokeMatch: unknown[] = ['match', ['get', 'webglSlotIdx']];
@@ -426,10 +393,6 @@ private static buildPoolSlotStyle(colors: PoolLayerColor[]): Record<string, unkn
         this.map?.addLayer(layer);
       }
     }
-
-    // Slots sobrantes de la asignación anterior (el pool se redujo): se
-    // disponen de verdad — ya no se "pop-ean" por accidente los que
-    // acabamos de crear, porque nextSlots/oldSlots están separados.
     for (let i = nSlots; i < oldSlots.length; i++) {
       const removed = oldSlots[i];
       if (!removed) continue;
@@ -447,25 +410,11 @@ private static buildPoolSlotStyle(colors: PoolLayerColor[]): Record<string, unkn
     }
     this.poolSlots = [];
   }
-
-  /**
-   * BUGFIX: antes comparaba `curSlot.lastSig` contra
-   * `poolSlotSig(curSlot.colorTable)` — el signature de un slot contra SU
-   * PROPIO colorTable ya guardado. Es una tautología (siempre son iguales
-   * salvo mutación externa del array, que acá no ocurre), así que
-   * `anyChanged` nunca daba `true` y `allocatePoolSlots` solo se volvía a
-   * llamar la primera vez (`poolSlots.length === 0`). Efecto práctico:
-   * cambiar el color/opacidad de una capa mientras el proyecto está en
-   * modo pool (>48 capas) nunca se reflejaba en el mapa. `allocatePoolSlots`
-   * es barata — solo corre cuando cambia el array `layers` del store, nunca
-   * por frame — así que directamente se recalcula siempre.
-   */
   private syncPooledLayers(layers: Layer[]): void {
     recordSyncLayerSetCall();
     this.allocatePoolSlots(layers);
 
-    this.byIdCache = null; // redo cache for place
-    // Re‑place every feature to pool slots
+    this.byIdCache = null; 
     const byId = this.getByIdMap();
     for (const f of this.master.getFeatures()) {
       this.place(f as Feature<Geometry>, byId);
@@ -476,10 +425,7 @@ private static buildPoolSlotStyle(colors: PoolLayerColor[]): Record<string, unkn
   private transitionMode(toPooled: boolean, layers: Layer[]): void {
     this.poolMode = toPooled;
     if (toPooled) {
-      // Mirror (por capa) → pool
       for (const [, entry] of Array.from(this.mirrors.entries())) {
-        // Libera las features retenidas por el mirror viejo de inmediato,
-        // en vez de depender únicamente del GC tras `this.mirrors.clear()`.
         entry.source.clear(true);
         this.map?.removeLayer(entry.layer);
         safeDisposeLayer(entry.layer);
@@ -487,8 +433,6 @@ private static buildPoolSlotStyle(colors: PoolLayerColor[]): Record<string, unkn
       this.mirrors.clear();
       this.lastStyleSignatures.clear();
       this.knownLayerIds.clear();
-
-      // Create pool fallback
       this.poolFallbackSource = new VectorSource();
       this.poolFallbackLayer = new WebGLVectorLayer({
         source: this.poolFallbackSource,
@@ -499,13 +443,6 @@ private static buildPoolSlotStyle(colors: PoolLayerColor[]): Record<string, unkn
       this.map?.addLayer(this.poolFallbackLayer);
 
       this.allocatePoolSlots(layers);
-
-      // BUGFIX: `syncLayerSet()` hace `return` apenas `transitionMode()`
-      // termina — si acá no re-ubicamos las features que YA estaban
-      // dibujadas (en los mirrors que recién dispusimos), quedan sin dueño
-      // hasta que algún evento suelto de feature individual las toque de
-      // nuevo. Se re-ubican todas ahora mismo, igual que hace
-      // `syncPooledLayers` en los ciclos siguientes.
       this.byIdCache = null;
       const byId = this.getByIdMap();
       for (const f of this.master.getFeatures()) {
@@ -513,7 +450,6 @@ private static buildPoolSlotStyle(colors: PoolLayerColor[]): Record<string, unkn
       }
       recordWebglLayerCount(this.poolSlots.length);
     } else {
-      // Pool → mirror (por capa)
       this.disposeAllPoolSlots();
       if (this.poolFallbackLayer) {
         this.poolFallbackSource?.clear(true);
@@ -522,7 +458,6 @@ private static buildPoolSlotStyle(colors: PoolLayerColor[]): Record<string, unkn
         this.poolFallbackLayer = null;
         this.poolFallbackSource = null;
       }
-      // Existing per‑layer fallback stays
       this.poolMode = false;
       this.syncPerLayerSet(layers);
     }

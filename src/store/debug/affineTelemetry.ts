@@ -1,4 +1,3 @@
-// src/store/debug/affineTelemetry.ts
 const ROLLING_WINDOW_MS = 10 * 60_000; // 10 minutos
 
 interface AffineStats {
@@ -7,8 +6,6 @@ interface AffineStats {
   degraded: number;
   windowStart: number;
   lastMaxErrorM: number;
-  /** Peor error de fit observado en la ventana — más informativo que
-   * "último" cuando hay muchos tiles distintos (Fase 5 robustecida). */
   worstMaxErrorM: number;
   lastExtentWidthM: number;
   lastExtentHeightM: number;
@@ -40,12 +37,10 @@ function getOrCreate(epsg: string): AffineStats {
   return s;
 }
 
-/** Llamar cuando se reutiliza un ajuste vigente (tile o plano local). */
 export function recordAffineReuse(epsg: string): void {
   getOrCreate(epsg).reuses++;
 }
 
-/** Llamar cuando se calcula un ajuste nuevo (fit de un tile o del plano local). */
 export function recordAffineRefit(epsg: string, maxErrorM: number, extentWidthM: number, extentHeightM: number): void {
   const s = getOrCreate(epsg);
   s.refits++;
@@ -55,14 +50,6 @@ export function recordAffineRefit(epsg: string, maxErrorM: number, extentWidthM:
   s.lastExtentHeightM = extentHeightM;
 }
 
-/**
- * Cuenta ajustes que, incluso tras la corrección cuadrática (y en UTM,
- * tras el refinamiento adaptativo hasta el nivel máximo), siguen por
- * encima de MAX_ACCEPTABLE_ERROR_M. Debería ser ~0 en uso normal — si
- * aparece sostenido en producción, revisar la zona UTM configurada (la
- * linealización asume escala urbana) o si el proyecto excede varias
- * zonas UTM.
- */
 export function recordAffineDegraded(epsg: string): void {
   getOrCreate(epsg).degraded++;
 }
@@ -103,7 +90,6 @@ export function readAffineStats(): AffineStatsSnapshot[] {
   return out.sort((a, b) => a.epsg.localeCompare(b.epsg));
 }
 
-/** Solo para tests. */
 export function _resetAffineTelemetryForTests(): void {
   statsByEpsg.clear();
 }

@@ -1,23 +1,3 @@
-// src/geo/debug/syntheticUrbanBenchmark.ts
-//
-// Fase 6.1 — loader + harness de benchmark que alimenta
-// `generateSyntheticUrbanLayout()` al pipeline REAL de producción:
-//
-//   1. Reset limpio de stores (mismo criterio que undoRedoBenchmark.ts).
-//   2. Perímetro sintético → restoreDrawFeatures() (kind 'perimetro').
-//   3. Calles/rotondas → streetStore/roundaboutStore vía addXWithId().
-//   4. recomputeManzanos() real: GEOS union de la red vial + difference
-//      contra el perímetro (Fase 2.3) → manzanos de geometría irregular.
-//   5. Pasada INCREMENTAL (agrega una avenida más) para estresar la
-//      reconciliación de fragmentos contra los manzanos ya existentes
-//      (Fase 2.4) — no solo la construcción desde cero.
-//   6. subdivideManzanoBatchInWorker() sobre TODOS los manzanos
-//      resultantes, con chequeo de degeneración (Fase 2.2 a escala real,
-//      con geometría irregular real, no fixtures de mano).
-//
-// Requiere runtime Tauri (invoca el motor nativo real, igual que
-// undoRedoBenchmark.ts y spatialIndexBenchmark.ts).
-
 import Polygon from 'ol/geom/Polygon.js';
 import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
@@ -101,28 +81,9 @@ function collectManzanoStats(drawSource: VectorSource): ManzanoStats {
   };
 }
 
-// ─── Aserción de consistencia del diff estructural (pasada incremental) ─
-
-/**
- * Criterio de éxito de Fase 6.1 ademas de "0 degenerados": el diff
- * estructural de la pasada incremental debe reflejar EXACTAMENTE los
- * cambios reales de geometría.
- *
- * Dos invariantes (ver auditoria-para-mejora.md §Fase 6 — bug de
- * StructuralDiffRecorder.recordAdd con ids reciclados):
- *   1. Todo manzano presente antes y después con geometría distinta debe
- *      estar registrado como `modified` en el diff — si no, undo/redo no
- *      puede revertirlo (quedó un cambio invisible para el CommandStack).
- *   2. Todo manzano cuyo bbox NO interseca el corredor de la avenida
- *      agregada debe quedar intacto y AUSENTE del diff — si aparece o
- *      cambió, la reconciliación de fragmentos tocó zonas que no debía.
- */
 export interface IncrementalConsistency {
   ok: boolean;
-  /** Manzanos que cambiaron de geometría pero NO están en diff.modified. */
   changedGeometryAbsentFromDiff: string[];
-  /** Manzanos fuera del corredor de la avenida que aparecieron en el diff
-   * o cambiaron de geometría — nunca deberían tocarse. */
   untouchedButTouched: string[];
 }
 
@@ -207,8 +168,6 @@ export interface SubdivisionStressStats {
   manzanoCount: number;
   totalLots: number;
   remnantLots: number;
-  /** Lotes con área <= 0, no-finita, o vértices no-finitos — nunca
-   * debería ser > 0; si lo es, es una regresión del motor de subdivisión. */
   degenerateLots: number;
   elapsedMs: number;
 }
@@ -261,15 +220,8 @@ async function runSubdivisionStress(
   return { manzanoCount: manzanos.length, totalLots, remnantLots, degenerateLots, elapsedMs: performance.now() - t0 };
 }
 
-// ─── Harness principal ──────────────────────────────────────────────────
-
 export interface SyntheticUrbanBenchmarkOptions extends SyntheticUrbanLayoutOptions {
-  /** Corre una segunda pasada agregando una avenida nueva, para medir el
-   * costo INCREMENTAL (reconciliación de fragmentos, Fase 2.4) — no solo
-   * la construcción desde cero. Default: true. */
   runIncrementalPass?: boolean;
-  /** Corre subdivideManzanoBatch sobre todos los manzanos resultantes —
-   * estrés real del motor de subdivisión (Fase 2.2). Default: true. */
   runSubdivisionStress?: boolean;
   targetAreaM2?: number;
   frontMinM?: number;
@@ -289,9 +241,6 @@ export interface SyntheticUrbanBenchmarkResult {
     diffAddedCount: number;
     diffRemovedCount: number;
     diffModifiedCount: number;
-    /** Aserción de consistencia diff ↔ cambios reales de geometría.
-     * `ok: false` = el diff esconde cambios reales (agujero de undo/redo)
-     * o tocó manzanos fuera del corredor de la avenida. */
     consistency: IncrementalConsistency;
   };
   subdivisionStress?: SubdivisionStressStats;
@@ -307,7 +256,6 @@ export async function runSyntheticUrbanBenchmark(
 
   const t0 = performance.now();
 
-  // Reset limpio — mismo criterio que runStreetUndoBenchmark.
   useStreetStore.getState().clearStreets();
   useRoundaboutStore.getState().clearRoundabouts();
   resetIncrementalRoadTracking();
@@ -342,11 +290,6 @@ export async function runSyntheticUrbanBenchmark(
     manzanoAreaStats: initialStats.area,
     fragmentCountsByVertex: initialStats.vertices,
   };
-
-  // ── Pasada incremental — estresa la reconciliación de fragmentos
-  //    (Fase 2.4): una avenida nueva atraviesa muchos manzanos ya
-  //    existentes, que deben re-matchearse contra sus fragmentos previos
-  //    por solapamiento de área en vez de recrearse desde cero. ──
   if (opts.runIncrementalPass ?? true) {
     const addedStreetWidthM = Math.max(opts.avenueWidthM ?? SYNTHETIC_URBAN_LAYOUT_DEFAULTS.avenueWidthM, 16);
     const sideWidthM = opts.sideWidthM ?? SYNTHETIC_URBAN_LAYOUT_DEFAULTS.sideWidthM;
@@ -360,10 +303,6 @@ export async function runSyntheticUrbanBenchmark(
       name: 'Avenida incremental sintética',
     };
 
-    // Corredor de la avenida — misma aproximación que streetApproxExtent()
-    // en recomputeManzanos.ts (bbox del eje ± ancho/cordones + margen):
-    // los manzanos cuyo bbox NO lo interseca deben quedar intactos y
-    // ausentes del diff estructural.
     const corridorHalf = addedStreetWidthM / 2 + Math.max(0, sideWidthM) + 2;
     const cMinX = Math.min(extraStreet.start[0], extraStreet.end[0]) - corridorHalf;
     const cMaxX = Math.max(extraStreet.start[0], extraStreet.end[0]) + corridorHalf;
@@ -412,8 +351,6 @@ export async function runSyntheticUrbanBenchmark(
     }
   }
 
-  // ── Estrés de subdivisión sobre el estado FINAL (post-incremental si
-  //    corrió) — geometría irregular real, no fixtures de mano. ──
   if (opts.runSubdivisionStress ?? true) {
     result.subdivisionStress = await runSubdivisionStress(
       drawSource,

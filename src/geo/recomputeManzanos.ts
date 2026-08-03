@@ -81,9 +81,6 @@ function currentRingOf(feature: Feature<Geometry>): Pt[] | null {
   return ring.map((c) => [c[0], c[1]] as Pt);
 }
 
-/** Fase 3.2 — todo mutation point de este helper queda envuelto en el recorder. */
-/** Fase 3.2 — todo mutation point de este helper queda envuelto en el recorder. */
-/** Fase 3.2 — todo mutation point de este helper queda envuelto en el recorder. */
 function restoreMemberToParcel(
   member: Feature<Geometry>,
   origPts: Pt[],
@@ -108,9 +105,6 @@ function restoreMemberToParcel(
   member.set('origPts', origPts, true);
   member.set('rootParcelId', rootId, true);
   member.set('rootParcelPts', rootPts, true);
-  // Canoniza el id a la copia de trabajo — evita que ensurePerimeterWorkingCopies()
-  // cree una copia duplicada si el feature que sobrevivió el "merge back"
-  // no era el que originalmente tenía ese id (bug latente, hallado al robustecer esto).
   if (!idMatches && src.getFeatureById(rootId) == null) member.setId(rootId);
   src.addFeature(member);
   updateFeatureMetrics(member);
@@ -223,14 +217,6 @@ function roundaboutApproxExtent(r: Roundabout): Extent {
 
 const PERIMETER_WORKING_SUFFIX = '__working';
 
-/**
- * El perímetro (kind 'perimetro') es la referencia intacta del límite del
- * sitio: nunca se lee ni se modifica en este pipeline. Antes de recalcular,
- * garantizamos que exista una COPIA de trabajo (kind 'lote') por cada
- * perímetro — esa copia es la que se corta contra la red vial y termina
- * fragmentada en manzanos. Es idempotente: si la copia ya existe (o ya
- * derivó en manzano/s con el mismo id), no hace nada.
- */
 function ensurePerimeterWorkingCopies(src: VectorSource, recorder: StructuralDiffRecorder): void {
   const perimetros: Array<Feature<Geometry>> = [];
   src.forEachFeature((f) => {
@@ -342,10 +328,6 @@ interface RootGroup {
   rootPts: Pt[];
   members: Array<Feature<Geometry>>;
 }
-
-/** Igual que collectOriginGroups, pero agrupa por rootParcelId (raíz estable).
- * La usa SOLO la rama !hasRoadNetwork, que necesita ver TODOS los manzanos
- * de un mismo perímetro juntos para fusionarlos de vuelta en un único lote. */
 function collectRootGroups(src: VectorSource): {
   groups: globalThis.Map<string, RootGroup>;
   lotsByGroupId: globalThis.Map<string, Array<Feature<Geometry>>>;
@@ -421,12 +403,6 @@ function resolveLoteLayerId(preferredLayerId?: string): string {
   return autoCreateLayerForKind('lote');
 }
 
-/**
- * Fase 3.1/3.2 — ahora recibe un `StructuralDiffRecorder` y lo alimenta en
- * cada punto de mutación real del drawSource (addFeature/removeFeature/
- * setGeometry). El caller (`recomputeManzanos`, más abajo) es quien decide
- * qué hacer con el diff resultante.
- */
 async function recomputeManzanosImmediate(recorder: StructuralDiffRecorder): Promise<void> {
   const src = useMapStore.getState().drawSource;
   if (!src) return;
@@ -481,7 +457,6 @@ if (!hasRoadNetwork) {
     return;
   }
 
-  // Antes de tocar nada: aseguramos la copia de trabajo de cada perímetro.
   ensurePerimeterWorkingCopies(src, recorder);
 
   const { groups, lotsByGroupId } = collectOriginGroups(src);
@@ -712,8 +687,6 @@ const untouched = fragments.length === 1 && polyArea(fragments[0]) >= polyArea(g
 if (untouched) {
   const sole = group.members.length === 1 ? group.members[0] : null;
   if (sole && getFeatureKind(sole) === 'manzana') {
-    // Ya era manzana y el corte actual no la afecta — no reclasificar a
-    // lote (evita el "modified" espurio en manzanos fuera del corredor).
     continue;
   }
   restoreMemberToParcel(group.members[0], fragments[0], group.origId, root.rootId, root.rootPts, src, recorder);
@@ -781,12 +754,6 @@ if (untouched) {
   alreadyManzana && currentRing != null && ringsEffectivelyUnchanged(currentRing, rounded);
 
         if (geometryUnchanged) {
-          // El fragmento reconciliado es geométricamente idéntico al
-          // manzano actual (típico: manzanos lejos del tramo nuevo, que
-          // vuelven a salir igual de computeManzanos). No tocar el
-          // feature ni registrar una modificación falsa en el diff —
-          // esto es lo que hacía que un trazado lejano infle el
-          // undo/redo con manzanos que en realidad no cambiaron.
           continue;
         }
 
@@ -857,7 +824,6 @@ if (untouched) {
     }
   }
 
-  // ── Re-lotización de los manzanos que sí perdieron sus lotes ────────
   for (const task of relotTasks) {
     const fragFeat = src.getFeatureById(task.featureId) as Feature<Geometry> | null;
     if (!fragFeat) continue;
@@ -942,18 +908,8 @@ let recomputeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 let recomputeInFlight: Promise<StructuralDiff> | null = null;
 let recomputeResolve: ((diff: StructuralDiff) => void) | null = null;
 let recomputeReject: ((err: unknown) => void) | null = null;
-/** Recorder de la ventana de debounce actual — se recrea en cada flush real. */
 let pendingRecorder = new StructuralDiffRecorder();
 
-/**
- * Fase 3.1/3.2 (auditoria-para-mejora.md) — devuelve un `StructuralDiff`
- * con SOLO los features que este recompute realmente tocó, no todo el
- * proyecto. `AddStreetCommand`/`AddRoundaboutCommand` lo usan para armar
- * su propio undo/redo sin snapshotear el drawSource completo (el bug
- * crítico de §2.1). El resto de los call-sites, que no necesitan el
- * diff, pueden seguir ignorando el valor de retorno exactamente igual
- * que antes (`void recomputeManzanos()`).
- */
 export function recomputeManzanos(): Promise<StructuralDiff> {
   if (!recomputeInFlight) {
     recomputeInFlight = new Promise<StructuralDiff>((resolve, reject) => {

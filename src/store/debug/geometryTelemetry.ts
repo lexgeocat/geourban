@@ -27,7 +27,6 @@ function forwardToMainIfWorker(context: string, detail: Record<string, unknown>)
       detail,
     });
   } catch {
-    /* telemetría nunca debe romper al caller */
   }
 }
 
@@ -57,7 +56,6 @@ export function recordGeometrySanitizeEvent(context: string, detail: Record<stri
     console.warn('[geometry-sanitize]', JSON.stringify({ context, ...detail }));
     forwardToMainIfWorker(context, detail);
   } catch {
-    /* la telemetría nunca debe hacer caer al caller */
   }
 }
 
@@ -75,7 +73,6 @@ export function readGeometryTelemetry(): GeometryTelemetrySnapshot {
   return { countsByContext, recentEvents: recentEvents.slice(-10) };
 }
 
-/** Solo para tests. */
 export function _resetGeometryTelemetryForTests(): void {
   countersByContext.clear();
   recentEvents.length = 0;

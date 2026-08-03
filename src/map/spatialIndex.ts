@@ -11,15 +11,6 @@ interface RBushItem {
   featureId: string | number;
 }
 
-/**
- * Simetría con `isFiniteExtent` de `mapStore.ts` y con el filtro que ya
- * aplica el lado Rust en `spatial_index_load` (geo_bridge.rs). Sin esto,
- * una geometría momentáneamente degenerada (p.ej. mid-drag en EditMode,
- * o un cero-length edge durante ModifyGeometryCommand) inserta un bbox
- * NaN/Infinity en el RBush, corrompiendo silenciosamente las invariantes
- * internas del árbol — search() puede devolver resultados incorrectos
- * para TODO el resto del índice, no solo para ese feature.
- */
 function isFiniteExtent(e: number[] | null | undefined): e is [number, number, number, number] {
   return (
     !!e &&
@@ -41,7 +32,6 @@ export class SpatialIndex {
     this.tree = new RBush<RBushItem>(16);
   }
 
-  /** Carga masiva (reemplaza todo el índice) */
   load(features: Feature<Polygon>[]): void {
     const items: RBushItem[] = [];
     this.featureMap.clear();
@@ -78,9 +68,6 @@ export class SpatialIndex {
     if (this.itemMap.has(id)) this.removeById(id);
     const extent = geom.getExtent();
     if (!isFiniteExtent(extent)) {
-      // La entrada previa (si existía) ya se removió arriba: el feature
-      // simplemente desaparece de las consultas espaciales hasta volver
-      // a tener geometría válida, en vez de envenenar el árbol.
       recordGeometrySanitizeEvent('spatialIndex.insert.nonFiniteBbox', { featureId: id });
       return;
     }
@@ -95,7 +82,6 @@ export class SpatialIndex {
     this.insert(feature);
   }
 
-  /** Remove incremental (un feature) */
   remove(feature: Feature<Polygon>): void {
     const id = feature.getId();
     if (id === undefined) return;
@@ -111,7 +97,6 @@ export class SpatialIndex {
     this._size--;
   }
 
-  /** Buscar features por bbox */
   search(minX: number, minY: number, maxX: number, maxY: number): Feature<Polygon>[] {
     const results = this.tree.search({ minX, minY, maxX, maxY });
     const features: Feature<Polygon>[] = [];
@@ -122,7 +107,6 @@ export class SpatialIndex {
     return features;
   }
 
-  /** Buscar features cerca de un punto */
   searchPoint(x: number, y: number, tolerance: number): Feature<Polygon>[] {
     return this.search(x - tolerance, y - tolerance, x + tolerance, y + tolerance);
   }

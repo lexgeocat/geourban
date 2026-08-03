@@ -48,13 +48,11 @@ export const DEFAULT_SNAP_SETTINGS: SnapSettings = {
   tangent: true,
 };
 
-/** Agrupación semántica — la usa la UI (SnapPanel) para organizar los toggles. */
 export const SNAP_GROUPS: { label: string; types: SnapType[] }[] = [
   { label: 'Geométricos', types: ['endpoint', 'midpoint', 'intersection', 'apparentIntersection', 'center', 'tangent'] },
   { label: 'Construcción', types: ['perpendicular', 'parallel', 'extension', 'nearest'] },
 ];
 
-/** Prioridad de resolución cuando varios snaps caen en tolerancia (menor = gana). */
 export const SNAP_TYPE_PRIORITY: Record<SnapType, number> = {
   endpoint: 0,
   intersection: 1,
@@ -286,7 +284,6 @@ export function findSnap(cursor: number[], src: VectorSource, options: FindSnapO
           feature: feat,
           dist: d,
           guide: {
-            // pequeño cuadrado para distinguir de endpoint
             rightAngleSquare: { point: c, size: 8 * resolution },
           },
         });
@@ -315,8 +312,6 @@ export function findSnap(cursor: number[], src: VectorSource, options: FindSnapO
               feature: feat,
               dist: d,
               guide: {
-                // línea punteada desde anchor al tangente (ilustra
-                // visualmente la tangente).
                 dashedLine: [anchor, [tx, ty]],
                 rightAngleSquare: { point: [tx, ty], size: 7 * resolution },
               },

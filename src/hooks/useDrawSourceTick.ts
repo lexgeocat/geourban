@@ -13,9 +13,6 @@ export function useDrawSourceTick(drawSource: VectorSource | null): number {
 
     const bumpImmediate = () => setTick((n) => n + 1);
 
-    // 'change' se dispara en cada micro-movimiento durante un arrastre de
-    // vértice — sin throttle, cada paneles con recorridos O(n) del dataset
-    // completo recalculaba en cada pixel de drag.
     const bumpThrottled = () => {
       const now = Date.now();
       const elapsed = now - lastChangeAtRef.current;

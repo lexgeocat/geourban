@@ -1,14 +1,3 @@
-//! Puente entre Tauri y el crate `geourban-geo`.
-//!
-//! Fase 2.5 (auditoria-para-mejora.md, §6): expone como comandos Tauri
-//! reales los seis tipos de request que resolvía exclusivamente
-//! `src/workers/geoWorker.ts` del lado JS (JSTS + polygon-clipping):
-//!
-//!   - `subdivide` / `subdivide_manzano` / `subdivide_manzano_batch` (2.5.a)
-//!   - `compute_manzanos_cmd` / `compute_manzanos_batch` (2.5.b)
-//!   - `compute_road_network_net_cmd` / `match_fragments_batch` (2.5.c —
-//!     cierra la Fase 2; dependían de `fragment_reconciliation.rs`)
-
 use geourban_geo::{
     boolean_ops::{compute_manzanos, compute_road_network_net, ManzanoFragment, RoadNetworkNet},
     fragment_reconciliation::{match_fragments_to_members, FragmentAssignment},
@@ -24,18 +13,10 @@ use tauri::State;
 pub fn geo_engine_version() -> String {
     geourban_geo::crate_version().to_string()
 }
-
-/// <- `subdivideInWorker` (src/workers/geoWorkerClient.ts).
-///
-/// `coordinates` es `polygon.coordinates` de un GeoJSON Polygon (anillo
-/// exterior + huecos opcionales), tal cual lo arma `SubdivisionDialog.tsx`
-/// vía `GeoJSON.writeGeometryObject`.
 #[tauri::command]
 pub fn subdivide(coordinates: Vec<Vec<Pt>>, options: SubdivisionOptions) -> SubdivisionResult {
     geourban_geo::subdivision::subdivide(&coordinates, &options)
 }
-
-/// <- `subdivideManzanoInWorker`.
 #[tauri::command]
 pub fn subdivide_manzano(
     ring: Vec<Pt>,
@@ -48,10 +29,6 @@ pub fn subdivide_manzano(
     geourban_geo::subdivision::subdivide_manzano(&ring, method, target_area_m2, front_min_m, dp)
 }
 
-/// Item de entrada de `subdivide_manzano_batch`. `id` viaja como
-/// `serde_json::Value` a propósito: en GeoUrban un id de feature puede ser
-/// `string | number` y acá no se interpreta — solo hace ida y vuelta para
-/// que el caller re-matchee cada resultado con el manzano de origen.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SubdivideManzanoBatchItem {
@@ -71,7 +48,6 @@ pub struct SubdivideManzanoBatchResult {
     pub lots: Vec<LotResult>,
 }
 
-/// <- `subdivideManzanoBatchInWorker`.
 #[tauri::command]
 pub fn subdivide_manzano_batch(
     manzanos: Vec<SubdivideManzanoBatchItem>,
@@ -92,25 +68,13 @@ pub fn subdivide_manzano_batch(
         .collect()
 }
 
-// ─── Fase 2.5.b — computeManzanos (requiere feature `geos-backend`) ────
-
-/// Item de entrada para `compute_manzanos_batch`.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ComputeManzanosItem {
-    /// `polygon.coordinates` (exterior + huecos) de cada parcela.
     pub parcels: Vec<Vec<Vec<Pt>>>,
-    /// Anillos de la red vial cruda (sin subdividir por tipo). Cada anillo
-    /// se convierte en un polígono individual antes de la unión topológica.
     pub road_network: Vec<Vec<Pt>>,
 }
 
-/// <- `computeManzanosInWorker` (src/workers/geoWorkerClient.ts).
-///
-/// Corre enteramente en el backend Rust: sanitiza, une la red vial con
-/// GEOS (`unary_union`), recorta cada parcela con `difference`, separa
-/// los componentes resultantes y devuelve los fragmentos como
-/// `Vec<Vec<Pt>>` por parcela. Idempotente.
 #[tauri::command]
 pub fn compute_manzanos_cmd(
     parcels: Vec<Vec<Vec<Pt>>>,
@@ -119,8 +83,6 @@ pub fn compute_manzanos_cmd(
     compute_manzanos(&parcels, &road_network)
 }
 
-/// Variante batch — procesa varios `ComputeManzanosItem` en una sola
-/// invocación Tauri.
 #[tauri::command]
 pub fn compute_manzanos_batch(items: Vec<ComputeManzanosItem>) -> Vec<Vec<ManzanoFragment>> {
     items
@@ -129,10 +91,6 @@ pub fn compute_manzanos_batch(items: Vec<ComputeManzanosItem>) -> Vec<Vec<Manzan
         .collect()
 }
 
-// ─── Fase 2.5.c — red vial + reconciliación de fragmentos ──────────────
-// Cierra la Fase 2 (auditoria-para-mejora.md §6, Fase 2.4/2.5.c).
-
-/// <- `computeRoadNetworkNetInWorker`.
 #[tauri::command]
 pub fn compute_road_network_net_cmd(
     streets: Vec<Street>,
@@ -142,10 +100,6 @@ pub fn compute_road_network_net_cmd(
     compute_road_network_net(&streets, &roundabouts, corner_mode)
 }
 
-/// Item de entrada de `match_fragments_batch`. `group_idx` es un índice
-/// opaco que el caller usa para re-matchear cada resultado con su grupo
-/// de origen (mismo criterio que `recomputeManzanos.ts` ya usa índices
-/// numéricos para agrupar parcelas).
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MatchFragmentsBatchItem {
@@ -161,10 +115,6 @@ pub struct MatchFragmentsBatchResult {
     pub assignments: Vec<FragmentAssignment>,
 }
 
-/// <- `matchFragmentsBatchInWorker`.
-///
-/// Secuencial a propósito, mismo criterio que `subdivide_manzano_batch` y
-/// `compute_manzanos_batch`: ya corre fuera del hilo de UI del webview.
 #[tauri::command]
 pub fn match_fragments_batch(
     items: Vec<MatchFragmentsBatchItem>,
@@ -180,20 +130,6 @@ pub fn match_fragments_batch(
         })
         .collect()
 }
-
-// ─── Fase 4.1 — índice espacial nativo (rstar) ─────────────────────────
-// Consulta de viewport del lado Rust (auditoria-para-mejora.md §6, Fase 4).
-// El índice se hidrata con bulk-load STR (`RTree::bulk_load`, criterio
-// §7.4) y se consulta por comando — espejo del `SpatialIndex` JS
-// (`src/map/spatialIndex.ts`) para proyectos grandes.
-//
-// `id` viaja como `serde_json::Value` a propósito: en GeoUrban un id de
-// feature puede ser `string | number` y acá no se interpreta — solo hace
-// ida y vuelta (mismo criterio que `SubdivideManzanoBatchItem`).
-
-/// Estado del índice espacial nativo. Es un mapa de slots a propósito:
-/// el benchmark del DebugPanel usa el slot `"benchmark"` y no puede pisar
-/// el slot `"viewport"` que la Fase 4.1 cableará al render real.
 pub struct SpatialIndexState(pub Mutex<std::collections::HashMap<String, SpatialIndex>>);
 
 #[derive(Debug, Clone, Deserialize)]
@@ -205,10 +141,6 @@ pub struct SpatialIndexLoadItem {
     pub max_x: f64,
     pub max_y: f64,
 }
-
-/// <- `spatialIndexLoadInWorker` (src/workers/geoWorkerClient.ts).
-/// Reemplaza el índice de un slot con bulk-load. Devuelve la cantidad de
-/// items (tras dedupe por id y descarte de bboxes no-finitos).
 #[tauri::command]
 pub fn spatial_index_load(
     state: State<'_, SpatialIndexState>,
@@ -241,8 +173,6 @@ pub fn spatial_index_load(
     Ok(len)
 }
 
-/// <- `spatialIndexClearInWorker`. Descarta el índice de un slot (p. ej. al
-/// cerrar proyecto o volver a un dataset donde manda el RBush JS).
 #[tauri::command]
 pub fn spatial_index_clear(
     state: State<'_, SpatialIndexState>,
@@ -256,18 +186,10 @@ pub fn spatial_index_clear(
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SpatialIndexQueryResult {
-    /// Ids de features cuyo bbox intersecta el extent consultado.
     pub ids: Vec<serde_json::Value>,
     pub hit_count: usize,
-    /// Tiempo de la búsqueda dentro de Rust (sin contar IPC).
     pub query_ms: f64,
 }
-
-/// Simetría con `spatial_index_load`, que ya descarta bboxes no-finitos
-/// al cargar: sin esta guarda, un extent NaN/Infinity (viewport inválido
-/// en el primer frame, o un cálculo de extent roto del lado JS) entraba
-/// directo a `AABB::from_corners` y podía devolver 0 resultados en
-/// silencio, sin ningún error visible para el caller.
 fn validate_finite_bbox(min_x: f64, min_y: f64, max_x: f64, max_y: f64) -> Result<(), String> {
     if !min_x.is_finite() || !min_y.is_finite() || !max_x.is_finite() || !max_y.is_finite() {
         return Err(format!(
@@ -277,8 +199,6 @@ fn validate_finite_bbox(min_x: f64, min_y: f64, max_x: f64, max_y: f64) -> Resul
     Ok(())
 }
 
-/// <- `spatialIndexQueryInWorker`. Consulta de viewport: devuelve ids,
-/// no geometrías — el caller resuelve cada feature en su propia capa.
 #[tauri::command]
 pub fn spatial_index_query(
     state: State<'_, SpatialIndexState>,

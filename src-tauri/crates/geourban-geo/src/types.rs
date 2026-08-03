@@ -2,7 +2,6 @@ use serde::{Deserialize, Serialize};
 
 pub type Pt = (f64, f64);
 
-/// Espeja `LotResult` (polygonEngine.ts).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LotResult {
@@ -45,7 +44,6 @@ pub enum ManzanoLoteMethod {
     Modo2,
 }
 
-
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DirPref {
@@ -53,8 +51,6 @@ pub struct DirPref {
     pub ay: f64,
 }
 
-/// Segmento auxiliar para el metodo manual-slice (`frenteSeg`/`auxSeg` en
-/// SubdivisionOptions).
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Segment {
@@ -62,14 +58,12 @@ pub struct Segment {
     pub b: Pt,
 }
 
-/// Linea de corte directa (`cutLine` en SubdivisionOptions).
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CutLine {
     pub p1: Pt,
     pub p2: Pt,
 }
-
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -84,7 +78,6 @@ pub struct SubdivisionOptions {
     pub cut_line: Option<CutLine>,
 }
 
-/// Espeja `SubdivisionResult` (subdivisionAlgorithms.ts).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SubdivisionResult {
@@ -95,7 +88,6 @@ pub struct SubdivisionResult {
     pub error: Option<String>,
 }
 
-/// Espeja `CornerMode` (ringFillet.ts): `'fillet' | 'chamfer' | 'none'`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum CornerMode {
@@ -104,7 +96,6 @@ pub enum CornerMode {
     None,
 }
 
-/// Espeja `RoundaboutParams` (roundaboutEngine.ts).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RoundaboutParams {

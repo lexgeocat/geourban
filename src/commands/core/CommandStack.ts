@@ -114,10 +114,6 @@ export const useCommandStack = create<CommandStackState>()((set) => ({
     }
 
     if (!succeeded) {
-      // No tocamos `pointer`: un undo fallido NO se hace pasar por exitoso.
-      // El comando queda "atascado" en el tope hasta que el usuario reintente
-      // o recargue el proyecto — es preferible a corromper el historial
-      // avanzando el pointer sobre un estado parcialmente revertido.
       toast(`No se pudo deshacer "${command.label}". Reintentá o revisá la consola.`, {
         variant: 'error',
         durationMs: 6000,

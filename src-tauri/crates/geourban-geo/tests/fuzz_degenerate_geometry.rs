@@ -1,37 +1,3 @@
-//! Fuzz/robustez para el motor de subdivisión (Fase 2.6,
-//! auditoria-para-mejora.md). Replica, con el mismo generador
-//! `mulberry32(seed)` que usa el corpus TS
-//! (src/geo/__fuzz__/degenerateGeometry.fuzz.test.ts), los dos tipos de
-//! caso degenerado que confirmaron cuelgues/no-finitos en el motor JS:
-//! polígonos con coordenadas escaladas ×1e5–1e8 ("huge") y polígonos
-//! con un vértice NaN/Infinity ("nonfinite").
-//!
-//! Objetivo de este test — deliberadamente más modesto que paridad
-//! numérica exacta: para geometría verdaderamente patológica (fuera de
-//! cualquier rango de uso real), ambos motores aplican sus propias
-//! guardas de seguridad best-effort (presupuesto de operaciones, ver
-//! subdivision_cabecera_cuerpo.rs — el mismo mecanismo del lado TS),
-//! que pueden truncar el resultado en puntos ligeramente distintos sin
-//! que eso sea un bug: exigir coincidencia numérica exacta ahí sería
-//! una promesa falsa. Lo que SÍ es una garantía real y se verifica acá:
-//!   1. Nunca cuelga (cada caso corre en un thread con timeout duro,
-//!      igual que workerTimeoutHarness.ts del lado TS).
-//!   2. Nunca produce puntos ni áreas/medidas no-finitas.
-//!   3. subdivide_manzano() rechaza (Vec vacío) cualquier anillo con
-//!      vértices no-finitos, en los 3 métodos — misma política que
-//!      subdivisionAlgorithms.ts::subdivideManzano.
-//! La paridad numérica exacta contra el motor TS sigue garantizada (y
-//! testeada) para el corpus SANO en parity_cabecera_cuerpo.rs /
-//! parity_exact_modo2.rs, que este cambio no toca.
-//!
-//! Nota de fidelidad: el generador de acá usa el mismo mulberry32(seed)
-//! y las mismas familias de formas/degradaciones que el corpus TS, pero
-//! no replica el orden exacto de cada llamada a next_f64() — no hay
-//! garantía de que, para el mismo seed, genere el MISMO polígono
-//! byte-a-byte que el lado TS. Lo que sí comparte con el corpus TS es
-//! el rango de escalas y tipos de degeneración que confirmaron los
-//! problemas originales, que es lo que este test necesita cubrir.
-
 use geourban_geo::mulberry32::Mulberry32;
 use geourban_geo::subdivision::subdivide_manzano;
 use geourban_geo::subdivision_cabecera_cuerpo::subdivide_manzano_cabecera_cuerpo;
@@ -154,14 +120,6 @@ fn has_non_finite(pts: &[Pt]) -> bool {
     pts.iter().any(|p| !p.0.is_finite() || !p.1.is_finite())
 }
 
-/// Corre `f` en un thread aparte con timeout duro — mismo criterio que
-/// workerTimeoutHarness.ts del lado TS: un hilo colgado se detecta
-/// desde afuera (el test falla con diagnóstico) en vez de bloquear la
-/// suite entera. Rust no tiene una API segura para abortar un thread
-/// desde afuera (igual que Node no puede cancelar código síncrono
-/// colgado desde el mismo hilo); el proceso de test queda con un hilo
-/// huérfano si esto dispara — aceptable para un test que está probando
-/// justamente que eso no pase.
 fn run_with_timeout<T: Send + 'static>(
     f: impl FnOnce() -> T + Send + 'static,
     timeout: Duration,
@@ -187,7 +145,14 @@ fn huge_scale_never_hangs_and_never_produces_non_finite() {
 
         let ring_for_thread = ring.clone();
         let result = run_with_timeout(
-            move || subdivide_manzano_cabecera_cuerpo(&ring_for_thread, target_area_m2, front_min_m, None),
+            move || {
+                subdivide_manzano_cabecera_cuerpo(
+                    &ring_for_thread,
+                    target_area_m2,
+                    front_min_m,
+                    None,
+                )
+            },
             HANG_TIMEOUT,
         );
         let lots = match result {
@@ -203,7 +168,10 @@ fn huge_scale_never_hangs_and_never_produces_non_finite() {
             lots.len()
         );
         for lot in &lots {
-            assert!(!has_non_finite(&lot.pts), "{name}: lote con punto no-finito");
+            assert!(
+                !has_non_finite(&lot.pts),
+                "{name}: lote con punto no-finito"
+            );
             assert!(
                 lot.area_m2.is_finite() && lot.area_m2 > 0.0,
                 "{name}: areaM2 no-finita o <=0 ({})",
@@ -219,8 +187,6 @@ fn huge_scale_never_hangs_and_never_produces_non_finite() {
             );
         }
 
-        // También vía el dispatcher subdivide_manzano('auto') — el
-        // camino real que usa producción.
         let ring_for_thread2 = ring.clone();
         let result2 = run_with_timeout(
             move || {
@@ -239,7 +205,10 @@ fn huge_scale_never_hangs_and_never_produces_non_finite() {
             None => panic!("{name}: subdivide_manzano('auto') colgó (>{HANG_TIMEOUT:?})"),
         };
         for lot in &lots2 {
-            assert!(!has_non_finite(&lot.pts), "{name} (dispatcher): punto no-finito");
+            assert!(
+                !has_non_finite(&lot.pts),
+                "{name} (dispatcher): punto no-finito"
+            );
             assert!(
                 lot.area_m2.is_finite() && lot.area_m2 > 0.0,
                 "{name} (dispatcher): areaM2 no-finita o <=0"

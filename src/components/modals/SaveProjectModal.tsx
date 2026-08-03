@@ -12,10 +12,6 @@ export default function SaveProjectModal() {
   const busy = useProjectFileStore((s) => s.busy);
   const setBusy = useProjectFileStore((s) => s.setBusy);
   const [name, setName] = useState('');
-  // Ajuste de estado durante el render (patrón recomendado por React
-  // para "resetear un state cuando cambia una prop") en vez de un
-  // efecto: evita el setState síncrono e incondicional al tope de un
-  // useEffect.
   const [prevOpen, setPrevOpen] = useState(open);
   if (open !== prevOpen) {
     setPrevOpen(open);

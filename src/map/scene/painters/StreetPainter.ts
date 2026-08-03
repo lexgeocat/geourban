@@ -218,12 +218,10 @@ function groupStreetsByLayer(streets: Street[]): StreetLayerGroup[] {
 
 interface StreetGroupCache {
   net: RoadNetworkNet;
-  /** Hash de calles para el que el `net` actual fue efectivamente calculado y aplicado. */
   netHash: string;
   netCornerMode: CornerMode;
   labelSlots: globalThis.Map<string, StreetLabelSlot[]>;
-  /** Hash de calles para el que labelSlots fue calculado (independiente de netHash). */
-  labelHash: string;
+ labelHash: string;
 }
 
 export class StreetPainter {
@@ -233,8 +231,6 @@ export class StreetPainter {
   private lastStreetHash = '';
   private lastLabelZoomBucket = -1;
   private pairCrossingCache = new globalThis.Map<string, { points: Pt[]; hashA: string; hashB: string }>();
-
-  // ─── Fase 3: cómputo de red vial desacoplado del render ─────────────
   private readonly requestRender: () => void;
   private unsubscribeStreets: (() => void) | null = null;
   private unsubscribeCorner: (() => void) | null = null;
@@ -244,14 +240,10 @@ export class StreetPainter {
   constructor(requestRender: () => void = () => {}) {
     this.requestRender = requestRender;
 
-    // Disparado por cambios de estado, NUNCA desde dentro de postrender.
     this.unsubscribeStreets = useStreetStore.subscribe((state, prev) => {
       if (state.streets !== prev.streets) this.scheduleNetRecomputeAll();
     });
     this.unsubscribeCorner = useRoadCornerStore.subscribe(() => this.scheduleNetRecomputeAll());
-
-    // Cubre el caso de "ya había calles cuando se montó el mapa" (p.ej. al
-    // cargar un proyecto guardado) sin esperar a un cambio futuro.
     this.scheduleNetRecomputeAll();
   }
 
@@ -273,12 +265,6 @@ export class StreetPainter {
       void this.recomputeAllNets();
     }, NET_RECOMPUTE_DEBOUNCE_MS);
   }
-
-  /**
-   * Recalcula la unión+fillets de la red vial para todos los grupos
-   * (agrupados por capa), en paralelo, cada uno vía worker. Nunca corre en
-   * el hilo principal ni dentro del callback de postrender.
-   */
   private async recomputeAllNets(): Promise<void> {
     const streets = useStreetStore.getState().streets;
     const cornerMode = useRoadCornerStore.getState().mode;
@@ -297,7 +283,6 @@ export class StreetPainter {
       }),
     );
 
-    // Llegó una corrida más nueva mientras esperábamos ésta — se descarta.
     if (generation !== this.netRecomputeGeneration) return;
 
     let appliedAny = false;
@@ -352,11 +337,6 @@ export class StreetPainter {
     this.cachedCrossings = crossings;
   }
 
-  /**
-   * Llamado cada frame desde PostrenderPainter. A partir de la Fase 3, NO
-   * calcula unión ni fillets (eso pasó a recomputeAllNets(), async/worker).
-   * Solo actualiza cachés baratas: crossings y label slots.
-   */
   update(ctx: CanvasRenderingContext2D, zoom: number, _forceDirty: boolean, resolution: number): void {
     const streets = useStreetStore.getState().streets;
     const currentHash = streetsHash(streets);
@@ -381,7 +361,6 @@ export class StreetPainter {
       const hash = streetsHash(group.streets);
       let cache = this.groupCaches.get(group.layerId);
       if (!cache) {
-        // Placeholder vacío — el neto real llega async vía recomputeAllNets().
         cache = {
           net: { road: [], outer: [] },
           netHash: '',

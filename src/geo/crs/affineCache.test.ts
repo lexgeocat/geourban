@@ -96,10 +96,6 @@ describe('affineCache — Fase 5.2 invalidación', () => {
 
   it('spy: proj4 transform solo se invoca en el refit, no en reuses subsecuentes', () => {
     const spy = vi.spyOn(proj4 as unknown as { (a: unknown, b: unknown, c: unknown): unknown }, 'call' as never);
-    // No dependemos de contar llamadas internas de proj4 directamente
-    // (implementación interna de ol/proj puede variar); en su lugar
-    // confirmamos indirectamente vía el contador de refits/reuses, que
-    // es el contrato observable de esta función.
     spy.mockRestore();
 
     const e1 = smallExtentAround(center, 500);

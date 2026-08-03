@@ -66,10 +66,6 @@ function ToastItem({ toast }: { toast: Toast }) {
   );
 }
 
-/**
- * Stack de toasts no bloqueantes. Montar una vez en App.tsx.
- * Las notificaciones se acumulan abajo a la derecha, arriba del status bar.
- */
 export default function ToastStack() {
   const toasts = useToastStore((s) => s.toasts);
 

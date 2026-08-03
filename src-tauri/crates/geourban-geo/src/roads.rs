@@ -6,8 +6,6 @@ fn normalize(dx: f64, dy: f64) -> Pt {
     (dx / len, dy / len)
 }
 
-// ─── roadNetworkEngine.ts ────────────────────────────────────────────
-
 fn street_polyline(street: &Street) -> Vec<Pt> {
     let mut pts = vec![street.start];
     if let Some(wp) = &street.waypoints {
@@ -19,7 +17,6 @@ fn street_polyline(street: &Street) -> Vec<Pt> {
 
 const MITER_LIMIT: f64 = 4.0;
 
-/// <- `offsetPolylineMiter`
 pub fn offset_polyline_miter(pts: &[Pt], d: f64) -> Vec<Pt> {
     let n = pts.len();
     if n < 2 {
@@ -68,7 +65,6 @@ pub fn offset_polyline_miter(pts: &[Pt], d: f64) -> Vec<Pt> {
     out
 }
 
-/// <- `buildRing`
 fn build_ring(pts: &[Pt], half: f64) -> Vec<Pt> {
     let left = offset_polyline_miter(pts, half);
     let mut right = offset_polyline_miter(pts, -half);
@@ -95,7 +91,6 @@ fn build_roundabout_road_ring(rb: &RoundaboutParams) -> Vec<Pt> {
     crate::roundabout::roundabout_geometry(rb, None).road_outer
 }
 
-/// <- `buildRoadNetworkRings`
 pub fn build_road_network_rings(
     streets: &[Street],
     roundabouts: &[RoundaboutParams],
@@ -119,7 +114,6 @@ pub fn build_road_network_rings(
     rings
 }
 
-/// <- `buildRoadOnlyRings`
 pub fn build_road_only_rings(streets: &[Street], roundabouts: &[RoundaboutParams]) -> Vec<Vec<Pt>> {
     let mut rings = Vec::new();
     for s in streets {
@@ -140,11 +134,8 @@ pub fn build_road_only_rings(streets: &[Street], roundabouts: &[RoundaboutParams
     rings
 }
 
-// ─── streetEngine.ts (solo la dependencia de ringFillet) ─────────────
-
 const FILLET_MAX_RADIUS_M: f64 = 8.0;
 
-/// <- `getFilletRadiusForAngle`
 pub fn get_fillet_radius_for_angle(angle_deg: f64, road_half_width_m: Option<f64>) -> f64 {
     let table_value = if angle_deg <= 35.0 {
         2.5
@@ -169,8 +160,6 @@ pub fn get_fillet_radius_for_angle(angle_deg: f64, road_half_width_m: Option<f64
         }
     }
 }
-
-// ─── ringFillet.ts ────────────────────────────────────────────────────
 
 fn ring_signed_area(ring: &[Pt]) -> f64 {
     let mut a = 0.0;
@@ -209,7 +198,6 @@ fn dist_to_segment(p: Pt, a: Pt, b: Pt) -> f64 {
     (p.0 - (a.0 + t * dx)).hypot(p.1 - (a.1 + t * dy))
 }
 
-/// <- `pointOnRing`
 pub fn point_on_ring(p: Pt, ring: &[Pt], tol: f64) -> bool {
     let n = ring.len();
     for i in 0..n {
@@ -298,8 +286,6 @@ fn corner_chamfer_cut(prev: Pt, cur: Pt, next: Pt, r: f64) -> Option<Vec<Pt>> {
     let tg = compute_corner_tangents(prev, cur, next, r)?;
     Some(vec![tg.ta, tg.tb])
 }
-
-/// Espeja `extraM: number | ((pt: Pt) => number)`.
 pub enum ExtraM<'a> {
     Fixed(f64),
     Fn(&'a dyn Fn(Pt) -> f64),
@@ -313,8 +299,6 @@ impl ExtraM<'_> {
         }
     }
 }
-
-/// Espeja `forceTreat: boolean | ((pt: Pt) => boolean)`.
 pub enum ForceTreat<'a> {
     Fixed(bool),
     Fn(&'a dyn Fn(Pt) -> bool),
@@ -329,7 +313,6 @@ impl ForceTreat<'_> {
     }
 }
 
-/// <- `roundRingReflex`
 pub fn round_ring_reflex(
     ring_in: &[Pt],
     extra_m: ExtraM,
@@ -529,8 +512,6 @@ mod tests {
 
     #[test]
     fn round_ring_reflex_fillet_mode_rounds_reflex_corner_of_l_shape() {
-        // Forma en L, orientada CCW: el vertice (2,2) es reflex y debe
-        // reemplazarse por un arco de varios puntos.
         let ring = vec![
             (0.0, 0.0),
             (4.0, 0.0),

@@ -1,21 +1,3 @@
-#!/usr/bin/env node
-// scripts/run-vitest-with-watchdog.mjs
-//
-// Envuelve `vitest run` con un watchdog externo: si el proceso hijo se
-// cuelga más allá de un timeout (típico con JSTS OverlayOp sobre
-// geometría patológica, que no tiene cancelación interna), lo matamos
-// desde afuera en vez de dejar CI colgado indefinidamente.
-//
-// El suite de fuzz (src/geo/__fuzz__) es lento/no-determinístico por
-// diseño. vitest.config.ts lo excluye INCONDICIONALMENTE vía `test.exclude`
-// — Vitest aplica ese exclude sin importar qué filtro posicional de CLI
-// se le pase, así que apuntar `vitest run src/geo/__fuzz__` contra el
-// config default nunca lo desexcluye (ese era el bug: "No test files
-// found, exiting with code 1"). La solución no es pelear con el exclude
-// del config default: cuando el caller apunta a esa carpeta (como hace
-// `npm run test:fuzz`), este script cambia a un config dedicado
-// (vitest.fuzz.config.mjs) que no lo excluye.
-
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -32,7 +14,6 @@ function toPosix(p) {
   return p.split(path.sep).join('/');
 }
 
-/** ¿Alguno de los argumentos posicionales (no-flags) apunta al directorio de fuzz? */
 function targetsFuzzDir(args) {
   return args.some((a) => !a.startsWith('-') && toPosix(a).includes(FUZZ_DIR));
 }
@@ -108,9 +89,7 @@ async function main() {
       } catch {
         try {
           child.kill('SIGKILL');
-        } catch {
-          /* noop */
-        }
+        } catch {}
       }
     }
   };

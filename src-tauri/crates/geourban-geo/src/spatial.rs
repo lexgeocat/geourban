@@ -1,18 +1,3 @@
-//! Índice espacial nativo (rstar) — Fase 4.1 (auditoria-para-mejora.md §6, Fase 4).
-//!
-//! Consulta de viewport del lado Rust, espejo del `SpatialIndex` JS
-//! (`src/map/spatialIndex.ts`). Criterio §7.4: las cargas masivas usan
-//! `RTree::bulk_load` (bulk STR), **nunca** inserción incremental — mismo
-//! criterio que el `RBush.load()` del lado JS.
-//!
-//! El índice guarda solo `id + bbox` por feature; no guarda geometrías
-//! completas: para una consulta de viewport los ids alcanzan y el caller
-//! resuelve la geometría en su propia capa (evita duplicar el payload).
-//!
-//! `id` es `serde_json::Value` a propósito — en GeoUrban un id de feature
-//! puede ser `string | number` y acá no se interpreta, solo hace ida y
-//! vuelta (mismo criterio que `SubdivideManzanoBatchItem` en geo_bridge).
-
 use rstar::{RTree, RTreeObject, AABB};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -26,10 +11,6 @@ pub struct IndexedEnvelope {
     pub max_y: f64,
 }
 
-/// Normaliza ids numéricos: `1` (PosInt) y `1.0` (Float) son el mismo id
-/// lógico pero hashean distinto en `serde_json::Value` (que distingue
-/// PosInt/NegInt/Float internamente) — sin esto un id numérico podría
-/// existir dos veces en el índice y quedar entradas fantasma.
 fn canonicalize_id(id: Value) -> Value {
     if let Value::Number(n) = &id {
         if let Some(i) = n.as_i64() {
@@ -38,8 +19,6 @@ fn canonicalize_id(id: Value) -> Value {
         if let Some(u) = n.as_u64() {
             return Value::from(u);
         }
-        // `Number::as_i64()` no cubre floats; un float entero (1.0, típico
-        // si el id pasó por aritmética JS) se canónica a entero.
         if let Some(f) = n.as_f64() {
             if f.is_finite() && f.fract() == 0.0 && f >= i64::MIN as f64 && f <= i64::MAX as f64 {
                 return Value::from(f as i64);
@@ -50,8 +29,6 @@ fn canonicalize_id(id: Value) -> Value {
 }
 
 impl IndexedEnvelope {
-    /// Ordena min/max defensivamente (idempotente, no rompe casos válidos)
-    /// para que un bbox mal ordenado nunca corrompa las invariantes del R-tree.
     pub fn new(id: Value, min_x: f64, min_y: f64, max_x: f64, max_y: f64) -> Self {
         Self {
             id: canonicalize_id(id),
@@ -73,7 +50,6 @@ impl RTreeObject for IndexedEnvelope {
 
 pub struct SpatialIndex {
     tree: RTree<IndexedEnvelope>,
-    /// id -> item, para remover/actualizar en O(1) y mantener unicidad de id.
     by_id: HashMap<Value, IndexedEnvelope>,
 }
 
@@ -87,15 +63,6 @@ impl Default for SpatialIndex {
 }
 
 impl SpatialIndex {
-    /// Carga masiva (reemplaza el índice entero). Bulk STR — nunca
-    /// inserción incremental para volúmenes grandes (criterio §7.4).
-    ///
-    /// Dedupea por id ANTES de construir el árbol (criterio last-wins,
-    /// igual que `insert`): si el caller trae un id repetido (geometría
-    /// corrupta, doble carga, batch mal armado), `tree` y `by_id` quedan
-    /// garantizados 1:1 — si no, el árbol podría guardar dos nodos con el
-    /// mismo id: `remove` deja uno huérfano para siempre y `search` puede
-    /// devolver ids duplicados.
     pub fn bulk_load(items: Vec<IndexedEnvelope>) -> Self {
         let mut by_id = HashMap::with_capacity(items.len());
         for item in items {
@@ -108,8 +75,6 @@ impl SpatialIndex {
         }
     }
 
-    /// Inserción/actualización incremental — para ediciones en runtime,
-    /// no para cargas masivas. Id duplicado reemplaza la entrada previa.
     pub fn insert(&mut self, item: IndexedEnvelope) {
         if let Some(old) = self.by_id.insert(item.id.clone(), item.clone()) {
             self.tree.remove(&old);
@@ -117,13 +82,6 @@ impl SpatialIndex {
         self.tree.insert(item);
     }
 
-    /// Remueve por id. Devuelve `true` si existía.
-    ///
-    /// Canonicaliza `id` antes de buscar: sin esto, remover con un id
-    /// numérico no-canónico (p.ej. `1.0` cuando se insertó como `1`)
-    /// fallaba en silencio (`by_id.remove` no encontraba la clave) y
-    /// dejaba una entrada fantasma en el árbol — inalcanzable por
-    /// `remove`, pero que `search()` seguía devolviendo.
     pub fn remove(&mut self, id: &Value) -> bool {
         let canonical = canonicalize_id(id.clone());
         match self.by_id.remove(&canonical) {
@@ -135,8 +93,6 @@ impl SpatialIndex {
         }
     }
 
-    /// Busca los ids cuyo bbox intersecta el rectángulo de consulta.
-    /// Los resultados se apilan en `out` (que se preserva, no se limpia).
     pub fn search(&self, min_x: f64, min_y: f64, max_x: f64, max_y: f64, out: &mut Vec<Value>) {
         let query = AABB::from_corners([min_x, min_y], [max_x, max_y]);
         for item in self.tree.locate_in_envelope_intersecting(&query) {
@@ -162,7 +118,6 @@ impl SpatialIndex {
 mod tests {
     use super::*;
 
-    /// Grilla de celdas de 10x10 m desde el origen, ids `f-{row}-{col}`.
     fn grid_items(rows: usize, cols: usize) -> Vec<IndexedEnvelope> {
         let mut items = Vec::with_capacity(rows * cols);
         for r in 0..rows {
@@ -210,9 +165,6 @@ mod tests {
         let index = SpatialIndex::bulk_load(grid_items(10, 10));
         assert_eq!(index.len(), 100);
 
-        // Rectángulo que cubre las celdas f-3..f-6 en x y f-2..f-4 en y,
-        // con bordes desplazados para forzar intersección parcial:
-        // x ∈ {2..6} (5 celdas), y ∈ {1..4} (4 celdas) → 20.
         let mut out = Vec::new();
         index.search(25.0, 15.0, 66.0, 46.0, &mut out);
         assert_eq!(out.len(), 20, "celdas 5x4 intersectando");
@@ -290,7 +242,6 @@ mod tests {
         ));
         assert_eq!(index.len(), 1, "id duplicado reemplaza, no suma");
 
-        // El bbox viejo no debe responder más.
         let mut out = Vec::new();
         index.search(0.0, 0.0, 10.0, 10.0, &mut out);
         assert!(out.is_empty());
@@ -320,8 +271,6 @@ mod tests {
         index.insert(IndexedEnvelope::new(Value::from(1), 0.0, 0.0, 10.0, 10.0));
         assert_eq!(index.len(), 1);
 
-        // Antes del fix: remove(&Value::from(1.0)) devolvía false y
-        // dejaba una entrada fantasma en el árbol.
         assert!(index.remove(&Value::from(1.0)));
         assert!(index.is_empty());
     }
@@ -331,13 +280,11 @@ mod tests {
         let items = vec![
             IndexedEnvelope::new(Value::from("a"), 0.0, 0.0, 10.0, 10.0),
             IndexedEnvelope::new(Value::from("b"), 50.0, 50.0, 60.0, 60.0),
-            // Duplicado de "a" con bbox desplazado: last-wins.
             IndexedEnvelope::new(Value::from("a"), 100.0, 100.0, 110.0, 110.0),
         ];
         let index = SpatialIndex::bulk_load(items);
         assert_eq!(index.len(), 2, "el árbol y by_id quedan 1:1 por id");
 
-        // El bbox viejo no responde; el nuevo sí, sin duplicados.
         let mut out = Vec::new();
         index.search(0.0, 0.0, 20.0, 20.0, &mut out);
         assert!(out.is_empty());
@@ -348,7 +295,6 @@ mod tests {
             "un solo hit para el id dedupeado"
         );
 
-        // remove() elimina sin dejar nodos fantasma (sin panics ni hits extra).
         let mut index = index;
         assert!(index.remove(&Value::from("a")));
         assert_eq!(index.len(), 1);
@@ -356,29 +302,22 @@ mod tests {
 
     #[test]
     fn new_normalizes_min_max_and_numeric_ids() {
-        // Bbox con min>max se ordena solo.
         let env = IndexedEnvelope::new(Value::from(1), 30.0, 20.0, 10.0, 40.0);
         assert_eq!(env.min_x, 10.0);
         assert_eq!(env.max_x, 30.0);
         assert_eq!(env.min_y, 20.0);
         assert_eq!(env.max_y, 40.0);
 
-        // 1 (PosInt) y 1.0 (Float) se canonican al mismo id.
         let a = IndexedEnvelope::new(Value::from(1), 0.0, 0.0, 1.0, 1.0).id;
         let b = IndexedEnvelope::new(Value::from(1.0), 0.0, 0.0, 1.0, 1.0).id;
         assert_eq!(a, b, "id numérico canónico: 1 == 1.0");
 
-        // Strings no se tocan.
         let s = IndexedEnvelope::new(Value::from("x"), 0.0, 0.0, 1.0, 1.0).id;
         assert_eq!(s, Value::from("x"));
     }
 
     #[test]
     fn bulk_load_100k_grid_query_cheap() {
-        // Sanity de escala: 100k envelopes, load bulk y una query acotada.
-        // Los tiempos se imprimen (build de debug infla el bulk-load STR);
-        // la medición real de referencia corre en el benchmark de la app
-        // (build release, DebugPanel → Fase 4.1/4.2).
         let items = grid_items(320, 320);
         let t0 = std::time::Instant::now();
         let index = SpatialIndex::bulk_load(items);

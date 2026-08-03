@@ -1,14 +1,3 @@
-//! Test de paridad TS ↔ Rust para `match_fragments_to_members`.
-//!
-//! Single source of truth = `tests/fixtures/fragRecParitySnapshot.json`.
-//! El test TS (`src/geo/roads/__parity__/fragmentReconciliation.parity.test.ts`)
-//! lo genera y `npm run parity:sync` lo copia a este path. Si no existe,
-//! el test falla con un mensaje claro.
-//!
-//! Criterio de éxito: el motor Rust produce el mismo count de assignments,
-//! los mismos `member_idx` (Some/None) y `overlap_area` que el motor TS,
-//! dentro de tolerancia.
-
 #![cfg(feature = "geos-backend")]
 
 use geourban_geo::fragment_reconciliation::match_fragments_to_members;
@@ -56,7 +45,6 @@ fn approx(a: f64, b: f64, tol: f64) -> bool {
     (a - b).abs() <= tol
 }
 
-/// Cuadrado abierto (4 vértices). Misma función que en las fixtures TS.
 fn sq(x0: f64, y0: f64, side: f64) -> Vec<(f64, f64)> {
     vec![
         (x0, y0),
@@ -66,27 +54,12 @@ fn sq(x0: f64, y0: f64, side: f64) -> Vec<(f64, f64)> {
     ]
 }
 
-/// Mapa de fixtures → datos de entrada. Sincronizado con
-/// `src/geo/roads/__parity__/fragmentReconciliationParityFixtures.ts`.
-/// Si la lista allá cambia, este mapa debe actualizarse.
 fn fixture_inputs(name: &str) -> (Vec<Vec<(f64, f64)>>, Vec<Vec<(f64, f64)>>) {
     match name {
-        "caso_identidad" => (
-            vec![sq(0.0, 0.0, 10.0)],
-            vec![sq(0.0, 0.0, 10.0)],
-        ),
-        "caso_parcial" => (
-            vec![sq(1.0, 1.0, 9.0)],
-            vec![sq(0.0, 0.0, 10.0)],
-        ),
-        "caso_sin_match" => (
-            vec![sq(0.0, 0.0, 10.0)],
-            vec![sq(100.0, 100.0, 10.0)],
-        ),
-        "caso_bajo_umbral" => (
-            vec![sq(9.5, 9.5, 10.0)],
-            vec![sq(0.0, 0.0, 10.0)],
-        ),
+        "caso_identidad" => (vec![sq(0.0, 0.0, 10.0)], vec![sq(0.0, 0.0, 10.0)]),
+        "caso_parcial" => (vec![sq(1.0, 1.0, 9.0)], vec![sq(0.0, 0.0, 10.0)]),
+        "caso_sin_match" => (vec![sq(0.0, 0.0, 10.0)], vec![sq(100.0, 100.0, 10.0)]),
+        "caso_bajo_umbral" => (vec![sq(9.5, 9.5, 10.0)], vec![sq(0.0, 0.0, 10.0)]),
         "caso_multi_fragmentos" => (
             vec![sq(0.0, 0.0, 10.0), sq(30.0, 30.0, 10.0)],
             vec![sq(0.0, 0.0, 10.0), sq(30.0, 30.0, 10.0)],
@@ -122,7 +95,6 @@ fn parity_con_snapshot_ts() {
     for fx in &snap.fixtures {
         let (fragments, member_rings) = fixture_inputs(&fx.name);
 
-        // Sanity: el snapshot concuerda con el conteo de inputs.
         assert_eq!(
             fragments.len(),
             fx.fragment_count,
@@ -138,7 +110,6 @@ fn parity_con_snapshot_ts() {
 
         let assignments = match_fragments_to_members(&fragments, &member_rings);
 
-        // Mismo conteo de assignments.
         assert_eq!(
             assignments.len(),
             fx.assignments.len(),
@@ -148,7 +119,6 @@ fn parity_con_snapshot_ts() {
             fx.assignments.len(),
         );
 
-        // Comparar cada assignment en el mismo orden.
         for (i, (a, e)) in assignments.iter().zip(fx.assignments.iter()).enumerate() {
             assert_eq!(
                 a.fragment_idx, e.fragment_idx,

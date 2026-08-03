@@ -1,12 +1,3 @@
-//! Test de paridad TS (JSTS, geoOperations.ts::computeManzanos) <-> Rust
-//! (GEOS, boolean_ops.rs::compute_manzanos). Cierra la Fase 2.3: hasta
-//! ahora `boolean_ops.rs` solo tenia smoke tests triviales sin comparar
-//! contra el motor JS con geometria representativa (union + diferencia
-//! sobre parcelas + calles, incluyendo fragmentacion en MultiPolygon).
-//!
-//! Single source of truth = tests/fixtures/computeManzanosParitySnapshot.json,
-//! generado por `npm run parity:sync`.
-
 #![cfg(feature = "geos-backend")]
 
 use geourban_geo::boolean_ops::compute_manzanos;
@@ -56,7 +47,6 @@ fn rect(x0: f64, y0: f64, x1: f64, y1: f64) -> Vec<(f64, f64)> {
     vec![(x0, y0), (x1, y0), (x1, y1), (x0, y1)]
 }
 
-/// Sincronizada con `computeManzanosParityFixtures.ts`.
 fn fixture_inputs(name: &str) -> (Vec<Vec<Vec<(f64, f64)>>>, Vec<Vec<(f64, f64)>>) {
     match name {
         "single_road_bisects_square_parcel" => (

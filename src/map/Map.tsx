@@ -73,7 +73,6 @@ const baseMapId = useUiShellStore((s) => s.baseMap);
         useLayersStore.getState().hasKindVisible('lote') ||
         useLayersStore.getState().hasKindVisible('manzana'),
       streets: useLayersStore.getState().hasKindVisible('calle'),
-      // Ya no controla ninguna capa de render — ver DrawLayerRenderer.ts.
       measurements: true,
     };
     const drawLayers = buildDrawLayers(initialWorkVisibility);
@@ -127,10 +126,8 @@ const baseMapId = useUiShellStore((s) => s.baseMap);
     });
     interactions.push(dragPan);
 
-    // Prevenir menu contextual del click derecho en el mapa
     map.getViewport().addEventListener('contextmenu', (e) => e.preventDefault());
 
-    // Cursor "manito" (grab) cuando se hace pan con click derecho o medio
     const viewport = map.getViewport();
     const onPointerDown = (e: PointerEvent) => {
       if (e.button === 1 || e.button === 2) {
@@ -397,7 +394,6 @@ postrenderPainter.dispose();
       if (m) m.setTarget(undefined);
       mapInstanceRef.current = null;
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -447,12 +443,10 @@ useEffect(() => {
   return unsub;
 }, []);
 
-  // --- Interacciones según modo activo ---
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map) return;
     interactionCtrlRef.current?.activate(drawMode);
-// SnapEngine siempre al final (última interacción = procesa primero)
   if (snapEngineRef.current) {
     map.removeInteraction(snapEngineRef.current);
     map.addInteraction(snapEngineRef.current);

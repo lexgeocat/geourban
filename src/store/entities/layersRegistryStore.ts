@@ -22,7 +22,6 @@ type LayerState = {
   toggleLock: (id: string) => void;
   toggleVisibility: (id: string) => void;
   isolatedLayerId: string | null;
-  /** Snapshot de visibilidades previas al `isolate`, para restaurar al desaislar. */
   isolatePrevVisibility: Record<string, boolean> | null;
   toggleIsolate: (id: string) => void;
   setActiveLayer: (id: string | null) => void;

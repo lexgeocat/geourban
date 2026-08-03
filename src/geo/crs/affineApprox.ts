@@ -3,14 +3,6 @@ import { transform } from 'ol/proj.js';
 import type { Extent } from 'ol/extent.js';
 import { DISPLAY_PROJECTION } from './projections';
 
-/**
- * Transformación afín 2D, con corrección cuadrática opcional (Fase 5
- * hardening) que absorbe la curvatura de la proyección conforme más allá
- * de lo que un ajuste lineal puede capturar:
- *   X = a*x + b*y + c [+ qxx*dx² + qxy*dx*dy + qyy*dy²]
- *   Y = d*x + e*y + f [+ rxx*dx² + rxy*dx*dy + ryy*dy²]
- * donde dx = x - quad.centerX, dy = y - quad.centerY.
- */
 export interface QuadCorrection {
   centerX: number;
   centerY: number;

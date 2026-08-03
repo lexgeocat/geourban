@@ -1,22 +1,9 @@
-// src/store/debug/nativeMemoryTelemetry.ts
-//
-// Fase 6.2 (auditoria-para-mejora.md) — memoria del PROCESO NATIVO (Rust),
-// no del heap de JS. `performance.memory` solo ve el heap del webview; el
-// proceso Rust (GEOS, buffers batch, índice espacial, SQLite) queda fuera.
-// Este módulo cachea la última medición del comando `process_memory` y la
-// re-refresca a lo sumo cada REFRESH_MS — el panel de debug la muestra sin
-// hacer un `invoke` por frame.
-
 import { invoke } from '@tauri-apps/api/core';
 
 export interface NativeMemorySnapshot {
-  /** RSS — memoria física del proceso Rust (MB). */
   rssMB: number;
-  /** Bytes privados (MB) — porción no compartida con otros procesos. */
   privateMB: number;
-  /** Pico de RSS desde el arranque (MB). */
   peakRssMB: number;
-  /** false si la plataforma no expone la vía (comando devolvió null). */
   available: boolean;
   lastUpdatedMs: number;
 }
@@ -31,7 +18,6 @@ const memory: NativeMemorySnapshot = {
 
 const REFRESH_MS = 2000;
 
-/** Solo para tests/depuración. */
 export function _resetNativeMemoryForTests(): void {
   memory.rssMB = 0;
   memory.privateMB = 0;

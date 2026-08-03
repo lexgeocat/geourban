@@ -1,37 +1,6 @@
-// src/geo/debug/syntheticUrbanLayout.ts
-//
-// Fase 6.1 (auditoria-para-mejora.md) — generador de layout urbano
-// sintético AVANZADO: grilla de calles con anchos variables, avenidas
-// diagonales, rotondas (círculo y polígono) en algunas intersecciones,
-// y un perímetro de sitio irregular (no el bbox exacto de la grilla).
-//
-// A diferencia de `syntheticDataset.ts` (Fase 0 — precomputa manzanos
-// RECTANGULARES directamente como GeoJSON, sin pasar por el pipeline
-// real), este generador produce ENTIDADES (calles, rotondas, perímetro)
-// pensadas para alimentar el pipeline de producción real:
-//   recomputeManzanos() → computeManzanosInWorker() [GEOS union+difference]
-//     → matchFragmentsToMembers() [reconciliación] → subdivideManzanoBatch()
-// de modo que las Fases 2.2 (subdivisión) y 2.3/2.4 (booleanas +
-// reconciliación de fragmentos) tengan con qué probarse a escala real,
-// con manzanos de geometría IRREGULAR (triángulos, trapecios, polígonos
-// de borde recortado) — no solo rectángulos de grilla.
-//
-// Puro y determinista: mismo seed ⇒ mismo layout, byte a byte. Sin
-// dependencias de stores de Zustand — el loader que sí toca stores
-// (drawSource, streetStore, roundaboutStore) vive en
-// `syntheticUrbanBenchmark.ts`, separado a propósito para poder testear
-// la geometría con vitest sin levantar un Map de OpenLayers.
-
 import type { Pt } from '../math/polygonEngine';
 import type { Street } from '../../store/entities/streetStore';
 import type { RoundaboutParams } from '../roundabout/roundaboutEngine';
-
-// ─── PRNG determinista ──────────────────────────────────────────────
-// Mismo algoritmo que `mulberry32.rs` (src-tauri/crates/geourban-geo/
-// src/mulberry32.rs) — no hace falta bit-a-bit idéntico entre TS/Rust
-// para este uso (solo consume el lado TS), pero mantener la misma
-// familia de PRNG que ya usa el repo evita introducir una tercera
-// convención de aleatoriedad determinista.
 export class Mulberry32 {
   private a: number;
   constructor(seed: number) {
@@ -55,30 +24,19 @@ export class Mulberry32 {
 export type SyntheticStreetEntry = Omit<Street, 'id' | 'name'> & { name: string };
 
 export interface SyntheticUrbanLayoutOptions {
-  /** Cantidad aproximada de manzanos en la grilla ortogonal principal. */
   targetBlockCount?: number;
   blockWidthM?: number;
   blockHeightM?: number;
-  /** Ancho de calle mínimo/máximo — cada calle interior recibe un ancho
-   * aleatorio (determinista) dentro de este rango. */
   minStreetWidthM?: number;
   maxStreetWidthM?: number;
   sideWidthM?: number;
-  /** Ancho de las avenidas diagonales (más anchas que las calles internas). */
   avenueWidthM?: number;
-  /** Cantidad de avenidas diagonales que cruzan TODA la grilla en ángulo
-   * — generan fragmentos triangulares/trapezoidales al cortar los
-   * manzanos de la grilla ortogonal (geometría irregular real). */
   diagonalAvenueCount?: number;
-  /** 1 rotonda cada N intersecciones interiores (aprox). 0 = sin rotondas. */
   roundaboutEvery?: number;
   roundaboutRadiusM?: number;
   roundaboutRoadWidthM?: number;
   roundaboutSidewalkWidthM?: number;
-  /** Amplitud (m) del jitter radial que irregulariza el borde del sitio.
-   * 0 = perímetro perfectamente regular (octágono liso). */
   boundaryJaggedness?: number;
-  /** Centro del layout en EPSG:3857 (unidades internas del proyecto). */
   center?: Pt;
   seed?: number;
 }
@@ -86,7 +44,6 @@ export interface SyntheticUrbanLayoutOptions {
 export interface SyntheticUrbanLayoutResult {
   streets: SyntheticStreetEntry[];
   roundabouts: RoundaboutParams[];
-  /** Anillo(s) exterior(es) — una "parcela madre" por elemento, cerrados, sin huecos. */
   perimeters: Pt[][];
   extent: [number, number, number, number];
   gridCols: number;
@@ -118,15 +75,6 @@ function closeRing(ring: Pt[]): Pt[] {
   return ring;
 }
 
-/**
- * Perímetro irregular que envuelve `bbox` con margen: polígono radial
- * base (16 vértices) + jitter RADIAL por vértice (nunca angular), lo
- * que garantiza que el resultado sea siempre "star-shaped" respecto al
- * centro y por lo tanto simple (sin auto-intersecciones) — no hace
- * falta validar/sanear después. El interior de la grilla queda intacto;
- * lo irregular es el borde del sitio, que es el caso real más común
- * (parcela de forma libre, trazado interno regular).
- */
 function buildIrregularPerimeter(
   bbox: [number, number, number, number],
   marginM: number,
@@ -144,16 +92,12 @@ function buildIrregularPerimeter(
   const ring: Pt[] = [];
   for (let i = 0; i < N; i++) {
     const angle = (i / N) * Math.PI * 2;
-    // Clamp a un mínimo positivo: por más jaggedness que se pida, el
-    // radio nunca se invierte — así el polígono queda garantizado simple.
     const jitterR = Math.max(0.05, 1 + (jaggedness > 0 ? rng.range(-jaggedness, jaggedness) / maxR : 0));
     ring.push([cx + Math.cos(angle) * rx * jitterR, cy + Math.sin(angle) * ry * jitterR]);
   }
   return closeRing(ring);
 }
 
-/** Clip Liang-Barsky de la recta (origin + t*dir) contra `bbox`. Devuelve
- * los dos puntos de entrada/salida, o null si la recta no cruza el bbox. */
 function lineExtentIntersection(
   origin: Pt,
   dir: Pt,
@@ -179,13 +123,6 @@ function lineExtentIntersection(
   ];
 }
 
-/**
- * Genera un layout urbano sintético completo: grilla ortogonal con
- * anchos de calle variables, avenidas diagonales, rotondas (mezcla de
- * círculos y polígonos) en algunas intersecciones interiores, y un
- * perímetro de sitio irregular que envuelve todo con margen.
- * Determinista para el mismo `seed` — mismo layout byte a byte.
- */
 export function generateSyntheticUrbanLayout(
   opts: SyntheticUrbanLayoutOptions = {},
 ): SyntheticUrbanLayoutResult {
@@ -232,9 +169,6 @@ export function generateSyntheticUrbanLayout(
     });
   }
 
-  // ── Avenidas diagonales — cruzan toda la grilla en ángulo; generan
-  //    los fragmentos triangulares/trapezoidales que la grilla pura no
-  //    puede producir por sí sola. ──
   const diagonalBbox: [number, number, number, number] = [
     originX - cfg.blockWidthM, originY - cfg.blockHeightM,
     originX + gridWidthM + cfg.blockWidthM, originY + gridHeightM + cfg.blockHeightM,
@@ -260,8 +194,6 @@ export function generateSyntheticUrbanLayout(
     });
   }
 
-  // ── Rotondas en algunas intersecciones interiores — mezcla de
-  //    círculos (sides=0) y polígonos (4-8 lados). ──
   const roundabouts: RoundaboutParams[] = [];
   if (cfg.roundaboutEvery > 0) {
     let idx = 0;

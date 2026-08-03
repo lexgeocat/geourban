@@ -1,14 +1,3 @@
-//! Puerto de `src/geo/roads/fragmentReconciliation.ts`.
-//!
-//! Reconcilia los fragmentos resultantes de recortar manzanos contra la
-//! red vial (`compute_manzanos`) con los miembros ya existentes en el
-//! proyecto (manzanos previamente creados), para preservar su identidad
-//! (id, lotes hijos, método de subdivisión) a través de ediciones.
-//!
-//! Requiere GEOS (`ring_intersection_area`, definida en `boolean_ops.rs`)
-//! para calcular el área de solapamiento entre cada par
-//! fragmento×miembro — por eso este módulo, igual que `boolean_ops`, solo
-//! compila contenido real bajo el feature `geos-backend`.
 #![cfg(feature = "geos-backend")]
 
 use serde::{Deserialize, Serialize};
@@ -17,19 +6,8 @@ use crate::boolean_ops::ring_intersection_area;
 use crate::math::poly_area;
 use crate::sanitize::{sanitize_ring, SanitizeRingOptions};
 use crate::types::Pt;
-
-/// <- `MATCH_MIN_RATIO` (fragmentReconciliation.ts).
 pub const MATCH_MIN_RATIO: f64 = 0.35;
-
-/// Umbral de pares candidatos (fragmentos × miembros) a partir del cual se
-/// emite una advertencia de posible lentitud — mismo valor que
-/// `MATCH_COMPLEXITY_WARNING` en el TS de origen.
 const MATCH_COMPLEXITY_WARNING: usize = 20_000;
-
-/// <- `FragmentAssignment<T>` (fragmentReconciliation.ts), especializado a
-/// índices: `member_idx` reemplaza la referencia genérica `T` — el caller
-/// (geo_bridge.rs) es quien sabe a qué miembro real corresponde cada
-/// índice.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FragmentAssignment {
@@ -43,15 +21,6 @@ struct Candidate {
     member_idx: usize,
     overlap: f64,
 }
-
-/// <- `matchFragmentsToMembers` (fragmentReconciliation.ts).
-///
-/// Sanea ambos lados, calcula el área de solapamiento GEOS de cada par
-/// válido, y asigna greedy por mayor solapamiento primero — un fragmento o
-/// miembro ya asignado no se reconsidera. Un fragmento sin asignación
-/// (por no alcanzar `MATCH_MIN_RATIO`, o por no solapar con nada) queda
-/// con `member_idx: None` — indica "es una entidad nueva, sin miembro
-/// previo que reciclar".
 pub fn match_fragments_to_members(
     fragments: &[Vec<Pt>],
     member_rings: &[Vec<Pt>],
@@ -200,7 +169,6 @@ mod tests {
     #[test]
     fn no_asigna_si_el_solapamiento_no_alcanza_match_min_ratio() {
         let member = square(0.0, 0.0, 10.0);
-        // Solo se solapa en una esquina angosta (~1% de su propia área).
         let fragment = square(9.5, 9.5, 5.0);
 
         let assignments = match_fragments_to_members(&[fragment], &[member]);

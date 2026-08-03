@@ -1,13 +1,3 @@
-//! Puerto exacto de `mulberry32` (usado en
-//! src/geo/__fuzz__/degenerateGeometry.fuzz.test.ts y en
-//! src/geo/subdivision/__parity__/fuzzGuardFixtures.ts), para generar de
-//! forma determinista corpus de fuzz replicables en ambos lados (Fase
-//! 2.6, auditoria-para-mejora.md).
-//!
-//! La aritmética replica bit a bit el original en JS: `Math.imul` es una
-//! multiplicación de 32 bits con overflow — equivalente a
-//! `u32::wrapping_mul` — y `>>>` es un shift lógico (sin signo), igual
-//! que `>>` sobre `u32` en Rust.
 pub struct Mulberry32 {
     a: u32,
 }

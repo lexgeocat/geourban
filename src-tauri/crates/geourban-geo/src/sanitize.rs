@@ -96,7 +96,6 @@ fn remove_collinear(ring: &[Pt], angle_eps: f64, closure_eps: f64) -> (Vec<Pt>, 
             let len_bc = bcx.hypot(bcy);
 
             if len_ab < 1e-12 || len_bc < 1e-12 {
-                // Vértice degenerado (coincide con un vecino tras el dedupe previo).
                 pts.remove(i);
                 removed += 1;
                 changed = true;
@@ -142,7 +141,6 @@ fn record_geometry_sanitize_event(context: &str, mut detail: Map<String, Value>)
     log::warn!("[geometry-sanitize] {}", Value::Object(detail));
 }
 
-/// <- `sanitizeRing`
 pub fn sanitize_ring(
     ring_in: Option<&[Pt]>,
     opts: SanitizeRingOptions,
@@ -249,7 +247,6 @@ pub fn sanitize_ring(
     Some(close_ring(pts))
 }
 
-/// <- `sanitizeRings` — descarta en silencio (con telemetría individual) los inválidos.
 pub fn sanitize_rings(rings: &[Vec<Pt>], opts: SanitizeRingOptions, context: &str) -> Vec<Vec<Pt>> {
     rings
         .iter()
@@ -257,7 +254,6 @@ pub fn sanitize_rings(rings: &[Vec<Pt>], opts: SanitizeRingOptions, context: &st
         .collect()
 }
 
-/// <- `sanitizePolygonRings`
 fn sanitize_polygon_rings(
     coords: &Value,
     context: &str,
@@ -276,7 +272,6 @@ fn sanitize_polygon_rings(
 
     let mut rings = vec![outer];
     for hole_val in &rings_val[1..] {
-        // Un hueco degenerado se descarta solo — no invalida el contorno exterior.
         if let Some(hole_ring) = ring_from_json(hole_val) {
             if let Some(hole) =
                 sanitize_ring(Some(hole_ring.as_slice()), opts, &format!("{context}.hole"))
@@ -288,7 +283,6 @@ fn sanitize_polygon_rings(
     Some(rings)
 }
 
-/// <- `sanitizeGeometry` — Point/LineString/etc. pasan sin tocar.
 fn sanitize_geometry(geom: &Value, context: &str, opts: SanitizeRingOptions) -> Option<Value> {
     let geom_type = geom.get("type")?.as_str()?;
     match geom_type {
@@ -332,7 +326,6 @@ pub struct SanitizeFeatureCollectionResult {
     pub dropped_count: usize,
 }
 
-/// <- `sanitizeFeatureCollectionRings`
 pub fn sanitize_feature_collection_rings(
     fc: &Value,
     context: &str,
@@ -416,7 +409,6 @@ mod tests {
     #[test]
     fn sanitize_ring_rejects_non_finite_points() {
         let ring = vec![(0.0, 0.0), (f64::NAN, 1.0), (1.0, 1.0), (0.0, 1.0)];
-        // Tras filtrar el NaN quedan 3 puntos validos -> deberia sobrevivir.
         let out = sanitize_ring(
             Some(ring.as_slice()),
             SanitizeRingOptions::default(),
@@ -506,7 +498,6 @@ mod tests {
         let poly_ring = features[0]["geometry"]["coordinates"][0]
             .as_array()
             .unwrap();
-        // El vertice colineal (2,0) debe haber sido eliminado por el saneo.
         assert_eq!(poly_ring.len(), 5);
         assert_eq!(
             features[1]["geometry"]["type"].as_str().unwrap(),

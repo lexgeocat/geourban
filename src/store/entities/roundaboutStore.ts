@@ -10,8 +10,6 @@ export interface Roundabout extends RoundaboutParams {
 
 interface RoundaboutState {
   roundabouts: Roundabout[];
-
-  /** Parámetros de diseño para la próxima rotonda a trazar. */
   defaultRadiusM: number;
   defaultSides: number;
   defaultRoadWidthM: number;
@@ -40,7 +38,6 @@ function resetNextId(): void {
   nextId = 1;
 }
 
-/** Rotonda A, Rotonda B, ... Rotonda Z, Rotonda AA, ... (mismo criterio que streetStore.autoName) */
 function autoName(index: number): string {
   let name = '';
   let n = index;

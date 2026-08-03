@@ -137,10 +137,6 @@ export class GenerateLotsCommand extends Command {
         perimeter: ringPerimeter(ringPts),
         centroid: centroid(ringPts),
       });
-
-      // El manzano YA NO se borra: se conserva (con su etiqueta y área) y
-      // solo se reemplazan sus lotes — igual que RecomputeManzanoLotsCommand.
-      // Esto también permite re-correr "Generar todos" y regenerar en limpio.
       const oldLots: Feature<Geometry>[] = [];
       ctx.drawSource.forEachFeature((f) => {
         if (f.get('lotGroupId') === String(id)) oldLots.push(f as Feature<Geometry>);

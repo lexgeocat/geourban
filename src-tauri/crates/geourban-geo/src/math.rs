@@ -2,8 +2,6 @@ use std::collections::HashMap;
 
 use crate::types::Pt;
 
-// ─── Tipos de resultado ─────────────────────────────────────────────
-
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Extent1D {
     pub min: f64,
@@ -36,8 +34,6 @@ enum PolyHitRole {
     A,
     B,
 }
-
-// ─── Primitivas geométricas ─────────────────────────────────────────
 
 pub fn poly_area(pts: &[Pt]) -> f64 {
     let n = pts.len();
@@ -73,7 +69,8 @@ pub fn convex_hull(pts: &[Pt]) -> Vec<Pt> {
         return arr;
     }
 
-    let cross = |o: Pt, a: Pt, b: Pt| -> f64 { (a.0 - o.0) * (b.1 - o.1) - (a.1 - o.1) * (b.0 - o.0) };
+    let cross =
+        |o: Pt, a: Pt, b: Pt| -> f64 { (a.0 - o.0) * (b.1 - o.1) - (a.1 - o.1) * (b.0 - o.0) };
 
     let mut lower: Vec<Pt> = Vec::new();
     for &p in &arr {
@@ -169,8 +166,16 @@ pub fn clip_half_plane(pts: &[Pt], lp1: Pt, lp2: Pt, keep_side: i32) -> Vec<Pt> 
         let nxt = pts[(i + 1) % n];
         let sc = side(cur, lp1, lp2);
         let sn = side(nxt, lp1, lp2);
-        let cur_in = if keep_side > 0 { sc >= -1e-9 } else { sc <= 1e-9 };
-        let nxt_in = if keep_side > 0 { sn >= -1e-9 } else { sn <= 1e-9 };
+        let cur_in = if keep_side > 0 {
+            sc >= -1e-9
+        } else {
+            sc <= 1e-9
+        };
+        let nxt_in = if keep_side > 0 {
+            sn >= -1e-9
+        } else {
+            sn <= 1e-9
+        };
         if cur_in {
             out.push(cur);
         }
@@ -250,8 +255,12 @@ pub fn build_cut_polys(wp: &[Pt], h_a: PolyHit, h_b: PolyHit) -> Option<CutPolys
 
     let ua = h_a.u.max(0.0).min(1.0);
     let ub = h_b.u.max(0.0).min(1.0);
-    ins.entry(h_a.seg_idx).or_default().push((ua, h_a.pt, PolyHitRole::A));
-    ins.entry(h_b.seg_idx).or_default().push((ub, h_b.pt, PolyHitRole::B));
+    ins.entry(h_a.seg_idx)
+        .or_default()
+        .push((ua, h_a.pt, PolyHitRole::A));
+    ins.entry(h_b.seg_idx)
+        .or_default()
+        .push((ub, h_b.pt, PolyHitRole::B));
 
     for list in ins.values_mut() {
         list.sort_by(|x, y| x.0.partial_cmp(&y.0).unwrap_or(std::cmp::Ordering::Equal));
@@ -321,8 +330,6 @@ pub fn build_cut_polys(wp: &[Pt], h_a: PolyHit, h_b: PolyHit) -> Option<CutPolys
     })
 }
 
-// ─── Operaciones sobre strips ───────────────────────────────────────
-
 pub fn clip_to_strip(pts: &[Pt], ax: f64, ay: f64, min_t: f64, max_t: f64) -> Vec<Pt> {
     if pts.len() < 3 {
         return Vec::new();
@@ -330,7 +337,6 @@ pub fn clip_to_strip(pts: &[Pt], ax: f64, ay: f64, min_t: f64, max_t: f64) -> Ve
     let nx = -ay;
     let ny = ax;
 
-    // Límite inferior.
     let min_pt: Pt = (min_t * ax, min_t * ay);
     let p1: Pt = (min_pt.0 + nx, min_pt.1 + ny);
     let p2: Pt = (min_pt.0 - nx, min_pt.1 - ny);
@@ -341,7 +347,6 @@ pub fn clip_to_strip(pts: &[Pt], ax: f64, ay: f64, min_t: f64, max_t: f64) -> Ve
         return Vec::new();
     }
 
-    // Límite superior.
     let max_pt: Pt = (max_t * ax, max_t * ay);
     let p3: Pt = (max_pt.0 + nx, max_pt.1 + ny);
     let p4: Pt = (max_pt.0 - nx, max_pt.1 - ny);
@@ -349,8 +354,6 @@ pub fn clip_to_strip(pts: &[Pt], ax: f64, ay: f64, min_t: f64, max_t: f64) -> Ve
     let s_max = side(test_max, p3, p4);
     clip_half_plane(&clipped, p3, p4, if s_max >= 0.0 { 1 } else { -1 })
 }
-
-// ─── Eje principal (PCA) ────────────────────────────────────────────
 
 pub fn principal_axis(pts: &[Pt]) -> PrincipalAxis {
     let n = pts.len() as f64;
@@ -418,12 +421,10 @@ pub fn project_extents(pts: &[Pt], ax: f64, ay: f64) -> Extent1D {
     }
     Extent1D { min: mn, max: mx }
 }
-// ─── LOD (src/geo/math/lod.ts) ──────────────────────────────────────
 
 const LOD_MIN_SEGMENTS: u32 = 8;
 const LOD_MAX_SEGMENTS: u32 = 160;
 
-/// <- `resolutionAwareSegments`
 pub fn resolution_aware_segments(radius_map_units: f64, resolution: f64, px_error: f64) -> u32 {
     if !(radius_map_units > 0.0) || !(resolution > 0.0) {
         return LOD_MIN_SEGMENTS;
@@ -518,7 +519,6 @@ mod tests {
     fn clip_to_strip_cuts_a_vertical_band() {
         let sq = square(); // x∈[0,4], y∈[0,4]
         let strip = clip_to_strip(&sq, 1.0, 0.0, 1.0, 3.0);
-        // Franja x∈[1,3], y∈[0,4] → área 2*4=8.
         assert!(approx(poly_area(&strip), 8.0));
         for (x, _y) in &strip {
             assert!(*x >= 1.0 - EPS && *x <= 3.0 + EPS);
@@ -579,13 +579,27 @@ mod tests {
     #[test]
     fn build_cut_polys_splits_square_into_two_equal_rectangles() {
         let wp = square(); // (0,0)-(4,0)-(4,4)-(0,4), sin cerrar
-        let h_a = PolyHit { seg_idx: 0, u: 0.5, pt: (2.0, 0.0) }; // mitad de la arista inferior
-        let h_b = PolyHit { seg_idx: 2, u: 0.5, pt: (2.0, 4.0) }; // mitad de la arista superior
+        let h_a = PolyHit {
+            seg_idx: 0,
+            u: 0.5,
+            pt: (2.0, 0.0),
+        }; // mitad de la arista inferior
+        let h_b = PolyHit {
+            seg_idx: 2,
+            u: 0.5,
+            pt: (2.0, 4.0),
+        }; // mitad de la arista superior
 
         let cut = build_cut_polys(&wp, h_a, h_b).expect("debería poder cortar el cuadrado");
 
-        assert_eq!(cut.poly1, vec![(2.0, 0.0), (4.0, 0.0), (4.0, 4.0), (2.0, 4.0)]);
-        assert_eq!(cut.poly2, vec![(2.0, 4.0), (0.0, 4.0), (0.0, 0.0), (2.0, 0.0)]);
+        assert_eq!(
+            cut.poly1,
+            vec![(2.0, 0.0), (4.0, 0.0), (4.0, 4.0), (2.0, 4.0)]
+        );
+        assert_eq!(
+            cut.poly2,
+            vec![(2.0, 4.0), (0.0, 4.0), (0.0, 0.0), (2.0, 0.0)]
+        );
         assert_eq!(cut.cut_a, (2.0, 0.0));
         assert_eq!(cut.cut_b, (2.0, 4.0));
 
@@ -595,10 +609,17 @@ mod tests {
 
     #[test]
     fn build_cut_polys_returns_none_when_a_fragment_is_degenerate() {
-
         let wp = vec![(0.0, 0.0), (4.0, 0.0), (0.0, 4.0)];
-        let h_a = PolyHit { seg_idx: 0, u: 0.3, pt: (1.2, 0.0) };
-        let h_b = PolyHit { seg_idx: 0, u: 0.6, pt: (2.4, 0.0) };
+        let h_a = PolyHit {
+            seg_idx: 0,
+            u: 0.3,
+            pt: (1.2, 0.0),
+        };
+        let h_b = PolyHit {
+            seg_idx: 0,
+            u: 0.6,
+            pt: (2.4, 0.0),
+        };
         assert!(build_cut_polys(&wp, h_a, h_b).is_none());
     }
 }

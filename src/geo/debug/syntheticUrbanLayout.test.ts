@@ -1,4 +1,3 @@
-// src/geo/debug/syntheticUrbanLayout.test.ts
 import { describe, it, expect } from 'vitest';
 import { generateSyntheticUrbanLayout, Mulberry32 } from './syntheticUrbanLayout';
 import { polyArea } from '../math/polygonEngine';

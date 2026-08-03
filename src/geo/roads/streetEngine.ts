@@ -60,8 +60,6 @@ function inSweep(ang: number, a: number, b: number): boolean {
   return rel <= sweep;
 }
 
-/** Radio máximo (m) que puede alcanzar un ochave de esquina. Constante por ahora;
- * si en el futuro se expone UI para configurarlo, mover a un store Zustand. */
 const FILLET_MAX_RADIUS_M = 8;
 
 export function getFilletRadiusForAngle(angleDeg: number, roadHalfWidthM?: number): number {

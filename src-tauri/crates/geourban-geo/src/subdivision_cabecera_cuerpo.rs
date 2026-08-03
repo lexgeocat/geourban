@@ -2,17 +2,6 @@ use crate::math::{centroid, convex_hull, poly_area};
 use crate::types::{LotResult, Pt};
 use std::cell::Cell;
 
-// ─── Guardas de terminación para geometría de escala patológica ────────
-// (Fase 2.6, fuzz con coordenadas escaladas ×1e5–1e8 — ver
-// auditoria-para-mejora.md). Mismo mecanismo que el lado TS
-// (subdivisionCabeceraCuerpo.ts): un presupuesto duro de operaciones de
-// recorte/bisección como garantía final de terminación, más un épsilon
-// de deduplicación relativo a la escala del polígono con breakeven
-// exacto en 1e-7 para cualquier diagonal < 1e5 (cero impacto en
-// paridad para geometría sana o real). `thread_local!` porque, a
-// diferencia de JS, distintas invocaciones del comando Tauri pueden
-// correr en threads distintos del runtime async — mismo patrón que
-// GEOS_CTX en boolean_ops.rs.
 const OP_BUDGET_MAX: i64 = 2_000_000;
 
 thread_local! {
@@ -68,11 +57,7 @@ fn set_current_dist_eps(pts: &[Pt]) {
 fn current_dist_eps() -> f64 {
     CURRENT_DIST_EPS.with(|c| c.get())
 }
-/// Guarda de seguridad contra escala patológica de coordenadas (Fase 2.6
-/// de auditoria-para-mejora.md, fuzz con ×1e5–1e8). Espejo exacto de
-/// MAX_HB_DIM/MAX_HB_TOTAL_LOTS en subdivisionCabeceraCuerpo.ts. Nunca se
-/// activa con geometría sana (los fixtures de paridad no superan ~20
-/// lotes), así que no cambia ningún snapshot existente.
+
 const MAX_HB_DIM: i64 = 400;
 const MAX_HB_TOTAL_LOTS: usize = 1200;
 fn lerp(a: Pt, b: Pt, t: f64) -> Pt {
@@ -99,8 +84,6 @@ fn bisect<F: Fn(f64) -> f64>(f: &F, lo: f64, hi: f64, target: f64) -> f64 {
     }
     (a + b) / 2.0
 }
-
-// ─── Envolvente cuadrilátera del manzano ────────────────────────────────
 
 fn min_area_bounding_quad(pts: &[Pt]) -> Vec<Pt> {
     let hull = convex_hull(pts);
@@ -323,8 +306,6 @@ fn order_quad_long(pts: &[Pt]) -> [Pt; 4] {
     }
 }
 
-// ─── Primitivas de recorte sobre el contorno real ──────────────────────
-
 fn hb_clean_poly(pts_in: Vec<Pt>) -> Vec<Pt> {
     let mut p = pts_in;
     let mut changed = true;
@@ -475,8 +456,6 @@ fn hb_poly_slice_at_u_clamped(
     });
     raw
 }
-
-// ─── Reparto de columnas/filas (cabecera vs cuerpo) ────────────────────
 
 #[derive(Debug, Clone, Copy)]
 struct HbConfig {
@@ -775,14 +754,6 @@ fn hb_build_zone(
         eq_split = true;
     }
 
-    // Guarda de escala (Fase 2.6): n_cols puede llegar a MAX_HB_DIM
-    // (400) pero el presupuesto de lotes restante puede ser mucho
-    // menor — no precalculamos por bisección más cortes de los que el
-    // loop de abajo va a consumir antes de que *lot_budget llegue a 0
-    // (cada columna de esta zona consume exactamente 1 lote, ya que
-    // n_rows siempre es 1 acá). El acceso a f_cuts más abajo usa
-    // `.get()` con fallback seguro por si el margen no alcanzara. No
-    // cambia el resultado en geometría sana.
     let cut_cols = n_cols.min((*lot_budget as i64 + 2).max(1));
 
     let mut f_cuts: Vec<f64> = vec![0.0];
@@ -920,11 +891,6 @@ fn hb_build_body_zone(
         return;
     }
     let row_target = zone_total / n_rows as f64;
-
-    // Guarda de escala (Fase 2.6): mismo criterio que hb_build_zone.
-    // Cada fila de cuerpo puede generar más de 1 lote (bodyCols=2, o
-    // más vía el desdoble force_single_col de abajo), así que el
-    // margen es más generoso. No cambia el resultado en geometría sana.
     let cut_rows = n_rows.min((*lot_budget as i64 + 8).max(1));
 
     let mut row_cuts: Vec<f64> = vec![u_a];
@@ -1070,9 +1036,7 @@ fn hb_build_body_zone(
                             0.0
                         }
                     };
-                    // Mismo clamp que arriba: no precalculamos más
-                    // sub-cortes de los que lot_budget podría llegar a
-                    // consumir.
+
                     let sub_cut_rows = n_sub_rows.min((*lot_budget as i64 + 4).max(1));
                     let sub_target = col_area / n_sub_rows as f64;
                     let mut sub_cuts: Vec<f64> = vec![u_min_col];
@@ -1314,10 +1278,6 @@ fn hb_merge_head_remainders(lots: Vec<HbLot>, target_lot_area: f64) -> Vec<HbLot
     const THRESHOLD: f64 = 0.8;
 
     let mut result = lots;
-    // Guarda redundante (Fase 2.6): el bucle ya está autoacotado (cada
-    // fusión exitosa reduce result.len() en 1), pero agregamos un
-    // guard explícito + tick del presupuesto de operaciones por
-    // consistencia con el resto del módulo.
     let guard_max = result.len() + 8;
     let mut guard = 0usize;
     loop {
@@ -1369,10 +1329,6 @@ fn hb_merge_head_remainders(lots: Vec<HbLot>, target_lot_area: f64) -> Vec<HbLot
     }
     result
 }
-
-// ─── Punto de entrada ───────────────────────────────────────────────────
-
-/// <- `subdivideManzanoCabeceraCuerpo` (método `auto`, default de la app)
 pub fn subdivide_manzano_cabecera_cuerpo(
     mzn_pts: &[Pt],
     target_area_m2: f64,
@@ -1382,9 +1338,6 @@ pub fn subdivide_manzano_cabecera_cuerpo(
     if mzn_pts.len() < 3 {
         return Vec::new();
     }
-    // Reset del presupuesto de operaciones + épsilon de escala — ver
-    // comentario junto a OP_BUDGET_MAX/dist_eps_for_poly más arriba
-    // (Fase 2.6).
     reset_op_budget();
     set_current_dist_eps(mzn_pts);
 
@@ -1442,15 +1395,6 @@ pub fn subdivide_manzano_cabecera_cuerpo(
         })
         .collect()
 }
-
-// ─── Self-check mínimo (la paridad real está en tests/parity_cabecera_cuerpo.rs) ─
-//
-// Este bloque es solo un smoke test barato: confirma que el motor corre
-// sin panic sobre entradas razonables y devuelve lotes con area > 0. La
-// paridad TS↔Rust (auditoria-para-mejora.md §6 Fase 2.2) se valida contra
-// el snapshot JSON versionado en `src/geo/subdivision/__parity__/paritySnapshot.json`
-// desde el integration test `tests/parity_cabecera_cuerpo.rs`.
-
 #[cfg(test)]
 mod smoke_tests {
     use super::*;
@@ -1469,8 +1413,6 @@ mod smoke_tests {
 
     #[test]
     fn subdivide_manzano_cabecera_cuerpo_idempotente_sobre_5_manzanos() {
-        // Idempotencia: misma entrada -> mismo count y misma suma de areas.
-        // Si el motor introdujera orden aleatorio entre llamadas, fallaria.
         let rings: &[(&str, Vec<Pt>, f64, f64, Option<(f64, f64)>)] = &[
             (
                 "rect_100x60",

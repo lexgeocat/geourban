@@ -12,8 +12,6 @@ use serde_json::{json, Value};
 
 const NARROW_RATIO: f64 = 1.6;
 
-// ─── computeCuts ──────────────────────────────────────────────────────
-
 fn compute_cuts(
     half_poly: &[Pt],
     half_ext: Extent1D,
@@ -102,8 +100,6 @@ fn compute_cuts(
     Some(cuts)
 }
 
-// ─── computeLotsOnHalf ──────────────────────────────────────────────────
-
 fn compute_lots_on_half(
     full_poly: &[Pt],
     ext_l: Extent1D,
@@ -182,8 +178,6 @@ fn compute_lots_on_half(
     }
     lots
 }
-
-// ─── subdivideHalf ──────────────────────────────────────────────────────
 
 fn subdivide_half(
     poly: &[Pt],
@@ -290,9 +284,6 @@ fn subdivide_half(
     }
 }
 
-// ─── subdivideManzanoAuto (PCA / modo2) ────────────────────────────────
-
-/// <- `subdivideManzanoAuto`
 pub fn subdivide_manzano_auto(
     mzn_pts: &[Pt],
     target_area_m2: f64,
@@ -500,9 +491,6 @@ pub fn subdivide_manzano_auto(
     all_lots
 }
 
-// ─── subdivideManzanoExact ──────────────────────────────────────────────
-
-/// <- `subdivideManzanoExact`
 pub fn subdivide_manzano_exact(
     mzn_pts: &[Pt],
     target_area_m2: f64,
@@ -625,9 +613,6 @@ pub fn subdivide_manzano_exact(
     all_lots
 }
 
-// ─── sliceBisectManzano (manual-slice) ─────────────────────────────────
-
-/// <- `sliceBisectManzano`
 pub fn slice_bisect_manzano(
     wp: &[Pt],
     target_area_m2: f64,
@@ -948,9 +933,6 @@ pub fn slice_bisect_manzano(
     }
     best
 }
-
-// ─── Saneo + dispatchers ────────────────────────────────────────────────
-
 fn sanitize_lot_results(lots: Vec<LotResult>, context: &str) -> Vec<LotResult> {
     let mut out = Vec::with_capacity(lots.len());
     for lot in lots {
@@ -965,11 +947,6 @@ fn sanitize_lot_results(lots: Vec<LotResult>, context: &str) -> Vec<LotResult> {
         let mut pts = cleaned;
         pts.pop(); // sanitize_ring cierra el anillo; volvemos a anillo abierto (== `.slice(0,-1)` en TS)
 
-        // lot.area_m2/front_m/depth_m pueden haberse calculado más arriba
-        // (dentro del algoritmo de subdivisión) a partir de geometría
-        // todavía sin sanear, y quedar no-finitos aunque los PUNTOS ya se
-        // hayan limpiado acá. En el camino sano esto nunca dispara — no
-        // cambia ningún snapshot de paridad existente.
         let area_m2 = if lot.area_m2.is_finite() {
             lot.area_m2
         } else {
@@ -997,8 +974,6 @@ fn sanitize_lot_results(lots: Vec<LotResult>, context: &str) -> Vec<LotResult> {
     out
 }
 
-/// <- `subdivideManzano` (dispatcher por `ManzanoLoteMethod`)
-/// <- `subdivideManzano` (dispatcher por `ManzanoLoteMethod`)
 pub fn subdivide_manzano(
     ring_pts: &[Pt],
     method: ManzanoLoteMethod,
@@ -1012,15 +987,6 @@ pub fn subdivide_manzano(
 
     let mut pts: Vec<Pt> = ring_pts.to_vec();
 
-    // Mismo criterio que subdivideManzano (subdivisionAlgorithms.ts,
-    // Fase 2.6): un anillo con vértices no-finitos es entrada
-    // corrupta/no confiable — este comando recibe rings del frontend
-    // sin garantías, así que se rechaza directamente (Vec vacío) en vez
-    // de intentar salvarlo filtrando los vértices malos, que puede
-    // dejar un anillo parcial casi degenerado capaz de seguir
-    // produciendo NaN/Infinity más abajo (PCA, recortes, bisección).
-    // sanitize_ring() mantiene su contrato de "filtrar y continuar"
-    // para sus otros usos.
     if pts.iter().any(|p| !p.0.is_finite() || !p.1.is_finite()) {
         return Vec::new();
     }
@@ -1071,9 +1037,6 @@ fn to_geojson_feature(pts: &[Pt], properties: Value) -> Value {
         "geometry": crate::geojson::polygon_geometry_from_outer_ring(&ring),
     })
 }
-
-/// <- `subdivide` (dispatcher por `SubdivisionMethod`, incluye manual-slice).
-
 pub fn subdivide(polygon_coordinates: &[Vec<Pt>], opts: &SubdivisionOptions) -> SubdivisionResult {
     let ring = match polygon_coordinates.first() {
         Some(r) if r.len() >= 3 => r,

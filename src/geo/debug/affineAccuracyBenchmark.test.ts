@@ -1,12 +1,3 @@
-// src/geo/debug/affineAccuracyBenchmark.test.ts
-//
-// Fase 5.4 (auditoria-para-mejora.md) — regresión automática: si algún
-// cambio futuro en affineApprox.ts/affineCache.ts degrada la precisión
-// de la linealización más allá de MAX_ACCEPTABLE_ERROR_M, este test
-// rompe en CI. Extiende affineApprox.test.ts/affineCache.test.ts (que
-// solo validaban la grilla 5x5 de ajuste) a TODOS los vértices reales
-// del dataset sintético.
-
 import { describe, it, expect } from 'vitest';
 import { runAffineAccuracySuite } from './affineAccuracyBenchmark';
 import { MAX_ACCEPTABLE_ERROR_M } from '../crs/affineCache';

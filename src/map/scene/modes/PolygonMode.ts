@@ -89,11 +89,6 @@ export function activatePolygon(ctx: ModeContext): void {
     const feature = event.feature as Feature<Geometry>;
     const areaKind = useDrawStore.getState().areaKind;
 
-    // Dibujar en modo "lote" con Polígono/Rectángulo = definir el
-    // PERÍMETRO del sitio. Va siempre a su propia capa "Perímetro"
-    // (nunca a la capa activa de otro tipo) y queda intacto: el pipeline
-    // de manzanos/vías trabaja sobre una copia de trabajo, nunca sobre
-    // este feature (ver ensurePerimeterWorkingCopies en recomputeManzanos.ts).
     if (areaKind === 'lote') {
       const layerId = resolveOrCreateLayerForKind('perimetro');
       void (async () => {
@@ -109,7 +104,6 @@ export function activatePolygon(ctx: ModeContext): void {
     void (async () => {
       const layerId = await requireLayerForKind(areaKind);
       if (!layerId) {
-        // Canceló: no puede quedar geometría sin capa asignada.
         src.removeFeature(feature);
         src.changed();
         return;

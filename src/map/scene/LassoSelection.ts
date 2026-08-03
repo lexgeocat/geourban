@@ -21,7 +21,6 @@ export class LassoSelection extends Interaction {
   private anchor: number[] | null = null;
   private lassoPoints: number[][] = [];
   private dragging_ = false;
-  /** Último current point para el preview. */
   private current_: number[] | null = null;
 
   private static readonly MIN_DRAG_PX = 3;
@@ -42,7 +41,6 @@ export class LassoSelection extends Interaction {
     this.onCancel = options.onCancel;
   }
 
-  /** Snapshot del preview actual (para PostrenderPainter). */
   getPreview(): LassoPreview {
     if (!this.dragging_ || !this.anchor) return null;
     if (this.mode === 'rect') {
@@ -68,7 +66,6 @@ export class LassoSelection extends Interaction {
       const cur = evt.coordinate as number[];
       this.current_ = cur;
       if (this.mode === 'lasso') {
-        // Sample point only if moved at least a few pixels from last
         const last = this.lassoPoints[this.lassoPoints.length - 1];
         if (last) {
           const lastPx = this.hostMap.getPixelFromCoordinate(last as [number, number]);
@@ -102,7 +99,6 @@ export class LassoSelection extends Interaction {
           Math.max(start[0], end[0]),
           Math.max(start[1], end[1]),
         ];
-        // Si el rectángulo es demasiado pequeño, lo tratamos como cancel
         const minPx = 4;
         const sp = this.hostMap.getPixelFromCoordinate(start as [number, number]);
         const ep = this.hostMap.getPixelFromCoordinate(end as [number, number]);
@@ -116,9 +112,7 @@ export class LassoSelection extends Interaction {
         return false;
       }
 
-      // lasso: necesitamos al menos 3 puntos para formar un polígono
       const poly = this.lassoPoints.slice();
-      // Cerramos el polígono con el último current si no está
       if (poly.length > 0) {
         const last = poly[poly.length - 1];
         if (!last || last[0] !== end[0] || last[1] !== end[1]) poly.push(end);

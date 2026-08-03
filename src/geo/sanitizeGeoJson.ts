@@ -9,8 +9,6 @@ function sanitizePolygonRings(coords: Pt[][], context: string): Pt[][] | null {
   const rings: Pt[][] = [outer];
   for (let i = 1; i < coords.length; i++) {
     const hole = sanitizeRing(coords[i] as Pt[], { context: `${context}.hole` });
-    // Un hueco degenerado se descarta solo — no invalida el contorno
-    // exterior, que ya quedó saneado y válido.
     if (hole) rings.push(hole);
   }
   return rings;
@@ -40,13 +38,6 @@ export interface SanitizeFeatureCollectionResult {
   droppedCount: number;
 }
 
-/**
- * Sanea todos los polígonos/multipolígonos de una FeatureCollection antes
- * de que su geometría entre al resto del pipeline (manzanos, vías,
- * subdivisión). Features cuya geometría poligonal quede irrecuperable se
- * descartan; el resto de tipos de geometría (Point, LineString, etc.) pasa
- * sin tocar.
- */
 export function sanitizeFeatureCollectionRings(fc: FeatureCollection, context: string): SanitizeFeatureCollectionResult {
   const features: Feature[] = [];
   let dropped = 0;

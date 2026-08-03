@@ -1,19 +1,3 @@
-// src/geo/debug/spatialIndexBenchmark.ts
-//
-// Fase 4.1/4.2 (auditoria-para-mejora.md §6, Fase 4) — mide la consulta de
-// viewport del lado JS (RBush, src/map/spatialIndex.ts) contra el índice
-// nativo rstar (Rust vía Tauri, src-tauri/src/geo_bridge.rs). El dato
-// decide el umbral (4.2): con cuántas features conviene pagar el `invoke`
-// en vez de resolver en el RBush local.
-//
-// No toca el índice global de la app: usa instancias standalone del
-// `SpatialIndex` JS y el estado nativo solo para benchmark. El estado
-// nativo es multi-slot (`geo_bridge::SpatialIndexState`): este benchmark
-// usa el slot `"benchmark"` y jamás compite con el slot `"viewport"` que
-// la Fase 4.1 cableará al render real.
-//
-// Requiere runtime Tauri (invoca el índice nativo vía invoke).
-
 import GeoJSON from 'ol/format/GeoJSON.js';
 import type Feature from 'ol/Feature.js';
 import type Polygon from 'ol/geom/Polygon.js';
@@ -35,7 +19,6 @@ export interface SpatialIndexBenchmarkResult {
   nativeLoadMs: number;
   jsQueryAvgMs: number;
   nativeQueryAvgMs: number;
-  /** Búsqueda pura dentro de Rust (queryMs que reporta el comando, sin IPC ni serialización). */
   nativeSearchAvgMs: number;
   jsHitCount: number;
   nativeHitCount: number;
@@ -73,21 +56,17 @@ function makeQueryRects(extent: [number, number, number, number]): QueryRect[] {
 
 export async function runSpatialIndexBenchmark(datasetSize: number): Promise<SpatialIndexBenchmarkResult> {
   const { collection, extent, count } = generateSyntheticManzanos(datasetSize);
-  // Mismo parseo que restoreDrawFeatures (mapStore.ts): sin reproyección,
-  // el dataset ya está en el plano interno del proyecto (EPSG:3857).
   const features = geoJsonFormat.readFeatures(collection, {
     dataProjection: 'EPSG:3857',
     featureProjection: 'EPSG:3857',
   }) as Feature<Polygon>[];
 
-  // Índice JS standalone (no toca el singleton global de la app).
   const jsIndex = new SpatialIndex();
   const t0 = performance.now();
   jsIndex.load(features);
   const jsLoadMs = performance.now() - t0;
   const jsTotal = jsIndex.size;
 
-  // Índice nativo: bulk-load con los bboxes de los mismos features.
   const items: SpatialIndexItem[] = [];
   for (let i = 0; i < features.length; i++) {
     const f = features[i];
@@ -108,7 +87,6 @@ export async function runSpatialIndexBenchmark(datasetSize: number): Promise<Spa
   let nativeSearchAvgMs = 0;
   let jsHitCount = 0;
   let nativeHitCount = 0;
-  // Ambos índices deben haber cargado la misma cantidad de features.
   let parityOk = jsTotal === nativeLoaded;
 
   try {

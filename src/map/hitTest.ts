@@ -9,11 +9,9 @@ import type { SpatialIndex } from './spatialIndex';
 import { pointInPoly } from '../geo/math/polygonEngine';
 
 export interface HitTestOptions {
-  /** Tolerancia en unidades de mapa (pixelTolerance * resolución). */
   tolerance: number;
   exclude?: Feature<Geometry> | null;
   filter?: (feature: Feature<Geometry>) => boolean;
-  /** Features adicionales a incluir en el pool de candidatos (p.ej. calles/rotondas "fantasma" — ver roadSnapSource.ts). */
   extraFeatures?: Array<Feature<Geometry>>;
 }
 

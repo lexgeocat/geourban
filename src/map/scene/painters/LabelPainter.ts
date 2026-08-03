@@ -104,13 +104,6 @@ function isColliding(
 const LOD_TIER1_FEATURE_THRESHOLD = 350;
 const LOD_TIER2_FEATURE_THRESHOLD = 900;
 
-/**
- * Por encima de esto, ni siquiera se recorre la lista completa de features
- * visibles: con un viewport que muestra decenas de miles de polígonos las
- * etiquetas son ilegibles de todos modos, y el solo O(n) de iterar (sin
- * dibujar nada) ya cuesta decenas de ms por frame en un dataset de 500k.
- * Se resuelve la selección directo por id en vez de escanear.
- */
 const HARD_VISIBLE_CAP = 15_000;
 
 function computeLodTier(visibleCount: number): 0 | 1 | 2 {

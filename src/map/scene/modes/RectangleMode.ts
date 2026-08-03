@@ -27,7 +27,6 @@ export function activateRectangle(ctx: ModeContext): void {
      const feature = event.feature as Feature<Geometry>;
      const areaKind = useDrawStore.getState().areaKind;
 
-     // Mismo criterio que PolygonMode: rectángulo en modo "lote" = perímetro.
      if (areaKind === 'lote') {
        const layerId = resolveOrCreateLayerForKind('perimetro');
        void (async () => {

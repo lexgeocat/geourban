@@ -8,7 +8,6 @@ export function resolutionAwareSegments(
 ): number {
   if (!(radiusMapUnits > 0) || !(resolution > 0)) return MIN_SEGMENTS;
   const errorMapUnits = pxError * resolution;
-  // sagitta ≈ r * (1 - cos(θ/2))  ⇒  despejamos el ángulo máximo por segmento.
   const ratio = Math.min(1, errorMapUnits / radiusMapUnits);
   const maxAngle = 2 * Math.acos(1 - ratio);
   if (!(maxAngle > 0) || !isFinite(maxAngle)) return MAX_SEGMENTS;

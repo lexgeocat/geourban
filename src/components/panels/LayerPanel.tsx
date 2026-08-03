@@ -262,9 +262,7 @@ interface LayerRowData {
   name: string;
   visible: boolean;
   opacity: number;
-  /** Color único (contorno + relleno derivado en render). */
   color: string;
-  /** Solo lectura, para el swatch del listado inferior. */
   fillColor: string;
   showLabel: boolean;
   showCota: boolean;
@@ -677,7 +675,6 @@ export default function LayerPanel() {
   const streets = useStreetStore((s) => s.streets);
   const roundabouts = useRoundaboutStore((s) => s.roundabouts);
   const featureCounts = useMemo(() => computeLayerFeatureCounts(drawSource),
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   [drawSource, tick, streets, roundabouts]);
   const selectedCount = useSelectionStore((s) => s.selectedIds.size);
 

@@ -1,15 +1,4 @@
-﻿// src/workers/geoWorkerClient.ts
-//
-// Fase 2.7 — motor de geometría 100% nativo (Rust/GEOS vía Tauri).
-//
-// El motor JS de referencia (jsts/polygon-clipping en el Web Worker) fue
-// retirado tras validar la paridad en la app real con datos de producción
-// (A/B con validación en sombra: 0 mismatches, 0 fallbacks). Desde acá
-// todas las operaciones se resuelven con `invoke()` a la crate
-// `geourban-geo`. Sin runtime Tauri no hay motor: la versión web quedó
-// congelada en el branch `web-version`.
-
-import { invoke } from '@tauri-apps/api/core';
+﻿import { invoke } from '@tauri-apps/api/core';
 import type { FeatureCollection, Polygon as GeoJsonPolygon } from 'geojson';
 import type { SubdivisionOptions, SubdivisionResult, ManzanoLoteMethod } from '../geo/subdivision/types';
 import type { LotResult } from '../geo/math/polygonEngine';
@@ -313,14 +302,6 @@ export async function matchFragmentsBatchInWorker(
     throw err;
   }
 }
-
-// ─── Fase 4.1 — índice espacial nativo (rstar) ─────────────────────────
-// Consulta de viewport del lado Rust (auditoria-para-mejora.md §6, Fase 4).
-// El índice se hidrata con bulk-load y se consulta por comando; espejo del
-// `SpatialIndex` JS (src/map/spatialIndex.ts) para proyectos grandes.
-//
-// El estado nativo es multi-slot: `slot` aísla usos concurrentes
-// (`"benchmark"` para el DebugPanel, `"viewport"` para el render real).
 
 export interface SpatialIndexItem {
   id: string | number;

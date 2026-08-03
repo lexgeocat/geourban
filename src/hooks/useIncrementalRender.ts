@@ -1,4 +1,3 @@
-// src/hooks/useIncrementalRender.ts
 import { useEffect, useRef, useState } from 'react';
 import type { RefObject } from 'react';
 

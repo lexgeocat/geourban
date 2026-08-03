@@ -58,8 +58,6 @@ function computeStats(drawSource: any, streets: any[]): StatsData {
     if (kind === 'perimetro') return; // referencia intacta — no forma parte de las métricas operativas
 
     const isManzana = kind === 'manzana';
-    // Un manzano ya lotizado no aporta área propia: su superficie ya está
-    // representada por sus lotes hijos. Sumarlo acá duplica el área total.
     if (isManzana && getLotStatus(f) === 'subdivided') return;
 
     const coords = (geom as Polygon).getCoordinates();
@@ -92,7 +90,6 @@ function computeStats(drawSource: any, streets: any[]): StatsData {
     }
   });
 
-  // Área vial = suma de (longitud * ancho) de cada calle
   for (const s of streets) {
     const lenM = streetLengthMetricM(s);
     result.streetAreaM2 += lenM * s.widthM;
@@ -114,7 +111,6 @@ export default function StatsPanel() {
   const tick = useDrawSourceTick(drawSource);
 
   const stats = useMemo(() => computeStats(drawSource, streets),
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   [drawSource, streets, tick]);
 
   if (!visible) return null;

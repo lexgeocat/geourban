@@ -1,4 +1,3 @@
-// src/geo/debug/concurrencyStressBenchmark.test.ts
 import { describe, it, expect } from 'vitest';
 import { buildIrregularManzanoRings, sampleEventLoopStall } from './concurrencyStressBenchmark';
 import { polyArea } from '../math/polygonEngine';

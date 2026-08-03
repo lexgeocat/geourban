@@ -1,28 +1,3 @@
-// src/geo/debug/concurrencyStressBenchmark.ts
-//
-// Fase 6.4 (auditoria-para-mejora.md) — pruebas de carga CONCURRENTE
-// contra el motor nativo (Rust/GEOS vía Tauri).
-//
-// Objetivo: confirmar que varios comandos geométricos en paralelo
-// (subdivideManzanoBatch, computeRoadNetworkNet, matchFragmentsBatch) no
-// compiten de forma visible con la interacción en curso. El harness mide:
-//
-//   1. Baseline de stall del event loop (gap máximo entre frames rAF en
-//      reposo) — el presupuesto que la interacción real tolera.
-//   2. Fase serial: N chunks de subdivisión corridos uno atrás del otro.
-//   3. Fase paralela: los mismos N chunks lanzados con `Promise.all` —
-//      la diferencia serial/paralela es la ganancia REAL de concurrencia
-//      del runtime async de Tauri (los comandos sync van a un thread pool
-//      separado; si se serializaran, speedup ≈ 1).
-//   4. Fase mixta: subdivisión en paralelo con red vial y reconciliación
-//      de fragmentos — los tres tipos de comando del motor a la vez.
-//   5. Stall del event loop MEDIDO DURANTE la fase paralela: si el UI
-//      thread se bloquea o el IPC satura, el gap máximo de frames sube.
-//
-// A propósito NO toca stores ni drawSource: es tooling de debug que corre
-// sobre rings sintéticos deterministas, igual que spatialIndexBenchmark.
-// Requiere runtime Tauri (invoca el motor nativo real).
-
 import { Mulberry32 } from './syntheticUrbanLayout';
 import {
   subdivideManzanoBatchInWorker,
@@ -33,14 +8,6 @@ import type { ManzanoLoteMethod } from '../subdivision/types';
 import type { Street } from '../../store/entities/streetStore';
 import type { RoundaboutParams } from '../roundabout/roundaboutEngine';
 import type { CornerMode } from '../roads/ringFillet';
-
-// ─── Rings de manzano irregulares, deterministas ───────────────────────
-//
-// Star-shaped respecto al centroide (ángulos ordenados + radios aleatorios
-// en [0.45, 1.0] × R): garantiza polígono simple sin validar después —
-// mismo criterio de garantía que `buildIrregularPerimeter` en el layout
-// urbano sintético (6.1). Son la familia de formas que la grilla urbana
-// real produce (manzanos recortados por avenidas diagonales/rotondas).
 
 export function buildIrregularManzanoRings(
   count: number,
@@ -68,7 +35,6 @@ export function buildIrregularManzanoRings(
   return rings;
 }
 
-// ─── Red vial sintética mínima (para computeRoadNetworkNet) ─────────────
 
 function buildSyntheticRoadNetwork(): { streets: Street[]; roundabouts: RoundaboutParams[] } {
   const streets: Street[] = [
@@ -100,9 +66,6 @@ function buildSyntheticRoadNetwork(): { streets: Street[]; roundabouts: Roundabo
 }
 
 function buildMatchItems(rings: Array<Array<[number, number]>>) {
-  // Cada grupo: el ring dividido en 3 "fragmentos" simulados (trozos del
-  // anillo) contra 2 "miembros" — el matcher greedy de solapamiento es el
-  // que corre en producción tras cada union GEOS.
   return rings.slice(0, 12).map((ring, i) => {
     const n = ring.length - 1;
     const a = ring[Math.floor(n * 0.1)];
@@ -125,17 +88,12 @@ function buildMatchItems(rings: Array<Array<[number, number]>>) {
   });
 }
 
-// ─── Stall del event loop (gap máximo entre frames rAF) ────────────────
-
 export interface StallSample {
   maxGapMs: number;
   avgGapMs: number;
   frames: number;
 }
 
-/** Muestrea `sampleMs` ms de frames rAF y devuelve el gap MÁXIMO entre
- * frames consecutivos — proxy directo de "cuánto se traba la UI".
- * En entornos sin rAF (tests de node) cae a `setTimeout` a ~16ms. */
 export function sampleEventLoopStall(sampleMs: number): Promise<StallSample> {
   const raf =
     typeof requestAnimationFrame === 'function'
@@ -162,8 +120,6 @@ export function sampleEventLoopStall(sampleMs: number): Promise<StallSample> {
     raf(tick);
   });
 }
-
-// ─── Fases ─────────────────────────────────────────────────────────────
 
 export interface StressPhase {
   phase: string;
@@ -283,7 +239,6 @@ async function runMixedPhase(rings: Array<Array<[number, number]>>): Promise<Str
   const matchItems = buildMatchItems(rings);
   const t0 = performance.now();
   await Promise.all([
-    // subdivisión pesada (2 chunks) —
     subdivideManzanoBatchInWorker(
       chunks[0]?.map((ring, i) => ({
         id: `mixed-sub-${i}`,
@@ -302,9 +257,7 @@ async function runMixedPhase(rings: Array<Array<[number, number]>>): Promise<Str
         frontMinM: 12,
       })) ?? [],
     ),
-    // red vial completa (union GEOS de 5 calles + 2 rotondas) —
     computeRoadNetworkNetInWorker(streets, roundabouts, CORNER_MODE),
-    // reconciliación de fragmentos (greedy por solapamiento) —
     matchFragmentsBatchInWorker(matchItems),
   ]);
   return {
@@ -316,14 +269,9 @@ async function runMixedPhase(rings: Array<Array<[number, number]>>): Promise<Str
     maxMs: performance.now() - t0,
   };
 }
-
-// ─── Harness principal ─────────────────────────────────────────────────
-
 export interface ConcurrencyStressOptions {
-  /** Cantidad de manzanos sintéticos a subdividir (múltiplo de CHUNK). */
   ringCount?: number;
   seed?: number;
-  /** Ms de muestreo del baseline de stall en reposo. */
   idleSampleMs?: number;
 }
 
@@ -332,11 +280,9 @@ export interface ConcurrencyStressResult {
   phases: StressPhase[];
   serialElapsedMs: number;
   parallelElapsedMs: number;
-  /** serial / paralela — >1 = el runtime async realmente paraleliza. */
   parallelSpeedup: number;
   idleStallMaxMs: number;
   parallelStallMaxMs: number;
-  /** parallelStall / idleStall — 1 = la UI no percibe la carga. */
   stallDegradationRatio: number;
   lotTotal: number;
   degenerateLots: number;
@@ -356,8 +302,6 @@ export async function runConcurrencyStressBenchmark(
 
   const serial = await runSerialSubdivide(rings);
 
-  // Sample del stall MIENTRAS corren los comandos en paralelo — se toman
-  // dos muestras seguidas para cubrir la ventana completa de trabajo.
   const parallelPromise = runParallelSubdivide(rings, 'subdivide paralelo');
   const stallSample = await sampleEventLoopStall(800);
   const parallel = await parallelPromise;
@@ -383,7 +327,6 @@ export async function runConcurrencyStressBenchmark(
   };
 }
 
-/** Suite estándar de la Fase 6.4 — 3 escalas de rings. */
 export async function runConcurrencyStressSuite(
   scales: ConcurrencyStressOptions[] = [
     { ringCount: 32 },

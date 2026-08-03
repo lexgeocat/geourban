@@ -12,16 +12,9 @@ use crate::roads::{
 };
 use crate::sanitize::{sanitize_ring, sanitize_rings, SanitizeRingOptions};
 use crate::types::{CornerMode, Pt, RoundaboutParams, Street};
-
-// ─── Constantes de seguridad (mismos valores que roadNetworkNet.ts) ────
-
-/// <- `MAX_UNION_POINTS` (roadNetworkNet.ts).
 pub const MAX_UNION_POINTS: usize = 15_000;
-/// <- `MAX_UNION_SHAPES` (roadNetworkNet.ts).
 pub const MAX_UNION_SHAPES: usize = 800;
-/// <- `UNION_TIME_WARNING_MS` (roadNetworkNet.ts).
 pub const UNION_TIME_WARNING_MS: u64 = 300;
-/// <- `UNION_PRECISION` (roadNetworkNet.ts) / `ROAD_UNION_PRECISION` (geoOperations.ts).
 const UNION_PRECISION: f64 = 1e6;
 
 fn round_for_union(v: f64) -> f64 {
@@ -29,7 +22,9 @@ fn round_for_union(v: f64) -> f64 {
 }
 
 fn round_ring_for_union(ring: &[Pt]) -> Vec<Pt> {
-    ring.iter().map(|&(x, y)| (round_for_union(x), round_for_union(y))).collect()
+    ring.iter()
+        .map(|&(x, y)| (round_for_union(x), round_for_union(y)))
+        .collect()
 }
 
 fn close_ring(ring: &[Pt]) -> Vec<Pt> {
@@ -47,34 +42,20 @@ fn close_ring(ring: &[Pt]) -> Vec<Pt> {
     }
 }
 
-// ─── Contexto GEOS por thread ──────────────────────────────────────────
-//
-// En geos 8.x `Geometry<'a>` toma prestado el `ContextHandle`. Como muchas
-// de nuestras funciones crean y combinan `Geometry` locales y necesitan
-// que el `ContextHandle` viva durante toda la operación, lo guardamos en
-// un `thread_local!` con lifetime `'static` (es seguro:
-// `ContextHandle` no contiene referencias, solo un ptr GEOS y un
-// `Box<InnerContext>` propio, ambos liberados en `Drop`).
 thread_local! {
     static GEOS_CTX: RefCell<Option<ContextHandle<'static>>> = const { RefCell::new(None) };
 }
 
-/// Inicializa (si hace falta) el `ContextHandle` del thread actual.
 fn ensure_geos_ctx() {
     GEOS_CTX.with(|cell| {
         let mut borrow = cell.borrow_mut();
         if borrow.is_none() {
             let ctx = ContextHandle::init().expect("GEOS_init_r no debería fallar");
-            // SAFETY: `ContextHandle` no contiene referencias — es dueño
-            // de su ptr GEOS y de su `InnerContext`. El transmute a
-            // `'static` solo wideniza el lifetime.
             let ctx: ContextHandle<'static> = unsafe { std::mem::transmute(ctx) };
             *borrow = Some(ctx);
         }
     });
 }
-
-// ─── Conversión Pt <-> GEOS ─────────────────────────────────────────────
 
 fn ring_to_linear_ring(ring: &[Pt]) -> Result<Geometry<'static>, geos::Error> {
     let closed = close_ring(ring);
@@ -85,25 +66,15 @@ fn ring_to_linear_ring(ring: &[Pt]) -> Result<Geometry<'static>, geos::Error> {
         cs.set_y(i, y)?;
     }
     let geom = Geometry::create_linear_ring(cs)?;
-    // SAFETY: el thread_local context vive hasta el fin del thread, asi
-    // que widenizar el lifetime de la Geometry a `'static` es seguro.
     Ok(unsafe { std::mem::transmute(geom) })
 }
 
-/// Construye un polígono GEOS a partir de un único anillo (sin huecos).
 #[allow(dead_code)]
 fn ring_to_polygon(ring: &[Pt]) -> Result<Geometry<'static>, geos::Error> {
     let shell = ring_to_linear_ring(ring)?;
     let poly = Geometry::create_polygon(shell, vec![])?;
     Ok(unsafe { std::mem::transmute(poly) })
 }
-/// <- `ringIntersectionAreaRaw` (fragmentReconciliation.ts).
-///
-/// Área de la intersección GEOS entre dos anillos, tratados como
-/// polígonos simples (sin huecos). Nunca falla de forma visible al
-/// caller: ante cualquier error de construcción o de la operación
-/// booleana, registra un warning y devuelve `0.0` — mismo criterio que el
-/// JS de origen ("overlap=0 para este par").
 pub(crate) fn ring_intersection_area(a: &[Pt], b: &[Pt]) -> f64 {
     if a.len() < 3 || b.len() < 3 {
         return 0.0;
@@ -162,13 +133,6 @@ fn coord_seq_to_ring(cs: &CoordSeq) -> Result<Vec<Pt>, geos::Error> {
     }
     Ok(out)
 }
-
-/// Extrae los anillos (exterior + huecos) de un polígono o multipolígono.
-///
-/// Acepta cualquier tipo que implemente el trait `Geom` (típicamente
-/// `Geometry` o `ConstGeometry`) para poder consumir tanto geometrías
-/// propias como referencias devueltas por `get_geometry_n`/`get_exterior_ring`,
-/// que en geos 8.x retornan `ConstGeometry`.
 fn polygon_to_rings<'a, G: Geom<'a>>(poly: &G) -> Result<Vec<Vec<Pt>>, geos::Error> {
     let mut rings = Vec::new();
     let exterior = poly.get_exterior_ring()?;
@@ -182,7 +146,9 @@ fn polygon_to_rings<'a, G: Geom<'a>>(poly: &G) -> Result<Vec<Vec<Pt>>, geos::Err
     Ok(rings)
 }
 
-fn split_into_polygon_geoms(geom: &Geometry<'static>) -> Result<Vec<Geometry<'static>>, geos::Error> {
+fn split_into_polygon_geoms(
+    geom: &Geometry<'static>,
+) -> Result<Vec<Geometry<'static>>, geos::Error> {
     let geom_type = geom.geometry_type();
     match geom_type {
         GeometryTypes::Polygon => {
@@ -234,12 +200,15 @@ fn geometry_to_polygons(geom: &Geometry<'static>) -> Result<Vec<Vec<Vec<Pt>>>, g
     }
 }
 
-// ─── Unión con reintento por auto-limpieza ─────────────────────────────
-
-fn union_polygons_with_retry(polygons: &[Vec<Vec<Pt>>], warn_prefix: &str) -> Option<Geometry<'static>> {
+fn union_polygons_with_retry(
+    polygons: &[Vec<Vec<Pt>>],
+    warn_prefix: &str,
+) -> Option<Geometry<'static>> {
     ensure_geos_ctx();
-    let base: Vec<Geometry<'static>> =
-        polygons.iter().filter_map(|rings| rings_to_polygon(rings).ok()).collect();
+    let base: Vec<Geometry<'static>> = polygons
+        .iter()
+        .filter_map(|rings| rings_to_polygon(rings).ok())
+        .collect();
     if base.is_empty() {
         return None;
     }
@@ -251,8 +220,10 @@ fn union_polygons_with_retry(polygons: &[Vec<Vec<Pt>>], warn_prefix: &str) -> Op
                 "{warn_prefix}: unión directa falló, reintentando con auto-limpieza por polígono individual. {err1:?}"
             );
 
-            let retry_base: Vec<Geometry<'static>> =
-                polygons.iter().filter_map(|rings| rings_to_polygon(rings).ok()).collect();
+            let retry_base: Vec<Geometry<'static>> = polygons
+                .iter()
+                .filter_map(|rings| rings_to_polygon(rings).ok())
+                .collect();
 
             let mut self_cleaned: Vec<Geometry<'static>> = Vec::new();
             for g in &retry_base {
@@ -288,7 +259,9 @@ fn union_polygons_with_retry(polygons: &[Vec<Vec<Pt>>], warn_prefix: &str) -> Op
 
 fn unary_union_of_geoms(polys: Vec<Geometry<'static>>) -> Result<Geometry<'static>, geos::Error> {
     let mut it = polys.into_iter();
-    let first = it.next().expect("unary_union_of_geoms: llamar solo con `polys` no vacío");
+    let first = it
+        .next()
+        .expect("unary_union_of_geoms: llamar solo con `polys` no vacío");
     match it.next() {
         None => {
             let result = first.unary_union()?;
@@ -303,8 +276,6 @@ fn unary_union_of_geoms(polys: Vec<Geometry<'static>>) -> Result<Geometry<'stati
         }
     }
 }
-
-// ─── unionRings (roadNetworkNet.ts) ─────────────────────────────────────
 
 pub fn union_rings(rings: &[Vec<Pt>], context: &str) -> Vec<Vec<Vec<Pt>>> {
     if rings.is_empty() {
@@ -353,8 +324,6 @@ pub fn union_rings(rings: &[Vec<Pt>], context: &str) -> Vec<Vec<Vec<Pt>>> {
     }
 }
 
-// ─── robustUnionRoadNetwork + computeManzanos (geoOperations.ts) ───────
-
 pub fn robust_union_road_network(road_network: &[Vec<Vec<Pt>>]) -> Option<Geometry<'static>> {
     let mut polys: Vec<Vec<Vec<Pt>>> = Vec::new();
 
@@ -369,14 +338,19 @@ pub fn robust_union_road_network(road_network: &[Vec<Vec<Pt>>]) -> Option<Geomet
             } else {
                 "geoOperations.robustUnionRoadNetwork.hole"
             };
-            if let Some(clean) = sanitize_ring(Some(ring.as_slice()), SanitizeRingOptions::default(), ctx) {
+            if let Some(clean) =
+                sanitize_ring(Some(ring.as_slice()), SanitizeRingOptions::default(), ctx)
+            {
                 sanitized_rings.push(clean);
             }
         }
         if sanitized_rings.is_empty() {
             continue;
         }
-        let rounded: Vec<Vec<Pt>> = sanitized_rings.iter().map(|r| round_ring_for_union(r)).collect();
+        let rounded: Vec<Vec<Pt>> = sanitized_rings
+            .iter()
+            .map(|r| round_ring_for_union(r))
+            .collect();
         if rounded[0].len() >= 4 {
             polys.push(rounded);
         }
@@ -386,7 +360,10 @@ pub fn robust_union_road_network(road_network: &[Vec<Vec<Pt>>]) -> Option<Geomet
         return None;
     }
 
-    let total_points: usize = polys.iter().map(|p| p.iter().map(|r| r.len()).sum::<usize>()).sum();
+    let total_points: usize = polys
+        .iter()
+        .map(|p| p.iter().map(|r| r.len()).sum::<usize>())
+        .sum();
     let t0 = Instant::now();
     let result = union_polygons_with_retry(&polys, "computeManzanos");
     let elapsed_ms = t0.elapsed().as_secs_f64() * 1000.0;
@@ -405,14 +382,14 @@ pub fn robust_union_road_network(road_network: &[Vec<Vec<Pt>>]) -> Option<Geomet
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ManzanoFragment {
-    /// <- `origParcelIndex`.
     pub orig_parcel_index: usize,
-    /// Anillos del polígono resultante: `rings[0]` = exterior, resto = huecos.
     pub rings: Vec<Vec<Pt>>,
 }
 
-/// <- `computeManzanos` (src/workers/geoOperations.ts).
-pub fn compute_manzanos(parcels: &[Vec<Vec<Pt>>], road_network: &[Vec<Pt>]) -> Vec<ManzanoFragment> {
+pub fn compute_manzanos(
+    parcels: &[Vec<Vec<Pt>>],
+    road_network: &[Vec<Pt>],
+) -> Vec<ManzanoFragment> {
     ensure_geos_ctx();
     let road_network_polys: Vec<Vec<Vec<Pt>>> = road_network
         .iter()
@@ -430,7 +407,9 @@ pub fn compute_manzanos(parcels: &[Vec<Vec<Pt>>], road_network: &[Vec<Pt>]) -> V
         let parcel_geom = match rings_to_polygon(parcel_rings) {
             Ok(g) => g,
             Err(err) => {
-                log::warn!("computeManzanos: parcela {index} con geometría inválida, se descarta. {err:?}");
+                log::warn!(
+                    "computeManzanos: parcela {index} con geometría inválida, se descarta. {err:?}"
+                );
                 continue;
             }
         };
@@ -439,7 +418,9 @@ pub fn compute_manzanos(parcels: &[Vec<Vec<Pt>>], road_network: &[Vec<Pt>]) -> V
             Some(ru) => match parcel_geom.difference(ru) {
                 Ok(d) => unsafe { std::mem::transmute(d) },
                 Err(err) => {
-                    log::warn!("computeManzanos: difference() falló para la parcela {index}: {err:?}");
+                    log::warn!(
+                        "computeManzanos: difference() falló para la parcela {index}: {err:?}"
+                    );
                     continue;
                 }
             },
@@ -480,8 +461,6 @@ pub fn compute_manzanos(parcels: &[Vec<Vec<Pt>>], road_network: &[Vec<Pt>]) -> V
     out
 }
 
-// ─── computeRoadNetworkNet (roadNetworkNet.ts) ─────────────────────────
-
 #[derive(Debug, Clone, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RoadNetworkNet {
@@ -500,7 +479,6 @@ fn dist_to_segment(p: Pt, a: Pt, b: Pt) -> f64 {
     (p.0 - (a.0 + t * dx)).hypot(p.1 - (a.1 + t * dy))
 }
 
-/// <- `makeSideExtraProbe` (roadNetworkNet.ts), ya evaluado en un punto.
 fn side_extra_at(pt: Pt, streets: &[Street], roundabouts: &[RoundaboutParams]) -> f64 {
     let mut best = 0.0_f64;
 
@@ -550,7 +528,13 @@ fn process_polygons(
                 .enumerate()
                 .map(|(idx, ring)| {
                     let oriented = orient_ring_ccw(ring);
-                    round_ring_reflex(&oriented, ExtraM::Fn(extra), idx > 0, corner_mode, ForceTreat::Fixed(false))
+                    round_ring_reflex(
+                        &oriented,
+                        ExtraM::Fn(extra),
+                        idx > 0,
+                        corner_mode,
+                        ForceTreat::Fixed(false),
+                    )
                 })
                 .collect()
         })
@@ -577,32 +561,40 @@ pub fn compute_road_network_net(
     }
 }
 
-// ─── Smoke tests (Fase 2.0, preservado + extendido) ─────────────────────
-
 #[cfg(test)]
 mod geos_smoke {
     use geos::{Geom, Geometry};
 
     #[test]
     fn geos_union_basico() {
-        let a = Geometry::new_from_wkt("POLYGON((0 0, 10 0, 10 10, 0 10, 0 0))").expect("wkt valido");
-        let b = Geometry::new_from_wkt("POLYGON((5 0, 15 0, 15 10, 5 10, 5 0))").expect("wkt valido");
+        let a =
+            Geometry::new_from_wkt("POLYGON((0 0, 10 0, 10 10, 0 10, 0 0))").expect("wkt valido");
+        let b =
+            Geometry::new_from_wkt("POLYGON((5 0, 15 0, 15 10, 5 10, 5 0))").expect("wkt valido");
 
         let union = a.union(&b).expect("la union deberia resolver sin error");
         let area = union.area().expect("area deberia ser calculable");
 
-        assert!((area - 150.0).abs() < 1e-6, "area de union esperada 150.0, obtenida {area}");
+        assert!(
+            (area - 150.0).abs() < 1e-6,
+            "area de union esperada 150.0, obtenida {area}"
+        );
     }
 
     #[test]
     fn geos_difference_basico() {
-        let a = Geometry::new_from_wkt("POLYGON((0 0, 10 0, 10 10, 0 10, 0 0))").expect("wkt valido");
-        let b = Geometry::new_from_wkt("POLYGON((4 -5, 6 -5, 6 15, 4 15, 4 -5))").expect("wkt valido");
+        let a =
+            Geometry::new_from_wkt("POLYGON((0 0, 10 0, 10 10, 0 10, 0 0))").expect("wkt valido");
+        let b =
+            Geometry::new_from_wkt("POLYGON((4 -5, 6 -5, 6 15, 4 15, 4 -5))").expect("wkt valido");
 
-        let diff = a.difference(&b).expect("la diferencia deberia resolver sin error");
+        let diff = a
+            .difference(&b)
+            .expect("la diferencia deberia resolver sin error");
         let area = diff.area().expect("area deberia ser calculable");
-
-        // Cuadrado de 10x10 (100) menos una franja vertical de 2x10 (20) = 80.
-        assert!((area - 80.0).abs() < 1e-6, "area de diferencia esperada 80.0, obtenida {area}");
+        assert!(
+            (area - 80.0).abs() < 1e-6,
+            "area de diferencia esperada 80.0, obtenida {area}"
+        );
     }
 }

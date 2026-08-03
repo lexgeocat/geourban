@@ -51,10 +51,6 @@ export class DeleteFeaturesCommand extends Command {
     ctx.drawSource.changed();
   }
 
-  // Fase 3.3 — Ctrl+A + Delete sobre una selección grande retiene en
-  // `this.removed` los Feature completos (no solo ids). Sin este
-  // override, el costo real quedaba invisible para el pruning por
-  // bytes de CommandStack.
   override approxMemoryBytes(): number {
     if (this.removed.length === 0) return 256;
     return this.removed.reduce((sum, r) => sum + estimateGeometryBytes(r.feature.getGeometry()), 0);

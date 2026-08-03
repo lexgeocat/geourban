@@ -12,17 +12,11 @@ const GLOW_HUE = '255, 196, 0';
 const PULSE_PERIOD_MS = 1400;
 const PULSE_MIN = 0.62;
 const PULSE_MAX = 1;
-
-/** FPS normal del pulso — datasets chicos, el costo de un map.render() es despreciable. */
 const PULSE_RENDER_FPS = 24;
-/** FPS reducido — evita forzar redraws WebGL caros a 24/s cuando el dataset es grande. */
 const PULSE_RENDER_FPS_HEAVY = 5;
 const PULSE_RENDER_INTERVAL_MS = 1000 / PULSE_RENDER_FPS;
 const PULSE_RENDER_INTERVAL_MS_HEAVY = 1000 / PULSE_RENDER_FPS_HEAVY;
-
-/** Por encima de esto, el pulso baja a PULSE_RENDER_FPS_HEAVY. */
 const HEAVY_DATASET_THRESHOLD = 20_000;
-/** Por encima de esto, se corta la animación: un solo render al cambiar selección, sin loop. */
 const STATIC_HIGHLIGHT_THRESHOLD = 150_000;
 
 function streetCoords(s: Street): Array<[number, number]> {
@@ -38,7 +32,6 @@ export class SelectionHighlightPainter {
   private rafHandle: number | null = null;
   private lastRenderAt = 0;
   private pulseStart = 0;
-  /** Tamaño del dataset — decide si el pulso anima o queda estático. Inyectado en attach(). */
   private getFeatureCount: () => number = () => 0;
 
   private readonly onVisibilityChange = (): void => {
@@ -49,7 +42,6 @@ export class SelectionHighlightPainter {
     }
   };
 
-  /** Conectar al mapa vivo. `getFeatureCount` permite adaptar el costo del pulso al tamaño real del proyecto. */
   attach(map: Map, getFeatureCount: () => number = () => 0): void {
     this.map = map;
     this.getFeatureCount = getFeatureCount;
@@ -90,9 +82,6 @@ export class SelectionHighlightPainter {
 
   private startPulseLoop(): void {
     if (this.rafHandle != null || !this.map) return;
-    // Dataset enorme: un render al cambiar selección alcanza. Animar acá
-    // significa forzar redraw WebGL completo (500k+ features) 5-24 veces
-    // por segundo sin que nada visual lo justifique.
     if (this.getFeatureCount() > STATIC_HIGHLIGHT_THRESHOLD) return;
 
     const heavy = this.getFeatureCount() > HEAVY_DATASET_THRESHOLD;
@@ -115,7 +104,6 @@ export class SelectionHighlightPainter {
     }
   }
 
-  /** Intensidad del glow. Datasets enormes: valor fijo (sin animación, sin loop de render). */
   private currentPulse(): number {
     if (this.getFeatureCount() > STATIC_HIGHLIGHT_THRESHOLD) return PULSE_MAX;
     const elapsed = performance.now() - this.pulseStart;

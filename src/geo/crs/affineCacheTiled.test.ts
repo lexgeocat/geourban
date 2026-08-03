@@ -1,10 +1,3 @@
-// src/geo/crs/affineCacheTiled.test.ts
-//
-// Valida el fix de Fase 5 robustecida contra el caso real de producción
-// que rompía el caché de extent único: extent alargado (~11.2x0.9km) con
-// err=300.20mm medido. Con el mosaico, el tamaño/forma del extent total
-// del proyecto deja de importar — cada punto se resuelve contra un tile
-// fijo de ~1km.
 import { describe, it, expect, beforeEach } from 'vitest';
 import { register } from 'ol/proj/proj4.js';
 import proj4 from 'proj4';

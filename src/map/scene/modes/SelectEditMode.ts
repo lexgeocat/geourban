@@ -23,7 +23,6 @@ import type { ModeContext } from './ModeContext';
    });
  }
 
-/** Crea y cablea el HitTestSelect compartido por 'select' y 'edit'. */
 export function activateSelect(ctx: ModeContext): HitTestSelect {
   const select = new HitTestSelect({
     map: ctx.map,
@@ -121,9 +120,6 @@ function activateLasso(ctx: ModeContext, select: HitTestSelect, lassoMode: Lasso
               return;
             }
             if (Array.isArray(arr)) {
-              // Para LineString: además del test por vértices, detecta
-              // segmentos que "atraviesan" el lazo (extremos afuera,
-              // trazo pasando por adentro).
               if (arr.length >= 2 && typeof arr[0] === 'object' && arr[0] !== null && typeof (arr[0] as number[])[0] === 'number') {
                 for (let k = 0; k < (arr as unknown[]).length - 1 && !inside; k++) {
                   const a = (arr as Pt[])[k];

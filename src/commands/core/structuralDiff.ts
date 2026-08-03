@@ -3,24 +3,6 @@ import type Geometry from 'ol/geom/Geometry.js';
 import type SimpleGeometry from 'ol/geom/SimpleGeometry.js';
 import type VectorSource from 'ol/source/Vector.js';
 
-/**
- * Fase 3.1 (auditoria-para-mejora.md, §6, Fase 3) — formato de diff
- * estructural para undo/redo.
- *
- * Reemplaza el snapshot GeoJSON del proyecto COMPLETO
- * (snapshot eliminado en la Fase 3.4 — hasta la 3.2 lo usaban
- * AddStreetCommand/AddRoundaboutCommand — el bug crítico de §2.1) por un
- * registro de SOLO los features realmente tocados por una operación:
- * proporcional al tamaño del cambio, no al tamaño total del proyecto.
- *
- * Mismo principio que ya usan ModifyGeometryCommand/DeleteFeaturesCommand/
- * RemoveLayerCommand (captura manual de "antes" justo antes de mutar),
- * generalizado acá a cualquier comando que dispare `recomputeManzanos()`
- * — ver Fase 3.0: reutiliza el mismo cómputo de grupos/extent afectados
- * que `recomputeManzanosImmediate` ya hacía, en vez de diseñar el diff en
- * el vacío.
- */
-
 export type FeatureId = string | number;
 
 export interface FeatureSnapshot {
@@ -64,13 +46,6 @@ function snapshotToFeature(snap: FeatureSnapshot): Feature<Geometry> {
   return feature;
 }
 
-/**
- * Comparación barata de contenido entre dos snapshots: coordenadas planas
- * de la geometría (getFlatCoordinates, sin clonar) + props serializadas.
- * Sirve para decidir si un id "reciclado" (removido y re-creado en la
- * misma operación) es en realidad el MISMO feature sin cambios reales o
- * un feature nuevo que reclamó un id ya liberado.
- */
 function snapshotsEquivalent(a: FeatureSnapshot, b: FeatureSnapshot): boolean {
   const fa = (a.geometry as unknown as Partial<SimpleGeometry>).getFlatCoordinates?.();
   const fb = (b.geometry as unknown as Partial<SimpleGeometry>).getFlatCoordinates?.();
@@ -84,22 +59,6 @@ function snapshotsEquivalent(a: FeatureSnapshot, b: FeatureSnapshot): boolean {
   return JSON.stringify(a.props) === JSON.stringify(b.props);
 }
 
-/**
- * Graba, de forma manual y explícita, qué features fueron
- * agregados/eliminados/modificados durante una operación — sin recorrer
- * ni snapshotear el resto del drawSource.
- *
- * Contrato para el caller (igual que ModifyGeometryCommand.captureBefore):
- *   - `recordAdd(feature)`          — DESPUÉS de `source.addFeature(feature)`.
- *   - `recordRemove(feature)`       — ANTES de `source.removeFeature(feature)`.
- *   - `recordModifyBefore(feature)` — ANTES de mutar geometría/props de un
- *     feature ya existente en el source.
- *   - `recordModifyAfter(feature)`  — DESPUÉS de esa mutación. Se puede
- *     llamar más de una vez por feature (p. ej. si una misma manzana se
- *     toca en dos pasadas de la misma operación) — cada llamada
- *     actualiza el estado "después" al más reciente, sin perder el
- *     "antes" original capturado la primera vez.
- */
 export class StructuralDiffRecorder {
   private addedIds = new Set<FeatureId>();
   private removedById = new Map<FeatureId, FeatureSnapshot>();
@@ -111,13 +70,7 @@ export class StructuralDiffRecorder {
     if (id == null) return;
     const removedSnap = this.removedById.get(id);
     if (removedSnap) {
-      // El id se había registrado como removido y reaparece dentro de la
-      // misma operación. No alcanza con cancelar por id: si el contenido
-      // (geometría/props) es distinto, es un id "reciclado" — el pipeline
-      // borró la feature vieja y creó una nueva que reclamó el mismo id
-      // (p. ej. recomputeManzanos genera ids por índice de posición).
-      // Cancelarlo silenciosamente dejaría un cambio real invisible para
-      // undo/redo. Solo es neto cero si el contenido es idéntico.
+
       this.removedById.delete(id);
       const newSnap = snapshotFeature(feature);
       if (newSnap && !snapshotsEquivalent(removedSnap, newSnap)) {
@@ -203,17 +156,6 @@ export function approxStructuralDiffBytes(diff: StructuralDiff): number {
   return total;
 }
 
-/**
- * Compone dos diffs SECUENCIALES (`base` ocurrió, después `next`) en un
- * único diff equivalente al efecto neto de aplicar ambos en orden.
- *
- * Es lo que permite que comandos coalescidos (varios trazos dentro de la
- * misma sesión de dibujo — ver `coalesceInto`) sigan teniendo undo/redo
- * correcto: un mismo feature puede haber sido tocado por más de un
- * `recomputeManzanos()` dentro de la misma sesión, y concatenar los
- * diffs a lo bruto solo revertiría el último paso, no el efecto
- * acumulado completo.
- */
 export function composeStructuralDiffs(base: StructuralDiff, next: StructuralDiff): StructuralDiff {
   if (isEmptyStructuralDiff(base)) return next;
   if (isEmptyStructuralDiff(next)) return base;

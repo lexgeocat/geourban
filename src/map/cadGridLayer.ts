@@ -46,9 +46,6 @@ function drawCadGrid(
   const minorSpacing = snapSpacing(resolution * 52);
   const majorSpacing = minorSpacing * 5;
 
-  // Guarda de seguridad: aunque NICE_STEPS ya cubre resoluciones de mundo
-  // completo, esto evita cualquier cuelgue si el extent viene inesperado
-  // (p.ej. un bug de proyección) en vez de dibujar cientos de miles de líneas.
   if ((maxX - minX) / minorSpacing > MAX_LINES_PER_AXIS || (maxY - minY) / minorSpacing > MAX_LINES_PER_AXIS) {
     return;
   }

@@ -39,9 +39,6 @@ export function activateStreet(ctx: ModeContext): void {
     }),
   });
 
-  // Cada trazo nuevo tiene su propio id de sesión, así dos calles consecutivas
-  // NO se fusionan en un único undo (el coalescing fusiona solo lo que se
-  // ejecuta dentro del MISMO trazo).
   draw.on('drawstart', () => {
     useStreetTracingSessionStore.getState().nextSession();
   });

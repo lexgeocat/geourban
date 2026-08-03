@@ -2,11 +2,6 @@ import React from 'react';
 import { Modal } from '../ui/Modal';
 import { useConfirmDialogStore } from '../../store/ui/confirmDialogStore';
 
-/**
- * Modal genérico de confirmación — reemplaza a `window.confirm(...)` en
- * los flujos que corren en medio de una operación async (p. ej.
- * `recomputeManzanosImmediate`). Montar una sola vez en App.tsx.
- */
 export default function ConfirmDialog() {
   const pending = useConfirmDialogStore((s) => s.pending);
   const resolve = useConfirmDialogStore((s) => s.resolve);

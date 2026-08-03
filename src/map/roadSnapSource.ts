@@ -7,7 +7,6 @@ import { useRoundaboutStore, type Roundabout } from '../store/entities/roundabou
 import { roundaboutGeometry } from '../geo/roundabout/roundaboutEngine';
 
 let source: VectorSource | null = null;
-/** Guardados para que un eventual `disposeRoadSnapSource` (HMR/tests) pueda liberarlos. */
 let unsubscribeStreets: (() => void) | null = null;
 let unsubscribeRoundabouts: (() => void) | null = null;
 
@@ -44,7 +43,6 @@ function resync(src: VectorSource): void {
   src.changed();
 }
 
-/** Devuelve (creando si hace falta) la fuente fantasma, ya sincronizada. */
 export function getOrCreateRoadSnapSource(): VectorSource {
   if (!source) {
     source = new VectorSource();
@@ -59,7 +57,6 @@ export function getOrCreateRoadSnapSource(): VectorSource {
   return source;
 }
 
-/** Libera los listeners y reinicia el singleton. Pensado para HMR/tests. */
 export function disposeRoadSnapSource(): void {
   unsubscribeStreets?.();
   unsubscribeStreets = null;

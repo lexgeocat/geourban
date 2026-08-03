@@ -65,8 +65,6 @@ export class PostrenderPainter {
     this.drawSource.on('addfeature', onFeatureChange);
     this.drawSource.on('removefeature', onFeatureChange);
     this.drawSource.on('change', onFeatureChange);
-    // Ediciones en vivo (vértices, propiedades de etiqueta) — sin esto el
-    // caché de LabelPainter (Fase 4.3) podría quedarse con etiquetas stale.
     this.drawSource.on('changefeature', onFeatureChange);
 
     this.listener = (event: any) => this.handle(event);
@@ -77,7 +75,6 @@ export class PostrenderPainter {
   private lastFullFrameAt = 0;
   private fullFrameKey: (() => void) | null = null;
 
-  /** Mide la duración total del frame del mapa (todas las capas, incl. WebGL). */
   private trackFullFrame(): void {
     const onPostrender = () => {
       const now = performance.now();
@@ -155,7 +152,6 @@ export class PostrenderPainter {
     const size = this.map.getSize();
     const viewportExtent = size ? this.map.getView().calculateExtent(size) : null;
 
-    // antes: this.labelPainter.paint(ctx, visibleFeatures, zoom, resolution, toPx, this.interacting, viewportExtent);
     this.labelPainter.paint(ctx, visibleFeatures, zoom, resolution, toPx, this.interacting, viewportExtent, this.drawSource);
     const t4 = performance.now();
     this.streetPainter.paint(ctx, zoom, resolution, toPx, this.interacting);

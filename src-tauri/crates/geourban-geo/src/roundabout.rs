@@ -1,9 +1,6 @@
-//! Puerto de `src/geo/roundabout/roundaboutEngine.ts`.
-
 use crate::math::resolution_aware_segments;
 use crate::types::{Pt, RoundaboutGeometry, RoundaboutParams};
 
-/// <- `ngonRing`
 pub fn ngon_ring(center: Pt, circum_r: f64, n: u32, rot: f64) -> Vec<Pt> {
     let mut pts = Vec::with_capacity(n as usize);
     for i in 0..n {
@@ -13,7 +10,6 @@ pub fn ngon_ring(center: Pt, circum_r: f64, n: u32, rot: f64) -> Vec<Pt> {
     pts
 }
 
-/// <- `circleRing`
 pub fn circle_ring(center: Pt, radius: f64, segs: Option<u32>, resolution: Option<f64>) -> Vec<Pt> {
     let n = segs.unwrap_or_else(|| match resolution {
         Some(res) => resolution_aware_segments(radius, res, 1.5),
@@ -30,7 +26,6 @@ pub fn circle_ring(center: Pt, radius: f64, segs: Option<u32>, resolution: Optio
     pts
 }
 
-/// <- `roundaboutGeometry`
 pub fn roundabout_geometry(rb: &RoundaboutParams, resolution: Option<f64>) -> RoundaboutGeometry {
     let half = rb.road_width_m / 2.0;
     let sw = rb.sidewalk_width_m.max(0.0);
@@ -75,7 +70,6 @@ fn ring_area(ring: &[Pt]) -> f64 {
     (a / 2.0).abs()
 }
 
-/// <- `roundaboutRoadAreaM2`
 pub fn roundabout_road_area_m2(rb: &RoundaboutParams) -> f64 {
     let geom = roundabout_geometry(rb, None);
     let outer = ring_area(&geom.road_outer);
@@ -83,7 +77,6 @@ pub fn roundabout_road_area_m2(rb: &RoundaboutParams) -> f64 {
     (outer - island).max(0.0)
 }
 
-/// <- `validateRoundaboutParams`
 pub fn validate_roundabout_params(rb: &RoundaboutParams) -> Option<String> {
     if !(rb.radius_m > 0.0) {
         return Some("El radio debe ser mayor a 0.".to_string());

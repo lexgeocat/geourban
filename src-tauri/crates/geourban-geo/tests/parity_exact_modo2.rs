@@ -1,10 +1,3 @@
-//! Test de paridad TS <-> Rust para `subdivide_manzano_exact` y
-//! `subdivide_manzano_auto` (metodos 'exact' y 'modo2'). Completa la
-//! cobertura de la Fase 2.2 — `parity_cabecera_cuerpo.rs` solo cubria 'auto'.
-//!
-//! Single source of truth = tests/fixtures/paritySnapshotExactModo2.json,
-//! generado por `npm run parity:sync`.
-
 use geourban_geo::subdivision::{subdivide_manzano_auto, subdivide_manzano_exact};
 use serde::Deserialize;
 use std::path::PathBuf;
@@ -68,8 +61,6 @@ fn approx(a: f64, b: f64, tol: f64) -> bool {
     (a - b).abs() <= tol
 }
 
-/// Reconstruye el anillo original a partir del nombre de la fixture.
-/// Sincronizada con `parityFixturesExactModo2.ts`.
 fn parse_ring(name: &str) -> Vec<(f64, f64)> {
     if name.ends_with("rectangulo_100x60_target_600") {
         vec![(0.0, 0.0), (100.0, 0.0), (100.0, 60.0), (0.0, 60.0)]

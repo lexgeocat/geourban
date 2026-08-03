@@ -1,13 +1,3 @@
-// src/geo/debug/undoRedoBenchmark.ts
-//
-// Fase 3.4 (auditoria-para-mejora.md) — confirma el criterio de éxito
-// pendiente: trazar una calle en un proyecto grande retiene memoria de
-// undo proporcional al CAMBIO (StructuralDiff real), no al tamaño total
-// del proyecto. Reutiliza el generador sintético (Fase 0/6.1) y el
-// pipeline real: AddStreetCommand → recomputeManzanos → StructuralDiff.
-//
-// Requiere runtime Tauri (invoca el motor nativo real vía recomputeManzanos).
-
 import { useMapStore } from '../../store/map/mapStore';
 import { useLayersStore } from '../../store/entities/layersRegistryStore';
 import { useStreetStore } from '../../store/entities/streetStore';
@@ -22,11 +12,8 @@ import { requireLayerForKind } from '../../store/ui/layerPickerStore';
 
 export interface StreetUndoBenchmarkResult {
   datasetSize: number;
-  /** Bytes reales que retiene el undo del trazo (StructuralDiff). */
   undoDiffBytes: number;
-  /** Estimación de lo que hubiera pesado el snapshot GeoJSON del proyecto ENTERO (baseline pre-Fase-3, mismo criterio que estimateGeoJsonBytes). */
   fullSnapshotBaselineBytes: number;
-  /** undoDiffBytes / fullSnapshotBaselineBytes — cuanto más chico, mejor prueba el desacople. */
   ratio: number;
   executeMs: number;
 }
@@ -39,7 +26,6 @@ export async function runStreetUndoBenchmark(datasetSize: number): Promise<Stree
     throw new Error('drawSource no inicializado — asegurate de que <MapView/> esté montado.');
   }
 
-  // Reset limpio para no arrastrar estado de una corrida anterior.
   useStreetStore.getState().clearStreets();
   useRoundaboutStore.getState().clearRoundabouts();
   resetIncrementalRoadTracking();

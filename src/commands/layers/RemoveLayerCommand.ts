@@ -93,11 +93,6 @@ export class RemoveLayerCommand extends Command {
     }
     ctx.drawSource.changed();
   }
-
-  // Fase 3.3 — "Eliminar capa" con acción `delete` puede arrastrar todos
-  // los features de esa capa (potencialmente miles). Igual que
-  // DeleteFeaturesCommand, sin este override el costo quedaba oculto
-  // detrás del default de 256 bytes.
   override approxMemoryBytes(): number {
     if (this.removedFeatures.length === 0) return 256;
     return this.removedFeatures.reduce((sum, r) => sum + estimateGeometryBytes(r.feature.getGeometry()), 0);

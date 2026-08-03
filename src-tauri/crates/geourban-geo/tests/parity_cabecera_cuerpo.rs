@@ -1,14 +1,3 @@
-//! Test de paridad TS <-> Rust para `subdivide_manzano_cabecera_cuerpo`.
-//!
-//! Single source of truth = `tests/fixtures/paritySnapshot.json`.
-//! El test TS (`src/geo/subdivision/__parity__/subdivisionCabeceraCuerpo.parity.test.ts`)
-//! lo genera y `npm run parity:sync` lo copia a este path. Si no existe,
-//! el test se skip-ea con un mensaje claro.
-//!
-//! Criterio de éxito (auditoria-para-mejora.md §6 Fase 2.2): el motor
-//! Rust produce el mismo count, totalArea, bboxArea, areas, fronts y
-//! depths que el motor TS, dentro de tolerancia.
-
 use geourban_geo::subdivision_cabecera_cuerpo::subdivide_manzano_cabecera_cuerpo;
 use serde::Deserialize;
 use std::path::PathBuf;
@@ -157,8 +146,6 @@ fn parity_con_snapshot_ts() {
             fx.summary.bbox_area,
         );
 
-        // areas / fronts / depths (orden estable: el motor devuelve en orden
-        // de generacion, igual en TS y Rust segun snapshot).
         assert_eq!(lots.len(), fx.summary.areas.len(), "{}: areas.len", fx.name);
         for (i, l) in lots.iter().enumerate() {
             assert!(
@@ -196,9 +183,6 @@ fn parity_con_snapshot_ts() {
     }
 }
 
-/// Reconstruye el anillo original a partir del nombre de la fixture.
-/// Mantiene una lista sincronizada con `src/geo/subdivision/__parity__/parityFixtures.ts`.
-/// Si la lista de un lado cambia, este mapa debe actualizarse al otro.
 fn parse_ring(name: &str, _ring_area: &f64) -> Vec<(f64, f64)> {
     match name {
         "rectangulo_100x60_target_600" => {

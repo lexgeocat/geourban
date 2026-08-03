@@ -1,5 +1,3 @@
-// ─── Roundtrip por tipo de request al geo worker ─────────────────────
-
 interface RequestStat {
   count: number;
   lastMs: number;
@@ -45,8 +43,6 @@ export function readWorkerStats(): WorkerStatSnapshot[] {
     .sort((a, b) => a.type.localeCompare(b.type));
 }
 
-// ─── Memoria retenida por el último comando de undo (diff estructural desde Fase 3) ──
-
 interface UndoCommandStat {
   lastBytes: number;
   lastMs: number;
@@ -55,10 +51,6 @@ interface UndoCommandStat {
 }
 
 const snapshotStat: UndoCommandStat = { lastBytes: 0, lastMs: 0, count: 0, totalBytes: 0 };
-
-/** Registra el costo del último comando ejecutado: bytes que retiene para su undo
- * (approxMemoryBytes — para AddStreetCommand/AddRoundaboutCommand es el diff
- * estructural, proporcional al cambio, no al tamaño del proyecto) y ms de execute. */
 export function recordUndoCommand(bytes: number, ms: number): void {
   snapshotStat.lastBytes = bytes;
   snapshotStat.lastMs = ms;

@@ -181,9 +181,6 @@ export async function loadProject(name: string): Promise<void> {
     features[i] = feat;
   }
   drawSource.addFeatures(features);
-  // FIX: bulk-load explícito — el índice espacial no depende de que
-  // <MapView/> esté montado y sus listeners addfeature/removefeature
-  // reconstruyan el RBush feature por feature.
   getOrCreateSpatialIndex().load(features as unknown as Feature<Polygon>[]);
 
   for (const s of payload.streets) {

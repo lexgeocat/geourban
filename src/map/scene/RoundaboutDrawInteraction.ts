@@ -1,4 +1,3 @@
-// src/map/scene/RoundaboutDrawInteraction.ts
 import Interaction from 'ol/interaction/Interaction.js';
 import type MapBrowserEvent from 'ol/MapBrowserEvent.js';
 import type Map from 'ol/Map.js';

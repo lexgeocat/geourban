@@ -3,20 +3,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 export type PanelPosition = { top: number; left: number };
 
 export type UseDraggablePanelOptions = {
-  /** Posición inicial (px desde la esquina superior izquierda del viewport). */
   initial: PanelPosition;
-  /** Padding en px para que el panel no quede pegado al borde. Default 8. */
   edgePadding?: number;
 };
 
-/**
- * Hook para paneles flotantes arrastrables. Convención única:
- * el panel se posiciona con `top` y `left` en píxeles relativos al viewport.
- * Devuelve:
- *   - `position`: coordenadas actuales.
- *   - `onDragHandleMouseDown`: handler para conectar al header del panel.
- *   - `setPosition`: por si el caller quiere reposicionar programáticamente.
- */
 export function useDraggablePanel({
   initial,
   edgePadding = 8,

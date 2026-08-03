@@ -1,7 +1,3 @@
-// TEMPORAL — hook de validación de Fase 6 (se retira tras cerrar la fase).
-// Se activa solo cuando la URL lleva #fase6-validate (tauri dev --config con
-// devUrl con hash). Corre ambas suites y POSTea los resultados al harness
-// local http://127.0.0.1:9876/results.
 import React, { useEffect, useState } from 'react';
 import { useMapStore } from '../../store/map/mapStore';
 import { runSyntheticUrbanBenchmarkSuite } from '../../geo/debug/syntheticUrbanBenchmark';

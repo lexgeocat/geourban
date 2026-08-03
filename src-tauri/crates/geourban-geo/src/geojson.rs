@@ -18,12 +18,10 @@ pub fn ring_from_json(v: &Value) -> Option<Vec<Pt>> {
     Some(out)
 }
 
-/// Convierte `Vec<Pt>` a un `Value` GeoJSON-like (array de pares `[x, y]`).
 pub fn ring_to_json(ring: &[Pt]) -> Value {
     Value::Array(ring.iter().map(|p| json!([p.0, p.1])).collect())
 }
 
-/// Lee un array de anillos (`Polygon.coordinates` completo: exterior + huecos).
 pub fn polygon_rings_from_json(coords: &Value) -> Option<Vec<Vec<Pt>>> {
     let rings_val = coords.as_array()?;
     let mut rings = Vec::with_capacity(rings_val.len());
