@@ -36,6 +36,31 @@ export function withAlpha(color: string, alpha: number): string {
   return `rgba(${r},${g},${b},${alpha})`;
 }
 
+/**
+ * BUGFIX: WebGLVectorLayer.dispose() de OL asume que el WebGLHelper interno
+ * ya se inicializó (helper_ no-undefined). Si la capa se crea y se destruye
+ * sin que corra un frame de render real entre medio — típico en resets
+ * consecutivos rápidos como resetToEmpty() encadenado a invoke()s de Tauri
+ * (que resuelven sin esperar un requestAnimationFrame), o en benchmarks que
+ * recrean capas en ráfaga — el helper nunca llegó a existir y dispose()
+ * tira "Cannot read properties of undefined (reading 'deleteBuffer')".
+ * Se degrada a warning: el layer igual se sacó del mapa con removeLayer(),
+ * así que no queda visible ni referenciado; lo único que se pierde es la
+ * liberación explícita de buffers GL de una capa que nunca alcanzó a
+ * asignarlos.
+ */
+function safeDisposeLayer(layer: { dispose: () => void }): void {
+  try {
+    layer.dispose();
+  } catch (err) {
+    console.warn(
+      'DrawLayerRenderer: layer.dispose() falló (probablemente el helper WebGL nunca se inicializó ' +
+        'porque la capa nunca llegó a renderizar) — se ignora.',
+      err,
+    );
+  }
+}
+
 function buildSingleLayerStyle(layer: Layer): Record<string, unknown> {
   const op = layer.opacity ?? 1;
   const isManzanaLayer = layer.kind === 'manzana';
@@ -277,7 +302,7 @@ export class LayeredWebglRenderer {
         this.placement.set(f as Feature<Geometry>, FALLBACK_KEY);
       }
       this.map?.removeLayer(entry.layer);
-      entry.layer.dispose();
+      safeDisposeLayer(entry.layer);
       this.mirrors.delete(id);
       this.lastStyleSignatures.delete(id);
     }
@@ -409,7 +434,7 @@ private static buildPoolSlotStyle(colors: PoolLayerColor[]): Record<string, unkn
       const removed = oldSlots[i];
       if (!removed) continue;
       this.map?.removeLayer(removed.layer);
-      removed.layer.dispose();
+      safeDisposeLayer(removed.layer);
     }
 
     this.poolSlots = nextSlots;
@@ -418,7 +443,7 @@ private static buildPoolSlotStyle(colors: PoolLayerColor[]): Record<string, unkn
   private disposeAllPoolSlots(): void {
     for (const slot of this.poolSlots) {
       this.map?.removeLayer(slot.layer);
-      slot.layer.dispose();
+      safeDisposeLayer(slot.layer);
     }
     this.poolSlots = [];
   }
@@ -457,7 +482,7 @@ private static buildPoolSlotStyle(colors: PoolLayerColor[]): Record<string, unkn
         // en vez de depender únicamente del GC tras `this.mirrors.clear()`.
         entry.source.clear(true);
         this.map?.removeLayer(entry.layer);
-        entry.layer.dispose();
+        safeDisposeLayer(entry.layer);
       }
       this.mirrors.clear();
       this.lastStyleSignatures.clear();
@@ -493,7 +518,7 @@ private static buildPoolSlotStyle(colors: PoolLayerColor[]): Record<string, unkn
       if (this.poolFallbackLayer) {
         this.poolFallbackSource?.clear(true);
         this.map?.removeLayer(this.poolFallbackLayer);
-        this.poolFallbackLayer.dispose();
+        safeDisposeLayer(this.poolFallbackLayer);
         this.poolFallbackLayer = null;
         this.poolFallbackSource = null;
       }
@@ -526,17 +551,17 @@ private static buildPoolSlotStyle(colors: PoolLayerColor[]): Record<string, unkn
       this.unsubscribeStore = null;
       for (const entry of this.mirrors.values()) {
         this.map?.removeLayer(entry.layer);
-        entry.layer.dispose();
+        safeDisposeLayer(entry.layer);
       }
       this.disposeAllPoolSlots();
       if (this.poolFallbackLayer) {
         this.map?.removeLayer(this.poolFallbackLayer);
-        this.poolFallbackLayer.dispose();
+        safeDisposeLayer(this.poolFallbackLayer);
         this.poolFallbackLayer = null;
         this.poolFallbackSource = null;
       }
       this.map?.removeLayer(this.fallback.layer);
-      this.fallback.layer.dispose();
+      safeDisposeLayer(this.fallback.layer);
       this.map = null;
     };
   }
