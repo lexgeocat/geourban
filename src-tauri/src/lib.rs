@@ -1,4 +1,5 @@
 mod geo_bridge;
+mod process_memory;
 mod project_store;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -31,6 +32,7 @@ pub fn run() {
             geo_bridge::spatial_index_load,
             geo_bridge::spatial_index_clear,
             geo_bridge::spatial_index_query,
+            process_memory::process_memory,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

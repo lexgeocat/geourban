@@ -36,3 +36,12 @@ base64 = "0.22"
 # ofrecer booleanas robustas de polígonos. Requiere libgeos instalada en
 # el sistema (en este repo se gestiona via vcpkg — ver src-tauri/.cargo/config.toml).
 geourban-geo = { path = "crates/geourban-geo", features = ["geos-backend"] }
+
+# Fase 6.2 — profiling de memoria nativa (auditoria-para-mejora.md, §6).
+# GetProcessMemoryInfo para RSS/privados/pico del proceso Rust.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_System_ProcessStatus",
+    "Win32_System_Threading",
+] }

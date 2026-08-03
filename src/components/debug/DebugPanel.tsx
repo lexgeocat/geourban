@@ -14,9 +14,19 @@ import {
 } from '../../store/debug/perfTelemetry';
 import { generateSyntheticManzanos, ensureSyntheticLotLayer } from '../../geo/debug/syntheticDataset';
 import { readNativeEngineStats, type NativeEngineStatsSnapshot } from '../../store/debug/nativeEngineTelemetry';
+import {
+  readNativeMemorySnapshot,
+  refreshNativeMemory,
+  type NativeMemorySnapshot,
+} from '../../store/debug/nativeMemoryTelemetry';
 import { readAffineStats, type AffineStatsSnapshot } from '../../store/debug/affineTelemetry';
 import { runStreetUndoBenchmarkSuite, type StreetUndoBenchmarkResult } from '../../geo/debug/undoRedoBenchmark';
 import { runSpatialIndexBenchmarkSuite, type SpatialIndexBenchmarkResult } from '../../geo/debug/spatialIndexBenchmark';
+import { runSyntheticUrbanBenchmarkSuite, type SyntheticUrbanBenchmarkResult } from '../../geo/debug/syntheticUrbanBenchmark';
+import {
+  runConcurrencyStressSuite,
+  type ConcurrencyStressResult,
+} from '../../geo/debug/concurrencyStressBenchmark';
 import { LOCAL_TANGENT_PLANE_KEY, MAX_ACCEPTABLE_ERROR_M, utmTileCache } from '../../geo/crs/affineCache';
 import { runAffineAccuracySuite, type AffineAccuracyResult } from '../../geo/debug/affineAccuracyBenchmark';
 
@@ -89,6 +99,7 @@ export default function DebugPanel() {
   const [undoSnap, setUndoSnap] = useState(readUndoCommandStats());
   const [projectLoad, setProjectLoad] = useState(readProjectLoadStats());
   const [heap, setHeap] = useState(readHeapSnapshot());
+  const [nativeMem, setNativeMem] = useState<NativeMemorySnapshot>(readNativeMemorySnapshot());
   const [nativeStats, setNativeStats] = useState<NativeEngineStatsSnapshot[]>([]);
   const [affineStats, setAffineStats] = useState<AffineStatsSnapshot[]>([]);
   const [benchBusy, setBenchBusy] = useState(false);
@@ -98,9 +109,16 @@ export default function DebugPanel() {
   const [spatialBusy, setSpatialBusy] = useState(false);
   const [spatialResults, setSpatialResults] = useState<SpatialIndexBenchmarkResult[]>([]);
   const [spatialError, setSpatialError] = useState<string | null>(null);
+  const [urbanBusy, setUrbanBusy] = useState(false);
+  const [urbanResults, setUrbanResults] = useState<SyntheticUrbanBenchmarkResult[]>([]);
+  const [urbanError, setUrbanError] = useState<string | null>(null);
   const [affineAccBusy, setAffineAccBusy] = useState(false);
   const [affineAccResults, setAffineAccResults] = useState<AffineAccuracyResult[]>([]);
   const [affineAccError, setAffineAccError] = useState<string | null>(null);
+
+  const [concurrencyBusy, setConcurrencyBusy] = useState(false);
+  const [concurrencyResults, setConcurrencyResults] = useState<ConcurrencyStressResult[]>([]);
+  const [concurrencyError, setConcurrencyError] = useState<string | null>(null);
 
   const [genBusy, setGenBusy] = useState<number | null>(null);
   const [lastGen, setLastGen] = useState<{
@@ -128,7 +146,12 @@ export default function DebugPanel() {
     };
     tick();
     const id = setInterval(tick, REFRESH_MS);
-    return () => clearInterval(id);
+    void refreshNativeMemory(true).then(setNativeMem);
+    const memId = setInterval(() => void refreshNativeMemory().then(setNativeMem), 4000);
+    return () => {
+      clearInterval(id);
+      clearInterval(memId);
+    };
   }, [open]);
 
   const handleRunBenchmark = () => {
@@ -150,6 +173,22 @@ export default function DebugPanel() {
       .catch((err) => setSpatialError(err instanceof Error ? err.message : String(err)))
       .finally(() => setSpatialBusy(false));
   };
+
+  const handleRunUrbanBenchmark = () => {
+    if (urbanBusy) return;
+    setUrbanBusy(true);
+    setUrbanError(null);
+    const view = useMapStore.getState().mapInstance?.getView();
+    const center = (view?.getCenter() as [number, number] | undefined) ?? [0, 0];
+    void runSyntheticUrbanBenchmarkSuite([
+      { targetBlockCount: 25, center },
+      { targetBlockCount: 100, center },
+      { targetBlockCount: 400, center },
+    ])
+      .then(setUrbanResults)
+      .catch((err) => setUrbanError(err instanceof Error ? err.message : String(err)))
+      .finally(() => setUrbanBusy(false));
+  };
   const handleRunAffineAccuracy = () => {
     if (affineAccBusy) return;
     setAffineAccBusy(true);
@@ -164,6 +203,16 @@ export default function DebugPanel() {
         setAffineAccBusy(false);
       }
     }, 30);
+  };
+
+  const handleRunConcurrencyStress = () => {
+    if (concurrencyBusy) return;
+    setConcurrencyBusy(true);
+    setConcurrencyError(null);
+    void runConcurrencyStressSuite()
+      .then(setConcurrencyResults)
+      .catch((err) => setConcurrencyError(err instanceof Error ? err.message : String(err)))
+      .finally(() => setConcurrencyBusy(false));
   };
 
   const handleGenerateSynthetic = (size: number) => {
@@ -280,6 +329,27 @@ export default function DebugPanel() {
       ) : (
         <div style={{ color: 'var(--cad-text-muted)', fontStyle: 'italic' }}>
           performance.memory no disponible en este webview
+        </div>
+      )}
+
+      <SectionTitle>Memoria proceso nativo (Fase 6.2 — RSS Rust)</SectionTitle>
+      {nativeMem.available ? (
+        <>
+          <Row label="RSS (física)" value={`${nativeMem.rssMB.toFixed(0)} MB`} />
+          <Row label="Privada" value={`${nativeMem.privateMB.toFixed(0)} MB`} />
+          <Row label="Pico RSS" value={`${nativeMem.peakRssMB.toFixed(0)} MB`} />
+          <Row
+            label="Total JS + nativo"
+            value={`${(heap.usedMB + nativeMem.rssMB).toFixed(0)} MB`}
+          />
+          <div style={{ color: 'var(--cad-text-muted)', fontSize: '0.6rem', marginBottom: 4 }}>
+            Objetivo Fase 6.2: &lt;2GB con 1M features. El heap JS de arriba
+            solo cubre el webview — GEOS, buffers batch e índice viven acá.
+          </div>
+        </>
+      ) : (
+        <div style={{ color: 'var(--cad-text-muted)', fontStyle: 'italic' }}>
+          process_memory no disponible en esta plataforma
         </div>
       )}
 
@@ -413,13 +483,22 @@ export default function DebugPanel() {
               height: 'auto',
               padding: '4px 0',
               fontSize: '0.6rem',
-              color: genBusy === size ? 'var(--cad-accent)' : undefined,
+              color:
+                size === 1_000_000
+                  ? 'var(--cad-accent-amber)'
+                  : genBusy === size
+                    ? 'var(--cad-accent)'
+                    : undefined,
               opacity: genBusy != null && genBusy !== size ? 0.4 : 1,
             }}
           >
             {genBusy === size ? <span className="cad-spinner" /> : `${size / 1000}k`}
           </button>
         ))}
+      </div>
+      <div style={{ color: 'var(--cad-accent-amber)', fontSize: '0.6rem', marginBottom: 4 }}>
+        ⚠ 1M: riesgo real de OOM/thrash — heap JS al ~70% del límite con
+        500k (corrida Fase 3.4). Usar 1M solo en máquinas con &gt;8GB.
       </div>
       {lastGen && (
         <>
@@ -481,6 +560,115 @@ export default function DebugPanel() {
           />
         </div>
       ))}
+
+      {/* ═══ INSERTAR DESDE ACÁ ═══ */}
+      <SectionTitle>Fase 6.1 — Dataset urbano avanzado (calles + rotondas + manzanos irregulares)</SectionTitle>
+      <div style={{ color: 'var(--cad-text-muted)', fontSize: '0.6rem', marginBottom: 4 }}>
+        A diferencia del dataset de arriba (lotes rectangulares
+        precomputados como GeoJSON), esto genera CALLES con ancho
+        variable + AVENIDAS diagonales + ROTONDAS mixtas + un perímetro
+        irregular, y corre el pipeline REAL completo: recomputeManzanos
+        → GEOS union/difference (Fase 2.3) → reconciliación de
+        fragmentos vía una pasada incremental (Fase 2.4) →
+        subdivideManzanoBatch sobre manzanos de geometría irregular real
+        (Fase 2.2). "0 degenerados" en la subdivisión es el criterio de
+        éxito — cualquier lote con área ≤0 o punto no-finito es una
+        regresión.
+      </div>
+      <button
+        onClick={handleRunUrbanBenchmark}
+        disabled={urbanBusy}
+        className="cad-icon-btn"
+        style={{ width: '100%', height: 24, fontSize: '0.62rem', marginBottom: 4 }}
+      >
+        {urbanBusy ? <><span className="cad-spinner" /> Corriendo…</> : '▶ Correr suite (25/100/400 manzanos)'}
+      </button>
+      {urbanError && (
+        <div style={{ color: 'var(--cad-accent-red)', fontSize: '0.6rem', marginBottom: 4 }}>{urbanError}</div>
+      )}
+      {urbanResults.map((r, i) => (
+        <div key={i} style={{ marginBottom: 6, paddingBottom: 4, borderBottom: '1px solid var(--cad-border)' }}>
+          <Row
+            label={`Grilla ${r.layout.gridCols}x${r.layout.gridRows}`}
+            value={`${r.layout.streets.length} calles · ${r.layout.roundabouts.length} rotondas`}
+          />
+          <Row
+            label="Carga + recompute inicial"
+            value={`${r.loadMs.toFixed(0)}ms + ${r.initialRecomputeMs.toFixed(0)}ms`}
+          />
+          <Row
+            label="Manzanos generados"
+            value={`${r.manzanoCount} (${r.manzanoAreaStats.min.toFixed(0)}-${r.manzanoAreaStats.max.toFixed(0)} m²)`}
+          />
+          <Row
+            label="Vértices/manzano (min/avg/max)"
+            value={`${r.fragmentCountsByVertex.minVertices}/${r.fragmentCountsByVertex.avgVertices.toFixed(1)}/${r.fragmentCountsByVertex.maxVertices}`}
+          />
+          {r.incrementalPass && (
+            <Row
+              label="Pasada incremental (Fase 2.4)"
+              value={`${r.incrementalPass.recomputeMs.toFixed(0)}ms · +${r.incrementalPass.diffAddedCount}/-${r.incrementalPass.diffRemovedCount}/~${r.incrementalPass.diffModifiedCount}`}
+            />
+          )}
+          {r.subdivisionStress && (
+            <Row
+              label="Subdivisión (Fase 2.2)"
+              value={`${r.subdivisionStress.totalLots} lotes en ${r.subdivisionStress.elapsedMs.toFixed(0)}ms${
+                r.subdivisionStress.degenerateLots > 0
+                  ? ` · ⚠ ${r.subdivisionStress.degenerateLots} degenerados`
+                  : ' · 0 degenerados ✓'
+              }`}
+            />
+          )}
+        </div>
+      ))}
+      {/* ═══ HASTA ACÁ ═══ */}
+
+      <SectionTitle>Fase 6.4 — Carga concurrente (comandos en paralelo vs. UI)</SectionTitle>
+      <div style={{ color: 'var(--cad-text-muted)', fontSize: '0.6rem', marginBottom: 4 }}>
+        Correla los comandos nativos en paralelo (subdivisión batch ∥ red
+        vial ∥ reconciliación) midiendo la degradación del event loop de la
+        UI: speedup &gt;1 = el runtime async de Tauri realmente paraleliza;
+        stall ~1x = la interacción no percibe la carga. Criterio de éxito:
+        lotes degenerados = 0 en todas las escalas.
+      </div>
+      <button
+        onClick={handleRunConcurrencyStress}
+        disabled={concurrencyBusy}
+        className="cad-icon-btn"
+        style={{ width: '100%', height: 24, fontSize: '0.62rem', marginBottom: 4 }}
+      >
+        {concurrencyBusy ? <><span className="cad-spinner" /> Corriendo…</> : '▶ Correr suite (32/64/128 manzanos)'}
+      </button>
+      {concurrencyError && (
+        <div style={{ color: 'var(--cad-accent-red)', fontSize: '0.6rem', marginBottom: 4 }}>
+          {concurrencyError}
+        </div>
+      )}
+      {concurrencyResults.map((r, i) => (
+        <div key={i} style={{ marginBottom: 6, paddingBottom: 4, borderBottom: '1px solid var(--cad-border)' }}>
+          <Row
+            label={`${r.ringCount} manzanos · ${r.lotTotal} lotes`}
+            value={`${r.elapsedMs.toFixed(0)}ms · ${r.degenerateLots > 0 ? `⚠ ${r.degenerateLots} degenerados` : '0 degenerados ✓'}`}
+          />
+          <Row
+            label="serial vs. paralela"
+            value={`${r.serialElapsedMs.toFixed(0)}ms vs ${r.parallelElapsedMs.toFixed(0)}ms · speedup ${r.parallelSpeedup.toFixed(2)}x`}
+          />
+          <Row
+            label="Stall event loop (reposo → carga)"
+            value={`${r.idleStallMaxMs.toFixed(1)}ms → ${r.parallelStallMaxMs.toFixed(1)}ms (${r.stallDegradationRatio.toFixed(1)}x)`}
+          />
+          {r.phases.map((p) => (
+            <Row
+              key={p.phase}
+              label={p.phase}
+              value={`${p.elapsedMs.toFixed(0)}ms · avg ${p.avgMs.toFixed(0)}ms · max ${p.maxMs.toFixed(0)}ms`}
+            />
+          ))}
+        </div>
+      ))}
+      {/* ═══ FIN Fase 6.4 ═══ */}
 
       {geoTelemetry && Object.values(geoTelemetry.countsByContext).some((n) => n > 0) && (
         <>
