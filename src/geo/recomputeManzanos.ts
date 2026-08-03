@@ -7,7 +7,7 @@ import type { FeatureCollection, Feature as GeoJSONFeature } from 'geojson';
 
 import { useMapStore } from '../store/map/mapStore';
 import { updateFeatureMetrics } from './metrics';
-import { polyArea, type Pt } from './math/polygonEngine';
+import { polyArea, ringPerimeter, centroid, type Pt } from './math/polygonEngine';
 import { useStreetStore, type Street } from '../store/entities/streetStore';
 import { useRoundaboutStore, type Roundabout } from '../store/entities/roundaboutStore';
 import { useManzanoStore } from '../store/entities/manzanoStore';
@@ -49,6 +49,30 @@ function ringsApproxEqual(a: Pt[], b: Pt[], tol = GEOMETRY_NOCHANGE_TOL): boolea
   return true;
 }
 
+function ringsShapeEquivalent(a: Pt[], b: Pt[]): boolean {
+  const areaA = polyArea(a);
+  const areaB = polyArea(b);
+  const areaTol = Math.max(0.05, Math.max(areaA, areaB) * 5e-4);
+  if (Math.abs(areaA - areaB) > areaTol) return false;
+
+  const perimA = ringPerimeter(a);
+  const perimB = ringPerimeter(b);
+  const perimTol = Math.max(0.02, Math.max(perimA, perimB) * 5e-4);
+  if (Math.abs(perimA - perimB) > perimTol) return false;
+
+  const centA = centroid(a);
+  const centB = centroid(b);
+  const centroidTol = Math.max(0.02, Math.sqrt(Math.max(areaA, areaB, 1)) * 5e-4);
+  if (Math.hypot(centA[0] - centB[0], centA[1] - centB[1]) > centroidTol) return false;
+
+  return true;
+}
+
+function ringsEffectivelyUnchanged(a: Pt[], b: Pt[]): boolean {
+  return ringsApproxEqual(a, b) || ringsShapeEquivalent(a, b);
+}
+
+
 function currentRingOf(feature: Feature<Geometry>): Pt[] | null {
   const geom = feature.getGeometry();
   if (!(geom instanceof PolygonGeom)) return null;
@@ -59,19 +83,21 @@ function currentRingOf(feature: Feature<Geometry>): Pt[] | null {
 
 /** Fase 3.2 — todo mutation point de este helper queda envuelto en el recorder. */
 /** Fase 3.2 — todo mutation point de este helper queda envuelto en el recorder. */
+/** Fase 3.2 — todo mutation point de este helper queda envuelto en el recorder. */
 function restoreMemberToParcel(
   member: Feature<Geometry>,
   origPts: Pt[],
   origId: string,
+  rootId: string,
+  rootPts: Pt[],
   src: VectorSource,
   recorder: StructuralDiffRecorder,
 ): void {
   const alreadyLote = getFeatureKind(member) === 'lote';
   const currentRing = currentRingOf(member);
   const targetRing = closeGeoRing(origPts);
-  if (alreadyLote && currentRing && ringsApproxEqual(currentRing, targetRing)) {
-    // Ya está en su forma de parcela completa y sin cambios reales —
-    // no registrar una "modificación" falsa en el diff estructural.
+  const idMatches = String(member.getId() ?? '') === rootId;
+  if (alreadyLote && currentRing && ringsEffectivelyUnchanged(currentRing, targetRing)) {
     return;
   }
   recorder.recordModifyBefore(member);
@@ -80,6 +106,12 @@ function restoreMemberToParcel(
   member.unset('lotStatus', true);
   member.set('origParcelId', origId, true);
   member.set('origPts', origPts, true);
+  member.set('rootParcelId', rootId, true);
+  member.set('rootParcelPts', rootPts, true);
+  // Canoniza el id a la copia de trabajo — evita que ensurePerimeterWorkingCopies()
+  // cree una copia duplicada si el feature que sobrevivió el "merge back"
+  // no era el que originalmente tenía ese id (bug latente, hallado al robustecer esto).
+  if (!idMatches && src.getFeatureById(rootId) == null) member.setId(rootId);
   src.addFeature(member);
   updateFeatureMetrics(member);
   recorder.recordModifyAfter(member);
@@ -216,17 +248,22 @@ function ensurePerimeterWorkingCopies(src: VectorSource, recorder: StructuralDif
     const geom = perim.getGeometry();
     if (!(geom instanceof PolygonGeom)) continue;
 
-    const working = new Feature({ geometry: geom.clone() });
-    working.setId(workingId);
-    working.setProperties(
-      ensureKind(
-        {
-          label: (perim.get('label') as string | undefined) ?? 'Parcela',
-          perimeterSourceId: String(perimId),
-        },
-        'lote',
-      ),
-    );
+    const workingGeom = geom.clone();
+const workingRing = ((workingGeom.getCoordinates()[0] ?? []) as number[][]).map((c) => [c[0], c[1]] as Pt);
+
+const working = new Feature({ geometry: workingGeom });
+working.setId(workingId);
+working.setProperties(
+  ensureKind(
+    {
+      label: (perim.get('label') as string | undefined) ?? 'Parcela',
+      perimeterSourceId: String(perimId),
+      rootParcelId: workingId,
+      rootParcelPts: workingRing,
+    },
+    'lote',
+  ),
+);
     const perimLayerId = (perim.get('layerId') as string | undefined) ?? resolveOrCreateLayerForKind('perimetro');
     working.set('layerId', perimLayerId, true);
     src.addFeature(working);
@@ -289,6 +326,73 @@ function collectOriginGroups(src: VectorSource): {
   return { groups, lotsByGroupId };
 }
 
+function resolveRootParcel(
+  feature: Feature<Geometry> | undefined,
+  fallbackId: string,
+  fallbackPts: Pt[],
+): { rootId: string; rootPts: Pt[] } {
+  const rid = feature?.get('rootParcelId') as string | undefined;
+  const rpts = feature?.get('rootParcelPts') as Pt[] | undefined;
+  if (rid && rpts && rpts.length >= 3) return { rootId: rid, rootPts: rpts };
+  return { rootId: fallbackId, rootPts: fallbackPts };
+}
+
+interface RootGroup {
+  rootId: string;
+  rootPts: Pt[];
+  members: Array<Feature<Geometry>>;
+}
+
+/** Igual que collectOriginGroups, pero agrupa por rootParcelId (raíz estable).
+ * La usa SOLO la rama !hasRoadNetwork, que necesita ver TODOS los manzanos
+ * de un mismo perímetro juntos para fusionarlos de vuelta en un único lote. */
+function collectRootGroups(src: VectorSource): {
+  groups: globalThis.Map<string, RootGroup>;
+  lotsByGroupId: globalThis.Map<string, Array<Feature<Geometry>>>;
+} {
+  const groups = new globalThis.Map<string, RootGroup>();
+  const lotsByGroupId = new globalThis.Map<string, Array<Feature<Geometry>>>();
+
+  src.forEachFeature((f) => {
+    const feature = f as Feature<Geometry>;
+    const geom = feature.getGeometry();
+    if (!geom || geom.getType() !== 'Polygon') return;
+
+    const kind = getFeatureKind(feature);
+    if (kind !== 'lote' && kind !== 'manzana') return;
+
+    if (kind === 'lote') {
+      const gid = feature.get('lotGroupId') as string | undefined;
+      if (gid) {
+        if (!lotsByGroupId.has(gid)) lotsByGroupId.set(gid, []);
+        lotsByGroupId.get(gid)!.push(feature);
+        return;
+      }
+    }
+
+    let fallbackPts = feature.get('origPts') as Pt[] | undefined;
+    if (!fallbackPts) {
+      const coords = (geom as PolygonGeom).getCoordinates();
+      if (!coords[0] || coords[0].length < 4) return;
+      fallbackPts = coords[0].map((c: number[]) => [c[0], c[1]] as Pt);
+    }
+    const fallbackId =
+      (feature.get('origParcelId') as string | undefined) ??
+      (feature.getId() != null ? String(feature.getId()) : newId('parcel'));
+
+    const { rootId, rootPts } = resolveRootParcel(feature, fallbackId, fallbackPts);
+
+    let group = groups.get(rootId);
+    if (!group) {
+      group = { rootId, rootPts, members: [] };
+      groups.set(rootId, group);
+    }
+    group.members.push(feature);
+  });
+
+  return { groups, lotsByGroupId };
+}
+
 function resolveManzanaLayerId(): string {
   return resolveOrCreateLayerForKind('manzana');
 }
@@ -333,9 +437,9 @@ async function recomputeManzanosImmediate(recorder: StructuralDiffRecorder): Pro
 
   syncPerimeterLayersVisibility(hasRoadNetwork);
 
-  if (!hasRoadNetwork) {
-    const { groups, lotsByGroupId } = collectOriginGroups(src);
-    for (const group of groups.values()) {
+if (!hasRoadNetwork) {
+  const { groups, lotsByGroupId } = collectRootGroups(src);
+  for (const group of groups.values()) {
       const manzanos = group.members.filter((m) => getFeatureKind(m) === 'manzana');
       if (manzanos.length === 0) continue;
 
@@ -360,7 +464,7 @@ async function recomputeManzanosImmediate(recorder: StructuralDiffRecorder): Pro
       }
 
       const primary = manzanos[0] as Feature<Geometry>;
-      restoreMemberToParcel(primary, group.origPts, group.origId, src, recorder);
+    restoreMemberToParcel(primary, group.rootPts, group.rootId, group.rootId, group.rootPts, src, recorder); 
     }
 
     if (groups.size > 0) {
@@ -516,11 +620,7 @@ async function recomputeManzanosImmediate(recorder: StructuralDiffRecorder): Pro
   for (let idx = 0; idx < parcelIndexToGroup.length; idx++) {
     const group = parcelIndexToGroup[idx];
     const fragments = fragmentsByGroup.get(idx) ?? [];
-    const untouched = fragments.length === 1 && polyArea(fragments[0]) >= polyArea(group.origPts) * 0.999;
-    if (untouched) continue;
-    if (fragmentsMatchCurrentMembers(group.members, fragments)) continue;
-
-    const existingMembers = group.members
+       const existingMembers = group.members
       .map((m) => {
         const g = m.getGeometry();
         const ring = g instanceof PolygonGeom
@@ -606,11 +706,19 @@ async function recomputeManzanosImmediate(recorder: StructuralDiffRecorder): Pro
     const group = parcelIndexToGroup[idx];
     const fragments = fragmentsByGroup.get(idx) ?? [];
 
-    const untouched = fragments.length === 1 && polyArea(fragments[0]) >= polyArea(group.origPts) * 0.999;
-    if (untouched) {
-      restoreMemberToParcel(group.members[0], fragments[0], group.origId, src, recorder);
-      continue;
-    }
+const root = resolveRootParcel(group.members[0], group.origId, group.origPts);
+
+const untouched = fragments.length === 1 && polyArea(fragments[0]) >= polyArea(group.origPts) * 0.999;
+if (untouched) {
+  const sole = group.members.length === 1 ? group.members[0] : null;
+  if (sole && getFeatureKind(sole) === 'manzana') {
+    // Ya era manzana y el corte actual no la afecta — no reclasificar a
+    // lote (evita el "modified" espurio en manzanos fuera del corredor).
+    continue;
+  }
+  restoreMemberToParcel(group.members[0], fragments[0], group.origId, root.rootId, root.rootPts, src, recorder);
+  continue;
+}
 
     if (fragmentsMatchCurrentMembers(group.members, fragments)) continue;
 
@@ -643,7 +751,7 @@ async function recomputeManzanosImmediate(recorder: StructuralDiffRecorder): Pro
       const oriented = orientRingCcw(rawRing);
       let rounded = roundRingReflex(
         oriented, 0, false, cornerMode,
-        (pt) => !pointOnRing(pt, group.origPts),
+        (pt) => !pointOnRing(pt, root.rootPts),
       );
       if (rounded.length < 4) {
         const fallback = oriented.length >= 3 ? closeGeoRing(oriented) : [];
@@ -670,7 +778,7 @@ async function recomputeManzanosImmediate(recorder: StructuralDiffRecorder): Pro
         const alreadyManzana = getFeatureKind(reused) === 'manzana';
         const currentRing = currentRingOf(reused);
         const geometryUnchanged =
-          alreadyManzana && currentRing != null && ringsApproxEqual(currentRing, rounded);
+  alreadyManzana && currentRing != null && ringsEffectivelyUnchanged(currentRing, rounded);
 
         if (geometryUnchanged) {
           // El fragmento reconciliado es geométricamente idéntico al
@@ -689,8 +797,10 @@ async function recomputeManzanosImmediate(recorder: StructuralDiffRecorder): Pro
           reused.set('layerId', resolveManzanaLayerId(), true);
           manzanoCreated = true;
         }
-        reused.set('origParcelId', group.origId, true);
-        reused.set('origPts', group.origPts, true);
+        reused.set('origParcelId', String(reused.getId()), true);
+        reused.set('origPts', rounded, true);
+        reused.set('rootParcelId', root.rootId, true);
+        reused.set('rootParcelPts', root.rootPts, true);
         updateFeatureMetrics(reused as Feature<Geometry>);
         recorder.recordModifyAfter(reused);
 
@@ -729,16 +839,15 @@ async function recomputeManzanosImmediate(recorder: StructuralDiffRecorder): Pro
       }
       newFeat.setId(fragId);
       newFeat.setProperties(
-        ensureKind(
-          {
-            colorIdx: fi % 10,
-            createdAt: new Date().toISOString(),
-            origParcelId: group.origId,
-            origPts: group.origPts,
-          },
-          'manzana',
-        ),
-      );
+  ensureKind({
+    colorIdx: fi % 10,
+    createdAt: new Date().toISOString(),
+    origParcelId: fragId,      // ← auto-referencia
+    origPts: rounded,
+    rootParcelId: root.rootId,
+    rootParcelPts: root.rootPts,
+  }, 'manzana'),
+);
       const lid = resolveManzanaLayerId();
       newFeat.set('layerId', lid);
       src.addFeature(newFeat);
