@@ -33,7 +33,7 @@ export default function ProjectSetupModal() {
     setMode(localMode);
     if (localMode === 'utm') {
       setUtmZone(localZone, localHem);
-      setBaseMap('osm');
+      setBaseMap('cad');
     }
     confirm();
     if (drawSource) refreshSourceMetrics(drawSource);

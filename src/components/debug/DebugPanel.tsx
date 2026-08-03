@@ -605,10 +605,22 @@ export default function DebugPanel() {
             value={`${r.fragmentCountsByVertex.minVertices}/${r.fragmentCountsByVertex.avgVertices.toFixed(1)}/${r.fragmentCountsByVertex.maxVertices}`}
           />
           {r.incrementalPass && (
-            <Row
-              label="Pasada incremental (Fase 2.4)"
-              value={`${r.incrementalPass.recomputeMs.toFixed(0)}ms · +${r.incrementalPass.diffAddedCount}/-${r.incrementalPass.diffRemovedCount}/~${r.incrementalPass.diffModifiedCount}`}
-            />
+            <>
+              <Row
+                label="Pasada incremental (Fase 2.4)"
+                value={`${r.incrementalPass.recomputeMs.toFixed(0)}ms · +${r.incrementalPass.diffAddedCount}/-${r.incrementalPass.diffRemovedCount}/~${r.incrementalPass.diffModifiedCount}`}
+              />
+              <Row
+                label="Manzanos tras pasada incremental"
+                value={`${r.incrementalPass.manzanoCountAfter}`}
+              />
+              {!r.incrementalPass.consistency.ok && (
+                <div style={{ color: 'var(--cad-accent-red)', fontSize: '0.6rem', marginTop: 2 }}>
+                  ⚠ Consistencia del diff FALLÓ: {r.incrementalPass.consistency.changedGeometryAbsentFromDiff.length} cambios de geometría ausentes del diff ·{' '}
+                  {r.incrementalPass.consistency.untouchedButTouched.length} manzanos fuera del corredor tocados
+                </div>
+              )}
+            </>
           )}
           {r.subdivisionStress && (
             <Row

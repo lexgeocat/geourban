@@ -83,11 +83,11 @@ export const useStreetStore = create<StreetState>()(
 
     updateStreet: (id, patch) =>
       set((state) => {
-        const s = state.streets.find((s) => s.id === id);
-        if (!s) return;
+        const street = state.streets.find((s) => s.id === id);
+        if (!street) return;
         const next = { ...patch };
         if (next.widthM != null) next.widthM = Math.max(0.5, next.widthM);
-        Object.assign(s, next);
+        Object.assign(street, next);
       }),
 
     removeStreet: (id) =>

@@ -25,20 +25,20 @@ export const useToastStore = create<ToastState>()((set, get) => ({
 
   push: (message, opts) => {
     const id = nextId++;
-    const toast: Toast = {
+    const entry: Toast = {
       id,
       message,
       variant: opts?.variant ?? 'info',
       durationMs: opts?.durationMs ?? 4000,
       createdAt: Date.now(),
     };
-    set((s) => ({ toasts: [...s.toasts, toast] }));
-    if (toast.durationMs > 0) {
+    set((s) => ({ toasts: [...s.toasts, entry] }));
+    if (entry.durationMs > 0) {
       setTimeout(() => {
         if (get().toasts.find((t) => t.id === id)) {
           get().dismiss(id);
         }
-      }, toast.durationMs);
+      }, entry.durationMs);
     }
     return id;
   },

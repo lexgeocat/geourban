@@ -680,12 +680,12 @@ async function recomputeManzanosImmediate(recorder: StructuralDiffRecorder): Pro
       }
 
       const newFeat = new Feature({ geometry: new PolygonGeom([rounded]) });
-      let newId = `${group.origId}-mzn-${fi}`;
+      let fragId = `${group.origId}-mzn-${fi}`;
       let dupSuffix = 0;
-      while (src.getFeatureById(newId) != null) {
-        newId = `${group.origId}-mzn-${fi}-${++dupSuffix}`;
+      while (src.getFeatureById(fragId) != null) {
+        fragId = `${group.origId}-mzn-${fi}-${++dupSuffix}`;
       }
-      newFeat.setId(newId);
+      newFeat.setId(fragId);
       newFeat.setProperties(
         ensureKind(
           {

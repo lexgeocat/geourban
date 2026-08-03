@@ -101,6 +101,106 @@ function collectManzanoStats(drawSource: VectorSource): ManzanoStats {
   };
 }
 
+// ─── Aserción de consistencia del diff estructural (pasada incremental) ─
+
+/**
+ * Criterio de éxito de Fase 6.1 ademas de "0 degenerados": el diff
+ * estructural de la pasada incremental debe reflejar EXACTAMENTE los
+ * cambios reales de geometría.
+ *
+ * Dos invariantes (ver auditoria-para-mejora.md §Fase 6 — bug de
+ * StructuralDiffRecorder.recordAdd con ids reciclados):
+ *   1. Todo manzano presente antes y después con geometría distinta debe
+ *      estar registrado como `modified` en el diff — si no, undo/redo no
+ *      puede revertirlo (quedó un cambio invisible para el CommandStack).
+ *   2. Todo manzano cuyo bbox NO interseca el corredor de la avenida
+ *      agregada debe quedar intacto y AUSENTE del diff — si aparece o
+ *      cambió, la reconciliación de fragmentos tocó zonas que no debía.
+ */
+export interface IncrementalConsistency {
+  ok: boolean;
+  /** Manzanos que cambiaron de geometría pero NO están en diff.modified. */
+  changedGeometryAbsentFromDiff: string[];
+  /** Manzanos fuera del corredor de la avenida que aparecieron en el diff
+   * o cambiaron de geometría — nunca deberían tocarse. */
+  untouchedButTouched: string[];
+}
+
+function ringsRoughlyEqual(a: Pt[], b: Pt[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (Math.abs(a[i][0] - b[i][0]) > 1e-6 || Math.abs(a[i][1] - b[i][1]) > 1e-6) return false;
+  }
+  return true;
+}
+
+function collectManzanoRings(drawSource: VectorSource): Map<string, Pt[]> {
+  const out = new Map<string, Pt[]>();
+  drawSource.forEachFeature((f) => {
+    const feat = f as Feature<Geometry>;
+    if (getFeatureKind(feat) !== 'manzana') return;
+    const id = feat.getId();
+    if (id == null) return;
+    const geom = feat.getGeometry();
+    if (!(geom instanceof Polygon)) return;
+    const ring = (geom.getCoordinates()[0] ?? []) as number[][];
+    if (ring.length < 4) return;
+    out.set(String(id), ring.map((c) => [c[0], c[1]] as Pt));
+  });
+  return out;
+}
+
+function ringIntersectsExtent(ring: Pt[], ext: [number, number, number, number]): boolean {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const [x, y] of ring) {
+    if (x < minX) minX = x;
+    if (y < minY) minY = y;
+    if (x > maxX) maxX = x;
+    if (y > maxY) maxY = y;
+  }
+  return minX <= ext[2] && maxX >= ext[0] && minY <= ext[3] && maxY >= ext[1];
+}
+
+function checkIncrementalConsistency(
+  drawSource: VectorSource,
+  diff: Awaited<ReturnType<typeof recomputeManzanos>>,
+  preRings: Map<string, Pt[]>,
+  corridorExtent: [number, number, number, number],
+): IncrementalConsistency {
+  const postRings = collectManzanoRings(drawSource);
+  const modifiedIds = new Set(diff.modified.map((m) => String(m.id)));
+  const addedIds = new Set(diff.added.map((s) => String(s.id)));
+  const removedIds = new Set(diff.removed.map((s) => String(s.id)));
+
+  const changedGeometryAbsentFromDiff: string[] = [];
+  const untouchedButTouched: string[] = [];
+
+  for (const [id, pre] of preRings) {
+    const post = postRings.get(id);
+    if (post && !ringsRoughlyEqual(pre, post) && !modifiedIds.has(id)) {
+      changedGeometryAbsentFromDiff.push(id);
+    }
+    if (!ringIntersectsExtent(pre, corridorExtent)) {
+      if (modifiedIds.has(id) || addedIds.has(id) || removedIds.has(id)) {
+        untouchedButTouched.push(id);
+      } else if (post && !ringsRoughlyEqual(pre, post)) {
+        untouchedButTouched.push(id);
+      }
+    }
+  }
+
+  for (const [id, ring] of postRings) {
+    if (preRings.has(id)) continue;
+    if (!ringIntersectsExtent(ring, corridorExtent)) untouchedButTouched.push(id);
+  }
+
+  return {
+    ok: changedGeometryAbsentFromDiff.length === 0 && untouchedButTouched.length === 0,
+    changedGeometryAbsentFromDiff,
+    untouchedButTouched,
+  };
+}
+
 // ─── Estrés de subdivisión (Fase 2.2) ──────────────────────────────────
 
 export interface SubdivisionStressStats {
@@ -189,6 +289,10 @@ export interface SyntheticUrbanBenchmarkResult {
     diffAddedCount: number;
     diffRemovedCount: number;
     diffModifiedCount: number;
+    /** Aserción de consistencia diff ↔ cambios reales de geometría.
+     * `ok: false` = el diff esconde cambios reales (agujero de undo/redo)
+     * o tocó manzanos fuera del corredor de la avenida. */
+    consistency: IncrementalConsistency;
   };
   subdivisionStress?: SubdivisionStressStats;
 }
@@ -245,15 +349,29 @@ export async function runSyntheticUrbanBenchmark(
   //    por solapamiento de área en vez de recrearse desde cero. ──
   if (opts.runIncrementalPass ?? true) {
     const addedStreetWidthM = Math.max(opts.avenueWidthM ?? SYNTHETIC_URBAN_LAYOUT_DEFAULTS.avenueWidthM, 16);
+    const sideWidthM = opts.sideWidthM ?? SYNTHETIC_URBAN_LAYOUT_DEFAULTS.sideWidthM;
     const midY = (layout.extent[1] + layout.extent[3]) / 2;
     const skew = (layout.extent[3] - layout.extent[1]) * 0.07;
     const extraStreet: SyntheticStreetEntry = {
       start: [layout.extent[0], midY],
       end: [layout.extent[2], midY + skew],
       widthM: addedStreetWidthM,
-      sideWidthM: opts.sideWidthM ?? SYNTHETIC_URBAN_LAYOUT_DEFAULTS.sideWidthM,
+      sideWidthM,
       name: 'Avenida incremental sintética',
     };
+
+    // Corredor de la avenida — misma aproximación que streetApproxExtent()
+    // en recomputeManzanos.ts (bbox del eje ± ancho/cordones + margen):
+    // los manzanos cuyo bbox NO lo interseca deben quedar intactos y
+    // ausentes del diff estructural.
+    const corridorHalf = addedStreetWidthM / 2 + Math.max(0, sideWidthM) + 2;
+    const cMinX = Math.min(extraStreet.start[0], extraStreet.end[0]) - corridorHalf;
+    const cMaxX = Math.max(extraStreet.start[0], extraStreet.end[0]) + corridorHalf;
+    const cMinY = Math.min(extraStreet.start[1], extraStreet.end[1]) - corridorHalf;
+    const cMaxY = Math.max(extraStreet.start[1], extraStreet.end[1]) + corridorHalf;
+    const corridorExtent: [number, number, number, number] = [cMinX, cMinY, cMaxX, cMaxY];
+
+    const preManzanoRings = collectManzanoRings(drawSource);
     useStreetStore.getState().addStreetWithId(`synthetic-urban-street-${layout.streets.length}`, extraStreet);
 
     const ri0 = performance.now();
@@ -262,6 +380,8 @@ export async function runSyntheticUrbanBenchmark(
 
     const afterStats = collectManzanoStats(drawSource);
 
+    const consistency = checkIncrementalConsistency(drawSource, diff, preManzanoRings, corridorExtent);
+
     result.incrementalPass = {
       addedStreetWidthM,
       recomputeMs,
@@ -269,7 +389,27 @@ export async function runSyntheticUrbanBenchmark(
       diffAddedCount: diff.added.length,
       diffRemovedCount: diff.removed.length,
       diffModifiedCount: diff.modified.length,
+      consistency,
     };
+
+    if (!consistency.ok) {
+      const parts: string[] = [];
+      if (consistency.changedGeometryAbsentFromDiff.length > 0) {
+        const sample = consistency.changedGeometryAbsentFromDiff.slice(0, 5).join(', ');
+        parts.push(
+          `${consistency.changedGeometryAbsentFromDiff.length} manzano(s) con geometría cambiada AUSENTES del diff estructural (undo/redo no los revierte)${sample ? `: ${sample}` : ''}`,
+        );
+      }
+      if (consistency.untouchedButTouched.length > 0) {
+        const sample = consistency.untouchedButTouched.slice(0, 5).join(', ');
+        parts.push(
+          `${consistency.untouchedButTouched.length} manzano(s) fuera del corredor de la avenida tocados en el diff${sample ? `: ${sample}` : ''}`,
+        );
+      }
+      throw new Error(
+        `[Fase 6.1] Aserción de consistencia del diff estructural FALLÓ (grilla ${layout.gridCols}x${layout.gridRows}, ${afterStats.count} manzanos tras la pasada): ${parts.join(' | ')}`,
+      );
+    }
   }
 
   // ── Estrés de subdivisión sobre el estado FINAL (post-incremental si

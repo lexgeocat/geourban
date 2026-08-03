@@ -63,6 +63,60 @@ describe('StructuralDiffRecorder', () => {
     expect(isEmptyStructuralDiff(rec.toDiff(src))).toBe(true);
   });
 
+  it('remove + re-add del mismo id con contenido idéntico: neto cero (reciclado sin cambios reales)', () => {
+    const src = fakeSource();
+    const rec = new StructuralDiffRecorder();
+    const old = makeFeature('m', 0, 0);
+    old.set('kind', 'manzana', true);
+    rec.recordRemove(old);
+
+    const fresh = makeFeature('m', 0, 0);
+    fresh.set('kind', 'manzana', true);
+    (src as unknown as FakeSource).addFeature(fresh);
+    rec.recordAdd(fresh);
+
+    expect(isEmptyStructuralDiff(rec.toDiff(src))).toBe(true);
+  });
+
+  it('remove + re-add del mismo id con geometría distinta: queda como modified (id reciclado, cambio real)', () => {
+    const src = fakeSource();
+    const rec = new StructuralDiffRecorder();
+    const old = makeFeature('m', 0, 0);
+    old.set('kind', 'manzana', true);
+    rec.recordRemove(old);
+
+    const fresh = makeFeature('m', 1, 1);
+    fresh.set('kind', 'manzana', true);
+    (src as unknown as FakeSource).addFeature(fresh);
+    rec.recordAdd(fresh);
+
+    const diff = rec.toDiff(src);
+    expect(diff.added).toHaveLength(0);
+    expect(diff.removed).toHaveLength(0);
+    expect(diff.modified).toHaveLength(1);
+    expect(diff.modified[0].id).toBe('m');
+    expect((diff.modified[0].before.geometry as Point).getCoordinates()).toEqual([0, 0]);
+    expect((diff.modified[0].after.geometry as Point).getCoordinates()).toEqual([1, 1]);
+  });
+
+  it('remove + re-add del mismo id con props distintas (geometría igual): queda como modified', () => {
+    const src = fakeSource();
+    const rec = new StructuralDiffRecorder();
+    const old = makeFeature('m', 0, 0);
+    old.set('label', 'viejo', true);
+    rec.recordRemove(old);
+
+    const fresh = makeFeature('m', 0, 0);
+    fresh.set('label', 'nuevo', true);
+    (src as unknown as FakeSource).addFeature(fresh);
+    rec.recordAdd(fresh);
+
+    const diff = rec.toDiff(src);
+    expect(diff.modified).toHaveLength(1);
+    expect(diff.modified[0].before.props.label).toBe('viejo');
+    expect(diff.modified[0].after.props.label).toBe('nuevo');
+  });
+
   it('modifyBefore/modifyAfter conservan el "antes" original aunque se mute dos veces', () => {
     const src = fakeSource();
     const rec = new StructuralDiffRecorder();

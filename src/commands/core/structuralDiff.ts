@@ -1,5 +1,6 @@
 import Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
+import type SimpleGeometry from 'ol/geom/SimpleGeometry.js';
 import type VectorSource from 'ol/source/Vector.js';
 
 /**
@@ -64,6 +65,26 @@ function snapshotToFeature(snap: FeatureSnapshot): Feature<Geometry> {
 }
 
 /**
+ * Comparación barata de contenido entre dos snapshots: coordenadas planas
+ * de la geometría (getFlatCoordinates, sin clonar) + props serializadas.
+ * Sirve para decidir si un id "reciclado" (removido y re-creado en la
+ * misma operación) es en realidad el MISMO feature sin cambios reales o
+ * un feature nuevo que reclamó un id ya liberado.
+ */
+function snapshotsEquivalent(a: FeatureSnapshot, b: FeatureSnapshot): boolean {
+  const fa = (a.geometry as unknown as Partial<SimpleGeometry>).getFlatCoordinates?.();
+  const fb = (b.geometry as unknown as Partial<SimpleGeometry>).getFlatCoordinates?.();
+  // Sin coordenadas planas no podemos probar igualdad: tratarlo como
+  // cambio real (nunca esconder un cambio por no poder compararlo).
+  if (!fa || !fb) return false;
+  if (fa.length !== fb.length) return false;
+  for (let i = 0; i < fa.length; i++) {
+    if (fa[i] !== fb[i]) return false;
+  }
+  return JSON.stringify(a.props) === JSON.stringify(b.props);
+}
+
+/**
  * Graba, de forma manual y explícita, qué features fueron
  * agregados/eliminados/modificados durante una operación — sin recorrer
  * ni snapshotear el resto del drawSource.
@@ -88,10 +109,21 @@ export class StructuralDiffRecorder {
   recordAdd(feature: Feature<Geometry>): void {
     const id = feature.getId();
     if (id == null) return;
-    if (this.removedById.has(id)) {
-      // Se había registrado como removido y reaparece con el mismo id
-      // dentro de la misma operación: neto cero, no es un "add" real.
+    const removedSnap = this.removedById.get(id);
+    if (removedSnap) {
+      // El id se había registrado como removido y reaparece dentro de la
+      // misma operación. No alcanza con cancelar por id: si el contenido
+      // (geometría/props) es distinto, es un id "reciclado" — el pipeline
+      // borró la feature vieja y creó una nueva que reclamó el mismo id
+      // (p. ej. recomputeManzanos genera ids por índice de posición).
+      // Cancelarlo silenciosamente dejaría un cambio real invisible para
+      // undo/redo. Solo es neto cero si el contenido es idéntico.
       this.removedById.delete(id);
+      const newSnap = snapshotFeature(feature);
+      if (newSnap && !snapshotsEquivalent(removedSnap, newSnap)) {
+        this.modifiedBeforeById.set(id, removedSnap);
+        this.modifiedAfterById.set(id, newSnap);
+      }
       return;
     }
     this.addedIds.add(id);
