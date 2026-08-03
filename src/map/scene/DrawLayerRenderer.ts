@@ -100,7 +100,7 @@ interface PoolLayerColor {
 interface PoolSlot {
   source: VectorSource;
   layer: WebGLVectorLayer;
-  /** Colores indexados por `webglSlotIdx`: slotColor[i] = color de la i‑ésima capa user. */
+  /** Colores indexados por `webglSlotIdx`: slotColor[i] = color de la i‑ésima capa user dentro de este slot. */
   colorTable: PoolLayerColor[];
   lastSig: string;
 }
@@ -180,7 +180,7 @@ export class LayeredWebglRenderer {
         return;
       }
       const slotInfo = this.layerSlotMap.get(layerId);
-      if (!slotInfo) {
+      if (!slotInfo || !this.poolSlots[slotInfo.slot]) {
         this.poolFallbackSource?.addFeature(feature);
         this.placement.set(feature, '__geourban_pool_fallback__');
         feature.set('webglSlotIdx', -1, true);
@@ -206,7 +206,7 @@ export class LayeredWebglRenderer {
         this.poolFallbackSource?.removeFeature(feature);
       } else if (prevKey.startsWith('pool:')) {
         const slot = parseInt(prevKey.slice(5), 10);
-        if (!Number.isNaN(slot) && slot < this.poolSlots.length) {
+        if (!Number.isNaN(slot) && slot < this.poolSlots.length && this.poolSlots[slot]) {
           this.poolSlots[slot].source.removeFeature(feature);
         }
       }
@@ -319,26 +319,49 @@ export class LayeredWebglRenderer {
     };
   }
 
+  /**
+   * Reconstruye `this.poolSlots` para reflejar `layers`.
+   *
+   * BUGFIX (Fase 4.4, auditoria-para-mejora.md): la versión anterior hacía
+   * `this.poolSlots.length = nSlots` y después reconciliaba con un loop
+   * `if (existing) ... else this.poolSlots.push(...)`. Como `.length = n`
+   * deja "huecos" (`undefined`) en los índices `0..n-1`, `existing` daba
+   * siempre `undefined` en la primera pasada real, así que TODO slot nuevo
+   * se agregaba con `push()` — que lo pone al FINAL del array, no en la
+   * posición `i` — corriendo el array a `2n` elementos. El bloque de
+   * "limpieza de slots sobrantes" de más abajo (`for i=nSlots..oldCount:
+   * poolSlots.pop()`) entonces sacaba y `dispose()`-eaba exactamente esos
+   * `n` slots recién creados, dejando `this.poolSlots` con `n` posiciones,
+   * TODAS `undefined`. Cualquier acceso posterior — `place()` haciendo
+   * `this.poolSlots[slot].source`, o `syncPooledLayers` leyendo
+   * `curSlot.colorTable` — tiraba `TypeError` apenas el proyecto superaba
+   * `MAX_WEBGL_LAYERS` capas: el modo pool crasheaba el renderer en vez de
+   * activarse. Acá se reconstruye indexando directo, sin `push`/`pop`
+   * mezclados con preasignación de `.length`.
+   */
   private allocatePoolSlots(layers: Layer[]): void {
     this.layerSlotMap.clear();
     const nSlots = Math.min(MAX_WEBGL_LAYERS, layers.length);
-    const slotSize = Math.ceil(layers.length / nSlots);
+    if (nSlots === 0) {
+      this.disposeAllPoolSlots();
+      return;
+    }
+    const slotSize = Math.max(1, Math.ceil(layers.length / nSlots));
 
-    // Almacén temporal de listas de [color+layerIdx] por slot
     const slotLayers: Array<{ layer: Layer; idx: number }[]> = [];
     for (let i = 0; i < nSlots; i++) slotLayers.push([]);
 
     let layerIdxGlobal = 0;
     for (const layer of layers) {
-      const slot = Math.floor(layerIdxGlobal / slotSize);
-      if (slot >= nSlots) break; // shouldn't happen
+      const slot = Math.min(nSlots - 1, Math.floor(layerIdxGlobal / slotSize));
       slotLayers[slot].push({ layer, idx: slotLayers[slot].length });
       this.layerSlotMap.set(layer.id, { slot, idx: slotLayers[slot].length - 1 });
       layerIdxGlobal++;
     }
 
-    // Rebuild PoolSlots. Respaña los ᜃColorSlot for each slot.
-    this.poolSlots.length = nSlots;
+    const oldSlots = this.poolSlots;
+    const nextSlots: PoolSlot[] = new Array(nSlots);
+
     for (let i = 0; i < nSlots; i++) {
       const colorTable: PoolLayerColor[] = slotLayers[i].map((entry) => ({
         color: entry.layer.color,
@@ -347,51 +370,65 @@ export class LayeredWebglRenderer {
         suppressIfSubdivided: entry.layer.kind === 'manzana',
       }));
       const sig = LayeredWebglRenderer.poolSlotSig(colorTable);
-      const newStyle = LayeredWebglRenderer.buildPoolSlotStyle(colorTable);
-      const existing = this.poolSlots[i];
+      const existing = oldSlots[i];
+
       if (existing) {
+        if (existing.lastSig !== sig) {
+          if (this.map) existing.layer.setStyle(LayeredWebglRenderer.buildPoolSlotStyle(colorTable));
+          recordSetStyleCall();
+        }
         existing.colorTable = colorTable;
         existing.lastSig = sig;
-        if (this.map) existing.layer.setStyle(newStyle);
+        nextSlots[i] = existing;
       } else {
         const source = new VectorSource();
         const layer = new WebGLVectorLayer({
           source,
           disableHitDetection: true,
-          style: newStyle,
-          zIndex: 0, // all pool slots stay at base Z
+          style: LayeredWebglRenderer.buildPoolSlotStyle(colorTable),
+          zIndex: 0, // todos los slots del pool quedan al mismo Z base
         });
-        this.poolSlots.push({ source, layer, colorTable, lastSig: sig });
+        nextSlots[i] = { source, layer, colorTable, lastSig: sig };
         this.map?.addLayer(layer);
       }
     }
-    // Cleanup any extra slots
-    const oldCount = this.poolSlots.length;
-    for (let i = nSlots; i < oldCount; i++) {
-      const removed = this.poolSlots.pop()!;
-      // any remaining features? might be never because we re-placed first
+
+    // Slots sobrantes de la asignación anterior (el pool se redujo): se
+    // disponen de verdad — ya no se "pop-ean" por accidente los que
+    // acabamos de crear, porque nextSlots/oldSlots están separados.
+    for (let i = nSlots; i < oldSlots.length; i++) {
+      const removed = oldSlots[i];
+      if (!removed) continue;
       this.map?.removeLayer(removed.layer);
       removed.layer.dispose();
     }
+
+    this.poolSlots = nextSlots;
   }
 
+  private disposeAllPoolSlots(): void {
+    for (const slot of this.poolSlots) {
+      this.map?.removeLayer(slot.layer);
+      slot.layer.dispose();
+    }
+    this.poolSlots = [];
+  }
+
+  /**
+   * BUGFIX: antes comparaba `curSlot.lastSig` contra
+   * `poolSlotSig(curSlot.colorTable)` — el signature de un slot contra SU
+   * PROPIO colorTable ya guardado. Es una tautología (siempre son iguales
+   * salvo mutación externa del array, que acá no ocurre), así que
+   * `anyChanged` nunca daba `true` y `allocatePoolSlots` solo se volvía a
+   * llamar la primera vez (`poolSlots.length === 0`). Efecto práctico:
+   * cambiar el color/opacidad de una capa mientras el proyecto está en
+   * modo pool (>48 capas) nunca se reflejaba en el mapa. `allocatePoolSlots`
+   * es barata — solo corre cuando cambia el array `layers` del store, nunca
+   * por frame — así que directamente se recalcula siempre.
+   */
   private syncPooledLayers(layers: Layer[]): void {
     recordSyncLayerSetCall();
-    if (this.poolSlots.length === 0) {
-      this.allocatePoolSlots(layers);
-    } else {
-      let anyChanged = false;
-      for (let i = 0; i < this.poolSlots.length; i++) {
-        const curSlot = this.poolSlots[i];
-        const currentSigRel = LayeredWebglRenderer.poolSlotSig(curSlot.colorTable);
-        if (curSlot.lastSig !== currentSigRel) { // where comes other?
-          anyChanged = true; break;
-        }
-      }
-      if (anyChanged) {
-        this.allocatePoolSlots(layers);
-      }
-    }
+    this.allocatePoolSlots(layers);
 
     this.byIdCache = null; // redo cache for place
     // Re‑place every feature to pool slots
@@ -405,8 +442,11 @@ export class LayeredWebglRenderer {
   private transitionMode(toPooled: boolean, layers: Layer[]): void {
     this.poolMode = toPooled;
     if (toPooled) {
-      // Move from mirror → pool
+      // Mirror (por capa) → pool
       for (const [, entry] of Array.from(this.mirrors.entries())) {
+        // Libera las features retenidas por el mirror viejo de inmediato,
+        // en vez de depender únicamente del GC tras `this.mirrors.clear()`.
+        entry.source.clear(true);
         this.map?.removeLayer(entry.layer);
         entry.layer.dispose();
       }
@@ -425,11 +465,24 @@ export class LayeredWebglRenderer {
       this.map?.addLayer(this.poolFallbackLayer);
 
       this.allocatePoolSlots(layers);
+
+      // BUGFIX: `syncLayerSet()` hace `return` apenas `transitionMode()`
+      // termina — si acá no re-ubicamos las features que YA estaban
+      // dibujadas (en los mirrors que recién dispusimos), quedan sin dueño
+      // hasta que algún evento suelto de feature individual las toque de
+      // nuevo. Se re-ubican todas ahora mismo, igual que hace
+      // `syncPooledLayers` en los ciclos siguientes.
+      this.byIdCache = null;
+      const byId = this.getByIdMap();
+      for (const f of this.master.getFeatures()) {
+        this.place(f as Feature<Geometry>, byId);
+      }
+      recordWebglLayerCount(this.poolSlots.length);
     } else {
-      // Pool → per‑layer: simpler — just rebuild
-      this.poolSlots.forEach((p) => { this.map?.removeLayer(p.layer); p.layer.dispose(); });
-      this.poolSlots = [];
+      // Pool → mirror (por capa)
+      this.disposeAllPoolSlots();
       if (this.poolFallbackLayer) {
+        this.poolFallbackSource?.clear(true);
         this.map?.removeLayer(this.poolFallbackLayer);
         this.poolFallbackLayer.dispose();
         this.poolFallbackLayer = null;
@@ -466,6 +519,13 @@ export class LayeredWebglRenderer {
         this.map?.removeLayer(entry.layer);
         entry.layer.dispose();
       }
+      this.disposeAllPoolSlots();
+      if (this.poolFallbackLayer) {
+        this.map?.removeLayer(this.poolFallbackLayer);
+        this.poolFallbackLayer.dispose();
+        this.poolFallbackLayer = null;
+        this.poolFallbackSource = null;
+      }
       this.map?.removeLayer(this.fallback.layer);
       this.fallback.layer.dispose();
       this.map = null;
@@ -479,6 +539,7 @@ export class LayeredWebglRenderer {
   changed(): void {
     this.fallback.layer.changed();
     for (const entry of this.mirrors.values()) entry.layer.changed();
+    for (const slot of this.poolSlots) slot.layer.changed();
   }
 }
 
