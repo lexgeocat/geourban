@@ -1,3 +1,4 @@
+// src/components/debug/DebugPanel.tsx
 import React, { useEffect, useRef, useState } from 'react';
 import { useDebugPanelStore } from '../../store/debug/debugPanelStore';
 import { useMapStore } from '../../store/map/mapStore';
@@ -13,6 +14,7 @@ import {
 } from '../../store/debug/perfTelemetry';
 import { generateSyntheticManzanos, ensureSyntheticLotLayer } from '../../geo/debug/syntheticDataset';
 import { readNativeEngineStats, type NativeEngineStatsSnapshot } from '../../store/debug/nativeEngineTelemetry';
+import { readAffineStats, type AffineStatsSnapshot } from '../../store/debug/affineTelemetry';
 import { runStreetUndoBenchmarkSuite, type StreetUndoBenchmarkResult } from '../../geo/debug/undoRedoBenchmark';
 import { runSpatialIndexBenchmarkSuite, type SpatialIndexBenchmarkResult } from '../../geo/debug/spatialIndexBenchmark';
 
@@ -86,6 +88,7 @@ export default function DebugPanel() {
   const [projectLoad, setProjectLoad] = useState(readProjectLoadStats());
   const [heap, setHeap] = useState(readHeapSnapshot());
   const [nativeStats, setNativeStats] = useState<NativeEngineStatsSnapshot[]>([]);
+  const [affineStats, setAffineStats] = useState<AffineStatsSnapshot[]>([]);
   const [benchBusy, setBenchBusy] = useState(false);
   const [benchResults, setBenchResults] = useState<StreetUndoBenchmarkResult[]>([]);
   const [benchError, setBenchError] = useState<string | null>(null);
@@ -114,6 +117,7 @@ export default function DebugPanel() {
       setProjectLoad(readProjectLoadStats());
       setHeap(readHeapSnapshot());
       setNativeStats(readNativeEngineStats());
+      setAffineStats(readAffineStats());
       const src = useMapStore.getState().drawSource;
       setFeatureCount(src ? src.getFeatures().length : 0);
     };
@@ -149,20 +153,11 @@ export default function DebugPanel() {
     setTimeout(() => {
       try {
         ensureSyntheticLotLayer();
-        // Fase 3.4 — la grilla sintética se centra en el centro de vista actual
-        // (coordenadas internas del proyecto, EPSG:3857) en vez de partir del
-        // origen absoluto (0,0 = golfo de Guinea). NOTA: NO usar fitToExtent()
-        // del store acá: su extent incluye la capa base raster (el mundo
-        // entero) y deja el view en zoom ~2.4.
         const view = useMapStore.getState().mapInstance?.getView();
         const center = (view?.getCenter() as [number, number] | undefined) ?? [0, 0];
         const { collection, generateMs, extent, manzanoCount, lotCount } = generateSyntheticManzanos(size, center);
         useMapStore.getState().restoreDrawFeatures(collection);
 
-        // Fit robusto a la grilla: reintenta por frame hasta que el mapa esté
-        // listo (hasta ~2s), con el extent real del drawSource como fuente y
-        // el del generador como respaldo. La vista queda SIEMPRE sobre la
-        // grilla recién generada.
         const fitLoaded = (): boolean => {
           const m = useMapStore.getState().mapInstance;
           const v = m?.getView();
@@ -315,6 +310,32 @@ export default function DebugPanel() {
   computeRoadNetworkNet / matchFragmentsBatch. Los errores del motor nativo
   salen por consola y se propagan al comando (sin reintento JS).
 </div>
+
+      <SectionTitle>CRS afín (Fase 5.1/5.2 — linealización UTM)</SectionTitle>
+      <div style={{ color: 'var(--cad-text-muted)', fontSize: '0.6rem', marginBottom: 4 }}>
+        `projectPathToMetricPlane` en modo UTM usa una matriz afín cacheada en
+        vez de proj4 por vértice. "Reuses" debería dominar sobre "refits" en
+        uso normal — un refit por sesión/zona es esperable, docenas por
+        minuto indicarían que el padding (Fase 5.2) no está funcionando.
+      </div>
+      {affineStats.length === 0 ? (
+        <div style={{ color: 'var(--cad-text-muted)', fontStyle: 'italic', fontSize: '0.6rem' }}>
+          Sin cálculos afines todavía en esta sesión (modo CRS no-UTM, o sin ediciones)
+        </div>
+      ) : (
+        affineStats.map((s) => (
+          <div key={s.epsg} style={{ marginBottom: 4 }}>
+            <Row
+              label={s.epsg}
+              value={`refits=${s.refits} reuses=${s.reuses} (${(s.reuseRatio * 100).toFixed(1)}% reuse)`}
+            />
+            <Row
+              label="Último refit"
+              value={`err=${s.lastMaxErrorM < 1 ? (s.lastMaxErrorM * 1000).toFixed(2) + 'mm' : s.lastMaxErrorM.toFixed(2) + 'm'} · extent=${(s.lastExtentWidthM / 1000).toFixed(1)}x${(s.lastExtentHeightM / 1000).toFixed(1)}km`}
+            />
+          </div>
+        ))
+      )}
 
       <SectionTitle>Dataset sintético (manzanos + lotes)</SectionTitle>
       <div style={{ display: 'flex', gap: 4, marginBottom: 4 }}>

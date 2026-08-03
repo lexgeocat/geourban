@@ -1,4 +1,5 @@
-﻿import { create } from 'zustand';
+﻿// src/store/project/projectCrsStore.ts
+import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import {
   ensureUtmZoneRegistered,
@@ -7,6 +8,7 @@ import {
   type ProjectCrsMode,
   type ProjectCrsConfig,
 } from '../../geo/crs/utmZones';
+import { invalidateAffineCache } from '../../geo/crs/affineCache';
 
 export type { ProjectCrsMode };
 
@@ -40,6 +42,11 @@ export const useProjectCrsStore = create<ProjectCrsState>()(
       set((state) => {
         state.mode = mode;
         state.exportEpsg = computeExportEpsg(mode, state.utmZone, state.utmHemisphere);
+        // Fase 5.2 — al fijar/cambiar el modo de CRS, la matriz afín
+        // cacheada (ajustada para el EPSG/extent anteriores) deja de ser
+        // válida; se invalida explícitamente en vez de esperar a que el
+        // próximo cálculo la detecte stale por key mismatch.
+        invalidateAffineCache();
       }),
 
     setUtmZone: (zone, hemisphere) =>
@@ -47,6 +54,7 @@ export const useProjectCrsStore = create<ProjectCrsState>()(
         state.utmZone = zone;
         state.utmHemisphere = hemisphere;
         state.exportEpsg = computeExportEpsg(state.mode, zone, hemisphere);
+        invalidateAffineCache();
       }),
 
     autoDetectFromLonLat: (lon, lat) =>
@@ -55,6 +63,7 @@ export const useProjectCrsStore = create<ProjectCrsState>()(
         state.utmZone = zone;
         state.utmHemisphere = hemisphere;
         state.exportEpsg = computeExportEpsg(state.mode, zone, hemisphere);
+        invalidateAffineCache();
       }),
 
     confirm: () => set((state) => { state.confirmed = true; }),
@@ -66,6 +75,7 @@ export const useProjectCrsStore = create<ProjectCrsState>()(
         state.utmHemisphere = config.utmHemisphere;
         state.exportEpsg = computeExportEpsg(config.mode, config.utmZone, config.utmHemisphere);
         state.confirmed = true;
+        invalidateAffineCache();
       }),
 
     requestReconfigure: () => set((state) => { state.confirmed = false; }),

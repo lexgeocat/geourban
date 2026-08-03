@@ -1,4 +1,5 @@
-﻿import Feature from 'ol/Feature.js';
+﻿// src/geo/metrics.ts
+import Feature from 'ol/Feature.js';
 import LineString from 'ol/geom/LineString.js';
 import Polygon from 'ol/geom/Polygon.js';
 import type Geometry from 'ol/geom/Geometry.js';
@@ -8,6 +9,8 @@ import { DISPLAY_PROJECTION, GEOGRAPHIC_PROJECTION } from './crs/projections';
 import { useProjectCrsStore } from '../store/project/projectCrsStore';
 import { ensureUtmZoneRegistered } from './crs/utmZones';
 import { pathLength } from './math/polygonEngine';
+import { getMetricPlaneAffine } from './crs/affineCache';
+import { applyAffineBatch, extentOfPoints } from './crs/affineApprox';
 
 export type SegmentMetric = {
   /** Punto inicial del lado lógico (mismas unidades que la geometría, ej. EPSG:3857). */
@@ -28,12 +31,22 @@ export type FeatureMetrics = {
   metricsUpdatedAt: number;
 };
 
+/**
+ * Fase 5.1/5.3 (auditoria-para-mejora.md) — antes llamaba `transform()`
+ * (proj4) por cada vértice del path. Ahora, en modo UTM, usa una matriz
+ * afín 2×2 + offset ajustada por mínimos cuadrados (`affineCache.ts`)
+ * que aproxima la proyección dentro del bounding box del proyecto: el
+ * costo de proj4 se paga solo cuando el extent crece más allá del
+ * margen cacheado (Fase 5.2), no en el hot path de cada edición.
+ */
 export function projectPathToMetricPlane(path3857: Array<[number, number]>): [number, number][] {
   const crs = useProjectCrsStore.getState();
 
   if (crs.mode === 'utm') {
     const epsg = ensureUtmZoneRegistered(crs.utmZone, crs.utmHemisphere);
-    return path3857.map((c) => transform(c, DISPLAY_PROJECTION, epsg) as [number, number]);
+    const extentHint = extentOfPoints(path3857);
+    const affine = getMetricPlaneAffine(epsg, extentHint);
+    return applyAffineBatch(path3857, affine);
   }
 
   const lonLat = path3857.map((c) => transform(c, DISPLAY_PROJECTION, GEOGRAPHIC_PROJECTION));
