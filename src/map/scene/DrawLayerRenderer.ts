@@ -93,8 +93,11 @@ interface PoolLayerColor {
   color: string;
   fillColor: string;
   opacity: number;
-  /** Si es true, los lotes subdivididos se dibujan transparentes. */
   suppressIfSubdivided: boolean;
+  /** BUGFIX (Fase 4.4): sin esto, el modo pool ignoraba 'colorIdx' y
+   * pintaba color plano para manzanos configurados como "color por
+   * manzano" apenas el proyecto superaba MAX_WEBGL_LAYERS capas. */
+  colorMode: 'solid' | 'colorIdx';
 }
 
 interface PoolSlot {
@@ -294,51 +297,56 @@ export class LayeredWebglRenderer {
   // ─── Pooled mode (Fase 4.4) ──────────────────────────────────────────
 
   private static poolSlotSig(layers: PoolLayerColor[]): string {
-    return layers.map((l) => `${l.color}|${l.fillColor}|${l.opacity}|${l.suppressIfSubdivided ? 1 : 0}`).join(',');
-  }
+  return layers
+    .map((l) => `${l.color}|${l.fillColor}|${l.opacity}|${l.suppressIfSubdivided ? 1 : 0}|${l.colorMode}`)
+    .join(',');
+}
 
-  /** Construye el estilo WebGL de un slot físico. */
-  private static buildPoolSlotStyle(colors: PoolLayerColor[]): Record<string, unknown> {
-    const fillMatch: unknown[] = ['match', ['get', 'webglSlotIdx']];
-    const strokeMatch: unknown[] = ['match', ['get', 'webglSlotIdx']];
-    for (let i = 0; i < colors.length; i++) {
-      const c = colors[i];
-      const fill = withAlpha(c.fillColor, 0.3 * c.opacity);
-      const stroke = withAlpha(c.color, c.opacity);
-      fillMatch.push(i, c.suppressIfSubdivided
-        ? ['case', ['==', ['get', 'lotStatus'], 'subdivided'], 'rgba(0,0,0,0)', fill]
-        : fill);
-      strokeMatch.push(i, stroke);
+/** Construye el estilo WebGL de un slot físico. Espeja buildSingleLayerStyle:
+ * un feature con colorMode='colorIdx' se pinta por su colorIdx propio
+ * (paleta MZN_COLORS), no por el color plano de su capa. */
+private static buildPoolSlotStyle(colors: PoolLayerColor[]): Record<string, unknown> {
+  const fillMatch: unknown[] = ['match', ['get', 'webglSlotIdx']];
+  const strokeMatch: unknown[] = ['match', ['get', 'webglSlotIdx']];
+
+  for (let i = 0; i < colors.length; i++) {
+    const c = colors[i];
+
+    if (c.colorMode === 'colorIdx') {
+      const fillIdxExpr: unknown[] = ['match', ['get', 'colorIdx']];
+      const strokeIdxExpr: unknown[] = ['match', ['get', 'colorIdx']];
+      for (let k = 0; k < MZN_COLOR_COUNT; k++) {
+        fillIdxExpr.push(k, withAlpha(MZN_COLORS[k], 0.3 * c.opacity));
+        strokeIdxExpr.push(k, withAlpha(MZN_COLORS[k], c.opacity));
+      }
+      fillIdxExpr.push(withAlpha(MZN_COLORS[0], 0.3 * c.opacity));
+      strokeIdxExpr.push(withAlpha(MZN_COLORS[0], c.opacity));
+
+      const fill = c.suppressIfSubdivided
+        ? ['case', ['==', ['get', 'lotStatus'], 'subdivided'], 'rgba(0,0,0,0)', fillIdxExpr]
+        : fillIdxExpr;
+
+      fillMatch.push(i, fill);
+      strokeMatch.push(i, strokeIdxExpr);
+      continue;
     }
-    fillMatch.push('rgba(0,0,0,0)');
-    strokeMatch.push('rgba(0,0,0,0)');
-    return {
-      'fill-color': fillMatch,
-      'stroke-color': strokeMatch,
-      'stroke-width': 2,
-    };
+
+    const fill = withAlpha(c.fillColor, 0.3 * c.opacity);
+    const stroke = withAlpha(c.color, c.opacity);
+    fillMatch.push(
+      i,
+      c.suppressIfSubdivided
+        ? ['case', ['==', ['get', 'lotStatus'], 'subdivided'], 'rgba(0,0,0,0)', fill]
+        : fill,
+    );
+    strokeMatch.push(i, stroke);
   }
 
-  /**
-   * Reconstruye `this.poolSlots` para reflejar `layers`.
-   *
-   * BUGFIX (Fase 4.4, auditoria-para-mejora.md): la versión anterior hacía
-   * `this.poolSlots.length = nSlots` y después reconciliaba con un loop
-   * `if (existing) ... else this.poolSlots.push(...)`. Como `.length = n`
-   * deja "huecos" (`undefined`) en los índices `0..n-1`, `existing` daba
-   * siempre `undefined` en la primera pasada real, así que TODO slot nuevo
-   * se agregaba con `push()` — que lo pone al FINAL del array, no en la
-   * posición `i` — corriendo el array a `2n` elementos. El bloque de
-   * "limpieza de slots sobrantes" de más abajo (`for i=nSlots..oldCount:
-   * poolSlots.pop()`) entonces sacaba y `dispose()`-eaba exactamente esos
-   * `n` slots recién creados, dejando `this.poolSlots` con `n` posiciones,
-   * TODAS `undefined`. Cualquier acceso posterior — `place()` haciendo
-   * `this.poolSlots[slot].source`, o `syncPooledLayers` leyendo
-   * `curSlot.colorTable` — tiraba `TypeError` apenas el proyecto superaba
-   * `MAX_WEBGL_LAYERS` capas: el modo pool crasheaba el renderer en vez de
-   * activarse. Acá se reconstruye indexando directo, sin `push`/`pop`
-   * mezclados con preasignación de `.length`.
-   */
+  fillMatch.push('rgba(0,0,0,0)');
+  strokeMatch.push('rgba(0,0,0,0)');
+  return { 'fill-color': fillMatch, 'stroke-color': strokeMatch, 'stroke-width': 2 };
+}
+
   private allocatePoolSlots(layers: Layer[]): void {
     this.layerSlotMap.clear();
     const nSlots = Math.min(MAX_WEBGL_LAYERS, layers.length);
@@ -364,11 +372,12 @@ export class LayeredWebglRenderer {
 
     for (let i = 0; i < nSlots; i++) {
       const colorTable: PoolLayerColor[] = slotLayers[i].map((entry) => ({
-        color: entry.layer.color,
-        fillColor: entry.layer.fillColor,
-        opacity: entry.layer.opacity,
-        suppressIfSubdivided: entry.layer.kind === 'manzana',
-      }));
+  color: entry.layer.color,
+  fillColor: entry.layer.fillColor,
+  opacity: entry.layer.opacity,
+  suppressIfSubdivided: entry.layer.kind === 'manzana',
+  colorMode: entry.layer.colorMode,
+}));
       const sig = LayeredWebglRenderer.poolSlotSig(colorTable);
       const existing = oldSlots[i];
 
@@ -533,8 +542,14 @@ export class LayeredWebglRenderer {
   }
 
   getLayers(): BaseLayer[] {
-    return [this.fallback.layer, ...Array.from(this.mirrors.values(), (m) => m.layer)];
+  if (this.poolMode) {
+    const layers: BaseLayer[] = [];
+    if (this.poolFallbackLayer) layers.push(this.poolFallbackLayer);
+    for (const slot of this.poolSlots) layers.push(slot.layer);
+    return layers;
   }
+  return [this.fallback.layer, ...Array.from(this.mirrors.values(), (m) => m.layer)];
+}
 
   changed(): void {
     this.fallback.layer.changed();

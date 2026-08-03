@@ -46,6 +46,8 @@ export class PostrenderPainter {
   private cachedVisibleFeatures: Array<Feature<Geometry>> | null = null;
   private cachedVisibleKey: string | null = null;
 
+  private visibleDataVersion = 0;
+
 
   constructor(opts: { map: Map; drawSource: VectorSource; postrenderLayer: VectorLayer<VectorSource> }) {
     this.map = opts.map;
@@ -56,7 +58,10 @@ export class PostrenderPainter {
     this.selectionHighlightPainter.attach(this.map, () => this.drawSource.getFeatures().length);
  
 
-    const onFeatureChange = () => { this.dirty = true; };
+    const onFeatureChange = () => {
+      this.dirty = true;
+      this.visibleDataVersion++;
+    };
     this.drawSource.on('addfeature', onFeatureChange);
     this.drawSource.on('removefeature', onFeatureChange);
     this.drawSource.on('change', onFeatureChange);
@@ -130,7 +135,6 @@ export class PostrenderPainter {
     const resolution = this.map.getView().getResolution() ?? 1;
     const zoom = getZoomFromResolution(resolution);
     const features = (this.drawSource.getFeatures() ?? []) as Array<Feature<Geometry>>;
-    const dataChanged = this.dirty;
     const t1 = performance.now();
     recordPostrenderSplit('prologue', t1 - t0);
 
@@ -145,7 +149,7 @@ export class PostrenderPainter {
     };
 
 
-    const visibleFeatures = this.getVisibleFeatures(features, dataChanged);
+    const visibleFeatures = this.getVisibleFeatures(features);
     const t3 = performance.now();
 
     const size = this.map.getSize();
@@ -174,7 +178,6 @@ export class PostrenderPainter {
 
   private getVisibleFeatures(
     all: Array<Feature<Geometry>>,
-    dataChanged: boolean,
   ): Array<Feature<Geometry>> {
     const size = this.map.getSize();
     if (!size) return all;
@@ -186,7 +189,7 @@ export class PostrenderPainter {
     const py = Math.max((maxY - minY) / size[1], 1e-9);
     const key =
       `${Math.round(minX / px)},${Math.round(minY / py)},${Math.round(maxX / px)},${Math.round(maxY / py)}` +
-      `|${all.length}|${dataChanged ? '1' : '0'}`;
+      `|${all.length}|${this.visibleDataVersion}`;
     if (this.cachedVisibleKey === key && this.cachedVisibleFeatures) {
       return this.cachedVisibleFeatures;
     }
