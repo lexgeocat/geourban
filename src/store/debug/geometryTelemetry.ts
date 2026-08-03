@@ -2,6 +2,16 @@ const ROLLING_WINDOW_MS = 60_000;
 const MAX_RECENT_EVENTS = 50;
 const MAX_TRACKED_CONTEXTS = 100;
 
+let telemetryEnabled = false;
+
+export function setGeometryTelemetryEnabled(v: boolean): void {
+  telemetryEnabled = v;
+}
+
+function isEnabled(): boolean {
+  return telemetryEnabled;
+}
+
 export interface GeometrySanitizeEvent {
   context: string;
   detail: Record<string, unknown>;
@@ -50,10 +60,14 @@ function bumpContext(context: string): void {
 
 export function recordGeometrySanitizeEvent(context: string, detail: Record<string, unknown> = {}): void {
   try {
-    bumpContext(context);
-    recentEvents.push({ context, detail, at: Date.now() });
-    if (recentEvents.length > MAX_RECENT_EVENTS) recentEvents.shift();
-    console.warn('[geometry-sanitize]', JSON.stringify({ context, ...detail }));
+    if (isEnabled()) {
+      bumpContext(context);
+      recentEvents.push({ context, detail, at: Date.now() });
+      if (recentEvents.length > MAX_RECENT_EVENTS) recentEvents.shift();
+    }
+    if (import.meta.env.DEV) {
+      console.warn('[geometry-sanitize]', JSON.stringify({ context, ...detail }));
+    }
     forwardToMainIfWorker(context, detail);
   } catch {
   }
@@ -65,6 +79,9 @@ export interface GeometryTelemetrySnapshot {
 }
 
 export function readGeometryTelemetry(): GeometryTelemetrySnapshot {
+  if (!isEnabled()) {
+    return { countsByContext: {}, recentEvents: [] };
+  }
   const now = Date.now();
   const countsByContext: Record<string, number> = {};
   for (const [ctx, c] of countersByContext) {

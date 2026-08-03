@@ -2,9 +2,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useDebugPanelStore } from '../../store/debug/debugPanelStore';
 import { useMapStore } from '../../store/map/mapStore';
-import { readDebugCounters, readPostrenderSplit } from '../../store/debug/debugCounters';
+import { readDebugCounters, readPostrenderSplit, setDebugTelemetryEnabled } from '../../store/debug/debugCounters';
 import type { DebugCountersSnapshot } from '../../store/debug/debugCounters';
-import { readGeometryTelemetry } from '../../store/debug/geometryTelemetry';
+import { readGeometryTelemetry, setGeometryTelemetryEnabled } from '../../store/debug/geometryTelemetry';
 import {
   readWorkerStats,
   readUndoCommandStats,
@@ -131,6 +131,8 @@ export default function DebugPanel() {
 
   useEffect(() => {
     if (!open) return;
+    setDebugTelemetryEnabled(true);
+    setGeometryTelemetryEnabled(true);
     const tick = () => {
       setCounters(readDebugCounters());
       setSplit(readPostrenderSplit());

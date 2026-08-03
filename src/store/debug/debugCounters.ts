@@ -1,5 +1,15 @@
 const ROLLING_WINDOW_MS = 60_000;
 
+let telemetryEnabled = false;
+
+export function setDebugTelemetryEnabled(v: boolean): void {
+  telemetryEnabled = v;
+}
+
+function isEnabled(): boolean {
+  return telemetryEnabled;
+}
+
 interface RollingCounter {
   count: number;
   windowStart: number;
@@ -32,17 +42,21 @@ function peek(counter: RollingCounter): number {
 }
 
 export function recordSetStyleCall(): void {
+  if (!isEnabled()) return;
   bump(setStyleCalls);
 }
 export function recordSyncLayerSetCall(): void {
+  if (!isEnabled()) return;
   bump(syncLayerSetCalls);
 }
 export function recordSyncGizmoCall(): void {
+  if (!isEnabled()) return;
   bump(syncGizmoCalls);
 }
 
 let webglLayerCount = 0;
 export function recordWebglLayerCount(n: number): void {
+  if (!isEnabled()) return;
   webglLayerCount = n;
 }
 
@@ -53,6 +67,7 @@ let postrenderLastMs = 0;
 const splitSamples = new globalThis.Map<string, number[]>();
 
 export function recordPostrenderSplit(label: string, ms: number): void {
+  if (!isEnabled()) return;
   let arr = splitSamples.get(label);
   if (!arr) {
     arr = [];
@@ -63,6 +78,7 @@ export function recordPostrenderSplit(label: string, ms: number): void {
 }
 
 export function readPostrenderSplit(): Record<string, number> {
+  if (!isEnabled()) return {};
   const out: Record<string, number> = {};
   for (const [label, arr] of splitSamples) {
     out[label] = arr.reduce((a, b) => a + b, 0) / arr.length;
@@ -74,13 +90,16 @@ const labelCacheHits = makeRollingCounter();
 const labelCacheMisses = makeRollingCounter();
 
 export function recordLabelCacheHit(): void {
+  if (!isEnabled()) return;
   bump(labelCacheHits);
 }
 export function recordLabelCacheMiss(): void {
+  if (!isEnabled()) return;
   bump(labelCacheMisses);
 }
 
 export function recordPostrenderDuration(ms: number): void {
+  if (!isEnabled()) return;
   postrenderLastMs = ms;
   postrenderSamples.push(ms);
   if (postrenderSamples.length > PR_SAMPLE_MAX) postrenderSamples.shift();
@@ -98,6 +117,18 @@ export interface DebugCountersSnapshot {
 }
 
 export function readDebugCounters(): DebugCountersSnapshot {
+  if (!isEnabled()) {
+    return {
+      setStyleCallsPerMin: 0,
+      syncLayerSetCallsPerMin: 0,
+      syncGizmoCallsPerMin: 0,
+      webglLayerCount: 0,
+      postrenderLastMs: 0,
+      postrenderAvgMs: 0,
+      labelCacheHitsPerMin: 0,
+      labelCacheMissesPerMin: 0,
+    };
+  }
   const avg = postrenderSamples.length > 0
     ? postrenderSamples.reduce((a, b) => a + b, 0) / postrenderSamples.length
     : 0;
