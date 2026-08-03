@@ -348,7 +348,7 @@ export default function DebugPanel() {
     <div key={s.epsg} style={{ marginBottom: 4 }}>
       <Row
         label={s.epsg === LOCAL_TANGENT_PLANE_KEY ? 'Plano local (sin CRS)' : s.epsg}
-        value={`refits=${s.refits} reuses=${s.reuses} (${(s.reuseRatio * 100).toFixed(1)}% reuse)`}
+        value={`refits=${s.refits} reuses=${s.reuses} degraded=${s.degraded} (${(s.reuseRatio * 100).toFixed(1)}% reuse)`}
       />
       <Row
         label="Último refit"

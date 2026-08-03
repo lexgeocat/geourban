@@ -1,33 +1,30 @@
 // src/geo/debug/affineAccuracyBenchmark.ts
 //
 // Fase 5.4 (auditoria-para-mejora.md) — "Validación de error acumulado":
-// confirma que el error de la linealización afín (Fase 5.1-5.3) se
-// mantiene dentro del margen de seguridad que el propio motor ya usa en
-// producción (MAX_ACCEPTABLE_ERROR_M, affineCache.ts), comparando —
-// vértice por vértice, no solo en la grilla 5x5 de ajuste — la matriz
-// afín cacheada contra la transformación de referencia:
+// confirma que el error de la linealización afín+cuadrática (Fase 5,
+// hardening) se mantiene dentro del margen de seguridad
+// (MAX_ACCEPTABLE_ERROR_M) comparando, vértice por vértice, la matriz
+// contra la transformación de referencia:
 //   • modo 'utm'  → proj4 completo (transform(), sin aproximar).
-//   • modo 'none' → fórmula esférica exacta de Mercator (sin linealizar
-//                    en Y) — la misma que ya usa fitLocalTangentPlane
-//                    para medir su propio residuo.
+//   • modo 'none' → fórmula esférica exacta de Mercator.
 //
-// Nota honesta: la telemetría real de producción (DebugPanel → "CRS
-// afín") mide errores de bajo-dígito de milímetro (~1-9mm) a ~1km de
-// extent — por debajo de MAX_ACCEPTABLE_ERROR_M (1cm), pero NO
-// estrictamente "submilimétrico" como sugiere la redacción original de
-// la Fase 5.4 a esa escala. El criterio PASA/FALLA de este benchmark usa
-// MAX_ACCEPTABLE_ERROR_M (single source of truth con affineCache.ts) en
-// vez de un umbral de 1mm que no coincide con lo medido; `subMillimeter`
-// queda como dato informativo adicional, no como assertion.
+// Fase 5 (hardening, 2-ago-2026): este benchmark computa la matriz de
+// forma STANDALONE (computeMetricPlaneAffineStandalone) — ya NO llama
+// invalidateAffineCache()/getMetricPlaneAffine(), que antes contaminaban
+// el caché en vivo y la telemetría de producción con datos sintéticos
+// (síntoma observado: "refits=3 reuses=0" + "err=48.50m" en el panel de
+// debug, mezclando el estado real de la sesión con esta suite). También
+// genera el dataset sintético centrado en una ubicación real dentro de la
+// zona UTM bajo prueba (antes usaba el origen (0,0) = "null island",
+// miles de km fuera de cualquier zona UTM real, lo que inflaba el error
+// medido sin que fuera un defecto del motor).
 
-import { transform } from 'ol/proj.js';
+import { transform, fromLonLat } from 'ol/proj.js';
 import type { Extent } from 'ol/extent.js';
 import type { FeatureCollection } from 'geojson';
 import { generateSyntheticManzanos } from './syntheticDataset';
 import {
-  getMetricPlaneAffine,
-  invalidateAffineCache,
-  getCurrentFitExtent,
+  computeMetricPlaneAffineStandalone,
   LOCAL_TANGENT_PLANE_KEY,
   MAX_ACCEPTABLE_ERROR_M,
 } from '../crs/affineCache';
@@ -35,13 +32,11 @@ import { applyAffine, extentOfPoints, referenceLocalTangentPoint } from '../crs/
 import { ensureUtmZoneRegistered } from '../crs/utmZones';
 import { DISPLAY_PROJECTION } from '../crs/projections';
 
-/** Umbral informativo (no bloqueante) — la redacción aspiracional original de la Fase 5.4. */
+/** Umbral informativo (no bloqueante). */
 const SUB_MM_INFO_THRESHOLD_M = 0.001;
 
 export interface AffineAccuracyResult {
-  /** Etiqueta legible ("EPSG:32719", "Plano local"). */
   label: string;
-  /** Key interna usada por affineCache (mismo EPSG o LOCAL_TANGENT_PLANE_KEY). */
   key: string;
   datasetSize: number;
   vertexCount: number;
@@ -54,7 +49,7 @@ export interface AffineAccuracyResult {
   elapsedMs: number;
   /** maxErrorM < MAX_ACCEPTABLE_ERROR_M (1cm) — el criterio real que ya aplica affineCache.ts. */
   withinAcceptableError: boolean;
-  /** maxErrorM < 1mm — informativo, la redacción aspiracional original de la Fase 5.4. */
+  /** maxErrorM < 1mm — informativo. */
   subMillimeter: boolean;
 }
 
@@ -93,19 +88,19 @@ function runOne(
   key: string,
   datasetSize: number,
   referenceFn: (pt: [number, number], fitExtent: Extent) => [number, number],
+  center: [number, number],
 ): AffineAccuracyResult {
   const t0 = performance.now();
 
-  const { collection, extent } = generateSyntheticManzanos(datasetSize);
+  const { collection, extent } = generateSyntheticManzanos(datasetSize, center);
   const vertices = collectVertices(collection);
 
-  // Refit limpio — no arrastramos una matriz cacheada de una corrida
-  // anterior con otro extent/EPSG (mismo criterio que undoRedoBenchmark.ts
-  // y spatialIndexBenchmark.ts: estado determinístico por corrida).
-  invalidateAffineCache();
   const extentHint = vertices.length > 0 ? extentOfPoints(vertices) : (extent as Extent);
-  const affine = getMetricPlaneAffine(key, extentHint);
-  const fitExtent = getCurrentFitExtent() ?? extentHint;
+
+  // Standalone: nunca toca el caché en vivo ni la telemetría de producción.
+  const fitResult = computeMetricPlaneAffineStandalone(key, extentHint);
+  const affine = fitResult.transform;
+  const fitExtent = fitResult.extent;
 
   let maxErrorM = 0;
   let sumErrorM = 0;
@@ -142,23 +137,26 @@ function runOne(
 }
 
 /**
- * Fase 5.4 — corre la validación de error acumulado para AMBOS modos de
- * CRS (una o más zonas UTM + plano local) sobre varios tamaños del
- * dataset sintético (Fase 0/6.1). Referencia: proj4 completo en modo UTM;
- * fórmula esférica exacta de Mercator en modo local — aplicada a CADA
- * vértice real generado, no solo a la grilla 5x5 de ajuste.
+ * Corre la validación de error acumulado para AMBOS modos de CRS sobre
+ * varios tamaños del dataset sintético. `centerLonLat` ancla el dataset a
+ * una ubicación real (default: La Paz, misma zona que `EPSG:32719` y el
+ * centro default de la app en `mapStore.ts`) — antes se generaba en el
+ * origen (0,0), fuera de cualquier zona UTM real, lo que medía distorsión
+ * espuria en vez de precisión del motor.
  */
 export function runAffineAccuracySuite(
   sizes: number[] = [1_000, 10_000, 100_000],
   utmEpsgList: string[] = ['EPSG:32719'],
+  centerLonLat: [number, number] = [-68.3, -16.65],
 ): AffineAccuracyResult[] {
+  const center = fromLonLat(centerLonLat) as [number, number];
   const results: AffineAccuracyResult[] = [];
 
   for (const epsg of utmEpsgList) {
     ensureEpsgRegistered(epsg);
     for (const size of sizes) {
       results.push(
-        runOne(epsg, epsg, size, (pt) => transform(pt, DISPLAY_PROJECTION, epsg) as [number, number]),
+        runOne(epsg, epsg, size, (pt) => transform(pt, DISPLAY_PROJECTION, epsg) as [number, number], center),
       );
     }
   }
@@ -166,8 +164,7 @@ export function runAffineAccuracySuite(
   for (const size of sizes) {
     results.push(
       runOne('Plano local', LOCAL_TANGENT_PLANE_KEY, size, (pt, fitExtent) =>
-        referenceLocalTangentPoint(pt, fitExtent),
-      ),
+        referenceLocalTangentPoint(pt, fitExtent), center),
     );
   }
 

@@ -4,19 +4,46 @@ import type { Extent } from 'ol/extent.js';
 import { DISPLAY_PROJECTION } from './projections';
 
 /**
- * Transformación afín 2D:
- *   X = a*x + b*y + c
- *   Y = d*x + e*y + f
+ * Transformación afín 2D, con corrección cuadrática opcional (Fase 5
+ * hardening) que absorbe la curvatura de la proyección conforme más allá
+ * de lo que un ajuste lineal puede capturar:
+ *   X = a*x + b*y + c [+ qxx*dx² + qxy*dx*dy + qyy*dy²]
+ *   Y = d*x + e*y + f [+ rxx*dx² + rxy*dx*dy + ryy*dy²]
+ * donde dx = x - quad.centerX, dy = y - quad.centerY.
  */
+export interface QuadCorrection {
+  centerX: number;
+  centerY: number;
+  qxx: number;
+  qxy: number;
+  qyy: number;
+  rxx: number;
+  rxy: number;
+  ryy: number;
+  /** Corrección máxima observada en la grilla de ajuste — informativo. */
+  maxCorrectionM: number;
+}
+
 export interface AffineTransform {
   a: number; b: number; c: number;
   d: number; e: number; f: number;
+  /** undefined ⇒ afín puro (comportamiento idéntico al original). */
+  quad?: QuadCorrection;
 }
 
 export const IDENTITY_AFFINE: AffineTransform = { a: 1, b: 0, c: 0, d: 0, e: 1, f: 0 };
 
 export function applyAffine(pt: readonly [number, number], t: AffineTransform): [number, number] {
-  return [t.a * pt[0] + t.b * pt[1] + t.c, t.d * pt[0] + t.e * pt[1] + t.f];
+  let X = t.a * pt[0] + t.b * pt[1] + t.c;
+  let Y = t.d * pt[0] + t.e * pt[1] + t.f;
+  if (t.quad) {
+    const dx = pt[0] - t.quad.centerX;
+    const dy = pt[1] - t.quad.centerY;
+    const xx = dx * dx, xy = dx * dy, yy = dy * dy;
+    X += t.quad.qxx * xx + t.quad.qxy * xy + t.quad.qyy * yy;
+    Y += t.quad.rxx * xx + t.quad.rxy * xy + t.quad.ryy * yy;
+  }
+  return [X, Y];
 }
 
 export function applyAffineBatch(
@@ -41,10 +68,9 @@ export function extentOfPoints(pts: ReadonlyArray<readonly [number, number]>): E
   return [minX, minY, maxX, maxY];
 }
 
-/** Eliminación gaussiana 3x3 con pivoteo parcial. Devuelve null si el sistema es singular. */
-function solve3x3(A: number[][], bVec: number[]): number[] | null {
-  const M = A.map((row, i) => [...row, bVec[i]]);
-  const n = 3;
+/** Eliminación gaussiana n×n con pivoteo parcial. Devuelve null si el sistema es singular. */
+function solveSquareSystem(n: number, A: number[][], bVec: number[]): number[] | null {
+  const M: number[][] = A.map((row, i) => [...row, bVec[i]]);
   for (let col = 0; col < n; col++) {
     let pivotRow = col;
     let maxAbs = Math.abs(M[col][col]);
@@ -63,15 +89,18 @@ function solve3x3(A: number[][], bVec: number[]): number[] | null {
       for (let c2 = col; c2 <= n; c2++) M[r][c2] -= factor * M[col][c2];
     }
   }
-  return [M[0][3], M[1][3], M[2][3]];
+  const out = new Array<number>(n);
+  for (let i = 0; i < n; i++) out[i] = M[i][n];
+  return out;
+}
+
+function solve3x3(A: number[][], bVec: number[]): number[] | null {
+  return solveSquareSystem(3, A, bVec);
 }
 
 /**
  * Ajusta por mínimos cuadrados una afín 2D que mapea `src` -> `dst`
- * (mismos índices, mínimo 3 puntos no colineales). X e Y se resuelven
- * como dos regresiones lineales independientes sobre la misma matriz
- * normal (mismos x,y de entrada) — mismo método que usan las
- * herramientas de georreferenciación (world-file affine fit).
+ * (mismos índices, mínimo 3 puntos no colineales).
  */
 export function fitAffineLeastSquares(
   src: ReadonlyArray<readonly [number, number]>,
@@ -124,6 +153,79 @@ export function maxResidual(
   return maxErr;
 }
 
+/**
+ * Fase 5 (hardening) — ajusta una corrección cuadrática de segundo orden
+ * sobre el RESIDUO del afín ya ajustado (no lo reemplaza, lo complementa):
+ * captura la curvatura de la proyección conforme que un modelo puramente
+ * lineal no puede representar, sin agregar ninguna llamada a proj4 por
+ * vértice — se resuelve una sola vez, en el refit, igual que el afín.
+ * Coordenadas centradas en el centroide de la grilla de muestra para
+ * mantener bien condicionado el sistema normal (x/y crudos en EPSG:3857
+ * son del orden de 10⁶-10⁷; su cuadrado desborda la precisión útil de un
+ * double para esta cuenta si no se centra primero).
+ */
+function fitQuadraticCorrection(
+  src: ReadonlyArray<readonly [number, number]>,
+  dst: ReadonlyArray<readonly [number, number]>,
+  affine: AffineTransform,
+): QuadCorrection | null {
+  const n = src.length;
+  if (n < 6) return null;
+
+  let centerX = 0, centerY = 0;
+  for (const p of src) { centerX += p[0]; centerY += p[1]; }
+  centerX /= n; centerY /= n;
+
+  let s_xx_xx = 0, s_xx_xy = 0, s_xx_yy = 0, s_xy_xy = 0, s_xy_yy = 0, s_yy_yy = 0;
+  let rX_xx = 0, rX_xy = 0, rX_yy = 0;
+  let rY_xx = 0, rY_xy = 0, rY_yy = 0;
+
+  for (let i = 0; i < n; i++) {
+    const dx = src[i][0] - centerX;
+    const dy = src[i][1] - centerY;
+    const xx = dx * dx, xy = dx * dy, yy = dy * dy;
+
+    s_xx_xx += xx * xx; s_xx_xy += xx * xy; s_xx_yy += xx * yy;
+    s_xy_xy += xy * xy; s_xy_yy += xy * yy;
+    s_yy_yy += yy * yy;
+
+    const approx = applyAffine(src[i], affine);
+    const resX = dst[i][0] - approx[0];
+    const resY = dst[i][1] - approx[1];
+
+    rX_xx += xx * resX; rX_xy += xy * resX; rX_yy += yy * resX;
+    rY_xx += xx * resY; rY_xy += xy * resY; rY_yy += yy * resY;
+  }
+
+  const Normal = [
+    [s_xx_xx, s_xx_xy, s_xx_yy],
+    [s_xx_xy, s_xy_xy, s_xy_yy],
+    [s_xx_yy, s_xy_yy, s_yy_yy],
+  ];
+
+  const solX = solveSquareSystem(3, Normal, [rX_xx, rX_xy, rX_yy]);
+  const solY = solveSquareSystem(3, Normal, [rY_xx, rY_xy, rY_yy]);
+  if (!solX || !solY) return null;
+
+  let maxCorrectionM = 0;
+  for (let i = 0; i < n; i++) {
+    const dx = src[i][0] - centerX;
+    const dy = src[i][1] - centerY;
+    const xx = dx * dx, xy = dx * dy, yy = dy * dy;
+    const corrX = solX[0] * xx + solX[1] * xy + solX[2] * yy;
+    const corrY = solY[0] * xx + solY[1] * xy + solY[2] * yy;
+    const m = Math.hypot(corrX, corrY);
+    if (m > maxCorrectionM) maxCorrectionM = m;
+  }
+
+  return {
+    centerX, centerY,
+    qxx: solX[0], qxy: solX[1], qyy: solX[2],
+    rxx: solY[0], rxy: solY[1], ryy: solY[2],
+    maxCorrectionM,
+  };
+}
+
 function sampleGrid(extent: Extent, n = 5): [number, number][] {
   const [minX, minY, maxX, maxY] = extent;
   const pts: [number, number][] = [];
@@ -146,41 +248,36 @@ export interface AffineFitResult {
 }
 
 /**
- * Ajusta la matriz afín 2×2 + offset que aproxima EPSG:3857 → `dstEpsg`
- * (vía proj4) dentro de `extent3857`. Muestrea una grilla `gridSize x
- * gridSize` (default 25 puntos) y hace fit por mínimos cuadrados — reparte
- * el error de forma más pareja que interpolar solo las 4 esquinas.
- * Costo: `gridSize^2` llamadas a proj4 — se paga solo al (re)ajustar, no
- * por vértice (ver affineCache.ts).
+ * Ajusta la matriz que aproxima EPSG:3857 → `dstEpsg` (vía proj4) dentro
+ * de `extent3857`: afín por mínimos cuadrados + corrección cuadrática del
+ * residuo (Fase 5 hardening). gridSize=7 (49 puntos) da grados de libertad
+ * de sobra para ambos ajustes — se paga solo al (re)ajustar, nunca por
+ * vértice (ver affineCache.ts).
  */
 export function fitAffineForExtent(
   extent3857: Extent,
   dstEpsg: string,
-  gridSize = 5,
+  gridSize = 7,
 ): AffineFitResult | null {
   const src = sampleGrid(extent3857, gridSize);
   const dst = src.map((p) => transform(p, DISPLAY_PROJECTION, dstEpsg) as [number, number]);
-  const fit = fitAffineLeastSquares(src, dst);
-  if (!fit) return null;
-  const maxErrorM = maxResidual(fit, src, dst);
-  return { transform: fit, maxErrorM, extent: extent3857 };
-}
-// ─── Plano tangente local (modo CRS 'none') ──────────────────────────
-// Fase 5.3 — mismo principio que fitAffineForExtent, pero sin depender
-// de proj4: la relación EPSG:3857 -> plano tangente centrado en el
-// extent es derivable en forma cerrada a partir de la fórmula esférica
-// de Mercator que ya usa EPSG:3857 (radio WGS84 6378137m, la misma que
-// usa internamente ol/proj para 3857<->4326). Un solo atan/exp por
-// (re)fit, cero transform() por vértice — mismo hot path que el modo UTM.
+  const affine = fitAffineLeastSquares(src, dst);
+  if (!affine) return null;
 
-/** Radio de la esfera que usa EPSG:3857 (Pseudo-Mercator, semieje mayor WGS84). */
+  const quad = fitQuadraticCorrection(src, dst, affine) ?? undefined;
+  const finalTransform: AffineTransform = quad ? { ...affine, quad } : affine;
+  const maxErrorM = maxResidual(finalTransform, src, dst);
+  return { transform: finalTransform, maxErrorM, extent: extent3857 };
+}
+
+// ─── Plano tangente local (modo CRS 'none') ──────────────────────────
+
 const WEB_MERCATOR_RADIUS_M = 6378137;
 
 function mercatorYToLatRad(y: number): number {
   return 2 * Math.atan(Math.exp(y / WEB_MERCATOR_RADIUS_M)) - Math.PI / 2;
 }
 
-/** Punto "exacto" en el plano tangente (sin linealizar en Y) — solo para medir el residuo. */
 function exactTangentPoint(p: readonly [number, number], centerX: number, lat0: number): [number, number] {
   const lon0 = centerX / WEB_MERCATOR_RADIUS_M;
   const lon = p[0] / WEB_MERCATOR_RADIUS_M;
@@ -193,15 +290,8 @@ function exactTangentPoint(p: readonly [number, number], centerX: number, lat0: 
 
 /**
  * Ajusta, en forma cerrada, la afín EPSG:3857 -> plano tangente local
- * centrado en `extent3857`. Reemplazo directo de
- * `path.map(c => transform(c,'EPSG:3857','EPSG:4326')) + escala en grados`
- * (lo que usaba `projectPathToMetricPlane` en modo 'none'): en vez de un
- * atan/exp por vértice, se paga una sola vez por (re)fit y el resto es
- * una multiplicación — igual que el modo UTM.
- *
- * Exacta en X (x_3857 es exactamente proporcional a la longitud); de
- * primer orden en Y (válida a escala urbana — `maxErrorM` cuantifica el
- * residuo real contra la fórmula esférica exacta, no una promesa).
+ * centrado en `extent3857`, más corrección cuadrática del residuo (Fase 5
+ * hardening) — igual criterio que `fitAffineForExtent`.
  */
 export function fitLocalTangentPlane(extent3857: Extent): AffineFitResult {
   const [minX, minY, maxX, maxY] = extent3857;
@@ -210,25 +300,23 @@ export function fitLocalTangentPlane(extent3857: Extent): AffineFitResult {
   const lat0 = mercatorYToLatRad(centerY);
   const scale = Math.cos(lat0);
 
-  const transform: AffineTransform = {
+  const affine: AffineTransform = {
     a: scale, b: 0, c: -centerX * scale,
     d: 0, e: scale, f: -centerY * scale,
   };
 
-  const src = sampleGrid(extent3857, 5);
+  const src = sampleGrid(extent3857, 7);
   const dst = src.map((p) => exactTangentPoint(p, centerX, lat0));
-  const maxErrorM = maxResidual(transform, src, dst);
-  return { transform, maxErrorM, extent: extent3857 };
+
+  const quad = fitQuadraticCorrection(src, dst, affine) ?? undefined;
+  const finalTransform: AffineTransform = quad ? { ...affine, quad } : affine;
+  const maxErrorM = maxResidual(finalTransform, src, dst);
+  return { transform: finalTransform, maxErrorM, extent: extent3857 };
 }
+
 /**
- * Fase 5.4 — punto de referencia EXACTO del plano tangente local (misma
- * fórmula esférica que usa fitLocalTangentPlane para medir su propio
- * residuo). Expuesta para que affineAccuracyBenchmark.ts pueda comparar
- * la matriz afín contra la referencia real en cualquier vértice del
- * dataset, no solo en la grilla 5x5 usada para el ajuste. `extent3857`
- * debe ser el mismo extent (ya con padding aplicado) con el que se
- * calculó la matriz que se está validando — center y lat0 se derivan de
- * él, igual que adentro de fitLocalTangentPlane.
+ * Punto de referencia EXACTO del plano tangente local (misma fórmula
+ * esférica que usa fitLocalTangentPlane para medir su propio residuo).
  */
 export function referenceLocalTangentPoint(
   pt: readonly [number, number],
