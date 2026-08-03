@@ -12,6 +12,7 @@ import ManzanoPanel from './components/panels/ManzanoPanel';
 import RoundaboutPanel from './components/panels/RoundaboutPanel';
 import StreetPanel from './components/panels/StreetPanel';
 import DebugPanel from './components/debug/DebugPanel';
+import Fase6AutoValidator from './components/debug/Fase6AutoValidator';
 import ConfirmDialog from './components/modals/ConfirmDialog';
 import ToastStack from './components/ui/ToastStack';
 import SaveProjectModal from './components/modals/SaveProjectModal';
@@ -65,6 +66,7 @@ function App() {
 
       <StatusBar />
       <DebugPanel />
+      <Fase6AutoValidator />
     </div>
   );
 }
