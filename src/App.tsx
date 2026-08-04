@@ -1,4 +1,4 @@
-﻿import React, { lazy, Suspense } from 'react';
+﻿import React from 'react';
 import MapView from './map/Map';
 import TopBar from './components/layout/TopBar';
 import StatusBar from './components/layout/StatusBar';
@@ -15,13 +15,6 @@ import ConfirmDialog from './components/modals/ConfirmDialog';
 import ToastStack from './components/ui/ToastStack';
 import SaveProjectModal from './components/modals/SaveProjectModal';
 import OpenProjectModal from './components/modals/OpenProjectModal';
-
-const DebugPanel = import.meta.env.DEV
-  ? lazy(() => import('./components/debug/DebugPanel'))
-  : null;
-const Fase6AutoValidator = import.meta.env.DEV
-  ? lazy(() => import('./components/debug/Fase6AutoValidator'))
-  : null;
 
 function App() {
   useKeyboardShortcuts();
@@ -70,16 +63,6 @@ function App() {
       <ToastStack />
 
       <StatusBar />
-      {DebugPanel && (
-        <Suspense fallback={null}>
-          <DebugPanel />
-        </Suspense>
-      )}
-      {Fase6AutoValidator && (
-        <Suspense fallback={null}>
-          <Fase6AutoValidator />
-        </Suspense>
-      )}
     </div>
   );
 }

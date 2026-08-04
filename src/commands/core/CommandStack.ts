@@ -2,7 +2,6 @@
 import { Command } from './Command';
 import { getCommandContext, type CommandContext } from './commandContext';
 import { useSelectionStore } from '../../store/map/selectionStore';
-import { recordUndoCommand } from '../../store/debug/perfTelemetry';
 import { toast } from '../../store/ui/toastStore';
 
 type RunResult =
@@ -58,7 +57,6 @@ export const useCommandStack = create<CommandStackState>()((set) => ({
     const ctx = getCommandContext();
     if (!ctx) return { ok: false, error: 'drawSource no inicializado' };
 
-    const t0 = performance.now();
     try {
       await command.execute(ctx);
     } catch (err) {
@@ -88,7 +86,6 @@ export const useCommandStack = create<CommandStackState>()((set) => ({
 
     lastCoalesceKey = key;
     lastCommandAt = now;
-    recordUndoCommand(command.approxMemoryBytes(), performance.now() - t0);
     syncFlags(set);
     return { ok: true, command };
   },

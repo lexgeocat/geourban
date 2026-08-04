@@ -2,29 +2,29 @@ import type { Feature, FeatureCollection, Geometry, Polygon, MultiPolygon } from
 import type { Pt } from './math/polygonEngine';
 import { sanitizeRing } from './sanitizeRing';
 
-function sanitizePolygonRings(coords: Pt[][], context: string): Pt[][] | null {
+function sanitizePolygonRings(coords: Pt[][]): Pt[][] | null {
   if (!coords || coords.length === 0) return null;
-  const outer = sanitizeRing(coords[0] as Pt[], { context: `${context}.outer` });
+  const outer = sanitizeRing(coords[0] as Pt[]);
   if (!outer) return null;
   const rings: Pt[][] = [outer];
   for (let i = 1; i < coords.length; i++) {
-    const hole = sanitizeRing(coords[i] as Pt[], { context: `${context}.hole` });
+    const hole = sanitizeRing(coords[i] as Pt[]);
     if (hole) rings.push(hole);
   }
   return rings;
 }
 
-function sanitizeGeometry(geom: Geometry | null | undefined, context: string): Geometry | null {
+function sanitizeGeometry(geom: Geometry | null | undefined): Geometry | null {
   if (!geom) return null;
   if (geom.type === 'Polygon') {
-    const rings = sanitizePolygonRings(geom.coordinates as unknown as Pt[][], context);
+    const rings = sanitizePolygonRings(geom.coordinates as unknown as Pt[][]);
     if (!rings) return null;
     return { type: 'Polygon', coordinates: rings as unknown as Polygon['coordinates'] };
   }
   if (geom.type === 'MultiPolygon') {
     const polys: Pt[][][] = [];
-    (geom.coordinates as unknown as Pt[][][]).forEach((poly, i) => {
-      const rings = sanitizePolygonRings(poly, `${context}[${i}]`);
+    (geom.coordinates as unknown as Pt[][][]).forEach((poly) => {
+      const rings = sanitizePolygonRings(poly);
       if (rings) polys.push(rings);
     });
     if (polys.length === 0) return null;
@@ -38,7 +38,7 @@ export interface SanitizeFeatureCollectionResult {
   droppedCount: number;
 }
 
-export function sanitizeFeatureCollectionRings(fc: FeatureCollection, context: string): SanitizeFeatureCollectionResult {
+export function sanitizeFeatureCollectionRings(fc: FeatureCollection): SanitizeFeatureCollectionResult {
   const features: Feature[] = [];
   let dropped = 0;
   for (const f of fc.features) {
@@ -46,7 +46,7 @@ export function sanitizeFeatureCollectionRings(fc: FeatureCollection, context: s
       features.push(f);
       continue;
     }
-    const cleaned = sanitizeGeometry(f.geometry, context);
+    const cleaned = sanitizeGeometry(f.geometry);
     if (!cleaned) {
       dropped++;
       continue;

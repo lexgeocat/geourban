@@ -1,7 +1,6 @@
 import Feature from 'ol/Feature';
 import Polygon from 'ol/geom/Polygon';
 import RBush from 'rbush';
-import { recordGeometrySanitizeEvent } from '../store/debug/geometryTelemetry';
 
 interface RBushItem {
   minX: number;
@@ -36,7 +35,6 @@ export class SpatialIndex {
     const items: RBushItem[] = [];
     this.featureMap.clear();
     this.itemMap.clear();
-    let dropped = 0;
     for (const f of features) {
       const geom = f.getGeometry();
       if (!geom) continue;
@@ -44,16 +42,12 @@ export class SpatialIndex {
       if (id === undefined) continue;
       const extent = geom.getExtent();
       if (!isFiniteExtent(extent)) {
-        dropped++;
         continue;
       }
       const item: RBushItem = { minX: extent[0], minY: extent[1], maxX: extent[2], maxY: extent[3], featureId: id };
       items.push(item);
       this.featureMap.set(id, f);
       this.itemMap.set(id, item);
-    }
-    if (dropped > 0) {
-      recordGeometrySanitizeEvent('spatialIndex.load.nonFiniteBbox', { dropped, total: features.length });
     }
     this.tree.clear();
     this.tree.load(items);
@@ -68,7 +62,6 @@ export class SpatialIndex {
     if (this.itemMap.has(id)) this.removeById(id);
     const extent = geom.getExtent();
     if (!isFiniteExtent(extent)) {
-      recordGeometrySanitizeEvent('spatialIndex.insert.nonFiniteBbox', { featureId: id });
       return;
     }
     const item: RBushItem = { minX: extent[0], minY: extent[1], maxX: extent[2], maxY: extent[3], featureId: id };

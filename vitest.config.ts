@@ -15,10 +15,10 @@ export default defineConfig({
       '**/dist/**',
       '**/__generator__/**',
     ],
-    // Fase 2.7: el motor JS (jsts/polygon-clipping) fue retirado y con él
-    // los tests de parity TS↔JS y el fuzz TS (el fuzz vive en Rust,
-    // tests/fuzz_degenerate_geometry.rs). Los fixtures de parity quedaron
-    // congelados en src-tauri/crates/geourban-geo/tests/fixtures/.
+    // La suite Vitest fue retirada (tests TS archivados en el branch
+    // `archive/plan-fases-13`); el runner queda configurado para cuando se
+    // escriban tests nuevos. La validación del motor vive en Rust (tests
+    // inline de geourban-geo, corridos por parity.yml).
     passWithNoTests: true,
     testTimeout: 20000,
     hookTimeout: 20000,

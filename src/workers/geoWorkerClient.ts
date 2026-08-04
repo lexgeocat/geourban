@@ -7,8 +7,6 @@ import type { RoundaboutParams } from '../geo/roundabout/roundaboutEngine';
 import type { CornerMode } from '../geo/roads/ringFillet';
 import type { RoadNetworkNet } from '../geo/roads/types';
 import type { Pt } from '../geo/math/polygonEngine';
-import { recordWorkerRoundtrip } from '../store/debug/perfTelemetry';
-import { recordNativeEngineOutcome } from '../store/debug/nativeEngineTelemetry';
 
 // ─── Runtime nativo (obligatorio desde 2.7) ───────────────────────────
 
@@ -44,18 +42,11 @@ async function subdivideNative(
   polygon: GeoJsonPolygon,
   options: SubdivisionOptions,
 ): Promise<SubdivisionResult> {
-  const t0 = performance.now();
-  try {
-    const result = await invoke<SubdivisionResult>('subdivide', {
-      coordinates: polygon.coordinates as unknown as Array<Array<[number, number]>>,
-      options: toNativeSubdivisionOptions(options),
-    });
-    recordWorkerRoundtrip('subdivide:native', performance.now() - t0);
-    return result;
-  } catch (err) {
-    recordWorkerRoundtrip('subdivide:native', performance.now() - t0);
-    throw err;
-  }
+  const result = await invoke<SubdivisionResult>('subdivide', {
+    coordinates: polygon.coordinates as unknown as Array<Array<[number, number]>>,
+    options: toNativeSubdivisionOptions(options),
+  });
+  return result;
 }
 
 async function subdivideManzanoNative(
@@ -65,21 +56,14 @@ async function subdivideManzanoNative(
   frontMinM: number,
   dirPref?: { ax: number; ay: number },
 ): Promise<LotResult[]> {
-  const t0 = performance.now();
-  try {
-    const lots = await invoke<LotResult[]>('subdivide_manzano', {
-      ring,
-      method,
-      targetAreaM2,
-      frontMinM,
-      dirPref: toNativeDirPref(dirPref),
-    });
-    recordWorkerRoundtrip('subdivideManzano:native', performance.now() - t0);
-    return lots;
-  } catch (err) {
-    recordWorkerRoundtrip('subdivideManzano:native', performance.now() - t0);
-    throw err;
-  }
+  const lots = await invoke<LotResult[]>('subdivide_manzano', {
+    ring,
+    method,
+    targetAreaM2,
+    frontMinM,
+    dirPref: toNativeDirPref(dirPref),
+  });
+  return lots;
 }
 
 async function subdivideManzanoBatchNative(
@@ -92,61 +76,47 @@ async function subdivideManzanoBatchNative(
     dirPref?: { ax: number; ay: number };
   }>,
 ): Promise<Array<{ id: string | number; lots: LotResult[] }>> {
-  const t0 = performance.now();
-  try {
-    const results = await invoke<Array<{ id: string | number; lots: LotResult[] }>>(
-      'subdivide_manzano_batch',
-      {
-        manzanos: manzanos.map((m) => ({
-          id: m.id,
-          ring: m.ring,
-          method: m.method,
-          targetAreaM2: m.targetAreaM2,
-          frontMinM: m.frontMinM,
-          dirPref: toNativeDirPref(m.dirPref),
-        })),
-      },
-    );
-    recordWorkerRoundtrip('subdivideManzanoBatch:native', performance.now() - t0);
-    return results;
-  } catch (err) {
-    recordWorkerRoundtrip('subdivideManzanoBatch:native', performance.now() - t0);
-    throw err;
-  }
+  const results = await invoke<Array<{ id: string | number; lots: LotResult[] }>>(
+    'subdivide_manzano_batch',
+    {
+      manzanos: manzanos.map((m) => ({
+        id: m.id,
+        ring: m.ring,
+        method: m.method,
+        targetAreaM2: m.targetAreaM2,
+        frontMinM: m.frontMinM,
+        dirPref: toNativeDirPref(m.dirPref),
+      })),
+    },
+  );
+  return results;
 }
 
 async function computeManzanosNative(
   parcels: FeatureCollection,
   roadNetwork: FeatureCollection,
 ): Promise<FeatureCollection> {
-  const t0 = performance.now();
-  try {
-    const parcelRings = parcels.features.map((f) => {
-      const geom = f.geometry as GeoJsonPolygon;
-      return geom.coordinates as unknown as Pt[][];
-    });
-    const roadRings = roadNetwork.features.map((f) => {
-      const geom = f.geometry as GeoJsonPolygon;
-      return geom.coordinates[0] as unknown as Pt[];
-    });
-    const fragments = await invoke<Array<{ origParcelIndex: number; rings: Pt[][] }>>(
-      'compute_manzanos_cmd',
-      { parcels: parcelRings, roadNetwork: roadRings },
-    );
-    const result: FeatureCollection = {
-      type: 'FeatureCollection',
-      features: fragments.map((frag) => ({
-        type: 'Feature',
-        properties: { origParcelIndex: frag.origParcelIndex },
-        geometry: { type: 'Polygon', coordinates: frag.rings } as GeoJsonPolygon,
-      })) as never[],
-    };
-    recordWorkerRoundtrip('computeManzanos:native', performance.now() - t0);
-    return result;
-  } catch (err) {
-    recordWorkerRoundtrip('computeManzanos:native', performance.now() - t0);
-    throw err;
-  }
+  const parcelRings = parcels.features.map((f) => {
+    const geom = f.geometry as GeoJsonPolygon;
+    return geom.coordinates as unknown as Pt[][];
+  });
+  const roadRings = roadNetwork.features.map((f) => {
+    const geom = f.geometry as GeoJsonPolygon;
+    return geom.coordinates[0] as unknown as Pt[];
+  });
+  const fragments = await invoke<Array<{ origParcelIndex: number; rings: Pt[][] }>>(
+    'compute_manzanos_cmd',
+    { parcels: parcelRings, roadNetwork: roadRings },
+  );
+  const result: FeatureCollection = {
+    type: 'FeatureCollection',
+    features: fragments.map((frag) => ({
+      type: 'Feature',
+      properties: { origParcelIndex: frag.origParcelIndex },
+      geometry: { type: 'Polygon', coordinates: frag.rings } as GeoJsonPolygon,
+    })) as never[],
+  };
+  return result;
 }
 
 async function computeRoadNetworkNetNative(
@@ -154,39 +124,25 @@ async function computeRoadNetworkNetNative(
   roundabouts: RoundaboutParams[],
   cornerMode: CornerMode,
 ): Promise<RoadNetworkNet> {
-  const t0 = performance.now();
-  try {
-    const net = await invoke<RoadNetworkNet>('compute_road_network_net_cmd', {
-      streets,
-      roundabouts,
-      cornerMode,
-    });
-    recordWorkerRoundtrip('computeRoadNetworkNet:native', performance.now() - t0);
-    return net;
-  } catch (err) {
-    recordWorkerRoundtrip('computeRoadNetworkNet:native', performance.now() - t0);
-    throw err;
-  }
+  const net = await invoke<RoadNetworkNet>('compute_road_network_net_cmd', {
+    streets,
+    roundabouts,
+    cornerMode,
+  });
+  return net;
 }
 
 async function matchFragmentsBatchNative(
   items: MatchFragmentsBatchItem[],
 ): Promise<MatchFragmentsBatchResultItem[]> {
-  const t0 = performance.now();
-  try {
-    const results = await invoke<MatchFragmentsBatchResultItem[]>('match_fragments_batch', {
-      items: items.map((it) => ({
-        groupIdx: it.groupIdx,
-        fragments: it.fragments,
-        memberRings: it.memberRings,
-      })),
-    });
-    recordWorkerRoundtrip('matchFragmentsBatch:native', performance.now() - t0);
-    return results;
-  } catch (err) {
-    recordWorkerRoundtrip('matchFragmentsBatch:native', performance.now() - t0);
-    throw err;
-  }
+  const results = await invoke<MatchFragmentsBatchResultItem[]>('match_fragments_batch', {
+    items: items.map((it) => ({
+      groupIdx: it.groupIdx,
+      fragments: it.fragments,
+      memberRings: it.memberRings,
+    })),
+  });
+  return results;
 }
 
 // ─── API pública ───────────────────────────────────────────────────────
@@ -198,7 +154,6 @@ export async function computeManzanosInWorker(
   requireNativeRuntime();
   try {
     const nativeResult = await computeManzanosNative(parcels, roadNetwork);
-    recordNativeEngineOutcome('computeManzanos', 'native');
     return nativeResult;
   } catch (err) {
     console.error('geoWorkerClient: "computeManzanos" falló en el motor nativo (sin fallback desde 2.7):', err);
@@ -213,7 +168,6 @@ export async function subdivideInWorker(
   requireNativeRuntime();
   try {
     const nativeResult = await subdivideNative(polygon, options);
-    recordNativeEngineOutcome('subdivide', 'native');
     return nativeResult;
   } catch (err) {
     console.error('geoWorkerClient: "subdivide" falló en el motor nativo (sin fallback desde 2.7):', err);
@@ -231,7 +185,6 @@ export async function subdivideManzanoInWorker(
   requireNativeRuntime();
   try {
     const nativeLots = await subdivideManzanoNative(ring, method, targetAreaM2, frontMinM, dirPref);
-    recordNativeEngineOutcome('subdivideManzano', 'native');
     return nativeLots;
   } catch (err) {
     console.error('geoWorkerClient: "subdivide_manzano" falló en el motor nativo (sin fallback desde 2.7):', err);
@@ -252,7 +205,6 @@ export async function subdivideManzanoBatchInWorker(
   requireNativeRuntime();
   try {
     const results = await subdivideManzanoBatchNative(manzanos);
-    recordNativeEngineOutcome('subdivideManzanoBatch', 'native');
     return results;
   } catch (err) {
     console.error('geoWorkerClient: "subdivide_manzano_batch" falló en el motor nativo (sin fallback desde 2.7):', err);
@@ -269,7 +221,6 @@ export async function computeRoadNetworkNetInWorker(
   requireNativeRuntime();
   try {
     const nativeNet = await computeRoadNetworkNetNative(streets, roundabouts, cornerMode);
-    recordNativeEngineOutcome('computeRoadNetworkNet', 'native');
     return nativeNet;
   } catch (err) {
     console.error('geoWorkerClient: "computeRoadNetworkNet" falló en el motor nativo (sin fallback desde 2.7):', err);
@@ -295,7 +246,6 @@ export async function matchFragmentsBatchInWorker(
   requireNativeRuntime();
   try {
     const results = await matchFragmentsBatchNative(items);
-    recordNativeEngineOutcome('matchFragmentsBatch', 'native');
     return results;
   } catch (err) {
     console.error('geoWorkerClient: "matchFragmentsBatch" falló en el motor nativo (sin fallback desde 2.7):', err);
@@ -318,18 +268,11 @@ export interface SpatialIndexQueryResult {
 }
 
 async function spatialIndexLoadNative(items: SpatialIndexItem[], slot: string): Promise<number> {
-  const t0 = performance.now();
-  try {
-    const count = await invoke<number>('spatial_index_load', {
-      slot,
-      items: items.map((it) => ({ id: it.id, minX: it.minX, minY: it.minY, maxX: it.maxX, maxY: it.maxY })),
-    });
-    recordWorkerRoundtrip('spatialIndexLoad:native', performance.now() - t0);
-    return count;
-  } catch (err) {
-    recordWorkerRoundtrip('spatialIndexLoad:native', performance.now() - t0);
-    throw err;
-  }
+  const count = await invoke<number>('spatial_index_load', {
+    slot,
+    items: items.map((it) => ({ id: it.id, minX: it.minX, minY: it.minY, maxX: it.maxX, maxY: it.maxY })),
+  });
+  return count;
 }
 
 async function spatialIndexQueryNative(
@@ -339,15 +282,8 @@ async function spatialIndexQueryNative(
   maxY: number,
   slot: string,
 ): Promise<SpatialIndexQueryResult> {
-  const t0 = performance.now();
-  try {
-    const result = await invoke<SpatialIndexQueryResult>('spatial_index_query', { slot, minX, minY, maxX, maxY });
-    recordWorkerRoundtrip('spatialIndexQuery:native', performance.now() - t0);
-    return result;
-  } catch (err) {
-    recordWorkerRoundtrip('spatialIndexQuery:native', performance.now() - t0);
-    throw err;
-  }
+  const result = await invoke<SpatialIndexQueryResult>('spatial_index_query', { slot, minX, minY, maxX, maxY });
+  return result;
 }
 
 async function spatialIndexClearNative(slot: string): Promise<void> {

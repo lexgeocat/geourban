@@ -16,7 +16,6 @@ import {
   computeCotaOpacity,
 } from '../../styleFactory';
 import { formatMetricLength, formatMetricArea, type SegmentMetric } from '../../../geo/metrics';
-import { recordLabelCacheHit, recordLabelCacheMiss } from '../../../store/debug/debugCounters';
 import { manzanoDisplayColor } from '../../../geo/manzanoColor';
 import { measureCached } from '../../textMeasureCache';
 import { getFeatureKind, getLotStatus } from '../../../core/objectModel';
@@ -202,11 +201,9 @@ export class LabelPainter {
     if (interacting) return;
     const key = this.computeCacheKey(features, zoom, resolution, extent);
     if (key !== 'no-extent' && key === this.lastKey) {
-      recordLabelCacheHit();
       for (const op of this.cachedOps) op(ctx, toPx);
       return;
     }
-    recordLabelCacheMiss();
     this.lastKey = key;
     this.cachedOps = [];
     this.paintFeatureLabels(ctx, features, zoom, resolution, toPx, drawSource);

@@ -10,7 +10,6 @@ import { useRoundaboutStore } from '../store/entities/roundaboutStore';
 import { recomputeManzanos } from '../geo/recomputeManzanos';
 import { DeleteFeaturesCommand } from '../commands/features/DeleteFeaturesCommand';
 import { runCommand } from '../commands/core/CommandStack';
-import { useDebugPanelStore } from '../store/debug/debugPanelStore';
 import { toast } from '../store/ui/toastStore';
 import { useProjectFileStore } from '../store/ui/projectFileStore';
 
@@ -42,12 +41,6 @@ export function useKeyboardShortcuts() {
         e.preventDefault();
         redo();
         useCommandStack.getState().refresh();
-        return;
-      }
-
-      if (ctrlOrCmd && e.shiftKey && (key === 'd' || key === 'D')) {
-        e.preventDefault();
-        useDebugPanelStore.getState().toggle();
         return;
       }
 

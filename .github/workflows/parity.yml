@@ -1,10 +1,10 @@
 name: geometry-engine-parity
 on: [push, pull_request]
 
-# Fase 2.7 — el motor JS (jsts/polygon-clipping) fue retirado. Los fixtures
-# de parity quedaron congelados en src-tauri/crates/geourban-geo/tests/fixtures/
-# (ya no se regeneran desde TS; no hay motor TS que los produzca). El único
-# motor es el nativo, validado por la suite Rust.
+# Fase 2.7 — el motor JS (jsts/polygon-clipping) fue retirado; el único
+# motor es el nativo, validado por los unit tests inline (#[cfg(test)]) del
+# crate geourban-geo. Este workflow verifica que el crate compila y pasa su
+# suite con y sin el feature geos-backend.
 
 jobs:
   rust-parity:

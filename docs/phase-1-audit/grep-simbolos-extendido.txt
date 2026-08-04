@@ -1,9 +1,0 @@
-﻿Simbolo | Matches totales (repo entero, sin filtrar)
---- | ---
-convexHull | total=1  en polygonEngine.ts=1  externos=0
-principalAxis | total=3  en polygonEngine.ts=1  externos=2
-projectExtents | total=12  en polygonEngine.ts=1  externos=11
-clipToStrip | total=8  en polygonEngine.ts=1  externos=7
-clipHalfPlane | total=13  en polygonEngine.ts=3  externos=10
-buildCutPolys | total=1  en polygonEngine.ts=1  externos=0
-

@@ -8,7 +8,6 @@ import Point from 'ol/geom/Point.js';
 import LineString from 'ol/geom/LineString.js';
 import { Style, Stroke, Fill, Circle as CircleStyle, Text } from 'ol/style.js';
 import { useManzanoStore } from '../../store/entities/manzanoStore';
-import { recordSyncGizmoCall } from '../../store/debug/debugCounters';
 
 const HIT_TOLERANCE_PX = 14;
 
@@ -83,7 +82,6 @@ export class RotateLotsInteraction extends Interaction {
   }
 
   private syncGizmo(anchor: [number, number] | null, handle: [number, number] | null): void {
-    recordSyncGizmoCall();
     const source = this.tempSource;
     if (!source) return;
     source.clear();

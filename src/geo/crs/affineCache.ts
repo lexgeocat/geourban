@@ -8,7 +8,6 @@ import {
   type AffineTransform,
   type AffineFitResult,
 } from './affineApprox';
-import { recordAffineReuse, recordAffineRefit, recordAffineDegraded } from '../../store/debug/affineTelemetry';
 
 /** Margen de error aceptado — alarma de diagnóstico, no bloquea el uso de la matriz. */
 export const MAX_ACCEPTABLE_ERROR_M = 0.01;
@@ -47,7 +46,6 @@ export function getMetricPlaneAffine(key: string, extentHint: Extent): AffineTra
     currentEntry.key === key &&
     containsExtent(currentEntry.fitExtent, extentHint)
   ) {
-    recordAffineReuse(key);
     return currentEntry.transform;
   }
 
@@ -70,12 +68,10 @@ export function getMetricPlaneAffine(key: string, extentHint: Extent): AffineTra
 
   if (!fit) {
     currentEntry = { key, fitExtent, transform: IDENTITY_AFFINE, maxErrorM: Infinity };
-    recordAffineRefit(key, Infinity, fitExtent[2] - fitExtent[0], fitExtent[3] - fitExtent[1]);
     return IDENTITY_AFFINE;
   }
 
   if (fit.maxErrorM > MAX_ACCEPTABLE_ERROR_M) {
-    recordAffineDegraded(key);
     console.warn(
       `affineCache: error residual de la aproximación afín+cuadrática (${fit.maxErrorM.toFixed(3)}m) ` +
       `sigue por encima del margen de seguridad (${MAX_ACCEPTABLE_ERROR_M}m) tras ${retries} reintento(s) de padding ` +
@@ -86,25 +82,7 @@ export function getMetricPlaneAffine(key: string, extentHint: Extent): AffineTra
   }
 
   currentEntry = { key, fitExtent, transform: fit.transform, maxErrorM: fit.maxErrorM };
-  recordAffineRefit(key, fit.maxErrorM, fitExtent[2] - fitExtent[0], fitExtent[3] - fitExtent[1]);
   return fit.transform;
-}
-
-export function getCurrentFitExtent(): Extent | null {
-  return currentEntry?.fitExtent ?? null;
-}
-
-export function _getAffineCacheEntryForTests(): Readonly<GlobalCacheEntry> | null {
-  return currentEntry;
-}
-
-export function computeMetricPlaneAffineStandalone(key: string, extentHint: Extent): AffineFitResult {
-  const fitExtent = paddedExtent(extentHint);
-  const fit = fitForKey(key, fitExtent);
-  if (!fit) {
-    return { transform: IDENTITY_AFFINE, maxErrorM: Infinity, extent: fitExtent };
-  }
-  return fit;
 }
 
 const UTM_TILE_SIZE_M = 1000;
@@ -128,7 +106,6 @@ export interface TiledAffineCacheOptions {
   maxLevel?: number;
   maxCacheEntries?: number;
   gridSize?: number;
-  telemetry?: boolean;
 }
 export class TiledAffineCache {
   private readonly tileSizeM: number;
@@ -137,7 +114,6 @@ export class TiledAffineCache {
   private readonly maxLevel: number;
   private readonly maxCacheEntries: number;
   private readonly gridSize: number;
-  private readonly telemetry: boolean;
   private readonly tiles = new Map<string, TileCacheEntry>();
 
   constructor(opts: TiledAffineCacheOptions = {}) {
@@ -147,7 +123,6 @@ export class TiledAffineCache {
     this.maxLevel = opts.maxLevel ?? UTM_MAX_LEVEL;
     this.maxCacheEntries = opts.maxCacheEntries ?? UTM_MAX_CACHE_ENTRIES;
     this.gridSize = opts.gridSize ?? UTM_FIT_GRID_SIZE;
-    this.telemetry = opts.telemetry ?? true;
   }
 
   private sizeAtLevel(level: number): number {
@@ -170,10 +145,6 @@ export class TiledAffineCache {
     const fit = fitAffineForExtent(fitExtent, key, this.gridSize);
     const transform = fit?.transform ?? IDENTITY_AFFINE;
     const maxErrorM = fit?.maxErrorM ?? Infinity;
-
-    if (this.telemetry) {
-      recordAffineRefit(key, maxErrorM, fitExtent[2] - fitExtent[0], fitExtent[3] - fitExtent[1]);
-    }
 
     return { transform, maxErrorM, fitExtent, level };
   }
@@ -201,7 +172,6 @@ export class TiledAffineCache {
 
       let entry = this.tiles.get(cacheKey);
       if (entry) {
-        if (this.telemetry) recordAffineReuse(key);
         this.touch(cacheKey, entry);
       } else {
         entry = this.computeTile(key, level, tx, ty);
@@ -212,7 +182,6 @@ export class TiledAffineCache {
       const withinBudget = entry.maxErrorM <= MAX_ACCEPTABLE_ERROR_M;
       const atFloor = level >= this.maxLevel;
       if (withinBudget || atFloor) {
-        if (!withinBudget && atFloor && this.telemetry) recordAffineDegraded(key);
         return entry;
       }
       level++;
@@ -246,10 +215,6 @@ export class TiledAffineCache {
 
   clear(): void {
     this.tiles.clear();
-  }
-
-  _getEntriesForTests(): ReadonlyMap<string, TileCacheEntry> {
-    return this.tiles;
   }
 }
 

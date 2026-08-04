@@ -16,7 +16,6 @@ import type { BaseMapId } from '../map/baseMaps';
 import { useSelectionStore } from '../store/map/selectionStore';
 import { useCommandStack } from '../commands/core/CommandStack';
 import { resetIncrementalRoadTracking } from '../geo/recomputeManzanos';
-import { recordProjectLoad } from '../store/debug/perfTelemetry';
 import { encodeWkb, decodeWkb, uint8ToBase64, base64ToUint8, type WkbGeometry } from './wkb';
 import { getOrCreateSpatialIndex } from '../map/spatialIndex';
 import type { Layer } from '../core/objectModel';
@@ -148,7 +147,6 @@ export async function deleteProject(name: string): Promise<void> {
 }
 
 export async function loadProject(name: string): Promise<void> {
-  const t0 = performance.now();
   const payload = await invoke<ProjectPayload>('project_load', { name });
 
   const drawSource = useMapStore.getState().drawSource;
@@ -208,8 +206,4 @@ export async function loadProject(name: string): Promise<void> {
   if (meta.viewConfig) useMapStore.getState().setViewConfig(meta.viewConfig);
 
   drawSource.changed();
-
-  const elapsedMs = performance.now() - t0;
-  const bytes = payload.features.reduce((sum, f) => sum + f.geometryWkbB64.length, 0);
-  recordProjectLoad(elapsedMs, payload.features.length, bytes);
 }

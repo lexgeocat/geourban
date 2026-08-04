@@ -8,7 +8,6 @@ import type Geometry from 'ol/geom/Geometry.js';
 import { useLayersStore } from '../../store/entities/layersRegistryStore';
 import type { Layer } from '../../core/objectModel';
 import { MZN_COLORS, MZN_COLOR_COUNT } from '../../geo/manzanoColor';
-import { recordSetStyleCall, recordSyncLayerSetCall, recordWebglLayerCount } from '../../store/debug/debugCounters';
 
 export type WorkVisibility = {
   lots: boolean;
@@ -236,7 +235,6 @@ export class LayeredWebglRenderer {
   }
 
   private syncPerLayerSet(layers: Layer[]): void {
-    recordSyncLayerSetCall();
     const byId = new globalThis.Map(layers.map((l) => [l.id, l] as const));
     const currentIds = new Set(byId.keys());
 
@@ -258,7 +256,6 @@ export class LayeredWebglRenderer {
       } else {
         if (this.lastStyleSignatures.get(layer.id) !== sig) {
           entry.layer.setStyle(buildSingleLayerStyle(layer));
-          recordSetStyleCall();
           this.lastStyleSignatures.set(layer.id, sig);
         }
         entry.layer.setZIndex(layer.zIndex);
@@ -287,8 +284,6 @@ export class LayeredWebglRenderer {
         this.place(f as Feature<Geometry>, byId);
       }
     }
-
-    recordWebglLayerCount(this.mirrors.size + 1);
   }
 
   private static poolSlotSig(layers: PoolLayerColor[]): string {
@@ -376,7 +371,6 @@ private static buildPoolSlotStyle(colors: PoolLayerColor[]): Record<string, unkn
       if (existing) {
         if (existing.lastSig !== sig) {
           if (this.map) existing.layer.setStyle(LayeredWebglRenderer.buildPoolSlotStyle(colorTable));
-          recordSetStyleCall();
         }
         existing.colorTable = colorTable;
         existing.lastSig = sig;
@@ -411,7 +405,6 @@ private static buildPoolSlotStyle(colors: PoolLayerColor[]): Record<string, unkn
     this.poolSlots = [];
   }
   private syncPooledLayers(layers: Layer[]): void {
-    recordSyncLayerSetCall();
     this.allocatePoolSlots(layers);
 
     this.byIdCache = null; 
@@ -419,7 +412,6 @@ private static buildPoolSlotStyle(colors: PoolLayerColor[]): Record<string, unkn
     for (const f of this.master.getFeatures()) {
       this.place(f as Feature<Geometry>, byId);
     }
-    recordWebglLayerCount(this.poolSlots.length);
   }
 
   private transitionMode(toPooled: boolean, layers: Layer[]): void {
@@ -448,7 +440,6 @@ private static buildPoolSlotStyle(colors: PoolLayerColor[]): Record<string, unkn
       for (const f of this.master.getFeatures()) {
         this.place(f as Feature<Geometry>, byId);
       }
-      recordWebglLayerCount(this.poolSlots.length);
     } else {
       this.disposeAllPoolSlots();
       if (this.poolFallbackLayer) {

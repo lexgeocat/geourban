@@ -1,12 +1,10 @@
 import type { Pt } from './math/polygonEngine';
 import { polyArea } from './math/polygonEngine';
-import { recordGeometrySanitizeEvent } from '../store/debug/geometryTelemetry';
 
 export interface SanitizeRingOptions {
   dedupeEpsilon?: number;
   collinearAngleEpsilon?: number;
   minArea?: number;
-  context?: string;
 }
 
 const DEFAULT_DEDUPE_EPS = 1e-4;
@@ -85,71 +83,34 @@ function removeCollinear(ring: Pt[], angleEps: number, closureEps: number): { ri
 }
 
 export function sanitizeRing(ringIn: Pt[] | null | undefined, opts: SanitizeRingOptions = {}): Pt[] | null {
-  const context = opts.context ?? 'unknown';
   if (!ringIn || ringIn.length < 3) return null;
 
   const dedupeEps = opts.dedupeEpsilon ?? DEFAULT_DEDUPE_EPS;
   const angleEps = opts.collinearAngleEpsilon ?? DEFAULT_COLLINEAR_ANGLE_EPS;
   const minArea = opts.minArea ?? DEFAULT_MIN_AREA;
-  const originalCount = ringIn.length;
-  let corrected = false;
 
   let pts = ringIn.filter((p) => Number.isFinite(p[0]) && Number.isFinite(p[1]));
-  if (pts.length !== ringIn.length) corrected = true;
   if (pts.length < 3) {
-    recordGeometrySanitizeEvent(context, { reason: 'non_finite_points', originalCount, resultCount: pts.length });
     return null;
   }
 
   const dedup = dedupeConsecutive(pts, dedupeEps);
   pts = dedup.ring;
-  if (dedup.removed > 0) corrected = true;
 
   if (pts.length < 3) {
-    recordGeometrySanitizeEvent(context, {
-      reason: 'degenerate_after_dedupe',
-      originalCount,
-      resultCount: pts.length,
-      dedupedPoints: dedup.removed,
-    });
     return null;
   }
 
   const decollinear = removeCollinear(pts, angleEps, dedupeEps);
   pts = decollinear.ring;
-  if (decollinear.removed > 0) corrected = true;
 
   if (pts.length < 3) {
-    recordGeometrySanitizeEvent(context, {
-      reason: 'degenerate_after_collinear_cleanup',
-      originalCount,
-      resultCount: pts.length,
-      dedupedPoints: dedup.removed,
-      collinearRemoved: decollinear.removed,
-    });
     return null;
   }
 
   const area = polyArea(pts);
   if (!Number.isFinite(area) || area <= minArea) {
-    recordGeometrySanitizeEvent(context, {
-      reason: 'area_below_threshold',
-      originalCount,
-      resultCount: pts.length,
-      area,
-      minArea,
-    });
     return null;
-  }
-
-  if (corrected) {
-    recordGeometrySanitizeEvent(context, {
-      reason: 'corrected',
-      originalCount,
-      resultCount: pts.length,
-      dedupedPoints: dedup.removed,
-      collinearRemoved: decollinear.removed,
-    });
   }
 
   return closeRing(pts);

@@ -689,7 +689,6 @@ async function recomputeManzanosImmediate(recorder: StructuralDiffRecorder): Pro
   {
     const { collection: sanitizedManzanos, droppedCount } = sanitizeFeatureCollectionRings(
       result,
-      'recomputeManzanos.computeManzanosResult',
     );
     if (droppedCount > 0) {
       console.warn(`recomputeManzanos: se descartaron ${droppedCount} fragmento(s) de manzano por geometría degenerada.`);
@@ -1087,7 +1086,6 @@ export async function reapplyRoadCornerMode(): Promise<void> {
     {
       const { collection: sanitizedManzanos, droppedCount } = sanitizeFeatureCollectionRings(
         result,
-        'reapplyRoadCornerMode.computeManzanosResult',
       );
       if (droppedCount > 0) {
         console.warn(`reapplyRoadCornerMode: se descartaron ${droppedCount} fragmento(s) de manzano por geometría degenerada.`);

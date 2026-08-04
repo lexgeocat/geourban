@@ -16,7 +16,6 @@ import { useSelectionStore } from './selectionStore';
 import { runCommand } from '../../commands/core/CommandStack';
 import { DeleteFeaturesCommand } from '../../commands/features/DeleteFeaturesCommand';
 import { toast } from '../ui/toastStore';
-import { recordProjectLoad, estimateGeoJsonBytes } from '../debug/perfTelemetry';
 
 const geoJsonFormat = new GeoJSON();
 
@@ -75,11 +74,10 @@ export const useMapStore = create<MapState>()(
     restoreDrawFeatures: (geojson) => {
       const src = get().drawSource;
       if (!src) return;
-      const t0 = performance.now();
 
       // Sin `dataProjection`, el default de ol/format/GeoJSON es EPSG:4326
-      // (lon/lat). Los callers reales (DebugPanel → generateSyntheticLots,
-      // .geourban round-trip) emiten coordenadas YA en el plano métrico
+      // (lon/lat). Los callers reales (importación .geourban round-trip)
+      // emiten coordenadas YA en el plano métrico
       // interno (mismas unidades que `drawSource` — ver DISPLAY_PROJECTION).
       // Se interpretaban como grados: cualquier fila con y0 > 90 quedaba
       // con latitud inválida → NaN/Infinity tras la proyección Mercator.
@@ -120,13 +118,7 @@ export const useMapStore = create<MapState>()(
       getOrCreateSpatialIndex().load(finiteFeatures as unknown as Feature<Polygon>[]);
       refreshSourceMetrics(src);
       src.changed();
-      const elapsedMs = performance.now() - t0;
       useSelectionStore.getState().clear();
-      recordProjectLoad(
-        elapsedMs,
-        finiteFeatures.length,
-        estimateGeoJsonBytes(geojson, finiteFeatures.length),
-      );
     },
     setCursorCoords: (coords) =>
       set((state) => {
