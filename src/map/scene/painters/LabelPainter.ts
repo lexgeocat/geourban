@@ -21,6 +21,7 @@ import { manzanoDisplayColor } from '../../../geo/manzanoColor';
 import { measureCached } from '../../textMeasureCache';
 import { getFeatureKind, getLotStatus } from '../../../core/objectModel';
 import { useLayersStore } from '../../../store/entities/layersRegistryStore';
+import type { Layer } from '../../../core/objectModel';
 
 interface PlacedBox { x: number; y: number; w: number; h: number; }
 
@@ -128,6 +129,7 @@ export class LabelPainter {
   private dataVersion = 0;
   private lastKey: string | null = null;
   private cachedOps: Array<(ctx: CanvasRenderingContext2D, toPx: (c: number[]) => [number, number]) => void> = [];
+  private layersKeyCache: { layers: Layer[]; key: string } | null = null;
 
   private recordOp(
     op: (ctx: CanvasRenderingContext2D, toPx: (c: number[]) => [number, number]) => void,
@@ -149,8 +151,12 @@ export class LabelPainter {
   }
 
   private layersKey(): string {
+    const layers = useLayersStore.getState().layers;
+    if (this.layersKeyCache && this.layersKeyCache.layers === layers) {
+      return this.layersKeyCache.key;
+    }
     let sig = '';
-    for (const layer of useLayersStore.getState().layers) {
+    for (const layer of layers) {
       sig +=
         layer.id +
         (layer.visible ? '1' : '0') +
@@ -158,6 +164,7 @@ export class LabelPainter {
         (layer.showCota ? '1' : '0') +
         '|';
     }
+    this.layersKeyCache = { layers, key: sig };
     return sig;
   }
 

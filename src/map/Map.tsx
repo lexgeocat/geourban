@@ -6,6 +6,8 @@ import VectorLayer from 'ol/layer/Vector.js';
 import { defaults } from 'ol/control.js';
 import Attribution from 'ol/control/Attribution.js';
 import VectorSource from 'ol/source/Vector.js';
+import type { VectorSourceEvent } from 'ol/source/Vector.js';
+import type Interaction from 'ol/interaction/Interaction.js';
 import DragPan from 'ol/interaction/DragPan.js';
 import { unByKey } from 'ol/Observable.js';
 import { toLonLat, fromLonLat, transform } from 'ol/proj.js';
@@ -109,7 +111,7 @@ const baseMapId = useUiShellStore((s) => s.baseMap);
     baseMapInitializedRef.current = true;
 
     const interactions = map.getInteractions();
-    const toRemove: any[] = [];
+    const toRemove: Interaction[] = [];
     interactions.forEach((interaction) => {
       if (interaction instanceof DragPan) {
         toRemove.push(interaction);
@@ -239,10 +241,10 @@ const baseMapId = useUiShellStore((s) => s.baseMap);
      getOrCreateRoadSnapSource();
 
     // Actualizar índice cuando cambian features
-    const onSpatialInsert = (evt: any) => {
+    const onSpatialInsert = (evt: VectorSourceEvent<Feature<Geometry>>) => {
       if (evt.feature instanceof Feature) spatialIndex.insert(evt.feature as Feature<Polygon>);
     };
-    const onSpatialRemove = (evt: any) => {
+    const onSpatialRemove = (evt: VectorSourceEvent<Feature<Geometry>>) => {
       if (evt.feature instanceof Feature) spatialIndex.remove(evt.feature as Feature<Polygon>);
     };
     const pendingSpatialUpdates = new globalThis.Map<string | number, Feature<Polygon>>();
@@ -250,7 +252,7 @@ const baseMapId = useUiShellStore((s) => s.baseMap);
       pendingSpatialUpdates.forEach((f) => spatialIndex.update(f));
       pendingSpatialUpdates.clear();
     });
-    const onSpatialChange = (evt: any) => {
+    const onSpatialChange = (evt: VectorSourceEvent<Feature<Geometry>>) => {
       if (!(evt.feature instanceof Feature)) return;
       const id = evt.feature.getId();
       if (id == null) return;

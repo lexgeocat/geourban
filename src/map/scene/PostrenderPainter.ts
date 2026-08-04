@@ -5,6 +5,7 @@ import type VectorLayer from 'ol/layer/Vector.js';
 import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
 import type Polygon from 'ol/geom/Polygon.js';
+import type RenderEvent from 'ol/render/Event.js';
 import type { SnapGuideVisual } from '../advancedSnap';
 import type { RoundaboutDrawPreview } from './RoundaboutDrawInteraction';
 import type { LassoPreview } from './LassoSelection';
@@ -28,7 +29,7 @@ export class PostrenderPainter {
   private readonly map: Map;
   private readonly drawSource: VectorSource;
   private readonly postrenderLayer: VectorLayer<VectorSource>;
-  private readonly listener: (event: any) => void;
+  private readonly listener: (event: RenderEvent) => void;
 
 
   private readonly streetPainter: StreetPainter;
@@ -67,7 +68,7 @@ export class PostrenderPainter {
     this.drawSource.on('change', onFeatureChange);
     this.drawSource.on('changefeature', onFeatureChange);
 
-    this.listener = (event: any) => this.handle(event);
+    this.listener = (event: RenderEvent) => this.handle(event);
     this.postrenderLayer.on('postrender', this.listener);
     this.trackFullFrame();
   }
@@ -123,7 +124,7 @@ export class PostrenderPainter {
   }
 
 
-  private handle(event: any): void {
+  private handle(event: RenderEvent): void {
     const ctx = event.context as CanvasRenderingContext2D | undefined;
     if (!ctx) return;
     const t0 = performance.now();

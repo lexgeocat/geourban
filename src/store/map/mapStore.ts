@@ -3,6 +3,7 @@ import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import Map from 'ol/Map.js';
 import VectorSource from 'ol/source/Vector.js';
+import VectorLayer from 'ol/layer/Vector.js';
 import GeoJSON from 'ol/format/GeoJSON.js';
 import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
@@ -26,12 +27,12 @@ export type ViewConfig = {
   zoom: number;
 };
 
-/** Fase 3.4 — un extent con NaN/Infinity no debe alimentar `View.fit()`
- * ni el índice espacial: `View.fit()` sobre un extent infinito puede
- * quedar buscando una resolución válida indefinidamente (percibido como
- * "se cuelga"), y RBush con bboxes no-finitos degrada silenciosamente
- * a resultados de búsqueda incorrectos. */
-function isFiniteExtent(ext: Extent | null | undefined): ext is Extent {
+/** Un extent con NaN/Infinity no debe alimentar `View.fit()` ni el
+   * índice espacial: `View.fit()` sobre un extent infinito puede quedar
+   * buscando una resolución válida indefinidamente (percibido como "se
+   * cuelga"), y RBush con bboxes no-finitos degrada silenciosamente a
+   * resultados de búsqueda incorrectos. */
+  function isFiniteExtent(ext: Extent | null | undefined): ext is Extent {
   if (!ext || ext.length !== 4) return false;
   return ext.every((v) => Number.isFinite(v));
 }
@@ -44,7 +45,7 @@ type MapState = {
   viewConfig: ViewConfig;
   setMap: (map: Map | null) => void;
   setDrawSource: (src: VectorSource | null) => void;
-  restoreDrawFeatures: (geojson: any) => void;
+  restoreDrawFeatures: (geojson: unknown) => void;
   setCursorCoords: (coords: CursorCoords) => void;
   setZoom: (zoom: number) => void;
   setViewConfig: (config: ViewConfig) => void;
@@ -76,17 +77,16 @@ export const useMapStore = create<MapState>()(
       if (!src) return;
       const t0 = performance.now();
 
-      // Fase 3.4 (auditoria-para-mejora.md) — BUGFIX: antes se leía sin
-      // `dataProjection`, cuyo default en ol/format/GeoJSON es EPSG:4326
-      // (lon/lat). El único caller real (DebugPanel → generateSyntheticLots)
-      // emite coordenadas YA en el plano métrico interno (mismas unidades
-      // que `drawSource` — ver DISPLAY_PROJECTION). Se interpretaban como
-      // grados: cualquier fila con y0 > 90 quedaba con latitud inválida →
-      // NaN/Infinity tras la proyección Mercator. Con datasets de 100k+
-      // eso rompía el índice espacial (RBush con bboxes no-finitos) y
-      // `fitToExtent` (View.fit con extent Infinity). Fix: sin
-      // reproyección — dataProjection === featureProjection === el plano
-      // interno del proyecto.
+      // Sin `dataProjection`, el default de ol/format/GeoJSON es EPSG:4326
+      // (lon/lat). Los callers reales (DebugPanel → generateSyntheticLots,
+      // .geourban round-trip) emiten coordenadas YA en el plano métrico
+      // interno (mismas unidades que `drawSource` — ver DISPLAY_PROJECTION).
+      // Se interpretaban como grados: cualquier fila con y0 > 90 quedaba
+      // con latitud inválida → NaN/Infinity tras la proyección Mercator.
+      // Con datasets de 100k+ eso rompía el índice espacial (RBush con
+      // bboxes no-finitos) y `fitToExtent` (View.fit con extent
+      // Infinity). Por eso se omite `dataProjection` y se asume que las
+      // features ya vienen en el plano del proyecto.
       const features = geoJsonFormat.readFeatures(geojson, {
         dataProjection: DISPLAY_PROJECTION,
         featureProjection: DISPLAY_PROJECTION,
@@ -113,7 +113,7 @@ export const useMapStore = create<MapState>()(
       }
 
       src.clear();
-      src.addFeatures(finiteFeatures as any);
+      src.addFeatures(finiteFeatures);
       // FIX: bulk-load explícito — no depender de que los listeners
       // addfeature/removefeature (atados solo mientras <MapView/> vive)
       // reconstruyan el RBush uno por uno.
@@ -146,12 +146,14 @@ export const useMapStore = create<MapState>()(
       const layers = map.getLayers().getArray();
       let fullExtent: Extent | null = null;
       for (const layer of layers) {
-        const src = (layer as any).getSource?.();
+        if (!(layer instanceof VectorLayer)) continue;
+        const src = layer.getSource?.();
         if (!src || typeof src.getExtent !== 'function') continue;
         const ext = src.getExtent();
-        // Fase 3.4 — antes solo chequeaba ext[0] === ±Infinity; un NaN
-        // (o Infinity en ext[1..3]) pasaba igual y contaminaba el extent
-        // combinado, rompiendo silenciosamente el fit.
+        // Un NaN (o Infinity en ext[1..3]) pasaba igual con el chequeo previo
+        // (que solo miraba ext[0] === ±Infinity) y contaminaba el extent
+        // combinado, rompiendo silenciosamente el fit. Por eso se valida
+        // cada componente explícitamente.
         if (!isFiniteExtent(ext)) continue;
         if (!fullExtent) fullExtent = [...ext] as Extent;
         else extendExtent(fullExtent, ext);

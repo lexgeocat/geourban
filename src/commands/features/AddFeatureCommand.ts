@@ -2,21 +2,12 @@
 import type Geometry from 'ol/geom/Geometry.js';
 import { Command, type CommandContext } from '../core/Command';
 import { GeoUrbanFeatureKind } from '../../core/objectModel';
-import { useLayersStore } from '../../store/entities/layersRegistryStore';
+import { pickLayerId } from '../../store/entities/layerResolution';
 import { nextId } from '../../lib/id';
 
 export function resolveLayerId(override?: string, kind?: GeoUrbanFeatureKind): string | undefined {
-  if (override) return override;
-  const reg = useLayersStore.getState();
-  if (reg.activeLayerId) {
-    const active = reg.getById(reg.activeLayerId);
-    if (active && !active.locked) return active.id;
-  }
-  if (kind) {
-    const match = reg.getLayerForKind(kind);
-    if (match && !match.locked) return match.id;
-  }
-  return undefined;
+  if (!kind) return undefined;
+  return pickLayerId({ kind, override, requireKindMatch: true, autoCreate: false });
 }
 
 export class AddFeatureCommand extends Command {

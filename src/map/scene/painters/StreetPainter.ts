@@ -186,9 +186,13 @@ function computeAllStreetLabelSlots(
   return result;
 }
 
-function resolveStreetLayer(street: Street, registry: ReturnType<typeof useLayersStore.getState>): Layer | undefined {
+function resolveStreetLayer(
+  street: Street,
+  registry: ReturnType<typeof useLayersStore.getState>,
+  byId: globalThis.Map<string, Layer>,
+): Layer | undefined {
   if (street.layerId) {
-    const layer = registry.getById(street.layerId);
+    const layer = byId.get(street.layerId);
     if (layer) return layer;
   }
   return registry.getLayerForKind('calle');
@@ -200,11 +204,25 @@ interface StreetLayerGroup {
   streets: Street[];
 }
 
+/** Cache liviano para `useLayersStore.getState()` — `getById` recorre
+ *  `layers.index` en cada calle y el plan (Fase 8.2) considera que con
+ *  >48 capas en pool mode el patrón `byIdCache` paga. Cacheamos contra la
+ *  identidad de `layers` (sigue al patrón de `DrawLayerRenderer`). */
+let layersByIdCache: { layers: Layer[]; byId: globalThis.Map<string, Layer> } | null = null;
+function getLayerByIdCached(layers: Layer[]): globalThis.Map<string, Layer> {
+  if (layersByIdCache && layersByIdCache.layers === layers) return layersByIdCache.byId;
+  const byId = new globalThis.Map(layers.map((l) => [l.id, l] as const));
+  layersByIdCache = { layers, byId };
+  return byId;
+}
+
 function groupStreetsByLayer(streets: Street[]): StreetLayerGroup[] {
   const registry = useLayersStore.getState();
+  const layers = registry.layers;
+  const byId = getLayerByIdCached(layers);
   const groups = new globalThis.Map<string, StreetLayerGroup>();
   for (const s of streets) {
-    const layer = resolveStreetLayer(s, registry);
+    const layer = resolveStreetLayer(s, registry, byId);
     const key = layer?.id ?? NO_LAYER_KEY;
     let g = groups.get(key);
     if (!g) {

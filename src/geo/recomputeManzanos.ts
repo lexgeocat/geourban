@@ -24,7 +24,8 @@ import { ensureKind, getFeatureKind, getLotStatus, setLotStatus } from '../core/
 import type { ManzanoLoteMethod } from './subdivision/types';
 import { buildRoadNetworkRings } from './roads/roadNetworkEngine';
 import { roundRingReflex, pointOnRing } from './roads/ringFillet';
-import { autoCreateLayerForKind, resolveOrCreateLayerForKind } from '../store/entities/layerAutoCreate';
+import { resolveOrCreateLayerForKind } from '../store/entities/layerAutoCreate';
+import { pickLayerId } from '../store/entities/layerResolution';
 import { sanitizeFeatureCollectionRings } from './sanitizeGeoJson';
 import { newId } from '../lib/id';
 import {
@@ -215,6 +216,49 @@ function roundaboutApproxExtent(r: Roundabout): Extent {
   return [r.center[0] - half, r.center[1] - half, r.center[0] + half, r.center[1] + half];
 }
 
+/**
+ * Compara el estado actual de calles+rotondas contra el snapshot previo
+ * (cacheado módulo-privado en `lastRoadFingerprints`) y devuelve:
+ *  - `current`: el nuevo mapa de fingerprints, listo para ser cacheado
+ *    en la próxima invocación.
+ *  - `changedExtent`: extent unión de los elementos que cambiaron
+ *    (incluye tanto los modificados como los eliminados). `null` si
+ *    nada cambió.
+ *
+ * Función pura: opera solo sobre los argumentos, no muta `prev`, no
+ * toca stores. El llamador decide si actualiza el cache global con `current`.
+ */
+export function computeRoadFingerprintDelta(
+  streets: Street[],
+  roundabouts: Roundabout[],
+  prev: Map<string, RoadElementFingerprint>,
+): { current: Map<string, RoadElementFingerprint>; changedExtent: Extent | null } {
+  const current = new globalThis.Map<string, RoadElementFingerprint>();
+  for (const s of streets) {
+    current.set(`s:${s.id}`, { hash: streetFingerprint(s), extent: streetApproxExtent(s) });
+  }
+  for (const rb of roundabouts) {
+    current.set(`r:${rb.id}`, { hash: roundaboutFingerprint(rb), extent: roundaboutApproxExtent(rb) });
+  }
+
+  let changedExtent: Extent | null = null;
+  for (const [key, fp] of current) {
+    const previous = prev.get(key);
+    if (!previous || previous.hash !== fp.hash) {
+      if (changedExtent) extendExtent(changedExtent, fp.extent);
+      else changedExtent = [...fp.extent] as Extent;
+    }
+  }
+  for (const [key, p] of prev) {
+    if (!current.has(key)) {
+      if (changedExtent) extendExtent(changedExtent, p.extent);
+      else changedExtent = [...p.extent] as Extent;
+    }
+  }
+
+  return { current, changedExtent };
+}
+
 const PERIMETER_WORKING_SUFFIX = '__working';
 
 function ensurePerimeterWorkingCopies(src: VectorSource, recorder: StructuralDiffRecorder): void {
@@ -389,18 +433,107 @@ function syncPerimeterLayersVisibility(hasRoadNetwork: boolean): void {
   }
 }
 function resolveLoteLayerId(preferredLayerId?: string): string {
-  const reg = useLayersStore.getState();
-  if (preferredLayerId) {
-    const preferred = reg.getById(preferredLayerId);
-    if (preferred && !preferred.locked) return preferred.id;
+  return pickLayerId({
+    kind: 'lote',
+    override: preferredLayerId,
+    requireKindMatch: true,
+    autoCreate: true,
+  })!;
+}
+
+interface RelotTask {
+  featureId: string;
+  method: ManzanoLoteMethod;
+  dirPref?: { ax: number; ay: number };
+  layerId?: string;
+}
+
+/**
+ * Ejecuta la lista de tareas de re-lotización acumuladas durante la
+ * reconciliación de fragmentos. Para cada tarea:
+ *  - Si el usuario canceló `allowAutoRelot`, marca el manzano como
+ *    `pending` (lotes a regenerar a mano) y guarda el método en el store.
+ *  - Si la geometría del manzano ya no es un polígono válido, marca
+ *    `pending` y aborta.
+ *  - Si todo OK, llama al motor nativo para subdividir el anillo y crea
+ *    las features de lote, asignando `layerId` con `resolveLoteLayerId`.
+ *
+ * Helper interno: encapsula el bloque que vivía inline al final de
+ * `recomputeManzanosImmediate` y deja el flujo principal con un solo
+ * `await applyRelotTasks(...)`. No cambia el comportamiento ni el orden
+ * de las operaciones; cada efecto secundario sobre `src`/`recorder`/
+ * `useManzanoStore` se preserva.
+ */
+async function applyRelotTasks(
+  tasks: RelotTask[],
+  allowAutoRelot: boolean,
+  src: VectorSource,
+  recorder: StructuralDiffRecorder,
+  targetAreaM2: number,
+  frontMinM: number,
+): Promise<void> {
+  for (const task of tasks) {
+    const fragFeat = src.getFeatureById(task.featureId) as Feature<Geometry> | null;
+    if (!fragFeat) continue;
+    if (!allowAutoRelot) {
+      setLotStatus(fragFeat, 'pending');
+      recorder.recordModifyAfter(fragFeat);
+      useManzanoStore.getState().setMethod(task.featureId, task.method);
+      continue;
+    }
+    const fragGeom = fragFeat.getGeometry();
+    if (!(fragGeom instanceof PolygonGeom)) {
+      setLotStatus(fragFeat, 'pending');
+      recorder.recordModifyAfter(fragFeat);
+      continue;
+    }
+    const ring = ((fragGeom.getCoordinates()[0] ?? []) as number[][]).map((c) => [c[0], c[1]] as Pt);
+    try {
+      const lots = await subdivideManzanoInWorker(ring, task.method, targetAreaM2, frontMinM, task.dirPref);
+      let created = 0;
+      lots.forEach((lot, i) => {
+        if (lot.pts.length < 3) return;
+        const closedRing = [...lot.pts];
+        if (
+          closedRing[0][0] !== closedRing[closedRing.length - 1][0] ||
+          closedRing[0][1] !== closedRing[closedRing.length - 1][1]
+        ) {
+          closedRing.push([closedRing[0][0], closedRing[0][1]]);
+        }
+        const lotFeat = new Feature({ geometry: new PolygonGeom([closedRing]) });
+        const lotId = newId(`lot-${task.featureId}`);
+        lotFeat.setId(lotId);
+        lotFeat.setProperties(
+          ensureKind(
+            {
+              subdivision: task.method,
+              lotGroupId: task.featureId,
+              label: lot.isRemnant ? `Remanente ${i + 1}` : `Lote ${i + 1}`,
+              areaM2: lot.areaM2,
+              frontM: lot.frontM,
+              depthM: lot.depthM,
+              isRemnant: lot.isRemnant,
+            },
+            'lote',
+          ),
+        );
+        const lotLid = resolveLoteLayerId(task.layerId);
+        lotFeat.set('layerId', lotLid);
+        src.addFeature(lotFeat);
+        recorder.recordAdd(lotFeat as Feature<Geometry>);
+        updateFeatureMetrics(lotFeat as Feature<Geometry>);
+        created++;
+      });
+      setLotStatus(fragFeat, created > 0 ? 'subdivided' : 'pending');
+      recorder.recordModifyAfter(fragFeat);
+      useManzanoStore.getState().setMethod(task.featureId, task.method);
+      if (task.dirPref) useManzanoStore.getState().setRotateDir(task.featureId, task.dirPref);
+    } catch (err) {
+      console.error('recomputeManzanos: fallo la re-lotización automática', err);
+      setLotStatus(fragFeat, 'pending');
+      recorder.recordModifyAfter(fragFeat);
+    }
   }
-  if (reg.activeLayerId) {
-    const active = reg.getById(reg.activeLayerId);
-    if (active && !active.locked) return active.id;
-  }
-  const match = reg.getLayerForKind('lote');
-  if (match && !match.locked) return match.id;
-  return autoCreateLayerForKind('lote');
 }
 
 async function recomputeManzanosImmediate(recorder: StructuralDiffRecorder): Promise<void> {
@@ -413,9 +546,14 @@ async function recomputeManzanosImmediate(recorder: StructuralDiffRecorder): Pro
 
   syncPerimeterLayersVisibility(hasRoadNetwork);
 
-if (!hasRoadNetwork) {
-  const { groups, lotsByGroupId } = collectRootGroups(src);
-  for (const group of groups.values()) {
+  // ── Rama sin red vial: consolidar manzanos duplicados a la geometría
+  //    raíz del grupo. Sin calles no hay fragmentación por vía, solo
+  //    puede haber N manzanos derivados de la misma parcela que hay que
+  //    colapsar en uno (el primario), descartando los duplicados y sus
+  //    lotes hijos.
+  if (!hasRoadNetwork) {
+    const { groups, lotsByGroupId } = collectRootGroups(src);
+    for (const group of groups.values()) {
       const manzanos = group.members.filter((m) => getFeatureKind(m) === 'manzana');
       if (manzanos.length === 0) continue;
 
@@ -440,7 +578,7 @@ if (!hasRoadNetwork) {
       }
 
       const primary = manzanos[0] as Feature<Geometry>;
-    restoreMemberToParcel(primary, group.rootPts, group.rootId, group.rootId, group.rootPts, src, recorder); 
+      restoreMemberToParcel(primary, group.rootPts, group.rootId, group.rootId, group.rootPts, src, recorder);
     }
 
     if (groups.size > 0) {
@@ -457,41 +595,37 @@ if (!hasRoadNetwork) {
     return;
   }
 
+  // ── Rama con red vial: pipeline completo de recompute.
+
+  // Asegura copias "__working" de los perímetros para no mutar la
+  // geometría original del usuario durante la reconciliación.
   ensurePerimeterWorkingCopies(src, recorder);
 
+  // Agrupa features en `OriginGroup` (parcelas raíz + sus miembros ya
+  // subdivididos) e indexa lotes por su `lotGroupId`.
   const { groups, lotsByGroupId } = collectOriginGroups(src);
   if (groups.size === 0) return;
 
   let manzanoCreated = false;
 
+  // Anillos de la red vial (calles + rotondas) recortados contra los
+  // perímetros — lo que se va a restar/intersectar contra las parcelas.
   const roadRings = buildRoadNetworkRings(streets, roundabouts);
   if (roadRings.length === 0) return;
 
   const roadExtentForOrphans = ringsExtent(roadRings);
 
-  const currentFingerprints = new globalThis.Map<string, RoadElementFingerprint>();
-  for (const s of streets) {
-    currentFingerprints.set(`s:${s.id}`, { hash: streetFingerprint(s), extent: streetApproxExtent(s) });
-  }
-  for (const rb of roundabouts) {
-    currentFingerprints.set(`r:${rb.id}`, { hash: roundaboutFingerprint(rb), extent: roundaboutApproxExtent(rb) });
-  }
-  let changedExtent: Extent | null = null;
-  for (const [key, fp] of currentFingerprints) {
-    const prev = lastRoadFingerprints.get(key);
-    if (!prev || prev.hash !== fp.hash) {
-      if (changedExtent) extendExtent(changedExtent, fp.extent);
-      else changedExtent = [...fp.extent] as Extent;
-    }
-  }
-  for (const [key, prev] of lastRoadFingerprints) {
-    if (!currentFingerprints.has(key)) {
-      if (changedExtent) extendExtent(changedExtent, prev.extent);
-      else changedExtent = [...prev.extent] as Extent;
-    }
-  }
+  // Diff contra el snapshot de vías cacheado: qué extent cambió desde
+  // la última corrida, para acotar el trabajo a las parcelas afectadas.
+  const { current: currentFingerprints, changedExtent } = computeRoadFingerprintDelta(
+    streets,
+    roundabouts,
+    lastRoadFingerprints,
+  );
   lastRoadFingerprints = currentFingerprints;
 
+  // Limpia lotes huérfanos (sin manzano padre) cuya geometría cae dentro
+  // del extent de la red vial: el padre desapareció, los hijos también.
   if (roadExtentForOrphans) {
     for (const [gid, lots] of lotsByGroupId) {
       if (src.getFeatureById(gid) != null) continue;
@@ -551,6 +685,7 @@ if (!hasRoadNetwork) {
     console.error('recomputeManzanos: fallo la unión/diferencia de la red vial', err);
     return;
   }
+  // Sanea geometría degenerada que el motor nativo pudo haber devuelto.
   {
     const { collection: sanitizedManzanos, droppedCount } = sanitizeFeatureCollectionRings(
       result,
@@ -562,6 +697,9 @@ if (!hasRoadNetwork) {
     result = sanitizedManzanos;
   }
 
+  // Indexa los fragmentos de manzano por `origParcelIndex` (qué parcela
+  // los produjo). Vacío o ausente = la parcela quedó completamente
+  // cubierta por la red vial y no genera manzanos.
   const fragmentsByGroup = new globalThis.Map<number, Pt[][]>();
   result.features.forEach((f: GeoJSONFeature) => {
     const idx = f.properties?.origParcelIndex as number | undefined;
@@ -577,6 +715,10 @@ if (!hasRoadNetwork) {
 
   const assignmentsByGroupIdx = new globalThis.Map<number, FragmentAssignment[]>();
   const memberAreaByRefPerGroup = new globalThis.Map<number, globalThis.Map<Feature<Geometry>, number>>();
+  // Prepara tareas de reconciliación: para cada parcel, junta los miembros
+  // existentes (anillos) que se pueden reutilizar con los fragmentos
+  // nuevos que produjo el motor. Cada `reconTask` se manda en batch al
+  // worker para que resuelva la asignación por área de solapamiento.
   const relotCandidates: Array<{ featureId: string; method: ManzanoLoteMethod; dirPref?: { ax: number; ay: number } }> = [];
 
   interface ReconTask {
@@ -630,6 +772,10 @@ if (!hasRoadNetwork) {
       return;
     }
 
+    // Resuelve asignaciones del worker y detecta candidatos a re-lotización:
+    // un manzano ya subdividido cambia lo suficiente (>= 8% de área) como
+    // para necesitar regenerar sus lotes. La decisión final se pide al
+    // usuario una sola vez (más abajo, en el bloque `confirmAsync`).
     const resultsByGroupIdx = new globalThis.Map(batchResults.map((r) => [r.groupIdx, r.assignments]));
 
     for (const task of reconTasks) {
@@ -664,6 +810,8 @@ if (!hasRoadNetwork) {
     }
   }
 
+  // Prompt único al usuario: si hay re-lotizaciones candidatas, pregunta
+  // una sola vez si las quiere aplicar o prefiere manejar a mano.
   let allowAutoRelot = true;
   if (relotCandidates.length > 0) {
     const plural = relotCandidates.length > 1;
@@ -675,6 +823,10 @@ if (!hasRoadNetwork) {
     );
   }
 
+  // ── Reconciliación por parcel: para cada grupo, decide si el fragmento
+  //    se puede reciclar sobre un manzano existente (preserve lotización)
+  //    o si hay que crear uno nuevo. La cola `relotTasks` se consume
+  //    abajo con `applyRelotTasks`, una vez terminada la reconciliación.
   const relotTasks: Array<{ featureId: string; method: ManzanoLoteMethod; dirPref?: { ax: number; ay: number }; layerId?: string }> = [];
 
   for (let idx = 0; idx < parcelIndexToGroup.length; idx++) {
@@ -693,18 +845,18 @@ if (untouched) {
   continue;
 }
 
-    if (fragmentsMatchCurrentMembers(group.members, fragments)) continue;
+if (fragmentsMatchCurrentMembers(group.members, fragments)) continue;
 
-    const assignments = assignmentsByGroupIdx.get(idx) ?? [];
-    const areaByRef = memberAreaByRefPerGroup.get(idx) ?? new globalThis.Map<Feature<Geometry>, number>();
-    const reusedRefs = new Set(assignments.filter((a) => a.member != null).map((a) => a.member as Feature<Geometry>));
+const assignments = assignmentsByGroupIdx.get(idx) ?? [];
+const areaByRef = memberAreaByRefPerGroup.get(idx) ?? new globalThis.Map<Feature<Geometry>, number>();
+const reusedRefs = new Set(assignments.filter((a) => a.member != null).map((a) => a.member as Feature<Geometry>));
 
-    for (const m of group.members) {
-      if (reusedRefs.has(m as Feature<Geometry>)) continue;
-      const mid = m.getId();
-      if (mid != null) {
-        const childLots = lotsByGroupId.get(String(mid));
-        if (childLots) {
+for (const m of group.members) {
+  if (reusedRefs.has(m as Feature<Geometry>)) continue;
+  const mid = m.getId();
+  if (mid != null) {
+    const childLots = lotsByGroupId.get(String(mid));
+    if (childLots) {
           for (const lot of childLots) {
             if (src.getFeatureById(lot.getId() as string | number) != null) {
               recorder.recordRemove(lot);
@@ -824,68 +976,9 @@ if (untouched) {
     }
   }
 
-  for (const task of relotTasks) {
-    const fragFeat = src.getFeatureById(task.featureId) as Feature<Geometry> | null;
-    if (!fragFeat) continue;
-    if (!allowAutoRelot) {
-      setLotStatus(fragFeat, 'pending');
-      recorder.recordModifyAfter(fragFeat);
-      useManzanoStore.getState().setMethod(task.featureId, task.method);
-      continue;
-    }
-    const fragGeom = fragFeat.getGeometry();
-    if (!(fragGeom instanceof PolygonGeom)) {
-      setLotStatus(fragFeat, 'pending');
-      recorder.recordModifyAfter(fragFeat);
-      continue;
-    }
-    const ring = ((fragGeom.getCoordinates()[0] ?? []) as number[][]).map((c) => [c[0], c[1]] as Pt);
-    try {
-      const lots = await subdivideManzanoInWorker(ring, task.method, targetAreaM2, frontMinM, task.dirPref);
-      let created = 0;
-      lots.forEach((lot, i) => {
-        if (lot.pts.length < 3) return;
-        const closedRing = [...lot.pts];
-        if (
-          closedRing[0][0] !== closedRing[closedRing.length - 1][0] ||
-          closedRing[0][1] !== closedRing[closedRing.length - 1][1]
-        ) {
-          closedRing.push([closedRing[0][0], closedRing[0][1]]);
-        }
-        const lotFeat = new Feature({ geometry: new PolygonGeom([closedRing]) });
-        const lotId = newId(`lot-${task.featureId}`);
-        lotFeat.setId(lotId);
-        lotFeat.setProperties(
-          ensureKind(
-            {
-              subdivision: task.method,
-              lotGroupId: task.featureId,
-              label: lot.isRemnant ? `Remanente ${i + 1}` : `Lote ${i + 1}`,
-              areaM2: lot.areaM2,
-              frontM: lot.frontM,
-              depthM: lot.depthM,
-              isRemnant: lot.isRemnant,
-            },
-            'lote',
-          ),
-        );
-        const lotLid = resolveLoteLayerId(task.layerId);
-        lotFeat.set('layerId', lotLid);
-        src.addFeature(lotFeat);
-        recorder.recordAdd(lotFeat as Feature<Geometry>);
-        updateFeatureMetrics(lotFeat as Feature<Geometry>);
-        created++;
-      });
-      setLotStatus(fragFeat, created > 0 ? 'subdivided' : 'pending');
-      recorder.recordModifyAfter(fragFeat);
-      useManzanoStore.getState().setMethod(task.featureId, task.method);
-      if (task.dirPref) useManzanoStore.getState().setRotateDir(task.featureId, task.dirPref);
-    } catch (err) {
-      console.error('recomputeManzanos: fallo la re-lotización automática', err);
-      setLotStatus(fragFeat, 'pending');
-      recorder.recordModifyAfter(fragFeat);
-    }
-  }
+  // ── Cierre: aplica re-lotizaciones, prune de manzanos que ya no existen
+  //    en el drawSource, muestra el panel si se creó al menos uno nuevo.
+  await applyRelotTasks(relotTasks, allowAutoRelot, src, recorder, targetAreaM2, frontMinM);
 
   const aliveManzanoIds = new Set<string>();
   src.forEachFeature((f) => {

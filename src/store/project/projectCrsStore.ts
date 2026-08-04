@@ -42,10 +42,10 @@ export const useProjectCrsStore = create<ProjectCrsState>()(
       set((state) => {
         state.mode = mode;
         state.exportEpsg = computeExportEpsg(mode, state.utmZone, state.utmHemisphere);
-        // Fase 5.2 — al fijar/cambiar el modo de CRS, la matriz afín
-        // cacheada (ajustada para el EPSG/extent anteriores) deja de ser
-        // válida; se invalida explícitamente en vez de esperar a que el
-        // próximo cálculo la detecte stale por key mismatch.
+        // Al fijar/cambiar el modo de CRS, la matriz afín cacheada (ajustada
+        // para el EPSG/extent anteriores) deja de ser válida; se invalida
+        // explícitamente en vez de esperar a que el próximo cálculo la
+        // detecte stale por key mismatch.
         invalidateAffineCache();
       }),
 

@@ -2,6 +2,7 @@ import { runCommand } from '../../commands/core/CommandStack';
 import { AddLayerCommand } from '../../commands/layers/AddLayerCommand';
 import { getLayerSuggestion, type GeoUrbanFeatureKind } from '../../core/objectModel';
 import { useLayersStore } from './layersRegistryStore';
+import { pickLayerId } from './layerResolution';
 import { newId } from '../../lib/id';
 
 function uniqueAutoName(kind: GeoUrbanFeatureKind): string {
@@ -44,15 +45,5 @@ export function autoCreateLayerForKind(kind: GeoUrbanFeatureKind): string {
 }
 
 export function resolveOrCreateLayerForKind(kind: GeoUrbanFeatureKind): string {
-  const registry = useLayersStore.getState();
-
-  if (registry.activeLayerId) {
-    const active = registry.getById(registry.activeLayerId);
-    if (active && !active.locked && active.kind === kind) return active.id;
-  }
-
-  const existing = registry.getLayerForKind(kind);
-  if (existing && !existing.locked) return existing.id;
-
-  return autoCreateLayerForKind(kind);
+  return pickLayerId({ kind, requireKindMatch: true, autoCreate: true })!;
 }

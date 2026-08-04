@@ -66,9 +66,12 @@ fn parity_con_snapshot_ts() {
     assert!(
         path.exists(),
         "Snapshot ausente en {}.\n\
-         Corré `npm run parity:sync` desde la raiz del repo y volve a correr `cargo test`.\n\
+         Los fixtures de paridad están CONGELADOS desde Fase 2.7 — no hay\n\
+         script de sync (`npm run parity:sync` no existe). El snapshot se\n\
+         edita a mano en este mismo crate bajo tests/fixtures/. Si lo\n\
+         borraste por accidente, restaurá la versión commiteada del repo.\n\
          El test NO skipea: la primera corrida tiene que romper hasta que\n\
-         el snapshot este commiteado en el repo.",
+         el snapshot esté commiteado en el repo.",
         path.display()
     );
     let raw = std::fs::read_to_string(&path).expect("leer snapshot");
@@ -207,8 +210,8 @@ fn parse_ring(name: &str, _ring_area: &f64) -> Vec<(f64, f64)> {
         ],
         other => panic!(
             "Fixture desconocida en snapshot: {other}. \
-             Actualiza `parse_ring` en tests/parity_cabecera_cuerpo.rs \
-             y parityFixtures.ts para mantenerlas sincronizadas."
+             Actualiza `parse_ring` en tests/parity_cabera_cuerpo.rs \
+             para mantener sincronizado el snapshot de tests/fixtures/."
         ),
     }
 }

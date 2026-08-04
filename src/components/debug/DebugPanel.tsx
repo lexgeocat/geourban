@@ -563,7 +563,6 @@ export default function DebugPanel() {
         </div>
       ))}
 
-      {/* ═══ INSERTAR DESDE ACÁ ═══ */}
       <SectionTitle>Fase 6.1 — Dataset urbano avanzado (calles + rotondas + manzanos irregulares)</SectionTitle>
       <div style={{ color: 'var(--cad-text-muted)', fontSize: '0.6rem', marginBottom: 4 }}>
         A diferencia del dataset de arriba (lotes rectangulares
@@ -636,7 +635,6 @@ export default function DebugPanel() {
           )}
         </div>
       ))}
-      {/* ═══ HASTA ACÁ ═══ */}
 
       <SectionTitle>Fase 6.4 — Carga concurrente (comandos en paralelo vs. UI)</SectionTitle>
       <div style={{ color: 'var(--cad-text-muted)', fontSize: '0.6rem', marginBottom: 4 }}>
@@ -682,7 +680,6 @@ export default function DebugPanel() {
           ))}
         </div>
       ))}
-      {/* ═══ FIN Fase 6.4 ═══ */}
 
       {geoTelemetry && Object.values(geoTelemetry.countsByContext).some((n) => n > 0) && (
         <>

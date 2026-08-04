@@ -9,6 +9,7 @@ import {
   revertStructuralDiff,
   isEmptyStructuralDiff,
   EMPTY_STRUCTURAL_DIFF,
+  type StructuralDiff,
 } from './structuralDiff';
 
 function makeFeature(id: string, x: number, y: number) {
@@ -19,14 +20,14 @@ function makeFeature(id: string, x: number, y: number) {
 
 /** VectorSource mínimo, sin levantar un Map de OL real. */
 class FakeSource {
-  private byId = new Map<string | number, Feature<any>>();
+  private byId = new Map<string | number, Feature<Point>>();
   getFeatureById(id: string | number) {
     return this.byId.get(id) ?? null;
   }
-  addFeature(f: Feature<any>) {
+  addFeature(f: Feature<Point>) {
     this.byId.set(f.getId()!, f);
   }
-  removeFeature(f: Feature<any>) {
+  removeFeature(f: Feature<Point>) {
     this.byId.delete(f.getId()!);
   }
   changed() {}
@@ -168,19 +169,19 @@ describe('composeStructuralDiffs', () => {
   });
 
   it('add en base + remove del mismo id en next = neto cero (2 trazos consecutivos que se cancelan)', () => {
-    const base = { added: [{ id: 'a', geometry: new Point([0, 0]), props: {} }], removed: [], modified: [] };
-    const next = { added: [], removed: [{ id: 'a', geometry: new Point([0, 0]), props: {} }], modified: [] };
-    expect(isEmptyStructuralDiff(composeStructuralDiffs(base as any, next as any))).toBe(true);
+    const base: StructuralDiff = { added: [{ id: 'a', geometry: new Point([0, 0]), props: {} }], removed: [], modified: [] };
+    const next: StructuralDiff = { added: [], removed: [{ id: 'a', geometry: new Point([0, 0]), props: {} }], modified: [] };
+    expect(isEmptyStructuralDiff(composeStructuralDiffs(base, next))).toBe(true);
   });
 
   it('modify + modify del mismo id: conserva el "antes" de base y el "después" de next', () => {
     const before = { id: 'a', geometry: new Point([0, 0]), props: {} };
     const mid = { id: 'a', geometry: new Point([1, 1]), props: {} };
     const after = { id: 'a', geometry: new Point([2, 2]), props: {} };
-    const base = { added: [], removed: [], modified: [{ id: 'a', before, after: mid }] };
-    const next = { added: [], removed: [], modified: [{ id: 'a', before: mid, after }] };
+    const base: StructuralDiff = { added: [], removed: [], modified: [{ id: 'a', before, after: mid }] };
+    const next: StructuralDiff = { added: [], removed: [], modified: [{ id: 'a', before: mid, after }] };
 
-    const composed = composeStructuralDiffs(base as any, next as any);
+    const composed = composeStructuralDiffs(base, next);
     expect(composed.modified).toHaveLength(1);
     expect((composed.modified[0].before.geometry as Point).getCoordinates()).toEqual([0, 0]);
     expect((composed.modified[0].after.geometry as Point).getCoordinates()).toEqual([2, 2]);
@@ -190,15 +191,19 @@ describe('composeStructuralDiffs', () => {
 describe('applyStructuralDiffForward / revertStructuralDiff', () => {
   it('roundtrip: aplicar → revertir → reaplicar deja el source consistente', () => {
     const src = fakeSource();
-    const diff = { added: [{ id: 'b', geometry: new Point([5, 5]), props: {} }], removed: [], modified: [] };
+    const diff: StructuralDiff = {
+      added: [{ id: 'b', geometry: new Point([5, 5]), props: {} }],
+      removed: [],
+      modified: [],
+    };
 
-    applyStructuralDiffForward(src, diff as any);
+    applyStructuralDiffForward(src, diff);
     expect(src.getFeatureById('b')).not.toBeNull();
 
-    revertStructuralDiff(src, diff as any);
+    revertStructuralDiff(src, diff);
     expect(src.getFeatureById('b')).toBeNull();
 
-    applyStructuralDiffForward(src, diff as any);
+    applyStructuralDiffForward(src, diff);
     expect(src.getFeatureById('b')).not.toBeNull();
   });
 });

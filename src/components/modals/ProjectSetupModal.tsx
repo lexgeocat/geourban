@@ -53,9 +53,8 @@ export default function ProjectSetupModal() {
       </h2>
       <p style={{ fontSize: '0.75rem', color: 'var(--cad-text-dim)', marginBottom: 16, lineHeight: 1.5 }}>
         Elegí esto antes de dibujar. Internamente el proyecto siempre guarda WGS84
-        (para el mapa base y GeoJSON/KML), pero exportar/importar DXF necesita un
-        plano métrico real. Fijar la zona UTM ahora evita que exportación e
-        importación queden desincronizadas.
+        (para el mapa base y GeoJSON/KML). Fijar la zona UTM ahora evita que
+        la exportación e importación queden desincronizadas en un CRS real.
       </p>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
@@ -67,8 +66,8 @@ export default function ProjectSetupModal() {
         }}>
           <div style={{ fontWeight: 600, fontSize: '0.8rem' }}>Zona UTM (recomendado)</div>
           <div style={{ fontSize: '0.68rem', opacity: 0.8, marginTop: 2 }}>
-            Coordenadas reales en metros. Requerido para DXF georreferenciado
-            (AutoCAD Civil3D / QGIS).
+            Coordenadas reales en metros. Necesario para llevar el proyecto a
+            un CRS georreferenciado (AutoCAD Civil3D / QGIS / etc.).
           </div>
         </button>
 
@@ -96,8 +95,8 @@ export default function ProjectSetupModal() {
         }}>
           <div style={{ fontWeight: 600, fontSize: '0.8rem' }}>Dibujo libre (sin georreferenciar)</div>
           <div style={{ fontSize: '0.68rem', opacity: 0.8, marginTop: 2 }}>
-            Plano local en metros. El DXF exportado no tiene anclaje real; se
-            reposiciona a mano si después lo llevás a un CRS real.
+            Plano local en metros. No tiene anclaje a un CRS real; se
+            reposiciona a mano si después lo llevás a uno.
           </div>
         </button>
       </div>

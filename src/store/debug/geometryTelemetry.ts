@@ -37,6 +37,7 @@ function forwardToMainIfWorker(context: string, detail: Record<string, unknown>)
       detail,
     });
   } catch {
+    // La telemetría nunca debe romper el flujo de la app.
   }
 }
 
@@ -70,6 +71,7 @@ export function recordGeometrySanitizeEvent(context: string, detail: Record<stri
     }
     forwardToMainIfWorker(context, detail);
   } catch {
+    // La telemetría nunca debe romper el flujo de la app.
   }
 }
 

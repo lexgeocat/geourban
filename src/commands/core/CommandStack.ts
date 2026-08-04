@@ -1,5 +1,6 @@
 ﻿import { create } from 'zustand';
-import { Command, type CommandContext, getCommandContext } from './Command';
+import { Command } from './Command';
+import { getCommandContext, type CommandContext } from './commandContext';
 import { useSelectionStore } from '../../store/map/selectionStore';
 import { recordUndoCommand } from '../../store/debug/perfTelemetry';
 import { toast } from '../../store/ui/toastStore';

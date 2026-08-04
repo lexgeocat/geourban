@@ -10,7 +10,7 @@ import {
   type LayerKind,
 } from '../../core/objectModel';
 
-type LayerState = {
+export type LayerState = {
   layers: Layer[];
   index: Map<string, number>; // id -> posición en array
   activeLayerId: string | null;
@@ -55,7 +55,7 @@ export const useLayersStore = create<LayerState>()(
           fillColor: layer.fillColor ?? layer.color,
           showLabel: layer.showLabel ?? false,
           showCota: layer.showCota ?? false,
-          colorMode: (layer as any).colorMode ?? (safeKind === 'manzana' ? 'colorIdx' : 'solid'),
+          colorMode: layer.colorMode ?? (safeKind === 'manzana' ? 'colorIdx' : 'solid'),
           zIndex: newZIndex,
         };
         state.layers.push(withDefaults);
@@ -174,7 +174,7 @@ export const useLayersStore = create<LayerState>()(
         const next = layers.map((l) => ({
           ...l,
           kind: isLayerKind(l.kind) ? l.kind : 'lote',
-          colorMode: ((l as any).colorMode as string) === 'colorIdx'
+          colorMode: l.colorMode === 'colorIdx'
             ? 'colorIdx' as const
             : (isLayerKind(l.kind) && l.kind === 'manzana' ? 'colorIdx' as const : 'solid' as const),
         }));
@@ -189,6 +189,8 @@ export const useLayersStore = create<LayerState>()(
         state.layers = [];
         state.index = new Map();
         state.activeLayerId = null;
+        state.isolatedLayerId = null;
+        state.isolatePrevVisibility = null;
       }),
 
     reconcileOrphanFeatures: (features) => {

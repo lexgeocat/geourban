@@ -2,7 +2,7 @@ import { Fill, Stroke, Style } from 'ol/style.js';
 import Modify from 'ol/interaction/Modify.js';
 import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
-import SafeTranslate from '../../safeTranslate';
+import SafeTranslate, { type TranslateEvent } from '../../safeTranslate';
 import { useSelectionStore } from '../../../store/map/selectionStore';
 import { ModifyGeometryCommand } from '../../../commands/features/ModifyGeometryCommand';
 import { runCommand } from '../../../commands/core/CommandStack';
@@ -53,10 +53,11 @@ export function activateEdit(ctx: ModeContext, select: HitTestSelect): void {
   map.addInteraction(modify);
   ctx.addCleanup(() => map.removeInteraction(modify));
 
-  const translate = new SafeTranslate({ features: select.getFeatures(), hitTolerance: 6 });
+const translate = new SafeTranslate({ features: select.getFeatures(), hitTolerance: 6 });
   let pendingTranslate: ModifyGeometryCommand | null = null;
-  translate.on('translatestart' as any, (event: any) => {
-    const feats = (event.features as Array<Feature<Geometry>> | undefined) ?? select.getFeatures().getArray();
+
+translate.on('translatestart', (event) => {
+    const feats = ((event as unknown as TranslateEvent).features.getArray() as Array<Feature<Geometry>>) ?? select.getFeatures().getArray();
     pendingTranslate = new ModifyGeometryCommand(feats, 'Mover');
     pendingTranslate.captureBefore();
   });

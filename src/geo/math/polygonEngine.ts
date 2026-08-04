@@ -9,17 +9,6 @@ export interface LotResult {
   areaM2: number;
 }
 
-export interface SliceResult {
-  front: Pt[];
-  rest: Pt[];
-  areaM2: number;
-}
-
-export interface CutResult {
-  t: number;
-  isRemnant: boolean;
-}
-
 // ─── Primitivas geométricas ─────────────────────────────────────────
 
 export function polyArea(pts: Pt[]): number {
@@ -42,24 +31,6 @@ export function centroid(pts: Pt[]): Pt {
   return [cx / pts.length, cy / pts.length];
 }
 
-export function convexHull(pts: Pt[]): Pt[] {
-  const arr = pts.slice().sort((a, b) => (a[0] !== b[0] ? a[0] - b[0] : a[1] - b[1]));
-  if (arr.length < 3) return arr;
-  const cross = (O: Pt, A: Pt, B: Pt) => (A[0] - O[0]) * (B[1] - O[1]) - (A[1] - O[1]) * (B[0] - O[0]);
-  const lower: Pt[] = [], upper: Pt[] = [];
-  for (const p of arr) {
-    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) lower.pop();
-    lower.push(p);
-  }
-  for (let i = arr.length - 1; i >= 0; i--) {
-    const p = arr[i];
-    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) upper.pop();
-    upper.push(p);
-  }
-  upper.pop(); lower.pop();
-  return lower.concat(upper);
-}
-
 export function ringPerimeter(pts: Pt[]): number {
   let per = 0;
   const n = pts.length;
@@ -77,42 +48,6 @@ export function pathLength(pts: Pt[]): number {
     total += Math.hypot(pts[i + 1][0] - pts[i][0], pts[i + 1][1] - pts[i][1]);
   }
   return total;
-}
-
-/** Cross product para determinar de qué lado de la recta lp1→lp2 está pt */
-function side(pt: Pt, lp1: Pt, lp2: Pt): number {
-  return (lp2[0] - lp1[0]) * (pt[1] - lp1[1]) - (lp2[1] - lp1[1]) * (pt[0] - lp1[0]);
-}
-
-/** Clip de polígono contra un semiplano definido por lp1→lp2 */
-export function clipHalfPlane(pts: Pt[], lp1: Pt, lp2: Pt, keepSide: number): Pt[] {
-  if (pts.length < 3) return [];
-  const out: Pt[] = [];
-  const n = pts.length;
-  for (let i = 0; i < n; i++) {
-    const cur = pts[i];
-    const nxt = pts[(i + 1) % n];
-    const sc = side(cur, lp1, lp2);
-    const sn = side(nxt, lp1, lp2);
-    const curIn = keepSide > 0 ? sc >= -1e-9 : sc <= 1e-9;
-    const nxtIn = keepSide > 0 ? sn >= -1e-9 : sn <= 1e-9;
-    if (curIn) out.push([cur[0], cur[1]]);
-    if ((curIn && !nxtIn) || (!curIn && nxtIn)) {
-      const inter = lineLineIntersect(cur, nxt, lp1, lp2);
-      if (inter) out.push(inter);
-    }
-  }
-  return out.length >= 3 ? out : [];
-}
-
-/** Intersección de dos segmentos (infinitos) */
-function lineLineIntersect(a: Pt, b: Pt, c: Pt, d: Pt): Pt | null {
-  const dx1 = b[0] - a[0], dy1 = b[1] - a[1];
-  const dx2 = d[0] - c[0], dy2 = d[1] - c[1];
-  const denom = dx1 * dy2 - dy1 * dx2;
-  if (Math.abs(denom) < 1e-12) return null;
-  const t = ((c[0] - a[0]) * dy2 - (c[1] - a[1]) * dx2) / denom;
-  return [a[0] + t * dx1, a[1] + t * dy1];
 }
 
 /** Punto-en-polígono (ray casting) — exportado para subdivisionAlgorithms.ts */
@@ -149,140 +84,4 @@ export function segmentIntersectsPoly(a: Pt, b: Pt, poly: Pt[]): boolean {
     if (t >= 0 && t <= 1 && u >= 0 && u <= 1) return true;
   }
   return false;
-}
-
-export function buildCutPolys(
-  wp: Pt[],
-  hA: { segIdx: number; u: number; pt: Pt },
-  hB: { segIdx: number; u: number; pt: Pt },
-): { poly1: Pt[]; poly2: Pt[]; cutA: Pt; cutB: Pt } | null {
-  const n = wp.length;
-  const ins: Record<number, { u: number; pt: Pt; role: string }[]> = {};
-
-  function addIns(si: number, u: number, pt: Pt, role: string) {
-    if (!ins[si]) ins[si] = [];
-    ins[si].push({ u, pt: [pt[0], pt[1]], role });
-  }
-
-  addIns(hA.segIdx, Math.max(0, Math.min(1, hA.u)), hA.pt, 'A');
-  addIns(hB.segIdx, Math.max(0, Math.min(1, hB.u)), hB.pt, 'B');
-
-  for (const k of Object.keys(ins)) {
-    ins[Number(k)].sort((a, b) => a.u - b.u);
-  }
-
-  const verts: { pt: Pt; role: string }[] = [];
-  for (let i = 0; i < n; i++) {
-    verts.push({ pt: [wp[i][0], wp[i][1]], role: 'orig' });
-    if (ins[i]) {
-      for (const x of ins[i]) verts.push({ pt: x.pt, role: x.role });
-    }
-  }
-
-  let idxA = -1, idxB = -1;
-  for (let i = 0; i < verts.length; i++) {
-    if (verts[i].role === 'A') idxA = i;
-    if (verts[i].role === 'B') idxB = i;
-  }
-  if (idxA < 0 || idxB < 0) return null;
-
-  const lv = verts.length;
-  const p1: Pt[] = [];
-  let i = idxA, st = 0;
-  do {
-    p1.push(verts[i].pt);
-    i = (i + 1) % lv;
-    st++;
-  } while (i !== idxB && st <= lv + 2);
-  p1.push(verts[idxB].pt);
-
-  const p2: Pt[] = [];
-  i = idxB; st = 0;
-  do {
-    p2.push(verts[i].pt);
-    i = (i + 1) % lv;
-    st++;
-  } while (i !== idxA && st <= lv + 2);
-  p2.push(verts[idxA].pt);
-
-  if (p1.length < 3 || p2.length < 3) return null;
-
-  return {
-    poly1: p1,
-    poly2: p2,
-    cutA: [hA.pt[0], hA.pt[1]] as Pt,
-    cutB: [hB.pt[0], hB.pt[1]] as Pt,
-  };
-}
-
-// ─── Operaciones sobre strips ───────────────────────────────────────
-
-export function clipToStrip(pts: Pt[], ax: number, ay: number, minT: number, maxT: number): Pt[] {
-  if (pts.length < 3) return [];
-  const nx = -ay, ny = ax;
-  const minPt: Pt = [minT * ax, minT * ay];
-  const p1: Pt = [minPt[0] + nx, minPt[1] + ny];
-  const p2: Pt = [minPt[0] - nx, minPt[1] - ny];
-  const testMin: Pt = [(minT + 1) * ax, (minT + 1) * ay];
-  const sMin = side(testMin, p1, p2);
-  let clipped = clipHalfPlane(pts, p1, p2, sMin >= 0 ? +1 : -1);
-  if (clipped.length < 3) return [];
-  const maxPt: Pt = [maxT * ax, maxT * ay];
-  const p3: Pt = [maxPt[0] + nx, maxPt[1] + ny];
-  const p4: Pt = [maxPt[0] - nx, maxPt[1] - ny];
-  const testMax: Pt = [(maxT - 1) * ax, (maxT - 1) * ay];
-  const sMax = side(testMax, p3, p4);
-  clipped = clipHalfPlane(clipped, p3, p4, sMax >= 0 ? +1 : -1);
-  return clipped;
-}
-
-// ─── Eje principal (PCA) ────────────────────────────────────────────
-
-export function principalAxis(pts: Pt[]): { ux: number; uy: number } {
-  const n = pts.length;
-  let mx = 0, my = 0;
-  for (const p of pts) { mx += p[0]; my += p[1]; }
-  mx /= n; my /= n;
-
-  let cxx = 0, cxy = 0, cyy = 0;
-  for (const p of pts) {
-    const dx = p[0] - mx, dy = p[1] - my;
-    cxx += dx * dx;
-    cxy += dx * dy;
-    cyy += dy * dy;
-  }
-
-  const trace = cxx + cyy;
-  const det = cxx * cyy - cxy * cxy;
-  const disc = Math.sqrt(Math.max(0, (trace * trace) / 4 - det));
-  const l1 = trace / 2 + disc;
-
-  let ex: number, ey: number;
-  if (Math.abs(cxy) > 1e-10) {
-    ex = l1 - cyy;
-    ey = cxy;
-  } else {
-    ex = cxx >= cyy ? 1 : 0;
-    ey = cxx >= cyy ? 0 : 1;
-  }
-
-  const len = Math.sqrt(ex * ex + ey * ey) || 1;
-  let ux = ex / len, uy = ey / len;
-  if (ux < 0 || (Math.abs(ux) < 1e-9 && uy < 0)) {
-    ux = -ux;
-    uy = -uy;
-  }
-
-  return { ux, uy };
-}
-
-/** Proyecta los vértices sobre el eje (ax, ay) y retorna [min, max] */
-export function projectExtents(pts: Pt[], ax: number, ay: number): { min: number; max: number } {
-  let mn = Infinity, mx = -Infinity;
-  for (const p of pts) {
-    const t = p[0] * ax + p[1] * ay;
-    if (t < mn) mn = t;
-    if (t > mx) mx = t;
-  }
-  return { min: mn, max: mx };
 }

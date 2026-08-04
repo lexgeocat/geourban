@@ -82,7 +82,7 @@ fn parse_ring(name: &str) -> Vec<(f64, f64)> {
     } else {
         panic!(
             "Fixture desconocida en snapshot: {name}. Actualiza `parse_ring` en \
-             tests/parity_exact_modo2.rs y parityFixturesExactModo2.ts."
+             tests/parity_exact_modo2.rs para mantener sincronizado el snapshot de tests/fixtures/."
         )
     }
 }
@@ -92,7 +92,11 @@ fn parity_con_snapshot_ts() {
     let path = snapshot_path();
     assert!(
         path.exists(),
-        "Snapshot ausente en {}.\nCorre `npm run parity:sync` desde la raiz del repo.",
+        "Snapshot ausente en {}.\n\
+         Los fixtures de paridad están CONGELADOS desde Fase 2.7 — no hay\n\
+         script de sync (`npm run parity:sync` no existe). El snapshot se\n\
+         edita a mano en este mismo crate bajo tests/fixtures/. Si lo\n\
+         borraste por accidente, restaurá la versión commiteada del repo.",
         path.display()
     );
     let raw = std::fs::read_to_string(&path).expect("leer snapshot");

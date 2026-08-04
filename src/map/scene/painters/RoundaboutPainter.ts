@@ -8,9 +8,22 @@ import type { Layer } from '../../../core/objectModel';
 
 const FALLBACK_ROUNDABOUT_COLOR = '#f78166';
 
-function resolveRoundaboutLayer(rb: Roundabout, registry: ReturnType<typeof useLayersStore.getState>): Layer | undefined {
+/** Cache liviano para `useLayersStore.getState()` (Fase 8.2). */
+let layersByIdCache: { layers: Layer[]; byId: globalThis.Map<string, Layer> } | null = null;
+function getLayerByIdCached(layers: Layer[]): globalThis.Map<string, Layer> {
+  if (layersByIdCache && layersByIdCache.layers === layers) return layersByIdCache.byId;
+  const byId = new globalThis.Map(layers.map((l) => [l.id, l] as const));
+  layersByIdCache = { layers, byId };
+  return byId;
+}
+
+function resolveRoundaboutLayer(
+  rb: Roundabout,
+  registry: ReturnType<typeof useLayersStore.getState>,
+  byId: globalThis.Map<string, Layer>,
+): Layer | undefined {
   if (rb.layerId) {
-    const layer = registry.getById(rb.layerId);
+    const layer = byId.get(rb.layerId);
     if (layer) return layer;
   }
   return registry.getLayerForKind('calle');
@@ -26,9 +39,10 @@ export class RoundaboutPainter {
   paint(ctx: CanvasRenderingContext2D, toPx: (c: number[]) => [number, number], resolution: number): void {
     const { roundabouts } = useRoundaboutStore.getState();
     const registry = useLayersStore.getState();
+    const byId = getLayerByIdCached(registry.layers);
 
     for (const rb of roundabouts) {
-      const layer = resolveRoundaboutLayer(rb, registry);
+      const layer = resolveRoundaboutLayer(rb, registry, byId);
       if (!layer?.visible) continue;
 
       const color = layer.color ?? FALLBACK_ROUNDABOUT_COLOR;

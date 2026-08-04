@@ -63,7 +63,8 @@ export const useSubdivisionStore = create<SubdivisionState>()(
 
     setOption: (k, v) =>
       set((state) => {
-        (state.options as any)[k] = v;
+        const partial = state.options as Partial<SubdivisionOptions>;
+        (partial as Record<string, unknown>)[k as string] = v;
         state.preview = null;
         state.errorMessage = null;
       }),

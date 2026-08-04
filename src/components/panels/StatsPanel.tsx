@@ -9,8 +9,10 @@ import { formatMetricArea, streetLengthMetricM } from '../../geo/metrics';
 import Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
 import Polygon from 'ol/geom/Polygon.js';
+import type VectorSource from 'ol/source/Vector.js';
 import { getFeatureKind, getLotStatus } from '../../core/objectModel';
 import { manzanoDisplayColor } from '../../geo/manzanoColor';
+import type { Street } from '../../store/entities/streetStore';
 
 interface ManzanoInfo {
   index: number;
@@ -33,7 +35,7 @@ interface StatsData {
   manzanos: ManzanoInfo[];
 }
 
-function computeStats(drawSource: any, streets: any[]): StatsData {
+function computeStats(drawSource: VectorSource<Feature<Geometry>> | null, streets: Street[]): StatsData {
   const result: StatsData = {
     totalAreaM2: 0,
     manzanoCount: 0,

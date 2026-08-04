@@ -1,4 +1,6 @@
 ﻿import React from 'react';
+import type Feature from 'ol/Feature.js';
+import type Geometry from 'ol/geom/Geometry.js';
 import { useSelectionStore } from '../../store/map/selectionStore';
 import { useMapStore } from '../../store/map/mapStore';
 import { useSubdivisionStore } from '../../store/ui/subdivisionStore';
@@ -64,7 +66,7 @@ export default function PropertyPanel() {
     );
   }
 
-  const feat = drawSource.getFeatureById(primaryId) as any;
+  const feat = (drawSource.getFeatureById(primaryId) as Feature<Geometry> | null) ?? null;
 
   if (!feat) {
     const street = streets.find((s) => s.id === primaryId);

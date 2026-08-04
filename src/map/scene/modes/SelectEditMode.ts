@@ -1,6 +1,9 @@
 import { Fill, Stroke, Style } from 'ol/style.js';
 import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
+import Polygon from 'ol/geom/Polygon.js';
+import MultiPolygon from 'ol/geom/MultiPolygon.js';
+import type { Coordinate } from 'ol/coordinate.js';
 import { intersects as extentIntersects } from 'ol/extent.js';
 import { HitTestSelect, type HitTestSelectEvent } from '../HitTestSelect';
 import { LassoSelection, type LassoMode } from '../LassoSelection';
@@ -110,7 +113,14 @@ function activateLasso(ctx: ModeContext, select: HitTestSelect, lassoMode: Lasso
           const ext = g.getExtent();
           if (!extentIntersects(ext, extent)) continue;
           let inside = false;
-          const coords = (g as any).getCoordinates();
+          let coords: Coordinate[] | Coordinate[][] | Coordinate[][][];
+          if (g instanceof Polygon) {
+            coords = g.getCoordinates();
+          } else if (g instanceof MultiPolygon) {
+            coords = g.getCoordinates();
+          } else {
+            continue;
+          }
           const walk = (arr: unknown) => {
             if (inside) return;
             if (Array.isArray(arr) && typeof arr[0] === 'number') {

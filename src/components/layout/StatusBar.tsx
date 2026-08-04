@@ -321,7 +321,7 @@ export default function StatusBar() {
               )}
 
               <div style={{ fontSize: '0.62rem', color: 'var(--cad-text-muted)' }}>
-                Exportación DXF usa:{' '}
+                El CRS se aplica a la exportación/importación de archivos. Sistema actual:{' '}
                 <strong style={{ color: 'var(--cad-text-dim)' }}>
                   {crsMode === 'utm' ? exportEpsg : 'Plano local (centrado en la vista actual)'}
                 </strong>

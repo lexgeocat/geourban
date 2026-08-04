@@ -22,7 +22,7 @@
     "security": {
       "csp": {
         "default-src": "'self'",
-        "script-src": ["'self'", "'unsafe-inline'"],
+        "script-src": ["'self'"],
         "style-src": ["'self'", "'unsafe-inline'"],
         "img-src": ["'self'", "data:", "blob:", "https://*.google.com", "https://*.googleapis.com", "https://tile.openstreetmap.org", "https://*.arcgisonline.com"],
         "connect-src": ["'self'", "https://*.google.com", "https://*.googleapis.com", "https://tile.openstreetmap.org", "https://*.arcgisonline.com"],

@@ -72,7 +72,7 @@ export function useTopBarActions() {
       return;
     }
     const src = useMapStore.getState().drawSource;
-    const feat = src?.getFeatureById(primaryId) as any;
+    const feat = src?.getFeatureById(primaryId);
     const openSubdivision = useSubdivisionStore.getState().open;
     const kind = feat ? getFeatureKind(feat) : null;
     if (kind === 'perimetro') {
@@ -96,7 +96,7 @@ export function useTopBarActions() {
     if (!src) return;
     let manzanoCount = 0;
     src.forEachFeature((f) => {
-      if (getFeatureKind(f as any) === 'manzana') manzanoCount++;
+      if (getFeatureKind(f) === 'manzana') manzanoCount++;
     });
     if (manzanoCount === 0) {
       toast('No hay manzanos para subdividir. Trazá calles primero para generar manzanos.', {
@@ -118,7 +118,7 @@ export function useTopBarActions() {
       }
       let newLotes = 0;
       src.forEachFeature((f) => {
-        const k = getFeatureKind(f as any);
+        const k = getFeatureKind(f);
         if (k === 'lote' || (typeof f.get('label') === 'string' && f.get('label')?.toString().startsWith('Lote'))) {
           newLotes++;
         }
