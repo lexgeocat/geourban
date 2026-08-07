@@ -581,25 +581,6 @@ fn hb_auto_head_plan(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-fn hb_fit_body_rows(
-    total_area: f64,
-    target: f64,
-    head_rows: i64,
-    head_cols1: i64,
-    head_cols2: i64,
-    body_cols: i64,
-    body_rows: i64,
-    use_fixed_area: bool,
-) -> i64 {
-    if !use_fixed_area || head_rows <= 0 || target <= 0.0 {
-        return body_rows;
-    }
-    let head_l = head_rows * (head_cols1 + head_cols2);
-    let cap = ((total_area / target - head_l as f64) / body_cols as f64).round() as i64;
-    cap.max(1).min(MAX_HB_DIM)
-}
-
 #[derive(Debug, Clone)]
 struct HbLot {
     pts: Vec<Pt>,
@@ -878,45 +859,85 @@ fn hb_build_body_zone(
     target_lot_area: f64,
     u_a: f64,
     u_b: f64,
-    n_rows: i64,
+    max_rows: i64,
     n_cols: i64,
     lots: &mut Vec<HbLot>,
     lot_budget: &mut usize,
 ) {
-    if n_rows <= 0 || n_cols <= 0 || *lot_budget == 0 {
+    if max_rows <= 0 || n_cols <= 0 || *lot_budget == 0 {
         return;
     }
     let zone_total = hb_strip_area(work_poly, ux, uy, u_a, u_b);
     if zone_total <= 0.0 {
         return;
     }
-    let row_target = zone_total / n_rows as f64;
-    let cut_rows = n_rows.min((*lot_budget as i64 + 8).max(1));
-
-    let mut row_cuts: Vec<f64> = vec![u_a];
-    let area_up_to = |u_cut: f64| hb_strip_area(work_poly, ux, uy, u_a, u_cut);
-    for r in 0..cut_rows - 1 {
-        let target = area_up_to(u_a) + (r + 1) as f64 * row_target;
-        row_cuts.push(bisect(&area_up_to, u_a, u_b, target));
+    let per_lot_target = if min_area > 0.0 {
+        min_area
+    } else if target_lot_area > 0.0 {
+        target_lot_area
+    } else {
+        zone_total / (max_rows.max(1) as f64) / (n_cols.max(1) as f64)
+    };
+    if per_lot_target <= 0.0 {
+        return;
     }
-    row_cuts.push(u_b);
 
-    for r in 0..n_rows {
-        if *lot_budget == 0 {
+    let area_from = |from: f64, to: f64| hb_strip_area(work_poly, ux, uy, from, to);
+    let probe_span = ((u_b - u_a) * 0.1).max(0.5);
+
+    let mut ra = u_a;
+    let mut rows_done: i64 = 0;
+
+    while ra < u_b - 1e-9 && *lot_budget > 0 && rows_done < max_rows {
+        let remaining_area = area_from(ra, u_b);
+        if remaining_area < 1e-6 {
             break;
         }
-        let ri = r as usize;
-        let ra = row_cuts.get(ri).copied().unwrap_or(u_b);
-        let rb = row_cuts.get(ri + 1).copied().unwrap_or(u_b);
+        let probe_to = (ra + probe_span).min(u_b);
+        let probe_poly = hb_clip_poly_half(work_poly, ux, uy, 1.0, ra);
+        let probe_poly = hb_clip_poly_half(&probe_poly, ux, uy, -1.0, -probe_to);
+        let probe_depth = probe_to - ra;
+        let local_ancho = if probe_poly.len() >= 3 && probe_depth > 1e-6 {
+            poly_area(&probe_poly) / probe_depth
+        } else {
+            0.0
+        };
+        let force_single_col =
+            min_frente > 0.0 && n_cols > 1 && local_ancho / n_cols as f64 <= min_frente;
+        let n_cols_here = if force_single_col { 1 } else { n_cols };
+
+        let row_target_area = per_lot_target * n_cols_here as f64;
+        let is_last_row = rows_done == max_rows - 1 || remaining_area <= row_target_area * 1.5;
+
+        let rb = if is_last_row {
+            u_b
+        } else {
+            let area_up_to_from_ra = |u_cut: f64| area_from(ra, u_cut);
+            bisect(&area_up_to_from_ra, ra, u_b, row_target_area)
+                .max(ra)
+                .min(u_b)
+        };
+
         let mut strip_poly = hb_clip_poly_half(work_poly, ux, uy, 1.0, ra);
         strip_poly = hb_clip_poly_half(&strip_poly, ux, uy, -1.0, -rb);
         if strip_poly.len() < 3 {
+            ra = rb.max(ra + 1e-6);
+            rows_done += 1;
             continue;
         }
+        let row_area = poly_area(&strip_poly);
+        if row_area < 0.25 {
+            ra = rb.max(ra + 1e-6);
+            rows_done += 1;
+            continue;
+        }
+        let row_is_remainder = is_last_row && row_area < row_target_area * 0.92;
 
         let slice_a = hb_poly_slice_at_u_clamped(work_poly, ux, uy, ra, vx, vy, u_min, u_max);
         let slice_b = hb_poly_slice_at_u_clamped(work_poly, ux, uy, rb, vx, vy, u_min, u_max);
         if slice_a.len() < 2 || slice_b.len() < 2 {
+            ra = rb.max(ra + 1e-6);
+            rows_done += 1;
             continue;
         }
 
@@ -969,25 +990,22 @@ fn hb_build_body_zone(
                 0.0
             }
         };
-        let row_area = lot_area_at(0.0, 1.0);
 
-        let row_len_u = (rb - ra).abs();
-        let local_ancho = if row_len_u > 1e-9 {
-            row_area / row_len_u
+        let col_target = if row_is_remainder {
+            (row_area / n_cols_here as f64).max(1e-6)
         } else {
-            0.0
+            per_lot_target
         };
-        let force_single_col =
-            min_frente > 0.0 && n_cols > 1 && local_ancho / n_cols as f64 <= min_frente;
-        let n_cols_here = if force_single_col { 1 } else { n_cols };
-
-        let col_target = row_area / n_cols_here as f64;
         let cum_t = |t: f64| lot_area_at(0.0, t);
         let mut col_cuts: Vec<f64> = vec![0.0];
         for c in 0..n_cols_here - 1 {
             let ci = c as usize;
             let prev = col_cuts[ci];
-            col_cuts.push(bisect(&cum_t, prev, 1.0, (c + 1) as f64 * col_target));
+            col_cuts.push(
+                bisect(&cum_t, prev, 1.0, col_target * (c as f64 + 1.0))
+                    .max(prev)
+                    .min(1.0),
+            );
         }
         col_cuts.push(1.0);
 
@@ -1013,75 +1031,18 @@ fn hb_build_body_zone(
             if col_poly.len() < 3 {
                 continue;
             }
-
-            if force_single_col && min_area > 0.0 && target_lot_area > 0.0 {
-                let col_area = poly_area(&col_poly);
-                let n_sub_rows = ((col_area / target_lot_area).round() as i64)
-                    .max(1)
-                    .min(MAX_HB_DIM);
-                if n_sub_rows > 1 {
-                    let u_projs_col: Vec<f64> =
-                        col_poly.iter().map(|p| p.0 * ux + p.1 * uy).collect();
-                    let u_min_col = u_projs_col.iter().cloned().fold(f64::INFINITY, f64::min);
-                    let u_max_col = u_projs_col
-                        .iter()
-                        .cloned()
-                        .fold(f64::NEG_INFINITY, f64::max);
-                    let sub_row_area_up_to = |u_cut: f64| -> f64 {
-                        let sub = hb_clip_poly_half(&col_poly, ux, uy, 1.0, u_min_col);
-                        let sub = hb_clip_poly_half(&sub, ux, uy, -1.0, -u_cut);
-                        if sub.len() >= 3 {
-                            poly_area(&sub)
-                        } else {
-                            0.0
-                        }
-                    };
-
-                    let sub_cut_rows = n_sub_rows.min((*lot_budget as i64 + 4).max(1));
-                    let sub_target = col_area / n_sub_rows as f64;
-                    let mut sub_cuts: Vec<f64> = vec![u_min_col];
-                    for sr in 0..sub_cut_rows - 1 {
-                        sub_cuts.push(bisect(
-                            &sub_row_area_up_to,
-                            u_min_col,
-                            u_max_col,
-                            (sr + 1) as f64 * sub_target,
-                        ));
-                    }
-                    sub_cuts.push(u_max_col);
-                    for sr in 0..n_sub_rows {
-                        if *lot_budget == 0 {
-                            break;
-                        }
-                        let sri = sr as usize;
-                        let s0 = sub_cuts.get(sri).copied().unwrap_or(u_max_col);
-                        let s1 = sub_cuts.get(sri + 1).copied().unwrap_or(u_max_col);
-                        let mut sub_lot = hb_clip_poly_half(&col_poly, ux, uy, 1.0, s0);
-                        sub_lot = hb_clip_poly_half(&sub_lot, ux, uy, -1.0, -s1);
-                        if sub_lot.len() < 3 {
-                            continue;
-                        }
-                        let area = poly_area(&sub_lot);
-                        lots.push(HbLot {
-                            pts: sub_lot,
-                            area,
-                            zone: "body".to_string(),
-                            is_remainder: false,
-                        });
-                        *lot_budget -= 1;
-                    }
-                    continue;
-                }
-            }
             let area = poly_area(&col_poly);
             lots.push(HbLot {
                 pts: col_poly,
                 area,
                 zone: "body".to_string(),
-                is_remainder: false,
+                is_remainder: row_is_remainder && c == n_cols_here - 1,
             });
             *lot_budget -= 1;
         }
+
+        ra = rb.max(ra + 1e-6);
+        rows_done += 1;
     }
 }
 
@@ -1137,24 +1098,13 @@ fn hb_lotize_with_baseline(mzn_pts: &[Pt], cfg: HbConfig, baseline: (Pt, Pt)) ->
     let head_cols1 = plan.head_cols1;
     let head_cols2 = plan.head_cols2;
     let target_lot_area = plan.target_lot_area;
-    let b_rows = hb_fit_body_rows(
-        total_area,
-        target_lot_area,
-        head_rows,
-        head_cols1,
-        head_cols2,
-        body_cols,
-        body_rows,
-        use_fixed_area,
-    );
-
     let (u_h1, u_h2) = if head_rows <= 0 {
         (u_min, u_max)
     } else {
         let head_area1 = head_rows as f64 * head_cols1 as f64 * target_lot_area;
-        let body_area = b_rows as f64 * body_cols as f64 * target_lot_area;
+        let head_area2 = head_rows as f64 * head_cols2 as f64 * target_lot_area;
         let uh1 = bisect(&area_up_to, u_min, u_max, head_area1);
-        let uh2 = bisect(&area_up_to, uh1, u_max, head_area1 + body_area)
+        let uh2 = bisect(&area_up_to, uh1, u_max, (total_area - head_area2).max(0.0))
             .max(uh1)
             .min(u_max);
         (uh1, uh2)
@@ -1183,6 +1133,7 @@ fn hb_lotize_with_baseline(mzn_pts: &[Pt], cfg: HbConfig, baseline: (Pt, Pt)) ->
             &mut lot_budget,
         );
     }
+
     hb_build_body_zone(
         work_poly,
         ux,
@@ -1196,7 +1147,7 @@ fn hb_lotize_with_baseline(mzn_pts: &[Pt], cfg: HbConfig, baseline: (Pt, Pt)) ->
         target_lot_area,
         u_h1,
         u_h2,
-        b_rows,
+        MAX_HB_DIM,
         body_cols,
         &mut lots,
         &mut lot_budget,
