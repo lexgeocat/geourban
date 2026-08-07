@@ -1198,7 +1198,11 @@ pub fn subdivide_manzano(
         }
     };
     let sanitized = sanitize_lot_results(lots, "subdivisionAlgorithms.subdivideManzano");
-    enforce_min_frontage(sanitized, front_min_m) // ← nuevo
+
+    match method {
+        ManzanoLoteMethod::Auto => sanitized,
+        _ => enforce_min_frontage(sanitized, front_min_m),
+    }
 }
 
 fn subdivision_method_to_str(m: SubdivisionMethod) -> &'static str {
@@ -1339,7 +1343,10 @@ pub fn subdivide(polygon_coordinates: &[Vec<Pt>], opts: &SubdivisionOptions) -> 
     }
 
     let sanitized = sanitize_lot_results(lots, "subdivisionAlgorithms.subdivide");
-    let sanitized_lots = if matches!(opts.method, SubdivisionMethod::ManualSlice) {
+    let sanitized_lots = if matches!(
+        opts.method,
+        SubdivisionMethod::ManualSlice | SubdivisionMethod::Auto
+    ) {
         sanitized
     } else {
         let before = sanitized.len();

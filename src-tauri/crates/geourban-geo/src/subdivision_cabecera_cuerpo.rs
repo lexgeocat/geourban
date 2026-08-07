@@ -60,6 +60,7 @@ fn current_dist_eps() -> f64 {
 
 const MAX_HB_DIM: i64 = 400;
 const MAX_HB_TOTAL_LOTS: usize = 1200;
+
 fn lerp(a: Pt, b: Pt, t: f64) -> Pt {
     (a.0 + (b.0 - a.0) * t, a.1 + (b.1 - a.1) * t)
 }
@@ -304,6 +305,18 @@ fn order_quad_long(pts: &[Pt]) -> [Pt; 4] {
     } else {
         [sorted[1], sorted[2], sorted[3], sorted[0]]
     }
+}
+
+fn default_baseline_dir(mzn_pts: &[Pt]) -> Pt {
+    let quad = mzn_quad_approx(mzn_pts);
+    let ordered = order_quad_long(&quad);
+    let (ax, ay) = ordered[0];
+    let (dx, dy) = ordered[3];
+    let lx = dx - ax;
+    let ly = dy - ay;
+    let len = lx.hypot(ly).max(1e-9);
+    let (ux, uy) = (lx / len, ly / len);
+    (-uy, ux)
 }
 
 fn hb_clean_poly(pts_in: Vec<Pt>) -> Vec<Pt> {
@@ -581,6 +594,25 @@ fn hb_auto_head_plan(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
+fn hb_fit_body_rows(
+    total_area: f64,
+    target: f64,
+    head_rows: i64,
+    head_cols1: i64,
+    head_cols2: i64,
+    body_cols: i64,
+    body_rows: i64,
+    use_fixed_area: bool,
+) -> i64 {
+    if !use_fixed_area || head_rows <= 0 || target <= 0.0 || body_cols <= 0 {
+        return body_rows.max(1);
+    }
+    let head_l = (head_rows * (head_cols1 + head_cols2)) as f64;
+    let cap = ((total_area / target) - head_l) / body_cols as f64;
+    (cap.round() as i64).max(1).min(MAX_HB_DIM)
+}
+
 #[derive(Debug, Clone)]
 struct HbLot {
     pts: Vec<Pt>,
@@ -761,13 +793,6 @@ fn hb_build_zone(
     }
     f_cuts.push(1.0);
 
-    if std::env::var("GU_DEBUG_HB").is_ok() {
-        eprintln!(
-            "[RUST] zone={zone} n_cols={n_cols} zone_total={zone_total:.6} f_cuts={f_cuts:?}"
-        );
-        eprintln!("[RUST] zone_poly={zone_poly:?}");
-    }
-
     for c in 0..n_cols {
         if *lot_budget == 0 {
             break;
@@ -855,89 +880,56 @@ fn hb_build_body_zone(
     u_min: f64,
     u_max: f64,
     min_frente: f64,
-    min_area: f64,
-    target_lot_area: f64,
+    area_up_to: &dyn Fn(f64) -> f64,
+    n_rows: i64,
+    n_cols: i64,
     u_a: f64,
     u_b: f64,
-    max_rows: i64,
-    n_cols: i64,
     lots: &mut Vec<HbLot>,
     lot_budget: &mut usize,
 ) {
-    if max_rows <= 0 || n_cols <= 0 || *lot_budget == 0 {
+    if n_rows <= 0 || n_cols <= 0 || *lot_budget == 0 {
         return;
     }
     let zone_total = hb_strip_area(work_poly, ux, uy, u_a, u_b);
     if zone_total <= 0.0 {
         return;
     }
-    let per_lot_target = if min_area > 0.0 {
-        min_area
-    } else if target_lot_area > 0.0 {
-        target_lot_area
-    } else {
-        zone_total / (max_rows.max(1) as f64) / (n_cols.max(1) as f64)
-    };
-    if per_lot_target <= 0.0 {
-        return;
-    }
 
-    let area_from = |from: f64, to: f64| hb_strip_area(work_poly, ux, uy, from, to);
-    let probe_span = ((u_b - u_a) * 0.1).max(0.5);
-
-    let mut ra = u_a;
-    let mut rows_done: i64 = 0;
-
-    while ra < u_b - 1e-9 && *lot_budget > 0 && rows_done < max_rows {
-        let remaining_area = area_from(ra, u_b);
-        if remaining_area < 1e-6 {
+    let row_target = zone_total / n_rows as f64;
+    let area_at_a = area_up_to(u_a);
+    let mut row_cuts: Vec<f64> = vec![u_a];
+    for r in 0..n_rows - 1 {
+        if !tick_op_budget() {
             break;
         }
-        let probe_to = (ra + probe_span).min(u_b);
-        let probe_poly = hb_clip_poly_half(work_poly, ux, uy, 1.0, ra);
-        let probe_poly = hb_clip_poly_half(&probe_poly, ux, uy, -1.0, -probe_to);
-        let probe_depth = probe_to - ra;
-        let local_ancho = if probe_poly.len() >= 3 && probe_depth > 1e-6 {
-            poly_area(&probe_poly) / probe_depth
-        } else {
-            0.0
-        };
-        let force_single_col =
-            min_frente > 0.0 && n_cols > 1 && local_ancho / n_cols as f64 <= min_frente;
-        let n_cols_here = if force_single_col { 1 } else { n_cols };
+        let a_target = area_at_a + (r + 1) as f64 * row_target;
+        let cut = bisect(area_up_to, u_a, u_b, a_target).max(u_a).min(u_b);
+        row_cuts.push(cut);
+    }
+    row_cuts.push(u_b);
 
-        let row_target_area = per_lot_target * n_cols_here as f64;
-        let is_last_row = rows_done == max_rows - 1 || remaining_area <= row_target_area * 1.5;
+    let actual_rows = row_cuts.len().saturating_sub(1);
 
-        let rb = if is_last_row {
-            u_b
-        } else {
-            let area_up_to_from_ra = |u_cut: f64| area_from(ra, u_cut);
-            bisect(&area_up_to_from_ra, ra, u_b, row_target_area)
-                .max(ra)
-                .min(u_b)
-        };
+    for r in 0..actual_rows {
+        if *lot_budget == 0 {
+            break;
+        }
+        let ra = row_cuts[r];
+        let rb = row_cuts[r + 1];
+        if rb <= ra + 1e-9 {
+            continue;
+        }
 
         let mut strip_poly = hb_clip_poly_half(work_poly, ux, uy, 1.0, ra);
         strip_poly = hb_clip_poly_half(&strip_poly, ux, uy, -1.0, -rb);
         if strip_poly.len() < 3 {
-            ra = rb.max(ra + 1e-6);
-            rows_done += 1;
             continue;
         }
-        let row_area = poly_area(&strip_poly);
-        if row_area < 0.25 {
-            ra = rb.max(ra + 1e-6);
-            rows_done += 1;
-            continue;
-        }
-        let row_is_remainder = is_last_row && row_area < row_target_area * 0.92;
 
         let slice_a = hb_poly_slice_at_u_clamped(work_poly, ux, uy, ra, vx, vy, u_min, u_max);
         let slice_b = hb_poly_slice_at_u_clamped(work_poly, ux, uy, rb, vx, vy, u_min, u_max);
         if slice_a.len() < 2 || slice_b.len() < 2 {
-            ra = rb.max(ra + 1e-6);
-            rows_done += 1;
             continue;
         }
 
@@ -991,31 +983,46 @@ fn hb_build_body_zone(
             }
         };
 
-        let col_target = if row_is_remainder {
-            (row_area / n_cols_here as f64).max(1e-6)
+        let row_area = lot_area_at(0.0, 1.0);
+        if row_area < 1e-9 {
+            continue;
+        }
+        let row_len_u = (rb - ra).abs();
+        let local_ancho = if row_len_u > 1e-9 {
+            row_area / row_len_u
         } else {
-            per_lot_target
+            0.0
         };
+        let force_single_col =
+            min_frente > 0.0 && n_cols > 1 && (local_ancho / n_cols as f64) <= min_frente;
+        let n_cols_here = if force_single_col { 1 } else { n_cols };
+
+        let col_target = row_area / n_cols_here as f64;
         let cum_t = |t: f64| lot_area_at(0.0, t);
         let mut col_cuts: Vec<f64> = vec![0.0];
         for c in 0..n_cols_here - 1 {
-            let ci = c as usize;
-            let prev = col_cuts[ci];
-            col_cuts.push(
-                bisect(&cum_t, prev, 1.0, col_target * (c as f64 + 1.0))
-                    .max(prev)
-                    .min(1.0),
-            );
-        }
-        col_cuts.push(1.0);
-
-        for c in 0..n_cols_here {
-            if *lot_budget == 0 {
+            if !tick_op_budget() {
                 break;
             }
             let ci = c as usize;
-            let t0 = col_cuts[ci];
-            let t1 = col_cuts[ci + 1];
+            let prev = col_cuts[ci];
+            let cut = bisect(&cum_t, prev, 1.0, (c + 1) as f64 * col_target)
+                .max(prev)
+                .min(1.0);
+            col_cuts.push(cut);
+        }
+        col_cuts.push(1.0);
+        let actual_cols = col_cuts.len().saturating_sub(1);
+
+        for c in 0..actual_cols {
+            if *lot_budget == 0 {
+                break;
+            }
+            let t0 = col_cuts[c];
+            let t1 = col_cuts[c + 1];
+            if t1 <= t0 + 1e-9 {
+                continue;
+            }
             let c0 = cut_line_at(t0);
             let c1 = cut_line_at(t1);
             let mut col_poly = if t0 > 1e-9 {
@@ -1032,17 +1039,17 @@ fn hb_build_body_zone(
                 continue;
             }
             let area = poly_area(&col_poly);
+            if area < 1e-6 {
+                continue;
+            }
             lots.push(HbLot {
                 pts: col_poly,
                 area,
                 zone: "body".to_string(),
-                is_remainder: row_is_remainder && c == n_cols_here - 1,
+                is_remainder: false,
             });
             *lot_budget -= 1;
         }
-
-        ra = rb.max(ra + 1e-6);
-        rows_done += 1;
     }
 }
 
@@ -1098,13 +1105,24 @@ fn hb_lotize_with_baseline(mzn_pts: &[Pt], cfg: HbConfig, baseline: (Pt, Pt)) ->
     let head_cols1 = plan.head_cols1;
     let head_cols2 = plan.head_cols2;
     let target_lot_area = plan.target_lot_area;
+    let b_rows = hb_fit_body_rows(
+        total_area,
+        target_lot_area,
+        head_rows,
+        head_cols1,
+        head_cols2,
+        body_cols,
+        body_rows,
+        use_fixed_area,
+    );
+
     let (u_h1, u_h2) = if head_rows <= 0 {
         (u_min, u_max)
     } else {
         let head_area1 = head_rows as f64 * head_cols1 as f64 * target_lot_area;
-        let head_area2 = head_rows as f64 * head_cols2 as f64 * target_lot_area;
+        let body_area = b_rows as f64 * body_cols as f64 * target_lot_area;
         let uh1 = bisect(&area_up_to, u_min, u_max, head_area1);
-        let uh2 = bisect(&area_up_to, uh1, u_max, (total_area - head_area2).max(0.0))
+        let uh2 = bisect(&area_up_to, uh1, u_max, head_area1 + body_area)
             .max(uh1)
             .min(u_max);
         (uh1, uh2)
@@ -1143,15 +1161,15 @@ fn hb_lotize_with_baseline(mzn_pts: &[Pt], cfg: HbConfig, baseline: (Pt, Pt)) ->
         u_min,
         u_max,
         min_frente,
-        min_area,
-        target_lot_area,
+        &area_up_to,
+        b_rows,
+        body_cols,
         u_h1,
         u_h2,
-        MAX_HB_DIM,
-        body_cols,
         &mut lots,
         &mut lot_budget,
     );
+
     if head_rows > 0 {
         hb_build_zone(
             work_poly,
@@ -1176,7 +1194,34 @@ fn hb_lotize_with_baseline(mzn_pts: &[Pt], cfg: HbConfig, baseline: (Pt, Pt)) ->
     lots
 }
 
+#[cfg(feature = "geos-backend")]
 fn hb_merge_polys(a: &[Pt], b: &[Pt]) -> Vec<Pt> {
+    let merged = crate::boolean_ops::union_rings(
+        &[a.to_vec(), b.to_vec()],
+        "subdivisionCabeceraCuerpo.hbMergeHeadRemainders",
+    );
+    if merged.len() == 1 && merged[0].len() == 1 {
+        let mut ring = merged[0][0].clone();
+        if ring.len() > 1 {
+            let (fx, fy) = ring[0];
+            let (lxp, lyp) = ring[ring.len() - 1];
+            if (fx - lxp).abs() < 1e-9 && (fy - lyp).abs() < 1e-9 {
+                ring.pop();
+            }
+        }
+        if ring.len() >= 3 {
+            return ring;
+        }
+    }
+    hb_convex_hull_merge(a, b)
+}
+
+#[cfg(not(feature = "geos-backend"))]
+fn hb_merge_polys(a: &[Pt], b: &[Pt]) -> Vec<Pt> {
+    hb_convex_hull_merge(a, b)
+}
+
+fn hb_convex_hull_merge(a: &[Pt], b: &[Pt]) -> Vec<Pt> {
     let mut combined = Vec::with_capacity(a.len() + b.len());
     combined.extend_from_slice(a);
     combined.extend_from_slice(b);
@@ -1280,6 +1325,27 @@ fn hb_merge_head_remainders(lots: Vec<HbLot>, target_lot_area: f64) -> Vec<HbLot
     }
     result
 }
+
+fn lot_front_depth_from_longest_edge(pts: &[Pt], area: f64) -> (f64, f64) {
+    let n = pts.len();
+    if n < 2 {
+        return (0.0, 0.0);
+    }
+    let mut best_len = 0.0_f64;
+    for i in 0..n {
+        let a = pts[i];
+        let b = pts[(i + 1) % n];
+        let l = (b.0 - a.0).hypot(b.1 - a.1);
+        if l > best_len {
+            best_len = l;
+        }
+    }
+    if best_len < 1e-6 {
+        return (0.0, 0.0);
+    }
+    (best_len, area / best_len)
+}
+
 pub fn subdivide_manzano_cabecera_cuerpo(
     mzn_pts: &[Pt],
     target_area_m2: f64,
@@ -1297,16 +1363,13 @@ pub fn subdivide_manzano_cabecera_cuerpo(
         return Vec::new();
     }
 
-    let baseline: (Pt, Pt) = match dir_pref {
-        Some((ax, ay)) => {
-            let c = centroid(mzn_pts);
-            (c, (c.0 + ax, c.1 + ay))
-        }
-        None => {
-            let quad = mzn_quad_approx(mzn_pts);
-            let ordered = order_quad_long(&quad);
-            (ordered[0], ordered[3])
-        }
+    let baseline: (Pt, Pt) = {
+        let c = centroid(mzn_pts);
+        let (ax, ay) = match dir_pref {
+            Some(d) => d,
+            None => default_baseline_dir(mzn_pts),
+        };
+        (c, (c.0 + ax, c.1 + ay))
     };
 
     let cfg = hb_get_cfg(block_area, target_area_m2, front_min_m);
@@ -1318,27 +1381,10 @@ pub fn subdivide_manzano_cabecera_cuerpo(
 
     raw.into_iter()
         .map(|l| {
-            let mut min_x = f64::INFINITY;
-            let mut max_x = f64::NEG_INFINITY;
-            let mut min_y = f64::INFINITY;
-            let mut max_y = f64::NEG_INFINITY;
-            for p in &l.pts {
-                if p.0 < min_x {
-                    min_x = p.0;
-                }
-                if p.0 > max_x {
-                    max_x = p.0;
-                }
-                if p.1 < min_y {
-                    min_y = p.1;
-                }
-                if p.1 > max_y {
-                    max_y = p.1;
-                }
-            }
+            let (front_m, depth_m) = lot_front_depth_from_longest_edge(&l.pts, l.area);
             LotResult {
-                front_m: (max_x - min_x).min(max_y - min_y),
-                depth_m: (max_x - min_x).max(max_y - min_y),
+                front_m,
+                depth_m,
                 area_m2: l.area,
                 is_remnant: l.is_remainder,
                 pts: l.pts,
