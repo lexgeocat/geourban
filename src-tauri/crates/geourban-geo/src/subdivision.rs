@@ -134,12 +134,10 @@ fn compute_lots_on_half(
         }
         let strip_poly = clip_to_strip(full_poly, lx, ly, prev_t, actual_end);
         if strip_poly.len() < 3 {
-            prev_t = actual_end;
             continue;
         }
         let area_m2 = poly_area(&strip_poly);
         if area_m2 < 1e-6 {
-            prev_t = actual_end;
             continue;
         }
         let ext_sh = project_extents(&strip_poly, sx, sy);
@@ -170,6 +168,17 @@ fn compute_lots_on_half(
                     pts: rem_poly,
                     is_remnant: area_m2 < target_area_m2 * 0.5,
                     front_m: ext_l.max - prev_t,
+                    depth_m: ext_s.max - ext_s.min,
+                    area_m2,
+                });
+            }
+        } else if lots.is_empty() {
+            let area_m2 = poly_area(full_poly);
+            if area_m2 > 1e-6 {
+                lots.push(LotResult {
+                    pts: full_poly.to_vec(),
+                    is_remnant: true,
+                    front_m: ext_l.max - ext_l.min,
                     depth_m: ext_s.max - ext_s.min,
                     area_m2,
                 });
@@ -265,6 +274,14 @@ fn subdivide_half(
 
         let lot_poly = clip_to_strip(poly, lx, ly, t, t + best_f);
         if lot_poly.len() < 3 || poly_area(&lot_poly) < 0.5 {
+            let ext_sr = project_extents(&rest_poly, sx, sy);
+            out.push(LotResult {
+                pts: rest_poly,
+                is_remnant: true,
+                front_m: remaining,
+                depth_m: ext_sr.max - ext_sr.min,
+                area_m2: rest_area,
+            });
             break;
         }
         let area_m2 = poly_area(&lot_poly);
@@ -1159,6 +1176,41 @@ fn enforce_min_frontage(lots: Vec<LotResult>, front_min_m: f64) -> Vec<LotResult
     lots
 }
 
+#[cfg(feature = "geos-backend")]
+fn fill_lot_coverage_gaps(outer_ring: &[Pt], lots: &[LotResult]) -> Vec<LotResult> {
+    const MIN_GAP_AREA_M2: f64 = 0.5;
+    let covering: Vec<Vec<Pt>> = lots.iter().map(|l| l.pts.clone()).collect();
+    let gaps = crate::boolean_ops::fill_polygon_gaps(outer_ring, &covering);
+    gaps.into_iter()
+        .filter_map(|ring| {
+            let area_m2 = poly_area(&ring);
+            if area_m2 < MIN_GAP_AREA_M2 {
+                return None;
+            }
+            let n = ring.len();
+            let mut best = 0.0_f64;
+            for i in 0..n {
+                let a = ring[i];
+                let b = ring[(i + 1) % n];
+                let l = (b.0 - a.0).hypot(b.1 - a.1);
+                if l > best {
+                    best = l;
+                }
+            }
+            let (front_m, depth_m) = if best > 1e-6 { (best, area_m2 / best) } else { (0.0, 0.0) };
+            log::warn!(
+                "subdivisionAlgorithms: hueco de {area_m2:.2} m² sin lotizar detectado — se agrega como lote remanente."
+            );
+            Some(LotResult { pts: ring, is_remnant: true, front_m, depth_m, area_m2 })
+        })
+        .collect()
+}
+
+#[cfg(not(feature = "geos-backend"))]
+fn fill_lot_coverage_gaps(_outer_ring: &[Pt], _lots: &[LotResult]) -> Vec<LotResult> {
+    Vec::new()
+}
+
 pub fn subdivide_manzano(
     ring_pts: &[Pt],
     method: ManzanoLoteMethod,
@@ -1199,10 +1251,16 @@ pub fn subdivide_manzano(
     };
     let sanitized = sanitize_lot_results(lots, "subdivisionAlgorithms.subdivideManzano");
 
-    match method {
+    let mut result = match method {
         ManzanoLoteMethod::Auto => sanitized,
         _ => enforce_min_frontage(sanitized, front_min_m),
+    };
+
+    let gaps = fill_lot_coverage_gaps(&pts, &result);
+    if !gaps.is_empty() {
+        result.extend(gaps);
     }
+    result
 }
 
 fn subdivision_method_to_str(m: SubdivisionMethod) -> &'static str {
@@ -1343,7 +1401,7 @@ pub fn subdivide(polygon_coordinates: &[Vec<Pt>], opts: &SubdivisionOptions) -> 
     }
 
     let sanitized = sanitize_lot_results(lots, "subdivisionAlgorithms.subdivide");
-    let sanitized_lots = if matches!(
+    let mut sanitized_lots = if matches!(
         opts.method,
         SubdivisionMethod::ManualSlice | SubdivisionMethod::Auto
     ) {
@@ -1360,6 +1418,14 @@ pub fn subdivide(polygon_coordinates: &[Vec<Pt>], opts: &SubdivisionOptions) -> 
         }
         merged
     };
+    let gaps = fill_lot_coverage_gaps(&pts, &sanitized_lots);
+    if !gaps.is_empty() {
+        warnings.push(format!(
+            "{} zona(s) sin cubrir se completaron con lotes remanentes adicionales.",
+            gaps.len()
+        ));
+        sanitized_lots.extend(gaps);
+    }
 
     let remnant_count = sanitized_lots.iter().filter(|l| l.is_remnant).count();
     warnings.push(format!(

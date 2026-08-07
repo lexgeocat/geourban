@@ -600,3 +600,74 @@ pub fn compute_road_network_net(
         outer: process_polygons(&outer_union, &zero_extra, corner_mode),
     }
 }
+
+pub fn fill_polygon_gaps(outer_ring: &[Pt], covering_rings: &[Vec<Pt>]) -> Vec<Vec<Pt>> {
+    if outer_ring.len() < 3 {
+        return Vec::new();
+    }
+    let sanitized_outer = match sanitize_ring(
+        Some(outer_ring),
+        SanitizeRingOptions::default(),
+        "subdivision.fillPolygonGaps.outer",
+    ) {
+        Some(r) => r,
+        None => return Vec::new(),
+    };
+
+    ensure_geos_ctx();
+    let poly_outer = match ring_to_polygon(&sanitized_outer) {
+        Ok(p) => p,
+        Err(err) => {
+            log::warn!(
+                "subdivision.fillPolygonGaps: no se pudo construir el polígono exterior: {err:?}"
+            );
+            return Vec::new();
+        }
+    };
+
+    let covering_sanitized = sanitize_rings(
+        covering_rings,
+        SanitizeRingOptions::default(),
+        "subdivision.fillPolygonGaps.covering",
+    );
+    let covering_polys: Vec<Vec<Vec<Pt>>> = covering_sanitized
+        .into_iter()
+        .filter(|r| r.len() >= 4)
+        .map(|r| vec![r])
+        .collect();
+    if covering_polys.is_empty() {
+        return vec![sanitized_outer];
+    }
+
+    let union_cover =
+        match union_polygons_with_retry(&covering_polys, "subdivision.fillPolygonGaps") {
+            Some(u) => u,
+            None => return vec![sanitized_outer],
+        };
+
+    let diff: Geometry<'static> = match poly_outer.difference(&union_cover) {
+        Ok(d) => unsafe { std::mem::transmute(d) },
+        Err(err) => {
+            log::warn!("subdivision.fillPolygonGaps: difference() falló buscando huecos: {err:?}");
+            return Vec::new();
+        }
+    };
+
+    if diff.is_empty().unwrap_or(true) {
+        return Vec::new();
+    }
+
+    let parts = match split_into_polygon_geoms(&diff) {
+        Ok(p) => p,
+        Err(err) => {
+            log::warn!("subdivision.fillPolygonGaps: no se pudieron separar los fragmentos de hueco: {err:?}");
+            return Vec::new();
+        }
+    };
+
+    parts
+        .iter()
+        .filter_map(|p| polygon_to_rings(p).ok())
+        .filter_map(|rings| rings.into_iter().next())
+        .collect()
+}

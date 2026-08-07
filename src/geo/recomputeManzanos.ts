@@ -35,7 +35,8 @@ import {
 } from '../commands/core/structuralDiff';
 
 function closeGeoRing(ring: Pt[]): Pt[] {
-  const f = ring[0], l = ring[ring.length - 1];
+  const f = ring[0],
+    l = ring[ring.length - 1];
   if (Math.abs(f[0] - l[0]) > 1e-9 || Math.abs(f[1] - l[1]) > 1e-9) return [...ring, [f[0], f[1]]];
   return ring;
 }
@@ -73,7 +74,6 @@ function ringsEffectivelyUnchanged(a: Pt[], b: Pt[]): boolean {
   return ringsApproxEqual(a, b) || ringsShapeEquivalent(a, b);
 }
 
-
 function currentRingOf(feature: Feature<Geometry>): Pt[] | null {
   const geom = feature.getGeometry();
   if (!(geom instanceof PolygonGeom)) return null;
@@ -89,7 +89,7 @@ function restoreMemberToParcel(
   rootId: string,
   rootPts: Pt[],
   src: VectorSource,
-  recorder: StructuralDiffRecorder,
+  recorder: StructuralDiffRecorder
 ): void {
   const alreadyLote = getFeatureKind(member) === 'lote';
   const currentRing = currentRingOf(member);
@@ -125,7 +125,10 @@ function orientRingCcw(ring: Pt[]): Pt[] {
 function ringsExtent(rings: Pt[][]): Extent | null {
   let result: Extent | null = null;
   for (const ring of rings) {
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    let minX = Infinity,
+      minY = Infinity,
+      maxX = -Infinity,
+      maxY = -Infinity;
     for (const [x, y] of ring) {
       if (x < minX) minX = x;
       if (y < minY) minY = y;
@@ -142,7 +145,7 @@ function ringsExtent(rings: Pt[][]): Extent | null {
 
 function currentOrOriginalExtent(
   members: Array<Feature<Geometry>>,
-  fallbackPts: Pt[],
+  fallbackPts: Pt[]
 ): Extent | null {
   let ext: Extent | null = null;
   for (const m of members) {
@@ -157,7 +160,7 @@ function currentOrOriginalExtent(
 
 function fragmentsMatchCurrentMembers(
   members: Array<Feature<Geometry>>,
-  fragments: Pt[][],
+  fragments: Pt[][]
 ): boolean {
   if (members.length === 0 || members.length !== fragments.length) return false;
   const currentAreas: number[] = [];
@@ -172,7 +175,8 @@ function fragmentsMatchCurrentMembers(
   currentAreas.sort((a, b) => a - b);
   fragAreas.sort((a, b) => a - b);
   for (let i = 0; i < currentAreas.length; i++) {
-    const c = currentAreas[i], f = fragAreas[i];
+    const c = currentAreas[i],
+      f = fragAreas[i];
     const tol = Math.max(0.5, Math.max(c, f) * 2e-3);
     if (Math.abs(c - f) > tol) return false;
   }
@@ -197,7 +201,10 @@ function streetFingerprint(s: Street): string {
 function streetApproxExtent(s: Street): Extent {
   const half = s.widthM / 2 + Math.max(0, s.sideWidthM ?? 0) + 2;
   const pts: Array<[number, number]> = [s.start, ...(s.waypoints ?? []), s.end];
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  let minX = Infinity,
+    minY = Infinity,
+    maxX = -Infinity,
+    maxY = -Infinity;
   for (const [x, y] of pts) {
     if (x < minX) minX = x;
     if (x > maxX) maxX = x;
@@ -219,14 +226,17 @@ function roundaboutApproxExtent(r: Roundabout): Extent {
 export function computeRoadFingerprintDelta(
   streets: Street[],
   roundabouts: Roundabout[],
-  prev: Map<string, RoadElementFingerprint>,
+  prev: Map<string, RoadElementFingerprint>
 ): { current: Map<string, RoadElementFingerprint>; changedExtent: Extent | null } {
   const current = new globalThis.Map<string, RoadElementFingerprint>();
   for (const s of streets) {
     current.set(`s:${s.id}`, { hash: streetFingerprint(s), extent: streetApproxExtent(s) });
   }
   for (const rb of roundabouts) {
-    current.set(`r:${rb.id}`, { hash: roundaboutFingerprint(rb), extent: roundaboutApproxExtent(rb) });
+    current.set(`r:${rb.id}`, {
+      hash: roundaboutFingerprint(rb),
+      extent: roundaboutApproxExtent(rb),
+    });
   }
 
   let changedExtent: Extent | null = null;
@@ -267,22 +277,25 @@ function ensurePerimeterWorkingCopies(src: VectorSource, recorder: StructuralDif
     if (!(geom instanceof PolygonGeom)) continue;
 
     const workingGeom = geom.clone();
-const workingRing = ((workingGeom.getCoordinates()[0] ?? []) as number[][]).map((c) => [c[0], c[1]] as Pt);
+    const workingRing = ((workingGeom.getCoordinates()[0] ?? []) as number[][]).map(
+      (c) => [c[0], c[1]] as Pt
+    );
 
-const working = new Feature({ geometry: workingGeom });
-working.setId(workingId);
-working.setProperties(
-  ensureKind(
-    {
-      label: (perim.get('label') as string | undefined) ?? 'Parcela',
-      perimeterSourceId: String(perimId),
-      rootParcelId: workingId,
-      rootParcelPts: workingRing,
-    },
-    'lote',
-  ),
-);
-    const perimLayerId = (perim.get('layerId') as string | undefined) ?? resolveOrCreateLayerForKind('perimetro');
+    const working = new Feature({ geometry: workingGeom });
+    working.setId(workingId);
+    working.setProperties(
+      ensureKind(
+        {
+          label: (perim.get('label') as string | undefined) ?? 'Parcela',
+          perimeterSourceId: String(perimId),
+          rootParcelId: workingId,
+          rootParcelPts: workingRing,
+        },
+        'lote'
+      )
+    );
+    const perimLayerId =
+      (perim.get('layerId') as string | undefined) ?? resolveOrCreateLayerForKind('perimetro');
     working.set('layerId', perimLayerId, true);
     src.addFeature(working);
     recorder.recordAdd(working as Feature<Geometry>);
@@ -347,7 +360,7 @@ function collectOriginGroups(src: VectorSource): {
 function resolveRootParcel(
   feature: Feature<Geometry> | undefined,
   fallbackId: string,
-  fallbackPts: Pt[],
+  fallbackPts: Pt[]
 ): { rootId: string; rootPts: Pt[] } {
   const rid = feature?.get('rootParcelId') as string | undefined;
   const rpts = feature?.get('rootParcelPts') as Pt[] | undefined;
@@ -442,7 +455,7 @@ async function applyRelotTasks(
   src: VectorSource,
   recorder: StructuralDiffRecorder,
   targetAreaM2: number,
-  frontMinM: number,
+  frontMinM: number
 ): Promise<void> {
   for (const task of tasks) {
     const fragFeat = src.getFeatureById(task.featureId) as Feature<Geometry> | null;
@@ -459,9 +472,17 @@ async function applyRelotTasks(
       recorder.recordModifyAfter(fragFeat);
       continue;
     }
-    const ring = ((fragGeom.getCoordinates()[0] ?? []) as number[][]).map((c) => [c[0], c[1]] as Pt);
+    const ring = ((fragGeom.getCoordinates()[0] ?? []) as number[][]).map(
+      (c) => [c[0], c[1]] as Pt
+    );
     try {
-      const lots = await subdivideManzanoInWorker(ring, task.method, targetAreaM2, frontMinM, task.dirPref);
+      const lots = await subdivideManzanoInWorker(
+        ring,
+        task.method,
+        targetAreaM2,
+        frontMinM,
+        task.dirPref
+      );
       let created = 0;
       lots.forEach((lot, i) => {
         if (lot.pts.length < 3) return;
@@ -486,8 +507,8 @@ async function applyRelotTasks(
               depthM: lot.depthM,
               isRemnant: lot.isRemnant,
             },
-            'lote',
-          ),
+            'lote'
+          )
         );
         const lotLid = resolveLoteLayerId(task.layerId);
         lotFeat.set('layerId', lotLid);
@@ -545,7 +566,15 @@ async function recomputeManzanosImmediate(recorder: StructuralDiffRecorder): Pro
       }
 
       const primary = manzanos[0] as Feature<Geometry>;
-      restoreMemberToParcel(primary, group.rootPts, group.rootId, group.rootId, group.rootPts, src, recorder);
+      restoreMemberToParcel(
+        primary,
+        group.rootPts,
+        group.rootId,
+        group.rootId,
+        group.rootPts,
+        src,
+        recorder
+      );
     }
 
     if (groups.size > 0) {
@@ -577,7 +606,7 @@ async function recomputeManzanosImmediate(recorder: StructuralDiffRecorder): Pro
   const { current: currentFingerprints, changedExtent } = computeRoadFingerprintDelta(
     streets,
     roundabouts,
-    lastRoadFingerprints,
+    lastRoadFingerprints
   );
   lastRoadFingerprints = currentFingerprints;
 
@@ -655,8 +684,15 @@ async function recomputeManzanosImmediate(recorder: StructuralDiffRecorder): Pro
   const frontMinM = useManzanoStore.getState().frontMinM;
 
   const assignmentsByGroupIdx = new globalThis.Map<number, FragmentAssignment[]>();
-  const memberAreaByRefPerGroup = new globalThis.Map<number, globalThis.Map<Feature<Geometry>, number>>();
-  const relotCandidates: Array<{ featureId: string; method: ManzanoLoteMethod; dirPref?: { ax: number; ay: number } }> = [];
+  const memberAreaByRefPerGroup = new globalThis.Map<
+    number,
+    globalThis.Map<Feature<Geometry>, number>
+  >();
+  const relotCandidates: Array<{
+    featureId: string;
+    method: ManzanoLoteMethod;
+    dirPref?: { ax: number; ay: number };
+  }> = [];
 
   interface ReconTask {
     idx: number;
@@ -674,12 +710,13 @@ async function recomputeManzanosImmediate(recorder: StructuralDiffRecorder): Pro
   for (let idx = 0; idx < parcelIndexToGroup.length; idx++) {
     const group = parcelIndexToGroup[idx];
     const fragments = fragmentsByGroup.get(idx) ?? [];
-       const existingMembers = group.members
+    const existingMembers = group.members
       .map((m) => {
         const g = m.getGeometry();
-        const ring = g instanceof PolygonGeom
-          ? ((g.getCoordinates()[0] ?? []) as number[][]).map((c) => [c[0], c[1]] as Pt)
-          : [];
+        const ring =
+          g instanceof PolygonGeom
+            ? ((g.getCoordinates()[0] ?? []) as number[][]).map((c) => [c[0], c[1]] as Pt)
+            : [];
         return { ring, ref: m as Feature<Geometry> };
       })
       .filter((x) => x.ring.length >= 3);
@@ -692,24 +729,29 @@ async function recomputeManzanosImmediate(recorder: StructuralDiffRecorder): Pro
   }
 
   if (reconTasks.length > 0) {
-    let batchResults: Array<{ groupIdx: number; assignments: Array<{ fragmentIdx: number; memberIdx: number | null; overlapArea: number }> }>;
+    let batchResults: Array<{
+      groupIdx: number;
+      assignments: Array<{ fragmentIdx: number; memberIdx: number | null; overlapArea: number }>;
+    }>;
     try {
       batchResults = await matchFragmentsBatchInWorker(
         reconTasks.map((t) => ({
           groupIdx: t.idx,
           fragments: t.fragments,
           memberRings: t.existingMembers.map((m) => m.ring),
-        })),
+        }))
       );
     } catch (err) {
       console.error(
         'recomputeManzanos: matchFragmentsBatch falló en el motor nativo (sin fallback desde 2.7) — se aborta el recompute.',
-        err,
+        err
       );
       return;
     }
 
-    const resultsByGroupIdx = new globalThis.Map(batchResults.map((r) => [r.groupIdx, r.assignments]));
+    const resultsByGroupIdx = new globalThis.Map(
+      batchResults.map((r) => [r.groupIdx, r.assignments])
+    );
 
     for (const task of reconTasks) {
       const rawAssignments = resultsByGroupIdx.get(task.idx) ?? [];
@@ -748,42 +790,81 @@ async function recomputeManzanosImmediate(recorder: StructuralDiffRecorder): Pro
     const plural = relotCandidates.length > 1;
     allowAutoRelot = await confirmAsync(
       `El trazado nuevo modificó lo suficiente ${plural ? 'a estos manzanos ya lotizados' : 'a este manzano ya lotizado'} ` +
-      `como para necesitar regenerar sus lotes automáticamente (el resto del proyecto no se ve afectado).\n\n` +
-      'Si cancelás, el corte igual se aplica pero esos lotes quedan pendientes de regenerar a mano.',
-      { title: '¿Regenerar lotes automáticamente?', confirmLabel: 'Continuar', cancelLabel: 'Cancelar' },
+        `como para necesitar regenerar sus lotes automáticamente (el resto del proyecto no se ve afectado).\n\n` +
+        'Si cancelás, el corte igual se aplica pero esos lotes quedan pendientes de regenerar a mano.',
+      {
+        title: '¿Regenerar lotes automáticamente?',
+        confirmLabel: 'Continuar',
+        cancelLabel: 'Cancelar',
+      }
     );
   }
 
-  const relotTasks: Array<{ featureId: string; method: ManzanoLoteMethod; dirPref?: { ax: number; ay: number }; layerId?: string }> = [];
+  const relotTasks: Array<{
+    featureId: string;
+    method: ManzanoLoteMethod;
+    dirPref?: { ax: number; ay: number };
+    layerId?: string;
+  }> = [];
 
   for (let idx = 0; idx < parcelIndexToGroup.length; idx++) {
     const group = parcelIndexToGroup[idx];
     const fragments = fragmentsByGroup.get(idx) ?? [];
 
-const root = resolveRootParcel(group.members[0], group.origId, group.origPts);
+    const root = resolveRootParcel(group.members[0], group.origId, group.origPts);
 
-const untouched = fragments.length === 1 && polyArea(fragments[0]) >= polyArea(group.origPts) * 0.999;
-if (untouched) {
-  const sole = group.members.length === 1 ? group.members[0] : null;
-  if (sole && getFeatureKind(sole) === 'manzana') {
-    continue;
-  }
-  restoreMemberToParcel(group.members[0], fragments[0], group.origId, root.rootId, root.rootPts, src, recorder);
-  continue;
-}
+    const untouched =
+      fragments.length === 1 && polyArea(fragments[0]) >= polyArea(group.origPts) * 0.999;
+    if (untouched) {
+      const sole = group.members.length === 1 ? group.members[0] : null;
+      if (sole && getFeatureKind(sole) === 'manzana') {
+        continue;
+      }
 
-if (fragmentsMatchCurrentMembers(group.members, fragments)) continue;
+      for (let mi = 1; mi < group.members.length; mi++) {
+        const extra = group.members[mi];
+        const mid = extra.getId();
+        if (mid != null) {
+          const childLots = lotsByGroupId.get(String(mid));
+          if (childLots) {
+            for (const lot of childLots) {
+              if (src.getFeatureById(lot.getId() as string | number) != null) {
+                recorder.recordRemove(lot);
+                src.removeFeature(lot);
+              }
+            }
+          }
+        }
+        recorder.recordRemove(extra);
+        src.removeFeature(extra);
+      }
+      restoreMemberToParcel(
+        group.members[0],
+        fragments[0],
+        group.origId,
+        root.rootId,
+        root.rootPts,
+        src,
+        recorder
+      );
+      continue;
+    }
 
-const assignments = assignmentsByGroupIdx.get(idx) ?? [];
-const areaByRef = memberAreaByRefPerGroup.get(idx) ?? new globalThis.Map<Feature<Geometry>, number>();
-const reusedRefs = new Set(assignments.filter((a) => a.member != null).map((a) => a.member as Feature<Geometry>));
+    if (fragmentsMatchCurrentMembers(group.members, fragments)) continue;
 
-for (const m of group.members) {
-  if (reusedRefs.has(m as Feature<Geometry>)) continue;
-  const mid = m.getId();
-  if (mid != null) {
-    const childLots = lotsByGroupId.get(String(mid));
-    if (childLots) {
+    const assignments = assignmentsByGroupIdx.get(idx) ?? [];
+    const areaByRef =
+      memberAreaByRefPerGroup.get(idx) ?? new globalThis.Map<Feature<Geometry>, number>();
+    const reusedRefs = new Set(
+      assignments.filter((a) => a.member != null).map((a) => a.member as Feature<Geometry>)
+    );
+
+    for (const m of group.members) {
+      if (reusedRefs.has(m as Feature<Geometry>)) continue;
+      const mid = m.getId();
+      if (mid != null) {
+        const childLots = lotsByGroupId.get(String(mid));
+        if (childLots) {
           for (const lot of childLots) {
             if (src.getFeatureById(lot.getId() as string | number) != null) {
               recorder.recordRemove(lot);
@@ -801,15 +882,25 @@ for (const m of group.members) {
     for (let fi = 0; fi < fragments.length; fi++) {
       const rawRing = fragments[fi];
       const oriented = orientRingCcw(rawRing);
+      const origAreaM2 = polyArea(oriented);
       let rounded = roundRingReflex(
-        oriented, 0, false, cornerMode,
-        (pt) => !pointOnRing(pt, root.rootPts),
+        oriented,
+        0,
+        false,
+        cornerMode,
+        (pt) => !pointOnRing(pt, root.rootPts)
       );
-      if (rounded.length < 4) {
+
+      const roundedAreaM2 = rounded.length >= 4 ? polyArea(rounded) : 0;
+      const areaDeviatesTooMuch =
+        origAreaM2 > 0.5 &&
+        (roundedAreaM2 <= 0 || Math.abs(roundedAreaM2 - origAreaM2) > origAreaM2 * 0.2);
+
+      if (rounded.length < 4 || areaDeviatesTooMuch) {
         const fallback = oriented.length >= 3 ? closeGeoRing(oriented) : [];
-        if (fallback.length < 4 || polyArea(oriented) < 0.5) {
+        if (fallback.length < 4 || origAreaM2 < 0.5) {
           console.warn(
-            `recomputeManzanos: fragmento ${fi} del grupo ${group.origId} descartado por geometría degenerada`,
+            `recomputeManzanos: fragmento ${fi} del grupo ${group.origId} descartado por geometría degenerada`
           );
           continue;
         }
@@ -823,14 +914,14 @@ for (const m of group.members) {
         const reusedId = reused.getId() as string | number;
         const oldArea = areaByRef.get(reused) ?? 0;
         const fragArea = polyArea(rawRing);
-        const ratioOld = oldArea > 0 ? (assignment!.overlapArea / oldArea) : 0;
-        const ratioFrag = fragArea > 0 ? (assignment!.overlapArea / fragArea) : 0;
+        const ratioOld = oldArea > 0 ? assignment!.overlapArea / oldArea : 0;
+        const ratioFrag = fragArea > 0 ? assignment!.overlapArea / fragArea : 0;
         const barelyChanged = Math.min(ratioOld, ratioFrag) >= 0.92;
 
         const alreadyManzana = getFeatureKind(reused) === 'manzana';
         const currentRing = currentRingOf(reused);
         const geometryUnchanged =
-  alreadyManzana && currentRing != null && ringsEffectivelyUnchanged(currentRing, rounded);
+          alreadyManzana && currentRing != null && ringsEffectivelyUnchanged(currentRing, rounded);
 
         if (geometryUnchanged) {
           continue;
@@ -885,15 +976,18 @@ for (const m of group.members) {
       }
       newFeat.setId(fragId);
       newFeat.setProperties(
-  ensureKind({
-    colorIdx: fi % 10,
-    createdAt: new Date().toISOString(),
-    origParcelId: fragId,      // ← auto-referencia
-    origPts: rounded,
-    rootParcelId: root.rootId,
-    rootParcelPts: root.rootPts,
-  }, 'manzana'),
-);
+        ensureKind(
+          {
+            colorIdx: fi % 10,
+            createdAt: new Date().toISOString(),
+            origParcelId: fragId, // ← auto-referencia
+            origPts: rounded,
+            rootParcelId: root.rootId,
+            rootParcelPts: root.rootPts,
+          },
+          'manzana'
+        )
+      );
       const lid = resolveManzanaLayerId();
       newFeat.set('layerId', lid);
       src.addFeature(newFeat);
@@ -974,7 +1068,7 @@ export async function reapplyRoadCornerMode(): Promise<void> {
   if (groups.size === 0) return;
 
   const touchedGroups = Array.from(groups.values()).filter((g) =>
-    g.members.some((m) => getFeatureKind(m) === 'manzana'),
+    g.members.some((m) => getFeatureKind(m) === 'manzana')
   );
   if (touchedGroups.length === 0) return;
 
@@ -1039,9 +1133,10 @@ export async function reapplyRoadCornerMode(): Promise<void> {
       const existingMembers = oldManzanaMembers
         .map((m) => {
           const g = m.getGeometry();
-          const ring = g instanceof PolygonGeom
-            ? ((g.getCoordinates()[0] ?? []) as number[][]).map((c) => [c[0], c[1]] as Pt)
-            : [];
+          const ring =
+            g instanceof PolygonGeom
+              ? ((g.getCoordinates()[0] ?? []) as number[][]).map((c) => [c[0], c[1]] as Pt)
+              : [];
           return { ring, ref: m as Feature<Geometry> };
         })
         .filter((x) => x.ring.length >= 3);
@@ -1049,7 +1144,10 @@ export async function reapplyRoadCornerMode(): Promise<void> {
       reconTasks.push({ groupIdx: idx, fragments, existingMembers });
     }
 
-    let batchResults: Array<{ groupIdx: number; assignments: Array<{ fragmentIdx: number; memberIdx: number | null; overlapArea: number }> }> = [];
+    let batchResults: Array<{
+      groupIdx: number;
+      assignments: Array<{ fragmentIdx: number; memberIdx: number | null; overlapArea: number }>;
+    }> = [];
     if (reconTasks.length > 0) {
       try {
         batchResults = await matchFragmentsBatchInWorker(
@@ -1057,18 +1155,20 @@ export async function reapplyRoadCornerMode(): Promise<void> {
             groupIdx: t.groupIdx,
             fragments: t.fragments,
             memberRings: t.existingMembers.map((m) => m.ring),
-          })),
+          }))
         );
       } catch (err) {
         console.error(
           'reapplyRoadCornerMode: matchFragmentsBatch falló en el motor nativo (sin fallback desde 2.7) — se aborta la reaplicación.',
-          err,
+          err
         );
         return;
       }
     }
 
-    const resultsByGroupIdx = new globalThis.Map(batchResults.map((r) => [r.groupIdx, r.assignments]));
+    const resultsByGroupIdx = new globalThis.Map(
+      batchResults.map((r) => [r.groupIdx, r.assignments])
+    );
 
     for (const task of reconTasks) {
       const rawAssignments = resultsByGroupIdx.get(task.groupIdx) ?? [];
@@ -1076,11 +1176,17 @@ export async function reapplyRoadCornerMode(): Promise<void> {
 
       for (let i = 0; i < task.fragments.length; i++) {
         const assignment = rawAssignments.find((a) => a.fragmentIdx === i);
-        const feat = assignment?.memberIdx != null ? task.existingMembers[assignment.memberIdx]?.ref : undefined;
+        const feat =
+          assignment?.memberIdx != null
+            ? task.existingMembers[assignment.memberIdx]?.ref
+            : undefined;
         if (!feat) continue;
         const rounded = roundRingReflex(
-          orientRingCcw(task.fragments[i]), 0, false, cornerMode,
-          (pt) => !pointOnRing(pt, group.origPts),
+          orientRingCcw(task.fragments[i]),
+          0,
+          false,
+          cornerMode,
+          (pt) => !pointOnRing(pt, group.origPts)
         );
         if (rounded.length < 4) continue;
         feat.setGeometry(new PolygonGeom([rounded]));
