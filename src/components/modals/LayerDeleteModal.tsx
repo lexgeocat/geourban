@@ -39,14 +39,14 @@ export default function LayerDeleteModal({ request, onClose }: LayerDeleteModalP
 
   if (!request) return null;
 
- const handleConfirm = () => {
-  void runCommand(new RemoveLayerCommand({
-    layerId: request.id,
-    action,
-    targetLayerId: action === 'move' ? effectiveTarget : undefined,
-  }));
-  onClose();
-};
+  const handleConfirm = () => {
+    void runCommand(new RemoveLayerCommand({
+      layerId: request.id,
+      action,
+      targetLayerId: action === 'move' ? effectiveTarget : undefined,
+    }));
+    onClose();
+  };
 
   return (
     <Modal

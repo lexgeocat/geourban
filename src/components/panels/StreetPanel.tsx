@@ -55,13 +55,11 @@ export default function StreetPanel() {
 
   if (!panelVisible) return null;
 
-  const handleWidthChange = (id: string, widthM: number) => {
-    updateStreet(id, { widthM });
-    void recomputeManzanos();
-  };
-
-  const handleSideWidthChange = (id: string, sideWidthM: number) => {
-    updateStreet(id, { sideWidthM });
+  /** Único punto de actualización: antes había una función casi idéntica
+   * por cada campo (widthM / sideWidthM). Se unifica porque ambas hacían
+   * exactamente lo mismo: patch + recompute. */
+  const applyStreetPatch = (id: string, patch: { widthM?: number; sideWidthM?: number }) => {
+    updateStreet(id, patch);
     void recomputeManzanos();
   };
 
@@ -105,7 +103,14 @@ export default function StreetPanel() {
         <span style={{ fontWeight: 700, color: 'var(--cad-text)', letterSpacing: '0.03em' }}>
           Vías <span style={{ color: 'var(--cad-text-muted)', fontWeight: 400 }}>({streets.length})</span>
         </span>
-        <button onClick={() => setPanelVisible(false)} style={{ background: 'none', border: 'none', color: 'var(--cad-text-dim)', cursor: 'pointer', fontSize: '0.85rem' }} title="Cerrar" aria-label="Cerrar panel de vías">×</button>
+        <button
+          onClick={() => setPanelVisible(false)}
+          style={{ background: 'none', border: 'none', color: 'var(--cad-text-dim)', cursor: 'pointer', fontSize: '0.85rem' }}
+          title="Cerrar"
+          aria-label="Cerrar panel de vías"
+        >
+          ×
+        </button>
       </div>
 
       <div style={{ background: 'var(--cad-bg-surface)', borderRadius: 6, padding: 8, marginBottom: 8 }}>
@@ -213,7 +218,7 @@ export default function StreetPanel() {
                   min={0.5}
                   step={0.5}
                   value={s.widthM}
-                  onChange={(e) => handleWidthChange(s.id, Math.max(0.5, parseFloat(e.target.value) || s.widthM))}
+                  onChange={(e) => applyStreetPatch(s.id, { widthM: Math.max(0.5, parseFloat(e.target.value) || s.widthM) })}
                   onClick={(e) => e.stopPropagation()}
                   className="cad-input cad-input-sm"
                   aria-label={`Ancho de calzada de ${s.name} en metros`}
@@ -226,7 +231,7 @@ export default function StreetPanel() {
                   min={0}
                   step={0.5}
                   value={s.sideWidthM}
-                  onChange={(e) => handleSideWidthChange(s.id, Math.max(0, parseFloat(e.target.value) || 0))}
+                  onChange={(e) => applyStreetPatch(s.id, { sideWidthM: Math.max(0, parseFloat(e.target.value) || 0) })}
                   onClick={(e) => e.stopPropagation()}
                   className="cad-input cad-input-sm"
                   aria-label={`Ancho de vereda de ${s.name} en metros`}

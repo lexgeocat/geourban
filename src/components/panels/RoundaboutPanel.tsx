@@ -124,7 +124,14 @@ export default function RoundaboutPanel() {
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ fontWeight: 700, color: 'var(--cad-text)' }}>{rb.name}</span>
-<button onClick={(e) => { e.stopPropagation(); removeRoundabout(rb.id); }} style={{ background: 'none', border: 'none', color: 'var(--cad-accent-red)', cursor: 'pointer', fontSize: '0.75rem' }} title="Eliminar rotonda">✕</button>            </div>
+              <button
+                onClick={(e) => { e.stopPropagation(); removeRoundabout(rb.id); }}
+                style={{ background: 'none', border: 'none', color: 'var(--cad-accent-red)', cursor: 'pointer', fontSize: '0.75rem' }}
+                title="Eliminar rotonda"
+              >
+                ✕
+              </button>
+            </div>
             <div style={{ color: 'var(--cad-text-muted)', fontSize: '0.65rem', marginBottom: 4 }}>
               {formatMetricArea(roundaboutRoadAreaM2(rb))} de calzada
             </div>

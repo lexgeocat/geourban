@@ -21,6 +21,75 @@ function isTypingTarget(target: EventTarget | null): boolean {
   return false;
 }
 
+/** Constante de módulo: antes se recreaba este objeto en cada keydown. */
+const DRAW_MODE_SHORTCUTS: Record<string, DrawMode> = {
+  v: 'select',
+  p: 'polygon',
+  l: 'line',
+  r: 'rectangle',
+  s: 'street',
+  o: 'roundabout',
+  e: 'erase',
+};
+
+function handleDeleteSelection(): void {
+  const ids = Array.from(useSelectionStore.getState().selectedIds);
+  if (ids.length === 0) return;
+
+  const src = useMapStore.getState().drawSource;
+  const regularIds: Array<string | number> = [];
+  const streetIds: string[] = [];
+  const roundaboutIds: string[] = [];
+
+  for (const id of ids) {
+    if (src && src.getFeatureById(id) != null) {
+      regularIds.push(id);
+      continue;
+    }
+    if (useStreetStore.getState().streets.some((s) => s.id === id)) {
+      streetIds.push(String(id));
+    } else if (useRoundaboutStore.getState().roundabouts.some((r) => r.id === id)) {
+      roundaboutIds.push(String(id));
+    }
+  }
+
+  if (regularIds.length > 0) {
+    const cmd = new DeleteFeaturesCommand(regularIds);
+    void runCommand(cmd);
+    if (cmd.skippedCount > 0) {
+      toast(`${cmd.skippedCount} elemento(s) no se borraron por estar en una capa bloqueada.`, {
+        variant: 'warning',
+        durationMs: 5000,
+      });
+    }
+  }
+  if (streetIds.length > 0 || roundaboutIds.length > 0) {
+    streetIds.forEach((sid) => useStreetStore.getState().removeStreet(sid));
+    roundaboutIds.forEach((rid) => useRoundaboutStore.getState().removeRoundabout(rid));
+    useSelectionStore.getState().clear();
+    void recomputeManzanos();
+  }
+}
+
+function handleSelectAll(): void {
+  const src = useMapStore.getState().drawSource;
+  if (!src) return;
+  const ids: Array<string | number> = [];
+  const getLayer = useLayersStore.getState().getById;
+  src.forEachFeature((f) => {
+    const id = f.getId();
+    if (id === undefined) return;
+    const layerId = f.get('layerId') as string | undefined;
+    if (layerId) {
+      const layer = getLayer(layerId);
+      if (layer?.locked) return;
+      if (layer && !layer.visible) return;
+    }
+    ids.push(id as string | number);
+  });
+  useSelectionStore.getState().setSelection(ids, ids[0] ?? null);
+}
+
 export function useKeyboardShortcuts() {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -43,69 +112,16 @@ export function useKeyboardShortcuts() {
         useCommandStack.getState().refresh();
         return;
       }
-
       if (ctrlOrCmd && (key === 'a' || key === 'A')) {
-        const src = useMapStore.getState().drawSource;
-        if (!src) return;
         e.preventDefault();
-        const ids: Array<string | number> = [];
-        const getLayer = useLayersStore.getState().getById;
-        src.forEachFeature((f) => {
-          const id = f.getId();
-          if (id === undefined) return;
-          const layerId = f.get('layerId') as string | undefined;
-          if (layerId) {
-            const layer = getLayer(layerId);
-            if (layer?.locked) return;
-            if (layer && !layer.visible) return; // ← agregado
-          }
-          ids.push(id as string | number);
-        });
-        useSelectionStore.getState().setSelection(ids, ids[0] ?? null);
+        handleSelectAll();
         return;
       }
-
       if (key === 'Delete' || key === 'Backspace') {
         e.preventDefault();
-        const ids = Array.from(useSelectionStore.getState().selectedIds);
-        if (ids.length === 0) return;
-
-        const src = useMapStore.getState().drawSource;
-        const regularIds: Array<string | number> = [];
-        const streetIds: string[] = [];
-        const roundaboutIds: string[] = [];
-
-        for (const id of ids) {
-          if (src && src.getFeatureById(id) != null) {
-            regularIds.push(id);
-            continue;
-          }
-          if (useStreetStore.getState().streets.some((s) => s.id === id)) {
-            streetIds.push(String(id));
-          } else if (useRoundaboutStore.getState().roundabouts.some((r) => r.id === id)) {
-            roundaboutIds.push(String(id));
-          }
-        }
-
-        if (regularIds.length > 0) {
-          const cmd = new DeleteFeaturesCommand(regularIds);
-          void runCommand(cmd);
-          if (cmd.skippedCount > 0) {
-            toast(`${cmd.skippedCount} elemento(s) no se borraron por estar en una capa bloqueada.`, {
-              variant: 'warning',
-              durationMs: 5000,
-            });
-          }
-        }
-        if (streetIds.length > 0 || roundaboutIds.length > 0) {
-          streetIds.forEach((sid) => useStreetStore.getState().removeStreet(sid));
-          roundaboutIds.forEach((rid) => useRoundaboutStore.getState().removeRoundabout(rid));
-          useSelectionStore.getState().clear();
-          void recomputeManzanos();
-        }
+        handleDeleteSelection();
         return;
       }
-
       if (key === 'Escape') {
         e.preventDefault();
         useDrawStore.getState().setMode('select');
@@ -117,7 +133,7 @@ export function useKeyboardShortcuts() {
         useSnapSettingsStore.getState().toggleEnabled();
         return;
       }
-if (ctrlOrCmd && (key === 's' || key === 'S')) {
+      if (ctrlOrCmd && (key === 's' || key === 'S')) {
         e.preventDefault();
         useProjectFileStore.getState().setSaveModalOpen(true);
         return;
@@ -128,17 +144,8 @@ if (ctrlOrCmd && (key === 's' || key === 'S')) {
         return;
       }
       if (ctrlOrCmd) return;
-      const lower = key.toLowerCase();
-      const map: Record<string, DrawMode> = {
-        v: 'select',
-        p: 'polygon',
-        l: 'line',
-        r: 'rectangle',
-        s: 'street',
-        o: 'roundabout',
-        e: 'erase',
-      };
-      const next = map[lower];
+
+      const next = DRAW_MODE_SHORTCUTS[key.toLowerCase()];
       if (next) {
         e.preventDefault();
         useDrawStore.getState().setMode(next);

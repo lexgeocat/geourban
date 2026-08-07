@@ -24,6 +24,17 @@ export interface ManzanoCardProps {
   onRunRecompute: (row: ManzanoRow) => void;
 }
 
+/** Cuenta lotes normales vs. remanentes en un único recorrido del array. */
+function countLots(lots: ManzanoRow['lots']): { normalLots: number; remLots: number } {
+  let normalLots = 0;
+  let remLots = 0;
+  for (const l of lots) {
+    if (l.isRemnant) remLots++;
+    else normalLots++;
+  }
+  return { normalLots, remLots };
+}
+
 export default function ManzanoCard({
   row, isRecomputing, onMethodClick, onPreviewLots, onToggleEquip,
   onStartRotate, onResetRotate, onManualAngleApply, onRunRecompute,
@@ -48,11 +59,10 @@ export default function ManzanoCard({
   const rotateDir = getRotateDir(row.id);
   const isRotatingThis = rotatingId === row.id;
   const geomChanged = rotateDir != null && hasGeomChanged(row.id, { area: row.areaM2, perimeter: row.perimeterM, centroid: row.centroid });
-  const normalLots = row.lots.filter((l) => !l.isRemnant).length;
-  const remLots = row.lots.filter((l) => l.isRemnant).length;
+  const { normalLots, remLots } = countLots(row.lots);
 
   return (
-<div
+    <div
       style={{
         border: `1px solid ${isSelected ? 'var(--cad-accent-amber)' : `${color}55`}`,
         borderLeft: `3px solid ${color}`,
@@ -70,7 +80,8 @@ export default function ManzanoCard({
         }}
         style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 8px', cursor: 'pointer' }}
         title="Click: resalta este manzano en el mapa"
-      >        <div style={{ minWidth: 0 }}>
+      >
+        <div style={{ minWidth: 0 }}>
           <div style={{ fontWeight: 700, color }}>{row.isEquip ? '★ Equipamiento' : `Mzo. ${row.colorIdx + 1}`}</div>
           <div style={{ color: 'var(--cad-text-muted)', fontSize: '0.65rem' }}>
             {formatMetricArea(row.areaM2)}{row.lots.length ? ` · ${row.lots.length} lotes` : ''}

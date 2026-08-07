@@ -60,13 +60,12 @@ export default function MapView() {
   const snapGuideRef = useRef<SnapGuideVisual | null>(null);
   const snapEngineRef = useRef<SnapEngine | null>(null);
   const postrenderPainterRef = useRef<PostrenderPainter | null>(null);
-const interactionCtrlRef = useRef<InteractionModeController | null>(null);
-const rotateLotsInteractionRef = useRef<RotateLotsInteraction | null>(null);
-const rotateLotsCleanupRef = useRef<(() => void) | null>(null);
-const baseMapId = useUiShellStore((s) => s.baseMap);
+  const interactionCtrlRef = useRef<InteractionModeController | null>(null);
+  const rotateLotsInteractionRef = useRef<RotateLotsInteraction | null>(null);
+  const rotateLotsCleanupRef = useRef<(() => void) | null>(null);
+  const baseMapId = useUiShellStore((s) => s.baseMap);
   const viewConfig = useMapStore((s) => s.viewConfig);
   const drawMode = useDrawStore((s) => s.mode);
-
   useEffect(() => {
     if (!mapDivRef.current) return;
 
@@ -259,18 +258,18 @@ const baseMapId = useUiShellStore((s) => s.baseMap);
       pendingSpatialUpdates.set(id, evt.feature as Feature<Polygon>);
       flushSpatialUpdates();
     };
-     drawSrc.on('addfeature', onSpatialInsert);
-     drawSrc.on('removefeature', onSpatialRemove);
+    drawSrc.on('addfeature', onSpatialInsert);
+    drawSrc.on('removefeature', onSpatialRemove);
     drawSrc.on('changefeature', onSpatialChange);
 
     const interactionCtrl = new InteractionModeController({
-  map,
-  drawSource: drawSrc,
-  drawLayer: webglRenderer,
-  streetLayer,
-  streetSource: streetLayerSrc,
-  postrenderPainter,
-});
+      map,
+      drawSource: drawSrc,
+      drawLayer: webglRenderer,
+      streetLayer,
+      streetSource: streetLayerSrc,
+      postrenderPainter,
+    });
     interactionCtrlRef.current = interactionCtrl;
 
     const getAnchor = (): number[] | undefined => {
@@ -342,29 +341,28 @@ const baseMapId = useUiShellStore((s) => s.baseMap);
     });
 snapEngineRef.current = snapEngine;
 map.addInteraction(snapEngine);
-
 const rotateLotsInteraction = new RotateLotsInteraction(map, (id, dir) => {
-  const { targetAreaM2, frontMinM, getMethod, setGeomSnapshot } = useManzanoStore.getState();
-  const src = useMapStore.getState().drawSource;
-  const feat = src?.getFeatureById(id) as Feature<Geometry> | null;
-  const geom = feat?.getGeometry();
-  if (geom instanceof Polygon) {
-    const ring = ((geom.getCoordinates()[0] ?? []) as number[][]).map((c) => [c[0], c[1]] as [number, number]);
-    setGeomSnapshot(id, { area: polyArea(ring), perimeter: ringPerimeter(ring), centroid: centroid(ring) });
-  }
-  void (async () => {
-    const layerId = await requireLayerForKind('lote');
-    if (!layerId) return; // cancelado — no se regeneran lotes sin capa asignada
-    void runCommand(
-      new RecomputeManzanoLotsCommand({ manzanoId: id, targetAreaM2, frontMinM, method: getMethod(id), dirPref: dir, layerId }),
-    );
-  })();
-});
-rotateLotsInteractionRef.current = rotateLotsInteraction;
-rotateLotsCleanupRef.current = rotateLotsInteraction.install();
-map.addInteraction(rotateLotsInteraction);
+      const { targetAreaM2, frontMinM, getMethod, setGeomSnapshot } = useManzanoStore.getState();
+      const src = useMapStore.getState().drawSource;
+      const feat = src?.getFeatureById(id) as Feature<Geometry> | null;
+      const geom = feat?.getGeometry();
+      if (geom instanceof Polygon) {
+        const ring = ((geom.getCoordinates()[0] ?? []) as number[][]).map((c) => [c[0], c[1]] as [number, number]);
+        setGeomSnapshot(id, { area: polyArea(ring), perimeter: ringPerimeter(ring), centroid: centroid(ring) });
+      }
+      void (async () => {
+        const layerId = await requireLayerForKind('lote');
+        if (!layerId) return; // cancelado — no se regeneran lotes sin capa asignada
+        void runCommand(
+          new RecomputeManzanoLotsCommand({ manzanoId: id, targetAreaM2, frontMinM, method: getMethod(id), dirPref: dir, layerId }),
+        );
+      })();
+    });
+    rotateLotsInteractionRef.current = rotateLotsInteraction;
+    rotateLotsCleanupRef.current = rotateLotsInteraction.install();
+    map.addInteraction(rotateLotsInteraction);
 
-useMapStore.getState().setMap(map);
+    useMapStore.getState().setMap(map);
     mapInstanceRef.current = map;
     baseLayerMgrRef.current = baseLayerMgr;
 
@@ -373,19 +371,19 @@ useMapStore.getState().setMap(map);
       baseLayerMgrRef.current = null;
       interactionCtrlRef.current?.dispose();
       interactionCtrlRef.current = null;
-detachWebglRenderer();
-webglRendererRef.current = null;
-map.removeInteraction(snapEngine);
-snapEngineRef.current = null;
-rotateLotsCleanupRef.current?.();
-rotateLotsCleanupRef.current = null;
-if (rotateLotsInteractionRef.current) {
-  map.removeInteraction(rotateLotsInteractionRef.current);
-  rotateLotsInteractionRef.current = null;
-}
-unByKey(moveEndKey);
-unByKey(moveStartKey);
-postrenderPainter.dispose();
+      detachWebglRenderer();
+      webglRendererRef.current = null;
+      map.removeInteraction(snapEngine);
+      snapEngineRef.current = null;
+      rotateLotsCleanupRef.current?.();
+      rotateLotsCleanupRef.current = null;
+      if (rotateLotsInteractionRef.current) {
+        map.removeInteraction(rotateLotsInteractionRef.current);
+        rotateLotsInteractionRef.current = null;
+      }
+      unByKey(moveEndKey);
+      unByKey(moveStartKey);
+      postrenderPainter.dispose();
       postrenderPainterRef.current = null;
       drawSrc.un('addfeature', onSpatialInsert);
       drawSrc.un('removefeature', onSpatialRemove);
