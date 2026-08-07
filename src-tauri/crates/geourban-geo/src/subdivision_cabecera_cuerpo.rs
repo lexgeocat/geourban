@@ -547,8 +547,8 @@ fn hb_auto_head_plan(
         let u_b = (u_max - depth).max(u_min);
         let w1 = width_at_u((u_min + u_a) / 2.0).max(1e-6);
         let w2 = width_at_u((u_max + u_b) / 2.0).max(1e-6);
-        let c1 = ((w1 / frontage).round() as i64).max(1).min(MAX_HB_DIM);
-        let c2 = ((w2 / frontage).round() as i64).max(1).min(MAX_HB_DIM);
+        let c1 = ((w1 / frontage).floor() as i64).max(1).min(MAX_HB_DIM);
+        let c2 = ((w2 / frontage).floor() as i64).max(1).min(MAX_HB_DIM);
         (c1, c2)
     };
 

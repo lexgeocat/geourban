@@ -232,9 +232,9 @@ fn subdivide_half(
             break;
         }
 
-        let mut lo = front_min_m * 0.1;
-        let mut hi = remaining * 0.9999;
-        let mut best_f = nom_front_w;
+        let mut lo = front_min_m.max(1e-6);
+        let mut hi = (remaining * 0.9999).max(lo);
+        let mut best_f = nom_front_w.max(lo).min(hi);
         let mut best_err = f64::INFINITY;
 
         for _ in 0..160 {
@@ -259,10 +259,10 @@ fn subdivide_half(
                 hi = mid;
             }
         }
-
-        if best_f < front_min_m * 0.99 {
-            best_f = front_min_m;
+        if best_f < front_min_m {
+            best_f = front_min_m.min(remaining);
         }
+
         let lot_poly = clip_to_strip(poly, lx, ly, t, t + best_f);
         if lot_poly.len() < 3 || poly_area(&lot_poly) < 0.5 {
             break;
@@ -974,6 +974,191 @@ fn sanitize_lot_results(lots: Vec<LotResult>, context: &str) -> Vec<LotResult> {
     out
 }
 
+const MIN_FRONTAGE_MERGE_TOL_M: f64 = 1e-3;
+const MIN_FRONTAGE_MIN_SHARED_EDGE_M: f64 = 0.3;
+
+fn bbox_front_depth(pts: &[Pt]) -> (f64, f64) {
+    let mut min_x = f64::INFINITY;
+    let mut max_x = f64::NEG_INFINITY;
+    let mut min_y = f64::INFINITY;
+    let mut max_y = f64::NEG_INFINITY;
+    for p in pts {
+        if p.0 < min_x {
+            min_x = p.0;
+        }
+        if p.0 > max_x {
+            max_x = p.0;
+        }
+        if p.1 < min_y {
+            min_y = p.1;
+        }
+        if p.1 > max_y {
+            max_y = p.1;
+        }
+    }
+    let dx = (max_x - min_x).max(0.0);
+    let dy = (max_y - min_y).max(0.0);
+    (dx.min(dy), dx.max(dy))
+}
+
+fn shared_edge_length(a: &[Pt], b: &[Pt]) -> f64 {
+    const EPS: f64 = 0.05;
+    let na = a.len();
+    let nb = b.len();
+    if na < 2 || nb < 2 {
+        return 0.0;
+    }
+    let mut total = 0.0;
+    for i in 0..na {
+        let a1 = a[i];
+        let a2 = a[(i + 1) % na];
+        for j in 0..nb {
+            let b1 = b[j];
+            let b2 = b[(j + 1) % nb];
+            let dax = a2.0 - a1.0;
+            let day = a2.1 - a1.1;
+            let dbx = b2.0 - b1.0;
+            let dby = b2.1 - b1.1;
+            let len_a = dax.hypot(day);
+            let len_b = dbx.hypot(dby);
+            if len_a < 1e-9 || len_b < 1e-9 {
+                continue;
+            }
+            let cross = (dax * dby - day * dbx).abs() / (len_a * len_b);
+            if cross > 0.05 {
+                continue;
+            }
+            let cx = b1.0 - a1.0;
+            let cy = b1.1 - a1.1;
+            if (cx * day - cy * dax).abs() / len_a > EPS {
+                continue;
+            }
+            let p_b1 = (cx * dax + cy * day) / len_a;
+            let p_b2 = p_b1 + (dbx * dax + dby * day) / len_a;
+            let lo = p_b1.min(p_b2).max(0.0);
+            let hi = p_b1.max(p_b2).min(len_a);
+            if hi > lo + EPS {
+                total += hi - lo;
+            }
+        }
+    }
+    total
+}
+
+#[cfg(feature = "geos-backend")]
+fn union_two_lot_rings(a: &[Pt], b: &[Pt]) -> Option<Vec<Pt>> {
+    let merged = crate::boolean_ops::union_rings(
+        &[a.to_vec(), b.to_vec()],
+        "subdivisionAlgorithms.enforceMinFrontage",
+    );
+    if merged.len() != 1 || merged[0].len() != 1 {
+        return None;
+    }
+    let mut ring = merged[0][0].clone();
+    if ring.len() > 1 {
+        let (fx, fy) = ring[0];
+        let (lxp, lyp) = ring[ring.len() - 1];
+        if (fx - lxp).abs() < 1e-9 && (fy - lyp).abs() < 1e-9 {
+            ring.pop();
+        }
+    }
+    let mut cleaned = sanitize_ring(
+        Some(ring.as_slice()),
+        SanitizeRingOptions::default(),
+        "subdivisionAlgorithms.enforceMinFrontage.merged",
+    )?;
+    cleaned.pop(); // volver a anillo abierto, como el resto del módulo
+    Some(cleaned)
+}
+
+#[cfg(not(feature = "geos-backend"))]
+fn union_two_lot_rings(_a: &[Pt], _b: &[Pt]) -> Option<Vec<Pt>> {
+    None
+}
+
+fn enforce_min_frontage(lots: Vec<LotResult>, front_min_m: f64) -> Vec<LotResult> {
+    if front_min_m <= 0.0 || lots.len() < 2 {
+        return lots;
+    }
+    let before = lots.len();
+    let mut lots = lots;
+    let max_passes = before + 8;
+    let mut pass = 0;
+    let mut merges = 0usize;
+
+    loop {
+        pass += 1;
+        if pass > max_passes {
+            break;
+        }
+        let offender = lots.iter().position(|l| {
+            !l.is_remnant && l.front_m > 1e-6 && l.front_m < front_min_m - MIN_FRONTAGE_MERGE_TOL_M
+        });
+        let idx = match offender {
+            Some(v) => v,
+            None => break,
+        };
+
+        let mut best_j: Option<usize> = None;
+        let mut best_shared = 0.0_f64;
+        for j in 0..lots.len() {
+            if j == idx {
+                continue;
+            }
+            let shared = shared_edge_length(&lots[idx].pts, &lots[j].pts);
+            if shared > best_shared {
+                best_shared = shared;
+                best_j = Some(j);
+            }
+        }
+
+        let j = match best_j {
+            Some(v) => v,
+            None => {
+                lots[idx].is_remnant = true;
+                continue;
+            }
+        };
+        if best_shared < MIN_FRONTAGE_MIN_SHARED_EDGE_M {
+            lots[idx].is_remnant = true;
+            continue;
+        }
+
+        let merged_pts = match union_two_lot_rings(&lots[idx].pts, &lots[j].pts) {
+            Some(pts) if pts.len() >= 3 => pts,
+            _ => {
+                lots[idx].is_remnant = true;
+                continue;
+            }
+        };
+
+        let area_m2 = poly_area(&merged_pts);
+        let (front_m, depth_m) = bbox_front_depth(&merged_pts);
+        let still_short = front_m < front_min_m - MIN_FRONTAGE_MERGE_TOL_M;
+
+        let (lo, hi) = if idx < j { (idx, j) } else { (j, idx) };
+        lots.remove(hi);
+        lots.remove(lo);
+        lots.push(LotResult {
+            pts: merged_pts,
+            is_remnant: still_short,
+            front_m,
+            depth_m,
+            area_m2,
+        });
+        merges += 1;
+    }
+
+    if merges > 0 {
+        log::warn!(
+            "subdivisionAlgorithms.enforceMinFrontage: {} lote(s) fusionados para respetar el frente mínimo de {:.2} m ({} -> {} lotes).",
+            merges, front_min_m, before, lots.len(),
+        );
+    }
+
+    lots
+}
+
 pub fn subdivide_manzano(
     ring_pts: &[Pt],
     method: ManzanoLoteMethod,
@@ -1012,7 +1197,8 @@ pub fn subdivide_manzano(
             )
         }
     };
-    sanitize_lot_results(lots, "subdivisionAlgorithms.subdivideManzano")
+    let sanitized = sanitize_lot_results(lots, "subdivisionAlgorithms.subdivideManzano");
+    enforce_min_frontage(sanitized, front_min_m) // ← nuevo
 }
 
 fn subdivision_method_to_str(m: SubdivisionMethod) -> &'static str {
@@ -1152,24 +1338,21 @@ pub fn subdivide(polygon_coordinates: &[Vec<Pt>], opts: &SubdivisionOptions) -> 
         };
     }
 
-    let lots_len = lots.len();
-    let sanitized_lots = sanitize_lot_results(lots, "subdivisionAlgorithms.subdivide");
-    if sanitized_lots.is_empty() {
-        return SubdivisionResult {
-            ok: false,
-            features: Vec::new(),
-            warnings,
-            error: Some(
-                "Los lotes generados quedaron con geometría degenerada tras el saneo".to_string(),
-            ),
-        };
-    }
-    if sanitized_lots.len() < lots_len {
-        warnings.push(format!(
-            "{} lote(s) descartado(s) por geometría degenerada.",
-            lots_len - sanitized_lots.len()
-        ));
-    }
+    let sanitized = sanitize_lot_results(lots, "subdivisionAlgorithms.subdivide");
+    let sanitized_lots = if matches!(opts.method, SubdivisionMethod::ManualSlice) {
+        sanitized
+    } else {
+        let before = sanitized.len();
+        let merged = enforce_min_frontage(sanitized, front_min_m);
+        if merged.len() < before {
+            warnings.push(format!(
+                "{} lote(s) se fusionaron con un vecino para respetar el frente mínimo de {:.1} m.",
+                before - merged.len(),
+                front_min_m,
+            ));
+        }
+        merged
+    };
 
     let remnant_count = sanitized_lots.iter().filter(|l| l.is_remnant).count();
     warnings.push(format!(
