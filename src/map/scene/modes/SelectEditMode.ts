@@ -9,7 +9,7 @@ import { HitTestSelect, type HitTestSelectEvent } from '../HitTestSelect';
 import { LassoSelection, type LassoMode } from '../LassoSelection';
 import { useSelectionStore } from '../../../store/map/selectionStore';
 import { useDrawStore } from '../../../store/map/drawStore';
-import { hitTestCandidatesInExtent } from '../../hitTest';
+import { hitTestCandidatesInExtentAsync } from '../../hitTest';
 import { pointInPoly, segmentIntersectsPoly, type Pt } from '../../../geo/math/polygonEngine';
 import { getOrCreateRoadSnapSource } from '../../roadSnapSource';
 import type { ModeContext } from './ModeContext';
@@ -30,7 +30,6 @@ export function activateSelect(ctx: ModeContext): HitTestSelect {
   const select = new HitTestSelect({
     map: ctx.map,
     source: ctx.drawSource,
-    spatialIndex: ctx.spatialIndex,
     pixelTolerance: 6,
     multi: true,
     filter: (feature) => !ctx.isLayerLocked(feature) && ctx.isLayerVisible(feature),
@@ -95,65 +94,67 @@ function activateLasso(ctx: ModeContext, select: HitTestSelect, lassoMode: Lasso
               return [minX, minY, maxX, maxY];
             })();
 
-      const nearby = hitTestCandidatesInExtent(extent, ctx.spatialIndex);
-      const pool = nearby.length > 0 ? nearby : (src.getFeatures() as Feature<Geometry>[]);
+      void (async () => {
+        const nearby = await hitTestCandidatesInExtentAsync(extent, src);
+        const pool = nearby.length > 0 ? nearby : (src.getFeatures() as Feature<Geometry>[]);
 
-      const candidates: Array<Feature<Geometry>> = [];
-      for (const f of pool) {
-        const id = f.getId();
-        if (id == null) continue;
-        if (ctx.isLayerLocked(f) || !ctx.isLayerVisible(f)) continue; // ← agregado
-        const g = f.getGeometry();
-        if (!g) continue;
-        if (result.kind === 'rect') {
-          const ext = g.getExtent();
-          if (extentIntersects(ext, result.extent)) candidates.push(f as Feature<Geometry>);
-        } else {
-          const poly = result.polygon as [number, number][];
-          const ext = g.getExtent();
-          if (!extentIntersects(ext, extent)) continue;
-          let inside = false;
-          let coords: Coordinate[] | Coordinate[][] | Coordinate[][][];
-          if (g instanceof Polygon) {
-            coords = g.getCoordinates();
-          } else if (g instanceof MultiPolygon) {
-            coords = g.getCoordinates();
+        const candidates: Array<Feature<Geometry>> = [];
+        for (const f of pool) {
+          const id = f.getId();
+          if (id == null) continue;
+          if (ctx.isLayerLocked(f) || !ctx.isLayerVisible(f)) continue;
+          const g = f.getGeometry();
+          if (!g) continue;
+          if (result.kind === 'rect') {
+            const ext = g.getExtent();
+            if (extentIntersects(ext, result.extent)) candidates.push(f as Feature<Geometry>);
           } else {
-            continue;
-          }
-          const walk = (arr: unknown) => {
-            if (inside) return;
-            if (Array.isArray(arr) && typeof arr[0] === 'number') {
-              const x = arr[0] as number;
-              const y = arr[1] as number;
-              if (pointInPoly(x, y, poly)) inside = true;
-              return;
+            const poly = result.polygon as [number, number][];
+            const ext = g.getExtent();
+            if (!extentIntersects(ext, extent)) continue;
+            let inside = false;
+            let coords: Coordinate[] | Coordinate[][] | Coordinate[][][];
+            if (g instanceof Polygon) {
+              coords = g.getCoordinates();
+            } else if (g instanceof MultiPolygon) {
+              coords = g.getCoordinates();
+            } else {
+              continue;
             }
-            if (Array.isArray(arr)) {
-              if (arr.length >= 2 && typeof arr[0] === 'object' && arr[0] !== null && typeof (arr[0] as number[])[0] === 'number') {
-                for (let k = 0; k < (arr as unknown[]).length - 1 && !inside; k++) {
-                  const a = (arr as Pt[])[k];
-                  const b = (arr as Pt[])[k + 1];
-                  if (a && b && segmentIntersectsPoly([a[0], a[1]], [b[0], b[1]], poly)) inside = true;
-                }
+            const walk = (arr: unknown) => {
+              if (inside) return;
+              if (Array.isArray(arr) && typeof arr[0] === 'number') {
+                const x = arr[0] as number;
+                const y = arr[1] as number;
+                if (pointInPoly(x, y, poly)) inside = true;
                 return;
               }
-              for (const c of arr) walk(c);
-            }
-          };
-          walk(coords);
-          if (inside) candidates.push(f as Feature<Geometry>);
+              if (Array.isArray(arr)) {
+                if (arr.length >= 2 && typeof arr[0] === 'object' && arr[0] !== null && typeof (arr[0] as number[])[0] === 'number') {
+                  for (let k = 0; k < (arr as unknown[]).length - 1 && !inside; k++) {
+                    const a = (arr as Pt[])[k];
+                    const b = (arr as Pt[])[k + 1];
+                    if (a && b && segmentIntersectsPoly([a[0], a[1]], [b[0], b[1]], poly)) inside = true;
+                  }
+                  return;
+                }
+                for (const c of arr) walk(c);
+              }
+            };
+            walk(coords);
+            if (inside) candidates.push(f as Feature<Geometry>);
+          }
         }
-      }
 
-      const ids = candidates
-        .map((f) => f.getId())
-        .filter((id): id is string | number => id != null);
-      useSelectionStore.getState().setSelection(ids, ids[0] ?? null);
+        const ids = candidates
+          .map((f) => f.getId())
+          .filter((id): id is string | number => id != null);
+        useSelectionStore.getState().setSelection(ids, ids[0] ?? null);
 
-      select.getFeatures().clear();
-      select.getFeatures().extend(candidates);
-      ctx.refreshLayers();
+        select.getFeatures().clear();
+        select.getFeatures().extend(candidates);
+        ctx.refreshLayers();
+      })();
     },
     onCancel: () => {
       ctx.postrenderPainter?.setLassoPreview(null);

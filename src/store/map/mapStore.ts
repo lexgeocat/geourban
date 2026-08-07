@@ -16,6 +16,7 @@ import { useSelectionStore } from './selectionStore';
 import { runCommand } from '../../commands/core/CommandStack';
 import { DeleteFeaturesCommand } from '../../commands/features/DeleteFeaturesCommand';
 import { toast } from '../ui/toastStore';
+import { reloadRustSpatialIndex } from '../../map/rustSpatialIndex';
 
 const geoJsonFormat = new GeoJSON();
 
@@ -26,11 +27,6 @@ export type ViewConfig = {
   zoom: number;
 };
 
-/** Un extent con NaN/Infinity no debe alimentar `View.fit()` ni el
-   * índice espacial: `View.fit()` sobre un extent infinito puede quedar
-   * buscando una resolución válida indefinidamente (percibido como "se
-   * cuelga"), y RBush con bboxes no-finitos degrada silenciosamente a
-   * resultados de búsqueda incorrectos. */
   function isFiniteExtent(ext: Extent | null | undefined): ext is Extent {
   if (!ext || ext.length !== 4) return false;
   return ext.every((v) => Number.isFinite(v));
@@ -74,26 +70,10 @@ export const useMapStore = create<MapState>()(
     restoreDrawFeatures: (geojson) => {
       const src = get().drawSource;
       if (!src) return;
-
-      // Sin `dataProjection`, el default de ol/format/GeoJSON es EPSG:4326
-      // (lon/lat). Los callers reales (importación .geourban round-trip)
-      // emiten coordenadas YA en el plano métrico
-      // interno (mismas unidades que `drawSource` — ver DISPLAY_PROJECTION).
-      // Se interpretaban como grados: cualquier fila con y0 > 90 quedaba
-      // con latitud inválida → NaN/Infinity tras la proyección Mercator.
-      // Con datasets de 100k+ eso rompía el índice espacial (RBush con
-      // bboxes no-finitos) y `fitToExtent` (View.fit con extent
-      // Infinity). Por eso se omite `dataProjection` y se asume que las
-      // features ya vienen en el plano del proyecto.
       const features = geoJsonFormat.readFeatures(geojson, {
         dataProjection: DISPLAY_PROJECTION,
         featureProjection: DISPLAY_PROJECTION,
       }) as Feature<Geometry>[];
-
-      // Red de seguridad adicional: si igual entrara geometría no-finita
-      // (bug futuro, archivo corrupto, generador mal parametrizado), se
-      // descarta acá — antes de tocar el índice espacial o el render —
-      // en vez de dejar que se propague en silencio.
       const finiteFeatures: Feature<Geometry>[] = [];
       let droppedCount = 0;
       for (const f of features) {
@@ -112,10 +92,8 @@ export const useMapStore = create<MapState>()(
 
       src.clear();
       src.addFeatures(finiteFeatures);
-      // FIX: bulk-load explícito — no depender de que los listeners
-      // addfeature/removefeature (atados solo mientras <MapView/> vive)
-      // reconstruyan el RBush uno por uno.
       getOrCreateSpatialIndex().load(finiteFeatures as unknown as Feature<Polygon>[]);
+      void reloadRustSpatialIndex(finiteFeatures);
       refreshSourceMetrics(src);
       src.changed();
       useSelectionStore.getState().clear();
@@ -142,10 +120,6 @@ export const useMapStore = create<MapState>()(
         const src = layer.getSource?.();
         if (!src || typeof src.getExtent !== 'function') continue;
         const ext = src.getExtent();
-        // Un NaN (o Infinity en ext[1..3]) pasaba igual con el chequeo previo
-        // (que solo miraba ext[0] === ±Infinity) y contaminaba el extent
-        // combinado, rompiendo silenciosamente el fit. Por eso se valida
-        // cada componente explícitamente.
         if (!isFiniteExtent(ext)) continue;
         if (!fullExtent) fullExtent = [...ext] as Extent;
         else extendExtent(fullExtent, ext);

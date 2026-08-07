@@ -130,6 +130,7 @@ pub fn match_fragments_batch(
         })
         .collect()
 }
+
 pub struct SpatialIndexState(pub Mutex<std::collections::HashMap<String, SpatialIndex>>);
 
 #[derive(Debug, Clone, Deserialize)]
@@ -141,6 +142,7 @@ pub struct SpatialIndexLoadItem {
     pub max_x: f64,
     pub max_y: f64,
 }
+
 #[tauri::command]
 pub fn spatial_index_load(
     state: State<'_, SpatialIndexState>,
@@ -173,6 +175,61 @@ pub fn spatial_index_load(
     Ok(len)
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SpatialIndexUpsertItem {
+    pub id: serde_json::Value,
+    pub min_x: f64,
+    pub min_y: f64,
+    pub max_x: f64,
+    pub max_y: f64,
+}
+
+#[tauri::command]
+pub fn spatial_index_upsert_batch(
+    state: State<'_, SpatialIndexState>,
+    slot: String,
+    items: Vec<SpatialIndexUpsertItem>,
+) -> Result<usize, String> {
+    let envelopes: Vec<IndexedEnvelope> = items
+        .into_iter()
+        .filter_map(|it| {
+            if !it.min_x.is_finite()
+                || !it.min_y.is_finite()
+                || !it.max_x.is_finite()
+                || !it.max_y.is_finite()
+            {
+                log::warn!(
+                    "spatial_index_upsert_batch[{slot}]: item con bbox no-finito descartado (id={:?})",
+                    it.id
+                );
+                return None;
+            }
+            Some(IndexedEnvelope::new(
+                it.id, it.min_x, it.min_y, it.max_x, it.max_y,
+            ))
+        })
+        .collect();
+
+    let mut guard = state.0.lock().map_err(|e| e.to_string())?;
+    let index = guard.entry(slot).or_insert_with(SpatialIndex::default);
+    index.insert_many(envelopes);
+    Ok(index.len())
+}
+
+#[tauri::command]
+pub fn spatial_index_remove_batch(
+    state: State<'_, SpatialIndexState>,
+    slot: String,
+    ids: Vec<serde_json::Value>,
+) -> Result<usize, String> {
+    let mut guard = state.0.lock().map_err(|e| e.to_string())?;
+    let Some(index) = guard.get_mut(&slot) else {
+        return Ok(0);
+    };
+    Ok(index.remove_many(&ids))
+}
+
 #[tauri::command]
 pub fn spatial_index_clear(
     state: State<'_, SpatialIndexState>,
@@ -190,6 +247,7 @@ pub struct SpatialIndexQueryResult {
     pub hit_count: usize,
     pub query_ms: f64,
 }
+
 fn validate_finite_bbox(min_x: f64, min_y: f64, max_x: f64, max_y: f64) -> Result<(), String> {
     if !min_x.is_finite() || !min_y.is_finite() || !max_x.is_finite() || !max_y.is_finite() {
         return Err(format!(
@@ -213,9 +271,11 @@ pub fn spatial_index_query(
 
     let guard = state.0.lock().map_err(|e| e.to_string())?;
     let Some(index) = guard.get(&slot) else {
-        return Err(format!(
-            "índice espacial \"{slot}\" no cargado — invocar spatial_index_load primero"
-        ));
+        return Ok(SpatialIndexQueryResult {
+            ids: Vec::new(),
+            hit_count: 0,
+            query_ms: 0.0,
+        });
     };
     let t0 = std::time::Instant::now();
     let mut ids = Vec::new();

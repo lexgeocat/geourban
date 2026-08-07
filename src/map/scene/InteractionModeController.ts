@@ -6,7 +6,6 @@ import type { DrawMode } from '../../store/map/drawStore';
 import { isFeatureLayerLocked, isFeatureLayerVisible } from '../../core/layerVisibility';
 import type { PostrenderPainter } from './PostrenderPainter';
 import type { HitTestSelect } from './HitTestSelect';
-import { getOrCreateSpatialIndex, type SpatialIndex } from '../spatialIndex';
 import type { ModeContext, RefreshableDrawLayer } from './modes/ModeContext';
 import { activateSelect } from './modes/SelectEditMode';
 import { activateEdit } from './modes/EditMode';
@@ -29,7 +28,6 @@ export interface InteractionContext {
 export class InteractionModeController {
   private ctx: InteractionContext;
   private toClean: (() => void)[] = [];
-  private readonly spatialIndex: SpatialIndex;
 
   private readonly highlightSource = new VectorSource();
   private readonly highlightLayer: VectorLayer<VectorSource>;
@@ -39,7 +37,6 @@ export class InteractionModeController {
 
   constructor(ctx: InteractionContext) {
     this.ctx = ctx;
-    this.spatialIndex = getOrCreateSpatialIndex();
     this.highlightLayer = new VectorLayer({ source: this.highlightSource });
     this.ctx.map.addLayer(this.highlightLayer);
   }
@@ -71,7 +68,6 @@ export class InteractionModeController {
       streetLayer: this.ctx.streetLayer,
       streetSource: this.ctx.streetSource,
       postrenderPainter: this.ctx.postrenderPainter,
-      spatialIndex: this.spatialIndex,
       highlightSource: this.highlightSource,
       highlightLayer: this.highlightLayer,
       activeDrawRef: this.activeDrawRef,

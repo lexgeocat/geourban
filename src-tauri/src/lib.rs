@@ -5,7 +5,9 @@ mod project_store;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .manage(geo_bridge::SpatialIndexState(std::sync::Mutex::new(std::collections::HashMap::new())))
+        .manage(geo_bridge::SpatialIndexState(std::sync::Mutex::new(
+            std::collections::HashMap::new(),
+        )))
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(
@@ -30,6 +32,8 @@ pub fn run() {
             geo_bridge::compute_road_network_net_cmd,
             geo_bridge::match_fragments_batch,
             geo_bridge::spatial_index_load,
+            geo_bridge::spatial_index_upsert_batch,
+            geo_bridge::spatial_index_remove_batch,
             geo_bridge::spatial_index_clear,
             geo_bridge::spatial_index_query,
             process_memory::process_memory,

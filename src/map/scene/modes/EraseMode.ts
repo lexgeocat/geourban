@@ -20,7 +20,6 @@ export function activateErase(ctx: ModeContext): void {
   const select = new HitTestSelect({
     map: ctx.map,
     source: ctx.drawSource,
-    spatialIndex: ctx.spatialIndex,
     pixelTolerance: 6,
     multi: false,
     filter: (feature) => !ctx.isLayerLocked(feature) && ctx.isLayerVisible(feature),

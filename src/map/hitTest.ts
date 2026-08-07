@@ -5,8 +5,8 @@ import MultiPolygon from 'ol/geom/MultiPolygon.js';
 import LineString from 'ol/geom/LineString.js';
 import Point from 'ol/geom/Point.js';
 import type VectorSource from 'ol/source/Vector.js';
-import type { SpatialIndex } from './spatialIndex';
 import { pointInPoly } from '../geo/math/polygonEngine';
+import { queryRustSpatialIndex } from './rustSpatialIndex';
 
 export interface HitTestOptions {
   tolerance: number;
@@ -97,14 +97,24 @@ export function hitTestFeature(coordinate: number[], feature: Feature<Geometry>,
   return geometryHit(coordinate, geom, tolerance).hit;
 }
 
-export function hitTestAtCoordinate(
+export async function hitTestAtCoordinateAsync(
   coordinate: number[],
-  spatialIndex: SpatialIndex,
   source: VectorSource,
   options: HitTestOptions,
-): Feature<Geometry> | null {
+): Promise<Feature<Geometry> | null> {
   const { tolerance, exclude, filter, extraFeatures } = options;
-  const candidates = spatialIndex.searchPoint(coordinate[0], coordinate[1], tolerance) as unknown as Array<Feature<Geometry>>;
+
+  const ids = await queryRustSpatialIndex(
+    coordinate[0] - tolerance,
+    coordinate[1] - tolerance,
+    coordinate[0] + tolerance,
+    coordinate[1] + tolerance,
+  );
+  const candidates: Array<Feature<Geometry>> = [];
+  for (const id of ids) {
+    const f = source.getFeatureById(id) as Feature<Geometry> | null;
+    if (f) candidates.push(f);
+  }
   const basePool = candidates.length > 0 ? candidates : (source.getFeatures() as unknown as Array<Feature<Geometry>>);
   const pool = extraFeatures && extraFeatures.length > 0 ? [...basePool, ...extraFeatures] : basePool;
 
@@ -133,9 +143,16 @@ export function hitTestAtCoordinate(
   return null;
 }
 
-export function hitTestCandidatesInExtent(
+/** Candidatos por bbox (lasso/rect select) respaldado por el índice nativo. */
+export async function hitTestCandidatesInExtentAsync(
   extent: [number, number, number, number],
-  spatialIndex: SpatialIndex,
-): Array<Feature<Geometry>> {
-  return spatialIndex.search(extent[0], extent[1], extent[2], extent[3]) as unknown as Array<Feature<Geometry>>;
+  source: VectorSource,
+): Promise<Array<Feature<Geometry>>> {
+  const ids = await queryRustSpatialIndex(extent[0], extent[1], extent[2], extent[3]);
+  const out: Array<Feature<Geometry>> = [];
+  for (const id of ids) {
+    const f = source.getFeatureById(id) as Feature<Geometry> | null;
+    if (f) out.push(f);
+  }
+  return out;
 }

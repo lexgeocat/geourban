@@ -275,6 +275,19 @@ async function spatialIndexLoadNative(items: SpatialIndexItem[], slot: string): 
   return count;
 }
 
+async function spatialIndexUpsertBatchNative(items: SpatialIndexItem[], slot: string): Promise<number> {
+  const count = await invoke<number>('spatial_index_upsert_batch', {
+    slot,
+    items: items.map((it) => ({ id: it.id, minX: it.minX, minY: it.minY, maxX: it.maxX, maxY: it.maxY })),
+  });
+  return count;
+}
+
+async function spatialIndexRemoveBatchNative(ids: Array<string | number>, slot: string): Promise<number> {
+  const count = await invoke<number>('spatial_index_remove_batch', { slot, ids });
+  return count;
+}
+
 async function spatialIndexQueryNative(
   minX: number,
   minY: number,
@@ -293,6 +306,16 @@ async function spatialIndexClearNative(slot: string): Promise<void> {
 export async function spatialIndexLoadInWorker(items: SpatialIndexItem[], slot: string): Promise<number> {
   requireNativeRuntime();
   return spatialIndexLoadNative(items, slot);
+}
+
+export async function spatialIndexUpsertBatchInWorker(items: SpatialIndexItem[], slot: string): Promise<number> {
+  requireNativeRuntime();
+  return spatialIndexUpsertBatchNative(items, slot);
+}
+
+export async function spatialIndexRemoveBatchInWorker(ids: Array<string | number>, slot: string): Promise<number> {
+  requireNativeRuntime();
+  return spatialIndexRemoveBatchNative(ids, slot);
 }
 
 export async function spatialIndexQueryInWorker(

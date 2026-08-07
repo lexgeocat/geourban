@@ -5,7 +5,6 @@ import type Draw from 'ol/interaction/Draw.js';
 import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
 import type { PostrenderPainter } from '../PostrenderPainter';
-import type { SpatialIndex } from '../../spatialIndex';
 import type { HitTestSelect } from '../HitTestSelect';
 
 export interface RefreshableDrawLayer {
@@ -19,7 +18,6 @@ export interface ModeContext {
   streetLayer: VectorLayer<VectorSource>;
   streetSource: VectorSource;
   postrenderPainter?: PostrenderPainter;
-  spatialIndex: SpatialIndex;
   highlightSource: VectorSource;
   highlightLayer: VectorLayer<VectorSource>;
   activeDrawRef: { current: Draw | null };

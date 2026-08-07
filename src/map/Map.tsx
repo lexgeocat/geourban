@@ -33,6 +33,7 @@ import { RotateLotsInteraction } from './scene/RotateLotsInteraction';
 import { useRoundaboutStore } from '../store/entities/roundaboutStore';
 import { getOrCreateSpatialIndex } from './spatialIndex';
 import { getOrCreateRoadSnapSource } from './roadSnapSource';
+import { reloadRustSpatialIndex, queueRustSpatialUpsert, queueRustSpatialRemove } from './rustSpatialIndex';
 import { ensureUtmZoneRegistered } from '../geo/crs/utmZones';
 import { useManzanoStore } from '../store/entities/manzanoStore';
 import { runCommand } from '../commands/core/CommandStack';
@@ -233,22 +234,30 @@ export default function MapView() {
       snapStyles.set(type, new Style({ image }));
     }
 
-    // Spatial Index para snap O(log n)
     const spatialIndex = getOrCreateSpatialIndex();
     spatialIndex.load(drawSrc.getFeatures() as Feature<Polygon>[]);
+    // Índice nativo (Rust) — fuente real para click-select y lasso/rect-select.
+    void reloadRustSpatialIndex(drawSrc.getFeatures() as Feature<Geometry>[]);
 
-     getOrCreateRoadSnapSource();
+    getOrCreateRoadSnapSource();
 
-    // Actualizar índice cuando cambian features
+    // Mantener ambos índices sincronizados cuando cambian features.
     const onSpatialInsert = (evt: VectorSourceEvent<Feature<Geometry>>) => {
-      if (evt.feature instanceof Feature) spatialIndex.insert(evt.feature as Feature<Polygon>);
+      if (!(evt.feature instanceof Feature)) return;
+      spatialIndex.insert(evt.feature as Feature<Polygon>);
+      queueRustSpatialUpsert(evt.feature as Feature<Geometry>);
     };
     const onSpatialRemove = (evt: VectorSourceEvent<Feature<Geometry>>) => {
-      if (evt.feature instanceof Feature) spatialIndex.remove(evt.feature as Feature<Polygon>);
+      if (!(evt.feature instanceof Feature)) return;
+      spatialIndex.remove(evt.feature as Feature<Polygon>);
+      queueRustSpatialRemove(evt.feature.getId());
     };
     const pendingSpatialUpdates = new globalThis.Map<string | number, Feature<Polygon>>();
     const flushSpatialUpdates = rafThrottle(() => {
-      pendingSpatialUpdates.forEach((f) => spatialIndex.update(f));
+      pendingSpatialUpdates.forEach((f) => {
+        spatialIndex.update(f);
+        queueRustSpatialUpsert(f as unknown as Feature<Geometry>);
+      });
       pendingSpatialUpdates.clear();
     });
     const onSpatialChange = (evt: VectorSourceEvent<Feature<Geometry>>) => {
