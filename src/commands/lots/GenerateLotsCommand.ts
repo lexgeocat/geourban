@@ -14,6 +14,7 @@ import { polyArea, ringPerimeter, centroid, type LotResult } from '../../geo/mat
 import { useGenerateLotsProgressStore } from '../../store/ui/generateLotsProgressStore';
 import { estimateGeometryBytes } from '../core/memoryEstimate';
 import { newId } from '../../lib/id';
+import { computeAreaCorrectionFactor, computeLinearCorrectionFactor } from './areaCorrection';
 
 const geoJsonFormat = new GeoJSON();
 
@@ -59,7 +60,7 @@ export class GenerateLotsCommand extends Command {
     this.prevLotStatus = [];
     this.prevLotStatusSeen = new Set();
 
-    const manzanos: Array<{ id: string | number; ring: Array<[number, number]> }> = [];
+    const manzanos: Array<{ id: string | number; ring: Array<[number, number]>; trueAreaM2?: number }> = [];
     ctx.drawSource.forEachFeature((f) => {
       const id = f.getId();
       if (id == null) return;
@@ -73,19 +74,24 @@ export class GenerateLotsCommand extends Command {
       if (gj.type !== 'Polygon') return;
       const ring = (gj as unknown as { coordinates: [number, number][][] }).coordinates[0];
       if (!ring || ring.length < 4) return;
-      manzanos.push({ id, ring });
+      manzanos.push({ id, ring, trueAreaM2: f.get('areaM2') as number | undefined });
     });
 
     if (manzanos.length === 0) return;
 
-    const batchInput: ManzanoBatchInput[] = manzanos.map(({ id, ring }) => ({
-      id,
-      ring,
-      method: useManzanoStore.getState().getMethod(id),
-      targetAreaM2: this.opts.targetAreaM2,
-      frontMinM: this.opts.frontMinM,
-      dirPref: useManzanoStore.getState().getRotateDir(id),
-    }));
+    const batchInput: ManzanoBatchInput[] = manzanos.map(({ id, ring, trueAreaM2 }) => {
+      const rawAreaM2 = polyArea(ring.map((c) => [c[0], c[1]] as [number, number]));
+      const areaCorrectionFactor = computeAreaCorrectionFactor(rawAreaM2, trueAreaM2);
+      const linearCorrectionFactor = computeLinearCorrectionFactor(areaCorrectionFactor);
+      return {
+        id,
+        ring,
+        method: useManzanoStore.getState().getMethod(id),
+        targetAreaM2: this.opts.targetAreaM2 * areaCorrectionFactor,
+        frontMinM: this.opts.frontMinM * linearCorrectionFactor,
+        dirPref: useManzanoStore.getState().getRotateDir(id),
+      };
+    });
     const methodById = new Map(batchInput.map((b) => [String(b.id), b.method]));
 
     useGenerateLotsProgressStore.getState().start(batchInput.length);

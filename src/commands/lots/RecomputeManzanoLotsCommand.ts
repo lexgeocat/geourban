@@ -19,6 +19,7 @@ import { useManzanoStore } from '../../store/entities/manzanoStore';
 import { polyArea, ringPerimeter, centroid } from '../../geo/math/polygonEngine';
 import { estimateGeometryBytes } from '../core/memoryEstimate';
 import { newId } from '../../lib/id';
+import { computeAreaCorrectionFactor, computeLinearCorrectionFactor } from './areaCorrection';
 
 const geoJsonFormat = new GeoJSON();
 
@@ -69,12 +70,15 @@ export class RecomputeManzanoLotsCommand extends Command {
     const areaM2 = polyArea(ringPts);
     const perimeterM = ringPerimeter(ringPts);
     const centroidPt = centroid(ringPts);
+    const trueAreaM2 = mznFeat.get('areaM2') as number | undefined;
+    const areaCorrectionFactor = computeAreaCorrectionFactor(areaM2, trueAreaM2);
+    const linearCorrectionFactor = computeLinearCorrectionFactor(areaCorrectionFactor);
 
     const lots = await subdivideManzanoInWorker(
       ring,
       this.opts.method,
-      this.opts.targetAreaM2,
-      this.opts.frontMinM,
+      this.opts.targetAreaM2 * areaCorrectionFactor,
+      this.opts.frontMinM * linearCorrectionFactor,
       this.opts.dirPref,
     );
 
