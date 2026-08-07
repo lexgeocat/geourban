@@ -14,7 +14,7 @@ export type DrawMode =
   | 'none';       // No tool selected (for UI state)
 
 /** Tipo de feature que se creará al dibujar un polígono */
-export type DrawKind = 'lote' | 'equipamiento';
+export type DrawKind = 'lote';
 
 type DrawState = {
   mode: DrawMode;

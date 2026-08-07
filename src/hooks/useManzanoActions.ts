@@ -7,7 +7,6 @@ import { useManzanoStore, type ManzanoLoteMethod } from '../store/entities/manza
 import { useCommandStack } from '../commands/core/CommandStack';
 import { RecomputeManzanoLotsCommand } from '../commands/lots/RecomputeManzanoLotsCommand';
 import { centroid, type Pt } from '../geo/math/polygonEngine';
-import { getFeatureKind, ensureKind, setLotStatus } from '../core/objectModel';
 import { useSubdivisionPreviewStore } from '../store/ui/subdivisionPreviewStore';
 import { subdivideManzanoInWorker } from '../workers/geoWorkerClient';
 import type { ManzanoRow } from '../geo/selectors/manzanoRows';
@@ -78,29 +77,6 @@ export function useManzanoActions(drawSource: VectorSource | null) {
     [drawSource, getMethod, getRotateDir, targetAreaM2, frontMinM],
   );
 
-  const handleToggleEquip = useCallback(
-    (row: ManzanoRow) => {
-      if (!drawSource) return;
-      const feat = drawSource.getFeatureById(row.id) as Feature<Geometry> | null;
-      if (!feat) return;
-      const wasEquip = getFeatureKind(feat) === 'equipamiento';
-      const nextKind = wasEquip ? 'manzana' : 'equipamiento';
-      feat.setProperties(ensureKind({ ...feat.getProperties(), kind: nextKind }, nextKind));
-      if (!wasEquip) {
-        const toRemove: Feature<Geometry>[] = [];
-        drawSource.forEachFeature((f) => {
-          if (f.get('lotGroupId') === String(row.id)) toRemove.push(f as Feature<Geometry>);
-        });
-        toRemove.forEach((f) => drawSource.removeFeature(f));
-        feat.unset('lotStatus', true);
-      } else {
-        setLotStatus(feat, 'none');
-      }
-      drawSource.changed();
-    },
-    [drawSource],
-  );
-
   const handleStartRotate = useCallback(
     (row: ManzanoRow) => {
       if (!drawSource) return;
@@ -143,7 +119,6 @@ export function useManzanoActions(drawSource: VectorSource | null) {
     runRecompute,
     handleMethodClick,
     handlePreviewLots,
-    handleToggleEquip,
     handleStartRotate,
     handleResetRotate,
     handleManualAngleApply,

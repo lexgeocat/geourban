@@ -17,7 +17,6 @@ export interface ManzanoCardProps {
   isRecomputing: boolean;
   onMethodClick: (row: ManzanoRow, method: ManzanoLoteMethod) => void;
   onPreviewLots: (row: ManzanoRow) => void;
-  onToggleEquip: (row: ManzanoRow) => void;
   onStartRotate: (row: ManzanoRow) => void;
   onResetRotate: (row: ManzanoRow) => void;
   onManualAngleApply: (row: ManzanoRow, deg: number) => void;
@@ -36,7 +35,7 @@ function countLots(lots: ManzanoRow['lots']): { normalLots: number; remLots: num
 }
 
 export default function ManzanoCard({
-  row, isRecomputing, onMethodClick, onPreviewLots, onToggleEquip,
+  row, isRecomputing, onMethodClick, onPreviewLots,
   onStartRotate, onResetRotate, onManualAngleApply, onRunRecompute,
 }: ManzanoCardProps) {
   const openCards = useManzanoStore((s) => s.openCards);
@@ -63,12 +62,13 @@ export default function ManzanoCard({
 
   return (
     <div
+      data-manzano-row-id={row.id}
       style={{
         border: `1px solid ${isSelected ? 'var(--cad-accent-amber)' : `${color}55`}`,
         borderLeft: `3px solid ${color}`,
         borderRadius: 4,
         marginBottom: 6,
-        background: row.isEquip ? 'rgba(77,208,196,0.08)' : `${color}14`,
+        background: `${color}14`,
         boxShadow: isSelected ? '0 0 0 1px var(--cad-accent-amber)' : 'none',
         transition: 'box-shadow 120ms ease, border-color 120ms ease',
       }}
@@ -82,7 +82,7 @@ export default function ManzanoCard({
         title="Click: resalta este manzano en el mapa"
       >
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontWeight: 700, color }}>{row.isEquip ? '★ Equipamiento' : `Mzo. ${row.colorIdx + 1}`}</div>
+          <div style={{ fontWeight: 700, color }}>{`Mzo. ${row.colorIdx + 1}`}</div>
           <div style={{ color: 'var(--cad-text-muted)', fontSize: '0.65rem' }}>
             {formatMetricArea(row.areaM2)}{row.lots.length ? ` · ${row.lots.length} lotes` : ''}
             {geomChanged && <span style={{ color: 'var(--cad-accent-amber)' }}> · ⚠ desactualizado</span>}
@@ -95,17 +95,7 @@ export default function ManzanoCard({
 
       {isOpen && (
         <div style={{ padding: '0 8px 8px 8px' }}>
-          <button
-            onClick={() => onToggleEquip(row)}
-            className="cad-icon-btn"
-            style={{ width: '100%', height: 26, marginBottom: 6, borderColor: row.isEquip ? 'var(--cad-accent)' : undefined, color: row.isEquip ? 'var(--cad-accent)' : undefined }}
-          >
-            {row.isEquip ? '▼ Quitar equipamiento' : '▲ Marcar como equipamiento'}
-          </button>
-
-          {!row.isEquip && (
-            <>
-              {row.lotStatus === 'pending' && (
+          {row.lotStatus === 'pending' && (
                 <div style={{ padding: '6px 8px', marginBottom: 6, background: 'rgba(239,68,68,0.10)', border: '1px solid var(--cad-accent-red)', borderRadius: 4, fontSize: '0.62rem', color: 'var(--cad-accent-red)' }}>
                   <div style={{ marginBottom: 4 }}>Una vía nueva recortó este manzano — el sistema no pudo re-lotizarlo solo.</div>
                   <button onClick={() => onRunRecompute(row)} className="cad-icon-btn" style={{ width: '100%', height: 24, fontSize: '0.62rem', color: 'var(--cad-accent-red)', borderColor: 'var(--cad-accent-red)' }}>
@@ -188,8 +178,6 @@ export default function ManzanoCard({
                   )}
                 </div>
               )}
-            </>
-          )}
         </div>
       )}
     </div>

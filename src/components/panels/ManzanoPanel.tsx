@@ -3,6 +3,7 @@ import { useMapStore } from '../../store/map/mapStore';
 import { useDrawSourceTick } from '../../hooks/useDrawSourceTick';
 import { useIncrementalRender } from '../../hooks/useIncrementalRender';
 import { useManzanoActions } from '../../hooks/useManzanoActions';
+import { MANZANO_FOCUS_EVENT, type ManzanoFocusEventDetail } from '../../hooks/useLotsWorkflow';
 import { readManzanoRows } from '../../geo/selectors/manzanoRows';
 import { useSubdivisionPreviewStore } from '../../store/ui/subdivisionPreviewStore';
 import { formatMetricArea } from '../../geo/metrics';
@@ -22,8 +23,19 @@ export default function ManzanoPanel() {
 
   useEffect(() => () => { useSubdivisionPreviewStore.getState().clear(); }, []);
 
+  useEffect(() => {
+    const onFocus = (e: Event) => {
+      const { id } = (e as CustomEvent<ManzanoFocusEventDetail>).detail;
+      document
+        .querySelector(`[data-manzano-row-id="${CSS.escape(String(id))}"]`)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    };
+    window.addEventListener(MANZANO_FOCUS_EVENT, onFocus);
+    return () => window.removeEventListener(MANZANO_FOCUS_EVENT, onFocus);
+  }, []);
+
   const totalLotes = rows.reduce((a, r) => a + r.lots.length, 0);
-  const totalMznArea = rows.filter((r) => !r.isEquip).reduce((a, r) => a + r.areaM2, 0);
+  const totalMznArea = rows.reduce((a, r) => a + r.areaM2, 0);
 
   return (
     <div ref={panelRef} style={{ height: '100%', overflowY: 'auto', fontSize: '0.72rem' }}>
@@ -47,7 +59,6 @@ export default function ManzanoPanel() {
               isRecomputing={actions.recomputingIds.has(String(row.id))}
               onMethodClick={actions.handleMethodClick}
               onPreviewLots={actions.handlePreviewLots}
-              onToggleEquip={actions.handleToggleEquip}
               onStartRotate={actions.handleStartRotate}
               onResetRotate={actions.handleResetRotate}
               onManualAngleApply={actions.handleManualAngleApply}

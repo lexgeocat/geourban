@@ -18,7 +18,6 @@ export interface ManzanoRow {
   areaM2: number;
   perimeterM: number;
   centroid: Pt;
-  isEquip: boolean;
   lots: LotInfo[];
   lotStatus: LotStatus;
 }
@@ -70,7 +69,6 @@ export function readManzanoRows(drawSource: VectorSource | null): ManzanoRow[] {
       areaM2,
       perimeterM,
       centroid: centroidPt,
-      isEquip: getFeatureKind(f) === 'equipamiento',
       lots: lotsByGroup.get(String(id)) ?? [],
       lotStatus: getLotStatus(f),
     });

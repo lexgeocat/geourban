@@ -3,15 +3,14 @@ import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
 import { useSelectionStore } from '../../store/map/selectionStore';
 import { useMapStore } from '../../store/map/mapStore';
-import { useSubdivisionStore } from '../../store/ui/subdivisionStore';
 import { useDrawStore } from '../../store/map/drawStore';
 import { useUiShellStore } from '../../store/ui/uiShellStore';
 import { formatMetricArea, formatMetricLength, type SegmentMetric } from '../../geo/metrics';
-import { useManzanoStore } from '../../store/entities/manzanoStore';
 import { getFeatureKind } from '../../core/objectModel';
 import { useStreetStore } from '../../store/entities/streetStore';
 import { useRoundaboutStore } from '../../store/entities/roundaboutStore';
 import { useDraggablePanel } from '../../hooks/useDraggablePanel';
+import { useLotsWorkflow } from '../../hooks/useLotsWorkflow';
 
 const basePanelStyle: React.CSSProperties = {
   position: 'absolute',
@@ -37,7 +36,7 @@ export default function PropertyPanel() {
   const primaryId = useSelectionStore((s) => s.primaryId);
   const selectedCount = useSelectionStore((s) => s.selectedIds.size);
   const drawSource = useMapStore((s) => s.drawSource);
-  const openSubdivision = useSubdivisionStore((s) => s.open);
+  const { focusManzanoInSidebar } = useLotsWorkflow();
   const streets = useStreetStore((s) => s.streets);
   const roundabouts = useRoundaboutStore((s) => s.roundabouts);
 
@@ -197,12 +196,7 @@ export default function PropertyPanel() {
           {isPolygon && featureKind !== 'perimetro' && (
             <button
               onClick={() => {
-                if (featureKind === 'manzana') {
-                  const { targetAreaM2, frontMinM } = useManzanoStore.getState();
-                  openSubdivision(primaryId, 'auto', { targetAreaM2, frontMinM });
-                } else {
-                  openSubdivision(primaryId);
-                }
+                focusManzanoInSidebar(primaryId);
               }}
               className="cad-icon-btn"
               style={{

@@ -309,7 +309,7 @@ body,
 /* ============================================================
    CAD Form Controls & Panel Header (Fase 2 — consolida estilos
    inline duplicados en ManzanoPanel/StreetPanel/RoundaboutPanel/
-   PropertyPanel/SubdivisionDialog)
+   PropertyPanel)
    ============================================================ */
 .cad-input {
   width: 100%;

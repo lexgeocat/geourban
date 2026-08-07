@@ -30,8 +30,6 @@ interface StatsData {
   lotAreaM2: number;
   streetCount: number;
   streetAreaM2: number;
-  equipCount: number;
-  equipAreaM2: number;
   manzanos: ManzanoInfo[];
 }
 
@@ -44,8 +42,6 @@ function computeStats(drawSource: VectorSource<Feature<Geometry>> | null, street
     lotAreaM2: 0,
     streetCount: streets.length,
     streetAreaM2: 0,
-    equipCount: 0,
-    equipAreaM2: 0,
     manzanos: [],
   };
 
@@ -70,7 +66,6 @@ function computeStats(drawSource: VectorSource<Feature<Geometry>> | null, street
     result.totalAreaM2 += area;
 
     const isLot = kind === 'lote';
-    const isEquip = kind === 'equipamiento';
 
     if (isManzana) {
       result.manzanoCount++;
@@ -86,9 +81,6 @@ function computeStats(drawSource: VectorSource<Feature<Geometry>> | null, street
     } else if (isLot) {
       result.lotCount++;
       result.lotAreaM2 += area;
-    } else if (isEquip) {
-      result.equipCount++;
-      result.equipAreaM2 += area;
     }
   });
 
@@ -200,14 +192,6 @@ export default function StatsPanel() {
             <span style={{ color: 'var(--cad-text-dim)' }}>Calles:</span>
             <span style={{ color: '#ffa657', fontFamily: 'JetBrains Mono, monospace', textAlign: 'right' }}>{stats.streetCount}</span>
             <span style={{ color: 'var(--cad-text-muted)', fontSize: '0.65rem' }}>{formatMetricArea(stats.streetAreaM2)}</span>
-          </>
-        )}
-
-        {stats.equipCount > 0 && (
-          <>
-            <span style={{ color: 'var(--cad-text-dim)' }}>Equipamiento:</span>
-            <span style={{ color: '#e3b341', fontFamily: 'JetBrains Mono, monospace', textAlign: 'right' }}>{stats.equipCount}</span>
-            <span style={{ color: 'var(--cad-text-muted)', fontSize: '0.65rem' }}>{formatMetricArea(stats.equipAreaM2)}</span>
           </>
         )}
       </div>
