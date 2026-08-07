@@ -69,7 +69,7 @@ fn dist(a: Pt, b: Pt) -> f64 {
     (b.0 - a.0).hypot(b.1 - a.1)
 }
 
-fn bisect<F: Fn(f64) -> f64>(f: &F, lo: f64, hi: f64, target: f64) -> f64 {
+fn bisect<F: Fn(f64) -> f64 + ?Sized>(f: &F, lo: f64, hi: f64, target: f64) -> f64 {
     let mut a = lo;
     let mut b = hi;
     for _ in 0..60 {
@@ -748,52 +748,20 @@ fn hb_build_zone(
         }
     };
 
-    let mut eq_split = false;
-    if remainder_lot && n_cols == 2 && target_lot_area > 0.0 {
-        let full_col = n_rows as f64 * target_lot_area;
-        let rem_a = zone_total - full_col;
-        if rem_a < full_col {
-            if *lot_budget > 0 {
-                lots.push(HbLot {
-                    pts: zone_poly,
-                    area: zone_total,
-                    zone: zone.to_string(),
-                    is_remainder: true,
-                });
-                *lot_budget -= 1;
-            }
-            return;
-        }
-        eq_split = true;
-    }
-
-    let cut_cols = n_cols.min((*lot_budget as i64 + 2).max(1));
-
+    let n_cols_eff = n_cols.min((*lot_budget as i64 + 2).max(1));
+    let col_target = zone_total / n_cols_eff as f64;
     let mut f_cuts: Vec<f64> = vec![0.0];
-    if remainder_lot && !eq_split {
-        let full_col = n_rows as f64 * target_lot_area;
-        for c in 0..cut_cols - 1 {
-            f_cuts.push(bisect(
-                &col_area_up_to_f,
-                0.0,
-                1.0,
-                (c + 1) as f64 * full_col,
-            ));
-        }
-    } else {
-        let col_target = zone_total / n_cols as f64;
-        for c in 0..cut_cols - 1 {
-            f_cuts.push(bisect(
-                &col_area_up_to_f,
-                0.0,
-                1.0,
-                (c + 1) as f64 * col_target,
-            ));
-        }
+    for c in 0..n_cols_eff - 1 {
+        f_cuts.push(bisect(
+            &col_area_up_to_f,
+            0.0,
+            1.0,
+            (c + 1) as f64 * col_target,
+        ));
     }
     f_cuts.push(1.0);
 
-    for c in 0..n_cols {
+    for c in 0..n_cols_eff {
         if *lot_budget == 0 {
             break;
         }
@@ -813,12 +781,8 @@ fn hb_build_zone(
             continue;
         }
         let col_area = poly_area(&col_poly);
-        let is_rem_col = remainder_lot && !eq_split && n_cols > 1 && c == n_cols - 1;
-        let cell_target = if is_rem_col {
-            target_lot_area
-        } else {
-            col_area / n_rows as f64
-        };
+        let cell_target = col_area / n_rows as f64;
+        let is_last_cell_col = remainder_lot && c == n_cols_eff - 1;
 
         let u_projs_col: Vec<f64> = col_poly.iter().map(|&p| u_key(p)).collect();
         let u_min_c = u_projs_col.iter().cloned().fold(f64::INFINITY, f64::min);
@@ -863,7 +827,7 @@ fn hb_build_zone(
                 pts: lot,
                 area,
                 zone: zone.to_string(),
-                is_remainder: is_rem_col && r == n_rows - 1,
+                is_remainder: is_last_cell_col && r == n_rows - 1,
             });
             *lot_budget -= 1;
         }
@@ -1102,9 +1066,26 @@ fn hb_lotize_with_baseline(mzn_pts: &[Pt], cfg: HbConfig, baseline: (Pt, Pt)) ->
     let plan = hb_auto_head_plan(
         total_area, u_min, u_max, width_at_u, head_rows, body_rows, body_cols, min_area, head_depth,
     );
-    let head_cols1 = plan.head_cols1;
-    let head_cols2 = plan.head_cols2;
+    let mut head_cols1 = plan.head_cols1;
+    let mut head_cols2 = plan.head_cols2;
     let target_lot_area = plan.target_lot_area;
+
+    if use_fixed_area && head_rows > 0 && target_lot_area > 0.0 && total_area > 0.0 {
+        let min_body_area = body_cols as f64 * target_lot_area;
+        let max_head_area = (total_area - min_body_area).max(0.0);
+        let max_head_slots = (max_head_area / (head_rows as f64 * target_lot_area)).floor();
+        let current_total = head_cols1 + head_cols2;
+
+        if max_head_slots < 1.0 {
+            head_cols1 = 0;
+            head_cols2 = 0;
+        } else if current_total as f64 > max_head_slots {
+            let ratio = max_head_slots / current_total as f64;
+            head_cols1 = ((head_cols1 as f64 * ratio).floor() as i64).max(1);
+            head_cols2 = ((head_cols2 as f64 * ratio).floor() as i64).max(1);
+        }
+    }
+
     let b_rows = hb_fit_body_rows(
         total_area,
         target_lot_area,
