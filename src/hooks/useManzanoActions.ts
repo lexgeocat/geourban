@@ -6,14 +6,13 @@ import type VectorSource from 'ol/source/Vector.js';
 import { useManzanoStore, type ManzanoLoteMethod } from '../store/entities/manzanoStore';
 import { useCommandStack } from '../commands/core/CommandStack';
 import { RecomputeManzanoLotsCommand } from '../commands/lots/RecomputeManzanoLotsCommand';
-import { GenerateLotsCommand } from '../commands/lots/GenerateLotsCommand';
 import { centroid, type Pt } from '../geo/math/polygonEngine';
 import { getFeatureKind, ensureKind, setLotStatus } from '../core/objectModel';
 import { useSubdivisionPreviewStore } from '../store/ui/subdivisionPreviewStore';
 import { subdivideManzanoInWorker } from '../workers/geoWorkerClient';
-import { useGenerateLotsProgressStore } from '../store/ui/generateLotsProgressStore';
 import type { ManzanoRow } from '../geo/selectors/manzanoRows';
 import { requireLayerForKind } from '../store/ui/layerPickerStore';
+import { useLotsWorkflow } from './useLotsWorkflow';
 
 export function useManzanoActions(drawSource: VectorSource | null) {
   const targetAreaM2 = useManzanoStore((s) => s.targetAreaM2);
@@ -24,7 +23,8 @@ export function useManzanoActions(drawSource: VectorSource | null) {
   const setRotateDir = useManzanoStore((s) => s.setRotateDir);
   const startRotateLots = useManzanoStore((s) => s.startRotateLots);
 
-  const [lotsBusy, setLotsBusy] = useState(false);
+  // Fuente única para "generar todos los lotes" — compartida con el TopBar.
+  const { lotsBusy, runGenerateAllLots, cancelGenerateAllLots } = useLotsWorkflow();
   const [recomputingIds, setRecomputingIds] = useState<Set<string>>(new Set());
 
   const runRecompute = useCallback(
@@ -137,22 +137,6 @@ export function useManzanoActions(drawSource: VectorSource | null) {
     [setRotateDir, runRecompute],
   );
 
-  const handleGenerarTodos = useCallback(async () => {
-    const layerId = await requireLayerForKind('lote');
-    if (!layerId) return;
-    useSubdivisionPreviewStore.getState().clear();
-    setLotsBusy(true);
-    try {
-      await useCommandStack.getState().run(new GenerateLotsCommand({ targetAreaM2, frontMinM, layerId }));
-    } finally {
-      setLotsBusy(false);
-    }
-  }, [targetAreaM2, frontMinM]);
-
-  const handleCancelGenerarTodos = useCallback(() => {
-    useGenerateLotsProgressStore.getState().requestCancel();
-  }, []);
-
   return {
     lotsBusy,
     recomputingIds,
@@ -163,7 +147,7 @@ export function useManzanoActions(drawSource: VectorSource | null) {
     handleStartRotate,
     handleResetRotate,
     handleManualAngleApply,
-    handleGenerarTodos,
-    handleCancelGenerarTodos,
+    handleGenerarTodos: runGenerateAllLots,
+    handleCancelGenerarTodos: cancelGenerateAllLots,
   };
 }

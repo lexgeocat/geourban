@@ -1,25 +1,22 @@
-import { useState } from 'react';
 import { useMapStore } from '../store/map/mapStore';
 import { resetIncrementalRoadTracking } from '../geo/recomputeManzanos';
 import { useCommandStack } from '../commands/core/CommandStack';
 import { ClearFeaturesCommand } from '../commands/features/ClearFeaturesCommand';
 import { useSelectionStore } from '../store/map/selectionStore';
-import { useSubdivisionStore } from '../store/ui/subdivisionStore';
 import { useStreetStore } from '../store/entities/streetStore';
 import { useRoundaboutStore } from '../store/entities/roundaboutStore';
 import { useManzanoStore } from '../store/entities/manzanoStore';
 import { useLayersStore } from '../store/entities/layersRegistryStore';
 import { useDrawStore } from '../store/map/drawStore';
-import { GenerateLotsCommand } from '../commands/lots/GenerateLotsCommand';
 import { refreshSourceMetrics } from '../geo/metrics';
 import { getFeatureKind } from '../core/objectModel';
-import { requireLayerForKind } from '../store/ui/layerPickerStore';
 import { confirmAsync } from '../store/ui/confirmDialogStore';
 import { toast } from '../store/ui/toastStore';
 import { useProjectFileStore } from '../store/ui/projectFileStore';
+import { useLotsWorkflow } from './useLotsWorkflow';
 
 export function useTopBarActions() {
-  const [lotsBusy, setLotsBusy] = useState(false);
+  const { lotsBusy, runGenerateAllLots, cancelGenerateAllLots, focusManzanoInSidebar } = useLotsWorkflow();
 
   const handleNewProject = async () => {
     const drawSource = useMapStore.getState().drawSource;
@@ -65,79 +62,35 @@ export function useTopBarActions() {
     }
   };
 
-  const handleOpenSubdivision = async () => {
+  const handleOpenSubdivision = () => {
     const primaryId = useSelectionStore.getState().primaryId;
     if (!primaryId) {
-      toast('Seleccioná un polígono para subdividir.', { variant: 'warning' });
+      toast('Seleccioná un manzano para subdividir.', { variant: 'warning' });
       return;
     }
     const src = useMapStore.getState().drawSource;
     const feat = src?.getFeatureById(primaryId);
-    const openSubdivision = useSubdivisionStore.getState().open;
     const kind = feat ? getFeatureKind(feat) : null;
+
     if (kind === 'perimetro') {
-      toast('El perímetro es la referencia intacta del sitio y no se subdivide directamente. Trazá calles para generar manzanos, o seleccioná un manzano.', {
-        variant: 'info',
-        durationMs: 6000,
-      });
+      toast(
+        'El perímetro es la referencia intacta del sitio y no se subdivide directamente. Trazá calles para generar manzanos, o seleccioná un manzano.',
+        { variant: 'info', durationMs: 6000 },
+      );
       return;
     }
-    if (feat && kind === 'manzana') {
-      const { targetAreaM2, frontMinM } = useManzanoStore.getState();
-      openSubdivision(primaryId, 'auto', { targetAreaM2, frontMinM });
-    } else {
-      openSubdivision(primaryId);
+    if (kind !== 'manzana') {
+      toast(
+        'Seleccioná un manzano para subdividir — la subdivisión de lotes se maneja desde el panel "Manzanos".',
+        { variant: 'warning', durationMs: 5000 },
+      );
+      return;
     }
+    focusManzanoInSidebar(primaryId);
   };
 
   const handleGenerateLots = async () => {
-    if (lotsBusy) return;
-    const src = useMapStore.getState().drawSource;
-    if (!src) return;
-    let manzanoCount = 0;
-    src.forEachFeature((f) => {
-      if (getFeatureKind(f) === 'manzana') manzanoCount++;
-    });
-    if (manzanoCount === 0) {
-      toast('No hay manzanos para subdividir. Trazá calles primero para generar manzanos.', {
-        variant: 'warning',
-      });
-      return;
-    }
-    const layerId = await requireLayerForKind('lote');
-    if (!layerId) return;
-    const { targetAreaM2, frontMinM } = useManzanoStore.getState();
-    setLotsBusy(true);
-    try {
-      const result = await useCommandStack
-        .getState()
-        .run(new GenerateLotsCommand({ targetAreaM2, frontMinM, layerId }));
-      if (!result.ok) {
-        toast(result.error, { variant: 'error', durationMs: 6000 });
-        return;
-      }
-      let newLotes = 0;
-      src.forEachFeature((f) => {
-        const k = getFeatureKind(f);
-        if (k === 'lote' || (typeof f.get('label') === 'string' && f.get('label')?.toString().startsWith('Lote'))) {
-          newLotes++;
-        }
-      });
-      if (newLotes > 0) {
-        toast(`${newLotes} lotes generados automáticamente.`, { variant: 'success' });
-      } else {
-        toast('No se pudieron generar lotes. Verificá que los manzanos sean lo suficientemente grandes.', {
-          variant: 'warning',
-        });
-      }
-    } catch (err) {
-      toast(err instanceof Error ? err.message : 'Error al generar lotes', {
-        variant: 'error',
-        durationMs: 6000,
-      });
-    } finally {
-      setLotsBusy(false);
-    }
+    await runGenerateAllLots();
   };
 
   const handleToggleEdit = () => {
@@ -172,6 +125,7 @@ export function useTopBarActions() {
     handleDeleteSelected,
     handleOpenSubdivision,
     handleGenerateLots,
+    handleCancelGenerateLots: cancelGenerateAllLots,
     handleToggleEdit,
   };
 }

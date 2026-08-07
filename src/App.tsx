@@ -4,7 +4,6 @@ import TopBar from './components/layout/TopBar';
 import StatusBar from './components/layout/StatusBar';
 import LeftSidebar from './components/layout/leftbar/LeftSidebar';
 import LayerPanel from './components/panels/LayerPanel';
-import SubdivisionDialog from './components/modals/SubdivisionDialog';
 import PropertyPanel from './components/panels/PropertyPanel';
 import StatsPanel from './components/panels/StatsPanel';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
@@ -51,7 +50,6 @@ function App() {
         </div>
       </div>
       <ProjectSetupModal />
-      <SubdivisionDialog />
       <LayerPanel />
       <ConfirmDialog />
       <SaveProjectModal />

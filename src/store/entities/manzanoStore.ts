@@ -35,6 +35,10 @@ interface ManzanoState {
   finishRotateLots: () => { id: string | number; dir: RotateDir } | null;
   cancelRotateLots: () => void;
   toggleCardOpen: (id: string | number) => void;
+  /** Abre/cierra explícitamente, a diferencia de toggleCardOpen — usado
+   *  por useLotsWorkflow.focusManzanoInSidebar para GARANTIZAR que la
+   *  card quede abierta (un toggle podría cerrarla si ya estaba abierta). */
+  setCardOpen: (id: string | number, open: boolean) => void;
   setTargetAreaM2: (v: number) => void;
   setFrontMinM: (v: number) => void;
   pruneToIds: (aliveIds: Set<string>) => void;
@@ -98,6 +102,8 @@ export const useManzanoStore = create<ManzanoState>()((set, get) => ({
   cancelRotateLots: () => set({ rotatingId: null, rotateAnchor: null, rotateHandle: null }),
   toggleCardOpen: (id) =>
     set((s) => ({ openCards: { ...s.openCards, [String(id)]: !s.openCards[String(id)] } })),
+  setCardOpen: (id, open) =>
+    set((s) => ({ openCards: { ...s.openCards, [String(id)]: open } })),
   setTargetAreaM2: (v) => set({ targetAreaM2: v }),
   setFrontMinM: (v) => set({ frontMinM: v }),
 
