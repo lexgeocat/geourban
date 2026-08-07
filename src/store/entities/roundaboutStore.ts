@@ -16,7 +16,6 @@ interface RoundaboutState {
   defaultSidewalkWidthM: number;
 
   visible: boolean;
-  panelVisible: boolean;
 
   addRoundabout: (r: RoundaboutParams) => string;
   addRoundaboutWithId: (id: string, r: RoundaboutParams) => void;
@@ -29,7 +28,6 @@ interface RoundaboutState {
   setDefaultRoadWidth: (v: number) => void;
   setDefaultSidewalkWidth: (v: number) => void;
   setVisible: (v: boolean) => void;
-  setPanelVisible: (v: boolean) => void;
 }
 
 let nextId = 1;
@@ -58,7 +56,6 @@ export const useRoundaboutStore = create<RoundaboutState>()(
     defaultSidewalkWidthM: 2,
 
     visible: true,
-    panelVisible: false,
 
     addRoundabout: (r) => {
       let newId = '';
@@ -99,6 +96,5 @@ export const useRoundaboutStore = create<RoundaboutState>()(
     setDefaultRoadWidth: (v) => set((state) => { state.defaultRoadWidthM = Math.max(1, v); }),
     setDefaultSidewalkWidth: (v) => set((state) => { state.defaultSidewalkWidthM = Math.max(0, v); }),
     setVisible: (v) => set((state) => { state.visible = v; }),
-    setPanelVisible: (v) => set((state) => { state.panelVisible = v; }),
   })),
 );

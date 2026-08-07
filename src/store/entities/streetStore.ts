@@ -17,7 +17,6 @@ interface StreetState {
   defaultWidthM: number;
   defaultSideWidthM: number;
   visible: boolean;
-  panelVisible: boolean;
 
   addStreet: (
     street: Omit<Street, 'id' | 'name' | 'sideWidthM'> & { sideWidthM?: number }
@@ -29,7 +28,6 @@ interface StreetState {
   setDefaultWidth: (w: number) => void;
   setDefaultSideWidth: (w: number) => void;
   setVisible: (v: boolean) => void;
-  setPanelVisible: (v: boolean) => void;
 }
 
 let nextId = 1;
@@ -54,7 +52,6 @@ export const useStreetStore = create<StreetState>()(
     defaultWidthM: 8,
     defaultSideWidthM: 2,
     visible: true,
-    panelVisible: false,
 
     addStreet: (street) => {
       let newId = '';
@@ -115,11 +112,6 @@ export const useStreetStore = create<StreetState>()(
     setVisible: (v) =>
       set((state) => {
         state.visible = v;
-      }),
-
-    setPanelVisible: (v) =>
-      set((state) => {
-        state.panelVisible = v;
       }),
   }))
 );

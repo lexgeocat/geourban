@@ -1,9 +1,7 @@
 import React from 'react';
 import { BarChart3 } from 'lucide-react';
 import { useUiShellStore } from '../../../../store/ui/uiShellStore';
-import { useManzanoStore } from '../../../../store/entities/manzanoStore';
-import { useRoundaboutStore } from '../../../../store/entities/roundaboutStore';
-import { useStreetStore } from '../../../../store/entities/streetStore';
+import { useLeftSidebarStore } from '../../../../store/ui/leftSidebarStore';
 import { BASE_MAP_DEFS } from '../../../../map/baseMaps';
 import { RibbonGroup, RibbonTool } from '../RibbonPrimitives';
 import { IconGrid, IconSat, IconRoad, IconStreet, IconLots, IconRoundabout, IconCursor } from '../icons';
@@ -15,12 +13,8 @@ export default function ViewTab() {
   const setStatsPanelVisible = useUiShellStore((s) => s.setStatsPanelVisible);
   const propsPanelVisible = useUiShellStore((s) => s.panelVisibility.properties);
 
-  const manzanoPanelVisible = useManzanoStore((s) => s.panelVisible);
-  const setManzanoPanelVisible = useManzanoStore((s) => s.setPanelVisible);
-  const roundaboutPanelVisible = useRoundaboutStore((s) => s.panelVisible);
-  const setRoundaboutPanelVisible = useRoundaboutStore((s) => s.setPanelVisible);
-  const streetPanelVisible = useStreetStore((s) => s.panelVisible);
-  const setStreetPanelVisible = useStreetStore((s) => s.setPanelVisible);
+  const leftSidebarTab = useLeftSidebarStore((s) => s.activeTab);
+  const toggleLeftSidebarTab = useLeftSidebarStore((s) => s.toggleTab);
 
   return (
     <>
@@ -39,9 +33,9 @@ export default function ViewTab() {
 
       <RibbonGroup label="Paneles">
         <RibbonTool icon={<BarChart3 />} label="Estadísticas" active={statsPanelVisible} onClick={() => setStatsPanelVisible(!statsPanelVisible)} />
-        <RibbonTool icon={<IconLots />} label="Manzanos" active={manzanoPanelVisible} onClick={() => setManzanoPanelVisible(!manzanoPanelVisible)} />
-        <RibbonTool icon={<IconRoundabout />} label="Rotondas" active={roundaboutPanelVisible} onClick={() => setRoundaboutPanelVisible(!roundaboutPanelVisible)} />
-        <RibbonTool icon={<IconStreet />} label="Panel vías" active={streetPanelVisible} onClick={() => setStreetPanelVisible(!streetPanelVisible)} />
+        <RibbonTool icon={<IconLots />} label="Manzanos" active={leftSidebarTab === 'manzanos'} onClick={() => toggleLeftSidebarTab('manzanos')} />
+        <RibbonTool icon={<IconRoundabout />} label="Rotondas" active={leftSidebarTab === 'rotondas'} onClick={() => toggleLeftSidebarTab('rotondas')} />
+        <RibbonTool icon={<IconStreet />} label="Panel vías" active={leftSidebarTab === 'vias'} onClick={() => toggleLeftSidebarTab('vias')} />
         <RibbonTool
           icon={<IconCursor />} label="Propiedades" active={propsPanelVisible}
           onClick={() => useUiShellStore.getState().setPanelVisibility('properties', !propsPanelVisible)}

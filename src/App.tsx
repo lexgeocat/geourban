@@ -2,15 +2,13 @@
 import MapView from './map/Map';
 import TopBar from './components/layout/TopBar';
 import StatusBar from './components/layout/StatusBar';
+import LeftSidebar from './components/layout/leftbar/LeftSidebar';
 import LayerPanel from './components/panels/LayerPanel';
 import SubdivisionDialog from './components/modals/SubdivisionDialog';
 import PropertyPanel from './components/panels/PropertyPanel';
 import StatsPanel from './components/panels/StatsPanel';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import ProjectSetupModal from './components/modals/ProjectSetupModal';
-import ManzanoPanel from './components/panels/ManzanoPanel';
-import RoundaboutPanel from './components/panels/RoundaboutPanel';
-import StreetPanel from './components/panels/StreetPanel';
 import ConfirmDialog from './components/modals/ConfirmDialog';
 import ToastStack from './components/ui/ToastStack';
 import SaveProjectModal from './components/modals/SaveProjectModal';
@@ -33,6 +31,7 @@ function App() {
       </div>
 
       <TopBar />
+      <LeftSidebar />
 
       <div
         style={{
@@ -49,9 +48,6 @@ function App() {
         </div>
         <div style={{ pointerEvents: 'auto' }}>
           <StatsPanel />
-          <ManzanoPanel />
-          <RoundaboutPanel />
-          <StreetPanel />
         </div>
       </div>
       <ProjectSetupModal />

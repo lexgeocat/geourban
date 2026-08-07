@@ -958,3 +958,114 @@ body,
     display: none;
   }
 }
+
+/* ============================================================
+   Left Sidebar — pestañas verticales (Vías / Rotondas / Manzanos)
+   ============================================================ */
+:root {
+  --cad-leftbar-rail-width: 44px;
+  --cad-leftbar-panel-width: 300px;
+  --z-leftbar: 115;
+}
+
+.leftbar-root {
+  position: fixed;
+  top: var(--cad-topbar-height);
+  bottom: var(--cad-statusbar-height);
+  left: 0;
+  z-index: var(--z-leftbar);
+  display: flex;
+  pointer-events: none;
+}
+
+.leftbar-rail {
+  width: var(--cad-leftbar-rail-width);
+  background: var(--cad-bg-deep);
+  border-right: 1px solid var(--cad-border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 0;
+  gap: 4px;
+  pointer-events: auto;
+}
+
+.leftbar-tab {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--cad-text-dim);
+  cursor: pointer;
+  transition: all var(--cad-transition);
+}
+.leftbar-tab svg {
+  width: 16px;
+  height: 16px;
+}
+.leftbar-tab:hover {
+  background: var(--cad-bg-hover);
+  color: var(--cad-accent);
+}
+.leftbar-tab.active {
+  background: var(--cad-bg-active);
+  color: var(--cad-accent);
+  border-color: rgba(0, 212, 255, 0.35);
+  box-shadow: inset 2px 0 0 var(--cad-accent);
+}
+.leftbar-tab-badge {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: 7px;
+  background: var(--cad-accent-red);
+  color: #fff;
+  font-size: 0.55rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.leftbar-panel {
+  width: var(--cad-leftbar-panel-width);
+  max-width: calc(100vw - var(--cad-leftbar-rail-width) - 16px);
+  margin-left: 6px;
+  display: flex;
+  flex-direction: column;
+  pointer-events: auto;
+}
+
+.leftbar-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 10px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--cad-text);
+  letter-spacing: 0.03em;
+  border-bottom: 1px solid var(--cad-border);
+  flex-shrink: 0;
+}
+
+.leftbar-panel-body {
+  flex: 1;
+  min-height: 0;
+  padding: 10px;
+}
+
+@media (max-width: 700px) {
+  .leftbar-panel {
+    width: calc(100vw - var(--cad-leftbar-rail-width) - 16px);
+  }
+}

@@ -1,11 +1,9 @@
-﻿// src/components/RoundaboutPanel.tsx
-import React from 'react';
+﻿import React from 'react';
 import { useRoundaboutStore } from '../../store/entities/roundaboutStore';
 import { useSelectionStore } from '../../store/map/selectionStore';
 import { useDrawStore } from '../../store/map/drawStore';
 import { roundaboutRoadAreaM2 } from '../../geo/roundabout/roundaboutEngine';
 import { formatMetricArea } from '../../geo/metrics';
-import { useDraggablePanel } from '../../hooks/useDraggablePanel';
 
 const SIDES_OPTIONS: Array<{ value: number; label: string }> = [
   { value: 0, label: 'Círculo' },
@@ -18,7 +16,6 @@ const SIDES_OPTIONS: Array<{ value: number; label: string }> = [
 ];
 
 export default function RoundaboutPanel() {
-  const panelVisible = useRoundaboutStore((s) => s.panelVisible);
   const roundabouts = useRoundaboutStore((s) => s.roundabouts);
   const defaultRadiusM = useRoundaboutStore((s) => s.defaultRadiusM);
   const defaultSides = useRoundaboutStore((s) => s.defaultSides);
@@ -30,43 +27,14 @@ export default function RoundaboutPanel() {
   const setDefaultSidewalkWidth = useRoundaboutStore((s) => s.setDefaultSidewalkWidth);
   const updateRoundabout = useRoundaboutStore((s) => s.updateRoundabout);
   const removeRoundabout = useRoundaboutStore((s) => s.removeRoundabout);
-  const setPanelVisible = useRoundaboutStore((s) => s.setPanelVisible);
 
   const mode = useDrawStore((s) => s.mode);
   const setMode = useDrawStore((s) => s.setMode);
   const selectedIds = useSelectionStore((s) => s.selectedIds);
   const selectOnMap = useSelectionStore((s) => s.setSelection);
 
-  const { position: pos, onDragHandleMouseDown } = useDraggablePanel({ initial: { top: 4, left: 280 } });
-
-  if (!panelVisible) return null;
-
   return (
-    <div
-      className="cad-panel-glass animate-fade-in"
-      style={{
-        position: 'fixed',
-        left: pos.left,
-        top: pos.top,
-        maxHeight: 'calc(100vh - 160px)',
-        overflowY: 'auto',
-        zIndex: 'var(--z-docked-panel)',
-        padding: '10px 10px',
-        fontSize: '0.72rem',
-        minWidth: 260,
-        maxWidth: 300,
-      }}
-    >
-      <div
-        onMouseDown={onDragHandleMouseDown}
-        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, borderBottom: '1px solid var(--cad-border)', paddingBottom: 6, cursor: 'grab', userSelect: 'none' }}
-      >
-        <span style={{ fontWeight: 700, color: 'var(--cad-text)', letterSpacing: '0.03em' }}>
-          Rotondas <span style={{ color: 'var(--cad-text-muted)', fontWeight: 400 }}>({roundabouts.length})</span>
-        </span>
-        <button onClick={() => setPanelVisible(false)} style={{ background: 'none', border: 'none', color: 'var(--cad-text-dim)', cursor: 'pointer', fontSize: '0.85rem' }} title="Cerrar">✕</button>
-      </div>
-
+    <div style={{ height: '100%', overflowY: 'auto', fontSize: '0.72rem' }}>
       <div style={{ background: 'var(--cad-bg-surface)', borderRadius: 6, padding: 8, marginBottom: 8 }}>
         <div style={{ fontSize: '0.62rem', color: 'var(--cad-accent)', fontWeight: 700, marginBottom: 6, letterSpacing: '0.05em' }}>
           ◼ PARÁMETROS DE DISEÑO
@@ -118,7 +86,7 @@ export default function RoundaboutPanel() {
               marginBottom: 6,
               padding: '6px 8px',
               cursor: 'pointer',
-             boxShadow: selectedIds.has(rb.id) ? '0 0 0 1px var(--cad-accent-amber)' : 'none',
+              boxShadow: selectedIds.has(rb.id) ? '0 0 0 1px var(--cad-accent-amber)' : 'none',
               transition: 'box-shadow 120ms ease, border-color 120ms ease',
             }}
           >

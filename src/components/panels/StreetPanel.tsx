@@ -5,7 +5,6 @@ import { useRoadCornerStore } from '../../store/map/roadCornerStore';
 import { type CornerMode } from '../../geo/roads/ringFillet';
 import { recomputeManzanos } from '../../geo/recomputeManzanos';
 import { formatMetricLength, formatMetricArea, streetLengthMetricM } from '../../geo/metrics';
-import { useDraggablePanel } from '../../hooks/useDraggablePanel';
 
 const CORNER_MODE_OPTIONS: { value: CornerMode; label: string }[] = [
   { value: 'fillet', label: 'Ochave' },
@@ -36,8 +35,6 @@ function CornerModeControl() {
 }
 
 export default function StreetPanel() {
-  const panelVisible = useStreetStore((s) => s.panelVisible);
-  const setPanelVisible = useStreetStore((s) => s.setPanelVisible);
   const streets = useStreetStore((s) => s.streets);
   const updateStreet = useStreetStore((s) => s.updateStreet);
   const removeStreet = useStreetStore((s) => s.removeStreet);
@@ -51,13 +48,6 @@ export default function StreetPanel() {
   const selectedIds = useSelectionStore((s) => s.selectedIds);
   const selectOnMap = useSelectionStore((s) => s.setSelection);
 
-  const { position: pos, onDragHandleMouseDown } = useDraggablePanel({ initial: { top: 4, left: 550 } });
-
-  if (!panelVisible) return null;
-
-  /** Único punto de actualización: antes había una función casi idéntica
-   * por cada campo (widthM / sideWidthM). Se unifica porque ambas hacían
-   * exactamente lo mismo: patch + recompute. */
   const applyStreetPatch = (id: string, patch: { widthM?: number; sideWidthM?: number }) => {
     updateStreet(id, patch);
     void recomputeManzanos();
@@ -81,38 +71,7 @@ export default function StreetPanel() {
   };
 
   return (
-    <div
-      className="cad-panel-glass animate-fade-in"
-      style={{
-        position: 'fixed',
-        left: pos.left,
-        top: pos.top,
-        maxHeight: 'calc(100vh - 160px)',
-        overflowY: 'auto',
-        zIndex: 'var(--z-docked-panel)',
-        padding: '10px 10px',
-        fontSize: '0.72rem',
-        minWidth: 260,
-        maxWidth: 300,
-      }}
-    >
-      <div
-        onMouseDown={onDragHandleMouseDown}
-        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, borderBottom: '1px solid var(--cad-border)', paddingBottom: 6, cursor: 'grab', userSelect: 'none' }}
-      >
-        <span style={{ fontWeight: 700, color: 'var(--cad-text)', letterSpacing: '0.03em' }}>
-          Vías <span style={{ color: 'var(--cad-text-muted)', fontWeight: 400 }}>({streets.length})</span>
-        </span>
-        <button
-          onClick={() => setPanelVisible(false)}
-          style={{ background: 'none', border: 'none', color: 'var(--cad-text-dim)', cursor: 'pointer', fontSize: '0.85rem' }}
-          title="Cerrar"
-          aria-label="Cerrar panel de vías"
-        >
-          ×
-        </button>
-      </div>
-
+    <div style={{ height: '100%', overflowY: 'auto', fontSize: '0.72rem' }}>
       <div style={{ background: 'var(--cad-bg-surface)', borderRadius: 6, padding: 8, marginBottom: 8 }}>
         <div style={{ fontSize: '0.62rem', color: 'var(--cad-accent)', fontWeight: 700, marginBottom: 6, letterSpacing: '0.05em' }}>
           ▾ VALORES POR DEFECTO (próximas calles)

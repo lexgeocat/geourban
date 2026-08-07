@@ -20,6 +20,7 @@ import {
   matchFragmentsBatchInWorker,
 } from '../workers/geoWorkerClient';
 import { confirmAsync } from '../store/ui/confirmDialogStore';
+import { useLeftSidebarStore } from '../store/ui/leftSidebarStore';
 import { ensureKind, getFeatureKind, getLotStatus, setLotStatus } from '../core/objectModel';
 import type { ManzanoLoteMethod } from './subdivision/types';
 import { buildRoadNetworkRings } from './roads/roadNetworkEngine';
@@ -914,7 +915,7 @@ for (const m of group.members) {
   useManzanoStore.getState().pruneToIds(aliveManzanoIds);
 
   if (manzanoCreated) {
-    useManzanoStore.getState().setPanelVisible(true);
+    useLeftSidebarStore.getState().openTab('manzanos');
   }
 
   src.changed();

@@ -21,7 +21,6 @@ interface ManzanoState {
   rotatingId: string | number | null;
   rotateAnchor: [number, number] | null;
   rotateHandle: [number, number] | null;
-  panelVisible: boolean;
   targetAreaM2: number;
   frontMinM: number;
   setMethod: (id: string | number, method: ManzanoLoteMethod) => void;
@@ -36,7 +35,6 @@ interface ManzanoState {
   finishRotateLots: () => { id: string | number; dir: RotateDir } | null;
   cancelRotateLots: () => void;
   toggleCardOpen: (id: string | number) => void;
-  setPanelVisible: (v: boolean) => void;
   setTargetAreaM2: (v: number) => void;
   setFrontMinM: (v: number) => void;
   pruneToIds: (aliveIds: Set<string>) => void;
@@ -53,7 +51,6 @@ export const useManzanoStore = create<ManzanoState>()((set, get) => ({
   rotatingId: null,
   rotateAnchor: null,
   rotateHandle: null,
-  panelVisible: false,
   targetAreaM2: 250,
   frontMinM: 12,
   setMethod: (id, method) => set((s) => ({ methods: { ...s.methods, [String(id)]: method } })),
@@ -101,7 +98,6 @@ export const useManzanoStore = create<ManzanoState>()((set, get) => ({
   cancelRotateLots: () => set({ rotatingId: null, rotateAnchor: null, rotateHandle: null }),
   toggleCardOpen: (id) =>
     set((s) => ({ openCards: { ...s.openCards, [String(id)]: !s.openCards[String(id)] } })),
-  setPanelVisible: (v) => set({ panelVisible: v }),
   setTargetAreaM2: (v) => set({ targetAreaM2: v }),
   setFrontMinM: (v) => set({ frontMinM: v }),
 

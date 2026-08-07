@@ -1,7 +1,6 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
-import { useStreetStore } from '../entities/streetStore';
-import { useRoundaboutStore } from '../entities/roundaboutStore';
+import { useLeftSidebarStore } from '../ui/leftSidebarStore';
 
 export type DrawMode =
   | 'select'
@@ -39,8 +38,8 @@ export const useDrawStore = create<DrawState>()(
     lastDrawnLineId: null,
 
     setMode: (mode) => {
-      if (mode === 'street') useStreetStore.getState().setPanelVisible(true);
-      if (mode === 'roundabout') useRoundaboutStore.getState().setPanelVisible(true);
+      if (mode === 'street') useLeftSidebarStore.getState().openTab('vias');
+      if (mode === 'roundabout') useLeftSidebarStore.getState().openTab('rotondas');
       set((state) => {
         state.mode = mode;
       });
