@@ -523,21 +523,21 @@ async function recomputeManzanosImmediate(recorder: StructuralDiffRecorder): Pro
     for (const group of groups.values()) {
       const manzanos = group.members.filter((m) => getFeatureKind(m) === 'manzana');
       if (manzanos.length === 0) continue;
+      for (const m of manzanos) {
+        const mid = m.getId();
+        if (mid == null) continue;
+        const childLots = lotsByGroupId.get(String(mid));
+        if (!childLots) continue;
+        for (const lot of childLots) {
+          if (src.getFeatureById(lot.getId() as string | number) != null) {
+            recorder.recordRemove(lot);
+            src.removeFeature(lot);
+          }
+        }
+      }
 
       for (let i = 1; i < manzanos.length; i++) {
         const m = manzanos[i] as Feature<Geometry>;
-        const mid = m.getId();
-        if (mid != null) {
-          const childLots = lotsByGroupId.get(String(mid));
-          if (childLots) {
-            for (const lot of childLots) {
-              if (src.getFeatureById(lot.getId() as string | number) != null) {
-                recorder.recordRemove(lot);
-                src.removeFeature(lot);
-              }
-            }
-          }
-        }
         if (src.getFeatureById(m.getId() as string | number) != null) {
           recorder.recordRemove(m);
           src.removeFeature(m);
