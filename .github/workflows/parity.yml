@@ -1,11 +1,5 @@
 name: geometry-engine-parity
 on: [push, pull_request]
-
-# Fase 2.7 — el motor JS (jsts/polygon-clipping) fue retirado; el único
-# motor es el nativo, validado por los unit tests inline (#[cfg(test)]) del
-# crate geourban-geo. Este workflow verifica que el crate compila y pasa su
-# suite con y sin el feature geos-backend.
-
 jobs:
   rust-parity:
     runs-on: ubuntu-latest
@@ -22,9 +16,6 @@ jobs:
           cargo test -p geourban-geo
       - name: test del crate con GEOS
         env:
-          # src-tauri/.cargo/config.toml inyecta rutas de vcpkg (Windows) con
-          # force=false; como aca no estan definidas, hay que forzarlas a las
-          # del sistema o geos-sys no encuentra pkg-config / libgeos.
           PKG_CONFIG: /usr/bin/pkg-config
           PKG_CONFIG_PATH: /usr/share/pkgconfig
           PKG_CONFIG_LIBDIR: /usr/lib/x86_64-linux-gnu/pkgconfig

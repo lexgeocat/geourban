@@ -1,26 +1,14 @@
 name: ci
 
-# Gate principal de CI para el lado TS del repo.
-# - Fase 11.3 del plan de optimización.
-# - Disparadores: push y pull_request a `main`.
-# - Cubre: install, lint, type-check y build de producción de Vite.
-#   (La suite Vitest fue retirada — los tests TS se archivan en el branch
-#   `archive/plan-fases-13`; los tests Rust del motor viven en `parity.yml`.)
-#   No cubre la release de Tauri (`release-tauri.yml`).
-# - Side-effect: ningún job hace deploy ni publica artefactos.
-# - Default branch es `main` (verificado con `git symbolic-ref refs/remotes/origin/HEAD`).
 on:
   push:
-    branches: [ "main" ]
+    branches: ['main']
   pull_request:
-    branches: [ "main" ]
+    branches: ['main']
 
-# Permisos mínimos: solo lectura del código fuente.
 permissions:
   contents: read
 
-# Cancelar corridas previas de la misma branch/PR cuando se pushea un
-# commit nuevo — evita gastar minutos de CI en builds obsoletos.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -47,8 +35,6 @@ jobs:
         run: npm run lint
 
       - name: Type-check (tsc --noEmit)
-        # Cubre tipos sin generar dist; es ~2x más rápido que `npm run build`
-        # y agarra la mayoría de los errores antes del bundle.
         run: npx tsc --noEmit
 
       - name: Build (Vite, producción)

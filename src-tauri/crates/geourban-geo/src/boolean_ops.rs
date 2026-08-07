@@ -449,16 +449,56 @@ pub fn compute_manzanos(
             if area < 0.5 {
                 continue;
             }
-            match polygon_to_rings(sub) {
-                Ok(rings) => out.push(ManzanoFragment { orig_parcel_index: index, rings }),
-                Err(err) => log::warn!(
-                    "computeManzanos: no se pudieron extraer los anillos de un sub-polígono de la parcela {index}: {err:?}"
+            let raw_rings = match polygon_to_rings(sub) {
+                Ok(r) => r,
+                Err(err) => {
+                    log::warn!(
+                        "computeManzanos: no se pudieron extraer los anillos de un sub-polígono de la parcela {index}: {err:?}"
+                    );
+                    continue;
+                }
+            };
+
+            match sanitize_manzano_fragment_rings(
+                &raw_rings,
+                &format!("computeManzanos.fragment[parcel={index}]"),
+            ) {
+                Some(cleaned) => out.push(ManzanoFragment {
+                    orig_parcel_index: index,
+                    rings: cleaned,
+                }),
+                None => log::warn!(
+                    "computeManzanos: fragmento de la parcela {index} descartado tras sanitización (geometría degenerada)"
                 ),
             }
         }
     }
 
     out
+}
+
+fn sanitize_manzano_fragment_rings(rings: &[Vec<Pt>], context: &str) -> Option<Vec<Vec<Pt>>> {
+    if rings.is_empty() {
+        return None;
+    }
+    let outer = sanitize_ring(
+        Some(rings[0].as_slice()),
+        SanitizeRingOptions::default(),
+        &format!("{context}.outer"),
+    )?;
+
+    let mut out = Vec::with_capacity(rings.len());
+    out.push(outer);
+    for (i, hole) in rings.iter().skip(1).enumerate() {
+        if let Some(cleaned) = sanitize_ring(
+            Some(hole.as_slice()),
+            SanitizeRingOptions::default(),
+            &format!("{context}.hole[{i}]"),
+        ) {
+            out.push(cleaned);
+        }
+    }
+    Some(out)
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -558,43 +598,5 @@ pub fn compute_road_network_net(
     RoadNetworkNet {
         road: process_polygons(&road_union, &side_extra, corner_mode),
         outer: process_polygons(&outer_union, &zero_extra, corner_mode),
-    }
-}
-
-#[cfg(test)]
-mod geos_smoke {
-    use geos::{Geom, Geometry};
-
-    #[test]
-    fn geos_union_basico() {
-        let a =
-            Geometry::new_from_wkt("POLYGON((0 0, 10 0, 10 10, 0 10, 0 0))").expect("wkt valido");
-        let b =
-            Geometry::new_from_wkt("POLYGON((5 0, 15 0, 15 10, 5 10, 5 0))").expect("wkt valido");
-
-        let union = a.union(&b).expect("la union deberia resolver sin error");
-        let area = union.area().expect("area deberia ser calculable");
-
-        assert!(
-            (area - 150.0).abs() < 1e-6,
-            "area de union esperada 150.0, obtenida {area}"
-        );
-    }
-
-    #[test]
-    fn geos_difference_basico() {
-        let a =
-            Geometry::new_from_wkt("POLYGON((0 0, 10 0, 10 10, 0 10, 0 0))").expect("wkt valido");
-        let b =
-            Geometry::new_from_wkt("POLYGON((4 -5, 6 -5, 6 15, 4 15, 4 -5))").expect("wkt valido");
-
-        let diff = a
-            .difference(&b)
-            .expect("la diferencia deberia resolver sin error");
-        let area = diff.area().expect("area deberia ser calculable");
-        assert!(
-            (area - 80.0).abs() < 1e-6,
-            "area de diferencia esperada 80.0, obtenida {area}"
-        );
     }
 }

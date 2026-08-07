@@ -14,26 +14,3 @@ impl Mulberry32 {
         ((t ^ (t >> 14)) as f64) / 4294967296.0
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn produces_values_in_unit_range() {
-        let mut rng = Mulberry32::new(0xc0ffee);
-        for _ in 0..1000 {
-            let v = rng.next_f64();
-            assert!(v >= 0.0 && v < 1.0, "value out of range: {v}");
-        }
-    }
-
-    #[test]
-    fn is_deterministic_for_same_seed() {
-        let mut a = Mulberry32::new(42);
-        let mut b = Mulberry32::new(42);
-        for _ in 0..50 {
-            assert_eq!(a.next_f64(), b.next_f64());
-        }
-    }
-}

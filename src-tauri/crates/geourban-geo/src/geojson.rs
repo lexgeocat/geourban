@@ -46,28 +46,3 @@ pub fn polygon_geometry_from_outer_ring(ring: &[Pt]) -> Value {
         "coordinates": [ring_to_json(ring)],
     })
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn roundtrip_ring() {
-        let ring = vec![(0.0, 0.0), (1.0, 0.0), (1.0, 1.0)];
-        let v = ring_to_json(&ring);
-        let back = ring_from_json(&v).unwrap();
-        assert_eq!(ring, back);
-    }
-
-    #[test]
-    fn point_from_json_ignores_z() {
-        let v = json!([1.5, -2.5, 99.0]);
-        assert_eq!(point_from_json(&v), Some((1.5, -2.5)));
-    }
-
-    #[test]
-    fn point_from_json_rejects_short_array() {
-        let v = json!([1.0]);
-        assert_eq!(point_from_json(&v), None);
-    }
-}

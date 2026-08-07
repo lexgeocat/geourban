@@ -26,7 +26,6 @@ import { buildRoadNetworkRings } from './roads/roadNetworkEngine';
 import { roundRingReflex, pointOnRing } from './roads/ringFillet';
 import { resolveOrCreateLayerForKind } from '../store/entities/layerAutoCreate';
 import { pickLayerId } from '../store/entities/layerResolution';
-import { sanitizeFeatureCollectionRings } from './sanitizeGeoJson';
 import { newId } from '../lib/id';
 import {
   StructuralDiffRecorder,
@@ -216,18 +215,6 @@ function roundaboutApproxExtent(r: Roundabout): Extent {
   return [r.center[0] - half, r.center[1] - half, r.center[0] + half, r.center[1] + half];
 }
 
-/**
- * Compara el estado actual de calles+rotondas contra el snapshot previo
- * (cacheado módulo-privado en `lastRoadFingerprints`) y devuelve:
- *  - `current`: el nuevo mapa de fingerprints, listo para ser cacheado
- *    en la próxima invocación.
- *  - `changedExtent`: extent unión de los elementos que cambiaron
- *    (incluye tanto los modificados como los eliminados). `null` si
- *    nada cambió.
- *
- * Función pura: opera solo sobre los argumentos, no muta `prev`, no
- * toca stores. El llamador decide si actualiza el cache global con `current`.
- */
 export function computeRoadFingerprintDelta(
   streets: Street[],
   roundabouts: Roundabout[],
@@ -448,22 +435,6 @@ interface RelotTask {
   layerId?: string;
 }
 
-/**
- * Ejecuta la lista de tareas de re-lotización acumuladas durante la
- * reconciliación de fragmentos. Para cada tarea:
- *  - Si el usuario canceló `allowAutoRelot`, marca el manzano como
- *    `pending` (lotes a regenerar a mano) y guarda el método en el store.
- *  - Si la geometría del manzano ya no es un polígono válido, marca
- *    `pending` y aborta.
- *  - Si todo OK, llama al motor nativo para subdividir el anillo y crea
- *    las features de lote, asignando `layerId` con `resolveLoteLayerId`.
- *
- * Helper interno: encapsula el bloque que vivía inline al final de
- * `recomputeManzanosImmediate` y deja el flujo principal con un solo
- * `await applyRelotTasks(...)`. No cambia el comportamiento ni el orden
- * de las operaciones; cada efecto secundario sobre `src`/`recorder`/
- * `useManzanoStore` se preserva.
- */
 async function applyRelotTasks(
   tasks: RelotTask[],
   allowAutoRelot: boolean,
@@ -546,11 +517,6 @@ async function recomputeManzanosImmediate(recorder: StructuralDiffRecorder): Pro
 
   syncPerimeterLayersVisibility(hasRoadNetwork);
 
-  // ── Rama sin red vial: consolidar manzanos duplicados a la geometría
-  //    raíz del grupo. Sin calles no hay fragmentación por vía, solo
-  //    puede haber N manzanos derivados de la misma parcela que hay que
-  //    colapsar en uno (el primario), descartando los duplicados y sus
-  //    lotes hijos.
   if (!hasRoadNetwork) {
     const { groups, lotsByGroupId } = collectRootGroups(src);
     for (const group of groups.values()) {
@@ -595,28 +561,18 @@ async function recomputeManzanosImmediate(recorder: StructuralDiffRecorder): Pro
     return;
   }
 
-  // ── Rama con red vial: pipeline completo de recompute.
-
-  // Asegura copias "__working" de los perímetros para no mutar la
-  // geometría original del usuario durante la reconciliación.
   ensurePerimeterWorkingCopies(src, recorder);
 
-  // Agrupa features en `OriginGroup` (parcelas raíz + sus miembros ya
-  // subdivididos) e indexa lotes por su `lotGroupId`.
   const { groups, lotsByGroupId } = collectOriginGroups(src);
   if (groups.size === 0) return;
 
   let manzanoCreated = false;
 
-  // Anillos de la red vial (calles + rotondas) recortados contra los
-  // perímetros — lo que se va a restar/intersectar contra las parcelas.
   const roadRings = buildRoadNetworkRings(streets, roundabouts);
   if (roadRings.length === 0) return;
 
   const roadExtentForOrphans = ringsExtent(roadRings);
 
-  // Diff contra el snapshot de vías cacheado: qué extent cambió desde
-  // la última corrida, para acotar el trabajo a las parcelas afectadas.
   const { current: currentFingerprints, changedExtent } = computeRoadFingerprintDelta(
     streets,
     roundabouts,
@@ -624,8 +580,6 @@ async function recomputeManzanosImmediate(recorder: StructuralDiffRecorder): Pro
   );
   lastRoadFingerprints = currentFingerprints;
 
-  // Limpia lotes huérfanos (sin manzano padre) cuya geometría cae dentro
-  // del extent de la red vial: el padre desapareció, los hijos también.
   if (roadExtentForOrphans) {
     for (const [gid, lots] of lotsByGroupId) {
       if (src.getFeatureById(gid) != null) continue;
@@ -685,20 +639,7 @@ async function recomputeManzanosImmediate(recorder: StructuralDiffRecorder): Pro
     console.error('recomputeManzanos: fallo la unión/diferencia de la red vial', err);
     return;
   }
-  // Sanea geometría degenerada que el motor nativo pudo haber devuelto.
-  {
-    const { collection: sanitizedManzanos, droppedCount } = sanitizeFeatureCollectionRings(
-      result,
-    );
-    if (droppedCount > 0) {
-      console.warn(`recomputeManzanos: se descartaron ${droppedCount} fragmento(s) de manzano por geometría degenerada.`);
-    }
-    result = sanitizedManzanos;
-  }
 
-  // Indexa los fragmentos de manzano por `origParcelIndex` (qué parcela
-  // los produjo). Vacío o ausente = la parcela quedó completamente
-  // cubierta por la red vial y no genera manzanos.
   const fragmentsByGroup = new globalThis.Map<number, Pt[][]>();
   result.features.forEach((f: GeoJSONFeature) => {
     const idx = f.properties?.origParcelIndex as number | undefined;
@@ -714,10 +655,6 @@ async function recomputeManzanosImmediate(recorder: StructuralDiffRecorder): Pro
 
   const assignmentsByGroupIdx = new globalThis.Map<number, FragmentAssignment[]>();
   const memberAreaByRefPerGroup = new globalThis.Map<number, globalThis.Map<Feature<Geometry>, number>>();
-  // Prepara tareas de reconciliación: para cada parcel, junta los miembros
-  // existentes (anillos) que se pueden reutilizar con los fragmentos
-  // nuevos que produjo el motor. Cada `reconTask` se manda en batch al
-  // worker para que resuelva la asignación por área de solapamiento.
   const relotCandidates: Array<{ featureId: string; method: ManzanoLoteMethod; dirPref?: { ax: number; ay: number } }> = [];
 
   interface ReconTask {
@@ -771,10 +708,6 @@ async function recomputeManzanosImmediate(recorder: StructuralDiffRecorder): Pro
       return;
     }
 
-    // Resuelve asignaciones del worker y detecta candidatos a re-lotización:
-    // un manzano ya subdividido cambia lo suficiente (>= 8% de área) como
-    // para necesitar regenerar sus lotes. La decisión final se pide al
-    // usuario una sola vez (más abajo, en el bloque `confirmAsync`).
     const resultsByGroupIdx = new globalThis.Map(batchResults.map((r) => [r.groupIdx, r.assignments]));
 
     for (const task of reconTasks) {
@@ -809,8 +742,6 @@ async function recomputeManzanosImmediate(recorder: StructuralDiffRecorder): Pro
     }
   }
 
-  // Prompt único al usuario: si hay re-lotizaciones candidatas, pregunta
-  // una sola vez si las quiere aplicar o prefiere manejar a mano.
   let allowAutoRelot = true;
   if (relotCandidates.length > 0) {
     const plural = relotCandidates.length > 1;
@@ -822,10 +753,6 @@ async function recomputeManzanosImmediate(recorder: StructuralDiffRecorder): Pro
     );
   }
 
-  // ── Reconciliación por parcel: para cada grupo, decide si el fragmento
-  //    se puede reciclar sobre un manzano existente (preserve lotización)
-  //    o si hay que crear uno nuevo. La cola `relotTasks` se consume
-  //    abajo con `applyRelotTasks`, una vez terminada la reconciliación.
   const relotTasks: Array<{ featureId: string; method: ManzanoLoteMethod; dirPref?: { ax: number; ay: number }; layerId?: string }> = [];
 
   for (let idx = 0; idx < parcelIndexToGroup.length; idx++) {
@@ -975,8 +902,6 @@ for (const m of group.members) {
     }
   }
 
-  // ── Cierre: aplica re-lotizaciones, prune de manzanos que ya no existen
-  //    en el drawSource, muestra el panel si se creó al menos uno nuevo.
   await applyRelotTasks(relotTasks, allowAutoRelot, src, recorder, targetAreaM2, frontMinM);
 
   const aliveManzanoIds = new Set<string>();
@@ -1081,16 +1006,6 @@ export async function reapplyRoadCornerMode(): Promise<void> {
     } catch (err) {
       console.error('reapplyRoadCornerMode: fallo la unión/diferencia de la red vial', err);
       return;
-    }
-
-    {
-      const { collection: sanitizedManzanos, droppedCount } = sanitizeFeatureCollectionRings(
-        result,
-      );
-      if (droppedCount > 0) {
-        console.warn(`reapplyRoadCornerMode: se descartaron ${droppedCount} fragmento(s) de manzano por geometría degenerada.`);
-      }
-      result = sanitizedManzanos;
     }
 
     const fragmentsByGroup = new globalThis.Map<number, Pt[][]>();
