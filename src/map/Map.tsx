@@ -306,10 +306,6 @@ export default function MapView() {
       return (f as Feature<Geometry>) ?? undefined;
     };
 
-    const getCloseTarget = (_coordinate: number[]): number[] | null => {
-      return null;
-    };
-
     const getEnabled = () => useDrawStore.getState().mode !== 'erase';
 
     const shouldSnapCoordinate = (eventType: string): boolean => {
@@ -332,7 +328,6 @@ export default function MapView() {
       getAnchor,
       getExcludeFeature,
       getFilter: () => isFeatureLayerVisible,
-      getPriorityTarget: getCloseTarget,
       pixelTolerance: 10,
       onResultChange: (result) => {
         snapIndicatorSrc.clear();

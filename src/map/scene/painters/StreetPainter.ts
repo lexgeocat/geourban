@@ -316,6 +316,49 @@ function getLayerByIdCached(layers: Layer[]): globalThis.Map<string, Layer> {
   return byId;
 }
 
+const NETWORK_CONNECT_MARGIN_M = 1;
+
+function streetFootprintExtent(s: Street): [number, number, number, number] {
+  const half = s.widthM / 2 + Math.max(0, s.sideWidthM ?? 0);
+  const coords = streetAllCoords(s);
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const [x, y] of coords) {
+    if (x < minX) minX = x;
+    if (x > maxX) maxX = x;
+    if (y < minY) minY = y;
+    if (y > maxY) maxY = y;
+  }
+  return [minX - half, minY - half, maxX + half, maxY + half];
+}
+
+function roundaboutFootprintExtent(rb: Roundabout): [number, number, number, number] {
+  const r = rb.radiusM + rb.roadWidthM / 2 + Math.max(0, rb.sidewalkWidthM);
+  return [rb.center[0] - r, rb.center[1] - r, rb.center[0] + r, rb.center[1] + r];
+}
+
+function extentsOverlap(
+  a: [number, number, number, number],
+  b: [number, number, number, number],
+  margin: number,
+): boolean {
+  return !(a[2] + margin < b[0] || b[2] + margin < a[0] || a[3] + margin < b[1] || b[3] + margin < a[1]);
+}
+
+function findTouchingStreetGroupKey(
+  rb: Roundabout,
+  groups: globalThis.Map<string, StreetLayerGroup>,
+): string | null {
+  const rbExtent = roundaboutFootprintExtent(rb);
+  for (const [key, group] of groups) {
+    for (const s of group.streets) {
+      if (extentsOverlap(rbExtent, streetFootprintExtent(s), NETWORK_CONNECT_MARGIN_M)) {
+        return key;
+      }
+    }
+  }
+  return null;
+}
+
 function groupStreetsByLayer(streets: Street[], roundabouts: Roundabout[]): StreetLayerGroup[] {
   const registry = useLayersStore.getState();
   const layers = registry.layers;
@@ -335,10 +378,21 @@ function groupStreetsByLayer(streets: Street[], roundabouts: Roundabout[]): Stre
     const layer = resolveStreetLayer(s, registry, byId);
     getOrCreate(layer?.id ?? NO_LAYER_KEY, layer).streets.push(s);
   }
+
+  // Las rotondas se agrupan con la(s) calle(s) que tocan geométricamente
+  // —aunque estén en otra capa ("Rotonda" vs "Vías")— para que el union
+  // booleano las funda en un solo polígono sin costura. Si no toca
+  // ninguna calle, cae a su propia capa como antes.
   for (const rb of roundabouts) {
+    const touchedKey = findTouchingStreetGroupKey(rb, groups);
+    if (touchedKey) {
+      groups.get(touchedKey)!.roundabouts.push(rb);
+      continue;
+    }
     const layer = resolveRoundaboutLayer(rb, registry, byId);
     getOrCreate(layer?.id ?? NO_LAYER_KEY, layer).roundabouts.push(rb);
   }
+
   return Array.from(groups.values());
 }
 

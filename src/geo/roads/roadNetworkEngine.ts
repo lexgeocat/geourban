@@ -66,19 +66,72 @@ function buildRing(pts: Pt[], half: number): Pt[] {
   return [...left, ...right.reverse()];
 }
 
-function buildStreetOuterRing(street: Street): Pt[] {
-  const half = street.widthM / 2 + Math.max(0, street.sideWidthM ?? 0);
-  return buildRing(streetPolyline(street), half);
+// ─── Fusión calle↔rotonda ──────────────────────────────────────────
+// Si la calle termina justo en el borde de la rotonda, los offsets solo
+// se TOCAN sin superponer área → GEOS no las funde y queda costura.
+// Empujamos el extremo un poco más allá del borde (misma dirección de
+// la calle) para forzar overlap real. Solo afecta el ring de unión, no
+// los datos de la calle.
+const ROUNDABOUT_CONNECT_TOLERANCE_M = 3;
+const ROUNDABOUT_OVERLAP_MARGIN_M = 0.5;
+
+function nudgeEndpointIntoRoundabouts(
+  out: Pt[],
+  idx: number,
+  refIdx: number,
+  roundabouts: RoundaboutParams[],
+  outerRadiusFor: (rb: RoundaboutParams) => number,
+): void {
+  const p = out[idx];
+  const ref = out[refIdx];
+  const dirLen = Math.hypot(p[0] - ref[0], p[1] - ref[1]);
+  if (dirLen < 1e-6) return;
+  const dirX = (p[0] - ref[0]) / dirLen;
+  const dirY = (p[1] - ref[1]) / dirLen;
+
+  for (const rb of roundabouts) {
+    const outerR = outerRadiusFor(rb);
+    const d = Math.hypot(p[0] - rb.center[0], p[1] - rb.center[1]);
+    if (d <= 1e-6 || d > outerR + ROUNDABOUT_CONNECT_TOLERANCE_M) continue;
+    const push = Math.max(0, outerR - d) + ROUNDABOUT_OVERLAP_MARGIN_M;
+    out[idx] = [p[0] + dirX * push, p[1] + dirY * push];
+    return;
+  }
 }
 
-function buildStreetRoadRing(street: Street): Pt[] {
-  return buildRing(streetPolyline(street), street.widthM / 2);
+function nudgePolylineIntoRoundabouts(
+  ptsIn: Pt[],
+  roundabouts: RoundaboutParams[],
+  outerRadiusFor: (rb: RoundaboutParams) => number,
+): Pt[] {
+  if (roundabouts.length === 0 || ptsIn.length < 2) return ptsIn;
+  const out = ptsIn.map((p) => [p[0], p[1]] as Pt);
+  nudgeEndpointIntoRoundabouts(out, 0, 1, roundabouts, outerRadiusFor);
+  nudgeEndpointIntoRoundabouts(out, out.length - 1, out.length - 2, roundabouts, outerRadiusFor);
+  return out;
+}
+
+function sidewalkOuterRadius(rb: RoundaboutParams): number {
+  return rb.radiusM + rb.roadWidthM / 2 + Math.max(0, rb.sidewalkWidthM);
+}
+function roadOuterRadius(rb: RoundaboutParams): number {
+  return rb.radiusM + rb.roadWidthM / 2;
+}
+
+function buildStreetOuterRing(street: Street, roundabouts: RoundaboutParams[]): Pt[] {
+  const half = street.widthM / 2 + Math.max(0, street.sideWidthM ?? 0);
+  const pts = nudgePolylineIntoRoundabouts(streetPolyline(street), roundabouts, sidewalkOuterRadius);
+  return buildRing(pts, half);
+}
+
+function buildStreetRoadRing(street: Street, roundabouts: RoundaboutParams[]): Pt[] {
+  const pts = nudgePolylineIntoRoundabouts(streetPolyline(street), roundabouts, roadOuterRadius);
+  return buildRing(pts, street.widthM / 2);
 }
 
 function buildRoundaboutOuterRing(rb: RoundaboutParams): Pt[] {
   return roundaboutGeometry(rb).sideOuter;
 }
-
 function buildRoundaboutRoadRing(rb: RoundaboutParams): Pt[] {
   return roundaboutGeometry(rb).roadOuter;
 }
@@ -90,7 +143,7 @@ export function buildRoadNetworkRings(
   const rings: Pt[][] = [];
   for (const s of streets) {
     if (s.widthM <= 0) continue;
-    const ring = buildStreetOuterRing(s);
+    const ring = buildStreetOuterRing(s, roundabouts);
     if (ring.length >= 3) rings.push(ring);
   }
   for (const rb of roundabouts) {
@@ -107,7 +160,7 @@ export function buildRoadOnlyRings(
   const rings: Pt[][] = [];
   for (const s of streets) {
     if (s.widthM <= 0) continue;
-    const ring = buildStreetRoadRing(s);
+    const ring = buildStreetRoadRing(s, roundabouts);
     if (ring.length >= 3) rings.push(ring);
   }
   for (const rb of roundabouts) {

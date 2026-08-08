@@ -14,7 +14,6 @@ export class RoundaboutDrawInteraction extends Interaction {
 
   private center: number[] | null = null;
   private current: number[] | null = null;
-  private dragging = false;
 
   constructor(options: {
     map: Map;
@@ -40,28 +39,34 @@ export class RoundaboutDrawInteraction extends Interaction {
   private handleEvent_(evt: MapBrowserEvent): boolean {
     const type = evt.type;
 
-    if (type === 'pointerdown') {
+    // Mientras hay un centro fijado (esperando el 2do clic), seguimos el
+    // mouse para el preview del radio.
+    if (type === 'pointermove' || type === 'pointerdrag') {
+      if (this.center) {
+        this.current = evt.coordinate as number[];
+        this.hostMap.render();
+        return false;
+      }
+      return true;
+    }
+
+    if (type === 'click') {
       if (!this.isPrimaryButton(evt)) return true;
-      this.center = evt.coordinate as number[];
-      this.current = this.center;
-      this.dragging = true;
-      this.hostMap.render();
-      return false;
-    }
 
-    if ((type === 'pointerdrag' || type === 'pointermove') && this.dragging) {
-      this.current = evt.coordinate as number[];
-      this.hostMap.render();
-      return false;
-    }
+      if (!this.center) {
+        // 1er clic: fija el centro.
+        this.center = evt.coordinate as number[];
+        this.current = this.center;
+        this.hostMap.render();
+        return false;
+      }
 
-    if (type === 'pointerup' && this.dragging) {
+      // 2do clic: confirma el radio.
       const coord = evt.coordinate as number[];
-      const center = this.center!;
+      const center = this.center;
       const radius = Math.hypot(coord[0] - center[0], coord[1] - center[1]);
       this.center = null;
       this.current = null;
-      this.dragging = false;
       this.hostMap.render();
       if (radius < 0.5) this.onCancel();
       else this.onComplete(center, radius);

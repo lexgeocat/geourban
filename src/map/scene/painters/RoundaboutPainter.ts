@@ -60,8 +60,6 @@ export class RoundaboutPainter {
       const op = layer.opacity ?? 1;
 
       const geom = roundaboutGeometry(rb, resolution);
-      this.strokeRing(ctx, geom.sideOuter, toPx, withAlpha(color, 0.55 * op), 1.5);
-      this.strokeRing(ctx, geom.roadOuter, toPx, withAlpha(color, 0.75 * op), 2);
       if (geom.island) {
         this.strokeRing(ctx, geom.island, toPx, 'rgba(63, 185, 80, 0.6)', 1.25);
       }

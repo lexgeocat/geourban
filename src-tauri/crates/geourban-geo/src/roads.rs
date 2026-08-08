@@ -74,13 +74,65 @@ fn build_ring(pts: &[Pt], half: f64) -> Vec<Pt> {
     out
 }
 
-fn build_street_outer_ring(street: &Street) -> Vec<Pt> {
-    let half = street.width_m / 2.0 + street.side_width_m.max(0.0);
-    build_ring(&street_polyline(street), half)
+const RB_CONNECT_TOLERANCE_M: f64 = 3.0;
+const RB_OVERLAP_MARGIN_M: f64 = 0.5;
+
+fn nudge_endpoint_into_roundabouts(
+    out: &mut [Pt],
+    idx: usize,
+    ref_idx: usize,
+    roundabouts: &[RoundaboutParams],
+    outer_radius_for: &dyn Fn(&RoundaboutParams) -> f64,
+) {
+    let p = out[idx];
+    let r = out[ref_idx];
+    let dir_len = (p.0 - r.0).hypot(p.1 - r.1);
+    if dir_len < 1e-6 {
+        return;
+    }
+    let dir_x = (p.0 - r.0) / dir_len;
+    let dir_y = (p.1 - r.1) / dir_len;
+
+    for rb in roundabouts {
+        let outer_r = outer_radius_for(rb);
+        let d = (p.0 - rb.center.0).hypot(p.1 - rb.center.1);
+        if d <= 1e-6 || d > outer_r + RB_CONNECT_TOLERANCE_M {
+            continue;
+        }
+        let push = (outer_r - d).max(0.0) + RB_OVERLAP_MARGIN_M;
+        out[idx] = (p.0 + dir_x * push, p.1 + dir_y * push);
+        return;
+    }
 }
 
-fn build_street_road_ring(street: &Street) -> Vec<Pt> {
-    build_ring(&street_polyline(street), street.width_m / 2.0)
+fn nudge_polyline_into_roundabouts(
+    pts: &[Pt],
+    roundabouts: &[RoundaboutParams],
+    outer_radius_for: &dyn Fn(&RoundaboutParams) -> f64,
+) -> Vec<Pt> {
+    if roundabouts.is_empty() || pts.len() < 2 {
+        return pts.to_vec();
+    }
+    let mut out = pts.to_vec();
+    let n = out.len();
+    nudge_endpoint_into_roundabouts(&mut out, 0, 1, roundabouts, outer_radius_for);
+    nudge_endpoint_into_roundabouts(&mut out, n - 1, n - 2, roundabouts, outer_radius_for);
+    out
+}
+
+fn build_street_outer_ring(street: &Street, roundabouts: &[RoundaboutParams]) -> Vec<Pt> {
+    let half = street.width_m / 2.0 + street.side_width_m.max(0.0);
+    let pts = nudge_polyline_into_roundabouts(&street_polyline(street), roundabouts, &|rb: &RoundaboutParams| {
+        rb.radius_m + rb.road_width_m / 2.0 + rb.sidewalk_width_m.max(0.0)
+    });
+    build_ring(&pts, half)
+}
+
+fn build_street_road_ring(street: &Street, roundabouts: &[RoundaboutParams]) -> Vec<Pt> {
+    let pts = nudge_polyline_into_roundabouts(&street_polyline(street), roundabouts, &|rb: &RoundaboutParams| {
+        rb.radius_m + rb.road_width_m / 2.0
+    });
+    build_ring(&pts, street.width_m / 2.0)
 }
 
 fn build_roundabout_outer_ring(rb: &RoundaboutParams) -> Vec<Pt> {
@@ -100,7 +152,7 @@ pub fn build_road_network_rings(
         if s.width_m <= 0.0 {
             continue;
         }
-        let ring = build_street_outer_ring(s);
+        let ring = build_street_outer_ring(s, roundabouts);
         if ring.len() >= 3 {
             rings.push(ring);
         }
@@ -120,7 +172,7 @@ pub fn build_road_only_rings(streets: &[Street], roundabouts: &[RoundaboutParams
         if s.width_m <= 0.0 {
             continue;
         }
-        let ring = build_street_road_ring(s);
+        let ring = build_street_road_ring(s, roundabouts);
         if ring.len() >= 3 {
             rings.push(ring);
         }
