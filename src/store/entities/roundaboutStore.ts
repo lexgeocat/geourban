@@ -15,8 +15,6 @@ interface RoundaboutState {
   defaultRoadWidthM: number;
   defaultSidewalkWidthM: number;
 
-  visible: boolean;
-
   addRoundabout: (r: RoundaboutParams) => string;
   addRoundaboutWithId: (id: string, r: RoundaboutParams) => void;
   updateRoundabout: (id: string, patch: Partial<RoundaboutParams>) => void;
@@ -27,7 +25,6 @@ interface RoundaboutState {
   setDefaultSides: (v: number) => void;
   setDefaultRoadWidth: (v: number) => void;
   setDefaultSidewalkWidth: (v: number) => void;
-  setVisible: (v: boolean) => void;
 }
 
 let nextId = 1;
@@ -55,8 +52,6 @@ export const useRoundaboutStore = create<RoundaboutState>()(
     defaultRoadWidthM: 8,
     defaultSidewalkWidthM: 2,
 
-    visible: true,
-
     addRoundabout: (r) => {
       let newId = '';
       set((state) => {
@@ -82,7 +77,9 @@ export const useRoundaboutStore = create<RoundaboutState>()(
     removeRoundabout: (id) =>
       set((state) => {
         state.roundabouts = state.roundabouts.filter((r) => r.id !== id);
-        state.roundabouts.forEach((r, i) => { r.name = autoName(i); });
+        state.roundabouts.forEach((r, i) => {
+          r.name = autoName(i);
+        });
       }),
 
     clearRoundabouts: () =>
@@ -91,10 +88,21 @@ export const useRoundaboutStore = create<RoundaboutState>()(
         resetNextId();
       }),
 
-    setDefaultRadius: (v) => set((state) => { state.defaultRadiusM = Math.max(1, v); }),
-    setDefaultSides: (v) => set((state) => { state.defaultSides = v; }),
-    setDefaultRoadWidth: (v) => set((state) => { state.defaultRoadWidthM = Math.max(1, v); }),
-    setDefaultSidewalkWidth: (v) => set((state) => { state.defaultSidewalkWidthM = Math.max(0, v); }),
-    setVisible: (v) => set((state) => { state.visible = v; }),
-  })),
+    setDefaultRadius: (v) =>
+      set((state) => {
+        state.defaultRadiusM = Math.max(1, v);
+      }),
+    setDefaultSides: (v) =>
+      set((state) => {
+        state.defaultSides = v;
+      }),
+    setDefaultRoadWidth: (v) =>
+      set((state) => {
+        state.defaultRoadWidthM = Math.max(1, v);
+      }),
+    setDefaultSidewalkWidth: (v) =>
+      set((state) => {
+        state.defaultSidewalkWidthM = Math.max(0, v);
+      }),
+  }))
 );

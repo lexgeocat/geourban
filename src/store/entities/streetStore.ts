@@ -16,7 +16,6 @@ interface StreetState {
   streets: Street[];
   defaultWidthM: number;
   defaultSideWidthM: number;
-  visible: boolean;
 
   addStreet: (
     street: Omit<Street, 'id' | 'name' | 'sideWidthM'> & { sideWidthM?: number }
@@ -27,7 +26,6 @@ interface StreetState {
   clearStreets: () => void;
   setDefaultWidth: (w: number) => void;
   setDefaultSideWidth: (w: number) => void;
-  setVisible: (v: boolean) => void;
 }
 
 let nextId = 1;
@@ -51,7 +49,6 @@ export const useStreetStore = create<StreetState>()(
     streets: [],
     defaultWidthM: 8,
     defaultSideWidthM: 2,
-    visible: true,
 
     addStreet: (street) => {
       let newId = '';
@@ -90,7 +87,9 @@ export const useStreetStore = create<StreetState>()(
     removeStreet: (id) =>
       set((state) => {
         state.streets = state.streets.filter((s) => s.id !== id);
-        state.streets.forEach((s, i) => { s.name = autoName(i); });
+        state.streets.forEach((s, i) => {
+          s.name = autoName(i);
+        });
       }),
 
     clearStreets: () =>
@@ -107,11 +106,6 @@ export const useStreetStore = create<StreetState>()(
     setDefaultSideWidth: (w) =>
       set((state) => {
         state.defaultSideWidthM = Math.max(0, w);
-      }),
-
-    setVisible: (v) =>
-      set((state) => {
-        state.visible = v;
       }),
   }))
 );

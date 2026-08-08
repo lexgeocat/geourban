@@ -1,14 +1,6 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
-import type Feature from 'ol/Feature.js';
-import type Geometry from 'ol/geom/Geometry.js';
-import {
-  UNASSIGNED_LAYER_ID,
-  createUnassignedLayer,
-  isLayerKind,
-  type Layer,
-  type LayerKind,
-} from '../../core/objectModel';
+import { isLayerKind, type Layer, type LayerKind } from '../../core/objectModel';
 
 export type LayerState = {
   layers: Layer[];
@@ -19,20 +11,15 @@ export type LayerState = {
   remove: (id: string) => void;
   update: (patch: Partial<Layer> & { id: string }) => void;
   reorder: (ids: string[], position: number) => void;
-  toggleLock: (id: string) => void;
-  toggleVisibility: (id: string) => void;
   isolatedLayerId: string | null;
   isolatePrevVisibility: Record<string, boolean> | null;
   toggleIsolate: (id: string) => void;
   setActiveLayer: (id: string | null) => void;
   loadLayers: (layers: Layer[], activeLayerId?: string | null) => void;
   resetToEmpty: () => void;
-  reconcileOrphanFeatures: (features: Feature<Geometry>[]) => number;
   getById: (id: string) => Layer | undefined;
-  getVisible: () => Layer[];
   hasKindVisible: (kind: string) => boolean;
   getLayerForKind: (kind: string) => Layer | undefined;
-  getKind: (id: string) => LayerKind | null;
 };
 
 export const useLayersStore = create<LayerState>()(
@@ -62,9 +49,7 @@ export const useLayersStore = create<LayerState>()(
         const index = state.index.get(id);
         if (index === undefined) return;
         state.layers.splice(index, 1);
-        state.index = new Map(
-          state.layers.map((layer, idx) => [layer.id, idx])
-        );
+        state.index = new Map(state.layers.map((layer, idx) => [layer.id, idx]));
       }),
 
     update: (patch) =>
@@ -74,9 +59,7 @@ export const useLayersStore = create<LayerState>()(
         Object.assign(state.layers[index], patch);
         if ('zIndex' in patch) {
           state.layers.sort((a, b) => a.zIndex - b.zIndex);
-          state.index = new Map(
-            state.layers.map((layer, idx) => [layer.id, idx])
-          );
+          state.index = new Map(state.layers.map((layer, idx) => [layer.id, idx]));
         }
         if (patch.locked === true && state.activeLayerId === patch.id) {
           state.activeLayerId = null;
@@ -92,9 +75,7 @@ export const useLayersStore = create<LayerState>()(
           .map((id) => state.layers[state.index.get(id)!])
           .filter((layer): layer is Layer => layer !== undefined);
 
-        state.layers = state.layers.filter(
-          (layer) => !existingIds.includes(layer.id)
-        );
+        state.layers = state.layers.filter((layer) => !existingIds.includes(layer.id));
 
         const before = state.layers.slice(0, position);
         const after = state.layers.slice(position);
@@ -104,27 +85,7 @@ export const useLayersStore = create<LayerState>()(
           layer.zIndex = idx;
         });
 
-        state.index = new Map(
-          state.layers.map((layer, idx) => [layer.id, idx])
-        );
-      }),
-
-    toggleLock: (id) =>
-      set((state) => {
-        const index = state.index.get(id);
-        if (index === undefined) return;
-        const nextLocked = !state.layers[index].locked;
-        state.layers[index].locked = nextLocked;
-        if (nextLocked && state.activeLayerId === id) {
-          state.activeLayerId = null;
-        }
-      }),
-
-    toggleVisibility: (id) =>
-      set((state) => {
-        const index = state.index.get(id);
-        if (index === undefined) return;
-        state.layers[index].visible = !state.layers[index].visible;
+        state.index = new Map(state.layers.map((layer, idx) => [layer.id, idx]));
       }),
 
     isolatedLayerId: null,
@@ -180,52 +141,18 @@ export const useLayersStore = create<LayerState>()(
         state.isolatePrevVisibility = null;
       }),
 
-    reconcileOrphanFeatures: (features) => {
-      const validIds = new Set(get().layers.map((l) => l.id));
-      const orphans = features.filter((f) => {
-        const layerId = f.get('layerId') as string | undefined;
-        return !!layerId && !validIds.has(layerId);
-      });
-      if (orphans.length === 0) return 0;
-
-      if (!validIds.has(UNASSIGNED_LAYER_ID)) {
-        set((state) => {
-          state.layers.push(createUnassignedLayer(state.layers.length));
-          state.index = new Map(state.layers.map((l, idx) => [l.id, idx]));
-        });
-      }
-      for (const f of orphans) f.set('layerId', UNASSIGNED_LAYER_ID);
-      return orphans.length;
-    },
-
     /* ---------- Queries ---------- */
     getById: (id) => {
       const index = get().index.get(id);
       return index !== undefined ? get().layers[index] : undefined;
     },
 
-    getVisible: () => {
-      return get().layers
-        .filter((layer) => layer.visible)
-        .sort((a, b) => a.zIndex - b.zIndex);
-    },
-
     hasKindVisible: (kind) => {
-      return get().layers.some(
-        (layer) => layer.visible && layer.kind === kind
-      );
+      return get().layers.some((layer) => layer.visible && layer.kind === kind);
     },
 
     getLayerForKind: (kind) => {
       return get().layers.find((layer) => layer.kind === kind);
-    },
-
-    /* ---------- LayerKind queries---------- */
-    getKind: (id) => {
-      const index = get().index.get(id);
-      if (index === undefined) return null;
-      const k = get().layers[index].kind;
-      return isLayerKind(k) ? k : null;
     },
   }))
 );
