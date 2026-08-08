@@ -48,5 +48,5 @@ export function activateRoundabout(ctx: ModeContext): void {
   };
   map.on('postrender', onRoundaboutPreview);
   ctx.addCleanup(() => map.un('postrender', onRoundaboutPreview));
-  +ctx.addCleanup(() => ctx.postrenderPainter?.setRoundaboutPreview(null)); // limpia preview huérfano
+  ctx.addCleanup(() => ctx.postrenderPainter?.setRoundaboutPreview(null)); // limpia preview huérfano
 }

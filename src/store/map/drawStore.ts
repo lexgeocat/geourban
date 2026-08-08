@@ -14,27 +14,19 @@ export type DrawMode =
   | 'none';       // No tool selected (for UI state)
 
 /** Tipo de feature que se creará al dibujar un polígono */
-export type DrawKind = 'lote';
 
 type DrawState = {
   mode: DrawMode;
-  areaKind: DrawKind;
   lastDrawnLineId: string | number | null;
 
   /* ----- Mutations ----- */
   setMode: (mode: DrawMode) => void;
   setLastDrawnLineId: (id: string | number | null) => void;
-  setAreaKind: (kind: DrawKind) => void;
-
-  /* ----- Queries ----- */
-  getCanDraw?: () => boolean;
-  getIsToolActive?: (tool: DrawMode) => boolean;
 };
 
 export const useDrawStore = create<DrawState>()(
-  immer((set, get) => ({
+  immer((set) => ({
     mode: 'select',
-    areaKind: 'lote', // Por defecto se crean lotes
     lastDrawnLineId: null,
 
     setMode: (mode) => {
@@ -49,19 +41,5 @@ export const useDrawStore = create<DrawState>()(
       set((state) => {
         state.lastDrawnLineId = id;
       }),
-
-    setAreaKind: (kind) =>
-      set((state) => {
-        state.areaKind = kind;
-      }),
-
-    /* Helper queries - added for UI component compatibility */
-    getCanDraw: () => {
-      return !['select', 'edit', 'none'].includes(get().mode);
-    },
-
-    getIsToolActive: (tool) => {
-      return get().mode === tool;
-    },
   }))
 );

@@ -107,13 +107,6 @@ export class SpatialIndex {
   get size(): number {
     return this._size;
   }
-
-  clear(): void {
-    this.tree.clear();
-    this.featureMap.clear();
-    this.itemMap.clear();
-    this._size = 0;
-  }
 }
 
 let globalSpatialIndex: SpatialIndex | null = null;

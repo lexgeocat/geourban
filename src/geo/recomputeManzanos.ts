@@ -233,7 +233,7 @@ function roundaboutApproxExtent(r: Roundabout): Extent {
   return [r.center[0] - half, r.center[1] - half, r.center[0] + half, r.center[1] + half];
 }
 
-export function computeRoadFingerprintDelta(
+function computeRoadFingerprintDelta(
   streets: Street[],
   roundabouts: Roundabout[],
   prev: Map<string, RoadElementFingerprint>

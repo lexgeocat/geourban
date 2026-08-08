@@ -32,7 +32,6 @@ export function useTopBarActions() {
     useLayersStore.getState().resetToEmpty();
     useManzanoStore.getState().resetAll();
     useDrawStore.getState().setMode('select');
-    useDrawStore.getState().setAreaKind('lote');
     useDrawStore.getState().setLastDrawnLineId(null);
     refreshSourceMetrics(drawSource);
     drawSource.changed();

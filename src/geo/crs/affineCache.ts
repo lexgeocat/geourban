@@ -10,7 +10,7 @@ import {
 } from './affineApprox';
 
 /** Margen de error aceptado — alarma de diagnóstico, no bloquea el uso de la matriz. */
-export const MAX_ACCEPTABLE_ERROR_M = 0.01;
+const MAX_ACCEPTABLE_ERROR_M = 0.01;
 export const LOCAL_TANGENT_PLANE_KEY = '__local-tangent-plane__';
 
 const PADDING_FACTOR = 0.35;

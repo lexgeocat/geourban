@@ -6,12 +6,10 @@ import Polygon from 'ol/geom/Polygon.js';
 import MultiPoint from 'ol/geom/MultiPoint.js';
 import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
-import { useDrawStore } from '../../../store/map/drawStore';
 import { runCommand } from '../../../commands/core/CommandStack';
 import { AddFeatureCommand } from '../../../commands/features/AddFeatureCommand';
 import { updateFeatureMetrics, projectPathToMetricPlane } from '../../../geo/metrics';
 import { createLiveDrawingLabelStyle } from '../../styleFactory';
-import { requireLayerForKind } from '../../../store/ui/layerPickerStore';
 import { resolveOrCreateLayerForKind } from '../../../store/entities/layerAutoCreate';
 import type { ModeContext } from './ModeContext';
 
@@ -87,28 +85,12 @@ export function activatePolygon(ctx: ModeContext): void {
 
   draw.on('drawend', (event) => {
     const feature = event.feature as Feature<Geometry>;
-    const areaKind = useDrawStore.getState().areaKind;
-
-    if (areaKind === 'lote') {
-      const layerId = resolveOrCreateLayerForKind('perimetro');
-      void (async () => {
-        await runCommand(
-          new AddFeatureCommand(feature, { mode: 'claim', label: 'Dibujar perímetro', kind: 'perimetro', layerId }),
-        );
-        updateFeatureMetrics(feature);
-        ctx.refreshLayers();
-      })();
-      return;
-    }
+    const layerId = resolveOrCreateLayerForKind('perimetro');
 
     void (async () => {
-      const layerId = await requireLayerForKind(areaKind);
-      if (!layerId) {
-        src.removeFeature(feature);
-        src.changed();
-        return;
-      }
-      await runCommand(new AddFeatureCommand(feature, { mode: 'claim', label: 'Dibujar polígono', kind: areaKind, layerId }));
+      await runCommand(
+        new AddFeatureCommand(feature, { mode: 'claim', label: 'Dibujar perímetro', kind: 'perimetro', layerId }),
+      );
       updateFeatureMetrics(feature);
       ctx.refreshLayers();
     })();

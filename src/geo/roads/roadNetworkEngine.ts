@@ -17,7 +17,7 @@ function streetPolyline(street: Street): Pt[] {
 
 const MITER_LIMIT = 4;
 
-export function offsetPolylineMiter(pts: Pt[], d: number): Pt[] {
+function offsetPolylineMiter(pts: Pt[], d: number): Pt[] {
   const n = pts.length;
   if (n < 2) return pts.map((p) => [p[0], p[1]] as Pt);
 
@@ -114,26 +114,14 @@ function nudgePolylineIntoRoundabouts(
 function sidewalkOuterRadius(rb: RoundaboutParams): number {
   return rb.radiusM + rb.roadWidthM / 2 + Math.max(0, rb.sidewalkWidthM);
 }
-function roadOuterRadius(rb: RoundaboutParams): number {
-  return rb.radiusM + rb.roadWidthM / 2;
-}
-
 function buildStreetOuterRing(street: Street, roundabouts: RoundaboutParams[]): Pt[] {
   const half = street.widthM / 2 + Math.max(0, street.sideWidthM ?? 0);
   const pts = nudgePolylineIntoRoundabouts(streetPolyline(street), roundabouts, sidewalkOuterRadius);
   return buildRing(pts, half);
 }
 
-function buildStreetRoadRing(street: Street, roundabouts: RoundaboutParams[]): Pt[] {
-  const pts = nudgePolylineIntoRoundabouts(streetPolyline(street), roundabouts, roadOuterRadius);
-  return buildRing(pts, street.widthM / 2);
-}
-
 function buildRoundaboutOuterRing(rb: RoundaboutParams): Pt[] {
   return roundaboutGeometry(rb).sideOuter;
-}
-function buildRoundaboutRoadRing(rb: RoundaboutParams): Pt[] {
-  return roundaboutGeometry(rb).roadOuter;
 }
 
 export function buildRoadNetworkRings(
@@ -148,23 +136,6 @@ export function buildRoadNetworkRings(
   }
   for (const rb of roundabouts) {
     const ring = buildRoundaboutOuterRing(rb);
-    if (ring.length >= 3) rings.push(ring);
-  }
-  return rings;
-}
-
-export function buildRoadOnlyRings(
-  streets: Street[],
-  roundabouts: RoundaboutParams[] = [],
-): Pt[][] {
-  const rings: Pt[][] = [];
-  for (const s of streets) {
-    if (s.widthM <= 0) continue;
-    const ring = buildStreetRoadRing(s, roundabouts);
-    if (ring.length >= 3) rings.push(ring);
-  }
-  for (const rb of roundabouts) {
-    const ring = buildRoundaboutRoadRing(rb);
     if (ring.length >= 3) rings.push(ring);
   }
   return rings;

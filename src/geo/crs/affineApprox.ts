@@ -305,18 +305,3 @@ export function fitLocalTangentPlane(extent3857: Extent): AffineFitResult {
   const maxErrorM = maxResidual(finalTransform, src, dst);
   return { transform: finalTransform, maxErrorM, extent: extent3857 };
 }
-
-/**
- * Punto de referencia EXACTO del plano tangente local (misma fórmula
- * esférica que usa fitLocalTangentPlane para medir su propio residuo).
- */
-export function referenceLocalTangentPoint(
-  pt: readonly [number, number],
-  extent3857: Extent,
-): [number, number] {
-  const [minX, minY, maxX, maxY] = extent3857;
-  const centerX = (minX + maxX) / 2;
-  const centerY = (minY + maxY) / 2;
-  const lat0 = mercatorYToLatRad(centerY);
-  return exactTangentPoint(pt, centerX, lat0);
-}

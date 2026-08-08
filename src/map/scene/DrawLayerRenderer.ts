@@ -9,9 +9,7 @@ import { useLayersStore } from '../../store/entities/layersRegistryStore';
 import type { Layer } from '../../core/objectModel';
 
 export type WorkVisibility = {
-  lots: boolean;
   streets: boolean;
-  measurements: boolean;
 };
 
 export interface DrawLayers {

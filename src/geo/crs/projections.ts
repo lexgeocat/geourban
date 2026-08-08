@@ -1,2 +1,1 @@
-export const GEOGRAPHIC_PROJECTION = 'EPSG:4326';
 export const DISPLAY_PROJECTION = 'EPSG:3857';

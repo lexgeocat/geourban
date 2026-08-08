@@ -32,7 +32,7 @@ import SnapEngine from './snapInteraction';
 import { RotateLotsInteraction } from './scene/RotateLotsInteraction';
 import { useRoundaboutStore } from '../store/entities/roundaboutStore';
 import { getOrCreateSpatialIndex } from './spatialIndex';
-import { getOrCreateRoadSnapSource } from './roadSnapSource';
+import { getOrCreateRoadSnapSource, disposeRoadSnapSource } from './roadSnapSource';
 import { reloadRustSpatialIndex, queueRustSpatialUpsert, queueRustSpatialRemove } from './rustSpatialIndex';
 import { ensureUtmZoneRegistered } from '../geo/crs/utmZones';
 import { useManzanoStore } from '../store/entities/manzanoStore';
@@ -71,11 +71,7 @@ export default function MapView() {
     if (!mapDivRef.current) return;
 
     const initialWorkVisibility: WorkVisibility = {
-      lots:
-        useLayersStore.getState().hasKindVisible('lote') ||
-        useLayersStore.getState().hasKindVisible('manzana'),
       streets: useLayersStore.getState().hasKindVisible('calle'),
-      measurements: true,
     };
     const drawLayers = buildDrawLayers(initialWorkVisibility);
     const drawSrc = drawLayers.source;
@@ -377,6 +373,7 @@ const rotateLotsInteraction = new RotateLotsInteraction(map, (id, dir) => {
       interactionCtrlRef.current = null;
       detachWebglRenderer();
       webglRendererRef.current = null;
+      disposeRoadSnapSource();
       map.removeInteraction(snapEngine);
       snapEngineRef.current = null;
       rotateLotsCleanupRef.current?.();

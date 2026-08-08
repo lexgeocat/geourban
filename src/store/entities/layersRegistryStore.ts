@@ -30,11 +30,9 @@ export type LayerState = {
   reconcileOrphanFeatures: (features: Feature<Geometry>[]) => number;
   getById: (id: string) => Layer | undefined;
   getVisible: () => Layer[];
-  count: () => number;
   hasKindVisible: (kind: string) => boolean;
   getLayerForKind: (kind: string) => Layer | undefined;
   getKind: (id: string) => LayerKind | null;
-  hasKind: (kind: LayerKind) => boolean;
 };
 
 export const useLayersStore = create<LayerState>()(
@@ -212,10 +210,6 @@ export const useLayersStore = create<LayerState>()(
         .sort((a, b) => a.zIndex - b.zIndex);
     },
 
-    count: () => {
-      return get().layers.length;
-    },
-
     hasKindVisible: (kind) => {
       return get().layers.some(
         (layer) => layer.visible && layer.kind === kind
@@ -232,9 +226,6 @@ export const useLayersStore = create<LayerState>()(
       if (index === undefined) return null;
       const k = get().layers[index].kind;
       return isLayerKind(k) ? k : null;
-    },
-    hasKind: (kind) => {
-      return get().layers.some((l) => l.kind === kind);
     },
   }))
 );

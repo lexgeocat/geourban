@@ -15,7 +15,6 @@ type SelectionState = {
   toggle: (id: string | number, additive?: boolean) => void;
   clear: () => void;
   has: (id: string | number) => boolean;
-  count: () => number;
 
   setSelectMode: (m: SelectMode) => void;
 };
@@ -71,7 +70,6 @@ export const useSelectionStore = create<SelectionState>()(
       }),
 
     has: (id) => get().selectedIds.has(id),
-    count: () => get().selectedIds.size,
 
     setSelectMode: (m) =>
       set((state) => {
