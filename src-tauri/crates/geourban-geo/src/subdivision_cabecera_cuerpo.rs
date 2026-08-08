@@ -843,6 +843,7 @@ fn hb_build_body_zone(
     u_min: f64,
     u_max: f64,
     min_frente: f64,
+    target_lot_area: f64, // <-- NUEVO
     area_up_to: &dyn Fn(f64) -> f64,
     n_rows: i64,
     n_cols: i64,
@@ -951,15 +952,77 @@ fn hb_build_body_zone(
             continue;
         }
         let row_len_u = (rb - ra).abs();
+
         let local_ancho = if row_len_u > 1e-9 {
             row_area / row_len_u
         } else {
             0.0
         };
+
         let force_single_col =
             min_frente > 0.0 && n_cols > 1 && (local_ancho / n_cols as f64) <= min_frente;
-        let n_cols_here = if force_single_col { 1 } else { n_cols };
 
+        if force_single_col {
+            let n_sub = if target_lot_area > 1e-6 {
+                ((row_area / target_lot_area).round() as i64).max(1)
+            } else {
+                1
+            };
+
+            if n_sub <= 1 {
+                lots.push(HbLot {
+                    pts: strip_poly,
+                    area: row_area,
+                    zone: "body".to_string(),
+                    is_remainder: false,
+                });
+                *lot_budget -= 1;
+                continue;
+            }
+
+            let area_at_ra = area_up_to(ra);
+            let sub_target = row_area / n_sub as f64;
+            let mut sub_cuts: Vec<f64> = vec![ra];
+            for k in 0..n_sub - 1 {
+                if !tick_op_budget() {
+                    break;
+                }
+                let a_target = area_at_ra + (k + 1) as f64 * sub_target;
+                let cut = bisect(area_up_to, ra, rb, a_target).max(ra).min(rb);
+                sub_cuts.push(cut);
+            }
+            sub_cuts.push(rb);
+
+            for k in 0..sub_cuts.len().saturating_sub(1) {
+                if *lot_budget == 0 {
+                    break;
+                }
+                let sa = sub_cuts[k];
+                let sb = sub_cuts[k + 1];
+                if sb <= sa + 1e-9 {
+                    continue;
+                }
+                let mut sub_poly = hb_clip_poly_half(work_poly, ux, uy, 1.0, sa);
+                sub_poly = hb_clip_poly_half(&sub_poly, ux, uy, -1.0, -sb);
+                if sub_poly.len() < 3 {
+                    continue;
+                }
+                let sub_area = poly_area(&sub_poly);
+                if sub_area < 1e-6 {
+                    continue;
+                }
+                lots.push(HbLot {
+                    pts: sub_poly,
+                    area: sub_area,
+                    zone: "body".to_string(),
+                    is_remainder: false,
+                });
+                *lot_budget -= 1;
+            }
+            continue;
+        }
+
+        let n_cols_here = n_cols;
         let col_target = row_area / n_cols_here as f64;
         let cum_t = |t: f64| lot_area_at(0.0, t);
         let mut col_cuts: Vec<f64> = vec![0.0];
@@ -1140,6 +1203,7 @@ fn hb_lotize_with_baseline(mzn_pts: &[Pt], cfg: HbConfig, baseline: (Pt, Pt)) ->
         u_min,
         u_max,
         min_frente,
+        target_lot_area, // <-- NUEVO
         &area_up_to,
         b_rows,
         body_cols,
