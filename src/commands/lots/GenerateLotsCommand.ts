@@ -1,20 +1,16 @@
-﻿import type Feature from 'ol/Feature.js';
+﻿import Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
 import GeoJSON from 'ol/format/GeoJSON.js';
 import { Command, type CommandContext } from '../core/Command';
 import { useManzanoStore } from '../../store/entities/manzanoStore';
-import { updateFeatureMetrics } from '../../geo/metrics';
-import { ensureKind, getFeatureKind, getLotStatus, setLotStatus, type LotStatus } from '../../core/objectModel';
-import { resolveLayerId } from '../features/AddFeatureCommand';
+import { getFeatureKind, getLotStatus, setLotStatus, type LotStatus } from '../../core/objectModel';
 import { subdivideManzanoBatchInWorker } from '../../workers/geoWorkerClient';
-import PolygonGeom from 'ol/geom/Polygon.js';
-import FeatureOL from 'ol/Feature.js';
 import type { ManzanoLoteMethod } from '../../geo/subdivision/types';
-import { polyArea, ringPerimeter, centroid, type LotResult } from '../../geo/math/polygonEngine';
+import { polyArea, ringPerimeter, centroidAverage, type LotResult } from '../../geo/math/polygonEngine';
 import { useGenerateLotsProgressStore } from '../../store/ui/generateLotsProgressStore';
 import { estimateGeometryBytes } from '../core/memoryEstimate';
-import { newId } from '../../lib/id';
 import { computeAreaCorrectionFactor, computeLinearCorrectionFactor } from './areaCorrection';
+import { createLotFeature } from './createLotFeature';
 
 const geoJsonFormat = new GeoJSON();
 
@@ -141,7 +137,7 @@ export class GenerateLotsCommand extends Command {
       useManzanoStore.getState().setGeomSnapshot(id, {
         area: polyArea(ringPts),
         perimeter: ringPerimeter(ringPts),
-        centroid: centroid(ringPts),
+        centroid: centroidAverage(ringPts),
       });
       const oldLots: Feature<Geometry>[] = [];
       ctx.drawSource.forEachFeature((f) => {
@@ -157,40 +153,18 @@ export class GenerateLotsCommand extends Command {
         ctx.drawSource.removeFeature(f);
       }
 
-      for (let i = 0; i < lots.length; i++) {
-        const lot = lots[i];
-        if (lot.pts.length < 3) continue;
-        const closedRing = [...lot.pts];
-        if (
-          closedRing[0][0] !== closedRing[closedRing.length - 1][0] ||
-          closedRing[0][1] !== closedRing[closedRing.length - 1][1]
-        ) {
-          closedRing.push([closedRing[0][0], closedRing[0][1]]);
-        }
-        const newGeom = new PolygonGeom([closedRing]);
-        const newFeat = new FeatureOL({ geometry: newGeom });
-        const lotId = newId(`lot-${id}`);
-        newFeat.setId(lotId);
-        newFeat.setProperties(
-          ensureKind(
-            {
-              subdivision: method,
-              lotGroupId: String(id),
-              label: lot.isRemnant ? `Remanente ${i + 1}` : `Lote ${i + 1}`,
-              areaM2: lot.areaM2,
-              frontM: lot.frontM,
-              depthM: lot.depthM,
-              isRemnant: lot.isRemnant,
-            },
-            'lote',
-          ),
-        );
-        ctx.drawSource.addFeature(newFeat);
-        const lid = resolveLayerId(this.opts.layerId, 'lote');
-        if (lid) newFeat.set('layerId', lid);
-        updateFeatureMetrics(newFeat as Feature<Geometry>);
+      lots.forEach((lot, i) => {
+        if (lot.pts.length < 3) return;
+        const { feature, id: lotId } = createLotFeature(lot, {
+          manzanoId: id,
+          index: i + 1,
+          method,
+          preferredLayerId: this.opts.layerId,
+          autoCreateLayer: false,
+        });
+        ctx.drawSource.addFeature(feature);
         this.newLotIds.push(lotId);
-      }
+      });
 
       setLotStatus(mznFeat, 'subdivided');
       useManzanoStore.getState().setMethod(id, method);
@@ -206,7 +180,7 @@ export class GenerateLotsCommand extends Command {
     this.newLotIds = [];
     for (const snap of this.removedLotSnapshots) {
       if (ctx.drawSource.getFeatureById(snap.id) != null) continue;
-      const f = new FeatureOL({ geometry: snap.geometry });
+      const f = new Feature({ geometry: snap.geometry });
       f.setId(snap.id);
       f.setProperties(snap.props);
       ctx.drawSource.addFeature(f);

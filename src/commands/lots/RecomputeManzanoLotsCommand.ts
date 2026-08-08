@@ -1,25 +1,16 @@
 ﻿import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
 import GeoJSON from 'ol/format/GeoJSON.js';
-import PolygonGeom from 'ol/geom/Polygon.js';
 import FeatureOL from 'ol/Feature.js';
 import { Command, type CommandContext } from '../core/Command';
 import type { ManzanoLoteMethod } from '../../geo/subdivision/types';
-import { updateFeatureMetrics } from '../../geo/metrics';
-import {
-  ensureKind,
-  getFeatureKind,
-  getLotStatus,
-  setLotStatus,
-  type LotStatus,
-} from '../../core/objectModel';
-import { resolveLayerId } from '../features/AddFeatureCommand';
+import { getFeatureKind, getLotStatus, setLotStatus, type LotStatus } from '../../core/objectModel';
 import { subdivideManzanoInWorker } from '../../workers/geoWorkerClient';
 import { useManzanoStore } from '../../store/entities/manzanoStore';
-import { polyArea, ringPerimeter, centroid } from '../../geo/math/polygonEngine';
+import { polyArea, ringPerimeter, centroidAverage } from '../../geo/math/polygonEngine';
 import { estimateGeometryBytes } from '../core/memoryEstimate';
-import { newId } from '../../lib/id';
 import { computeAreaCorrectionFactor, computeLinearCorrectionFactor } from './areaCorrection';
+import { createLotFeature } from './createLotFeature';
 
 const geoJsonFormat = new GeoJSON();
 
@@ -69,7 +60,7 @@ export class RecomputeManzanoLotsCommand extends Command {
     const ringPts = ring.map((c) => [c[0], c[1]] as [number, number]);
     const areaM2 = polyArea(ringPts);
     const perimeterM = ringPerimeter(ringPts);
-    const centroidPt = centroid(ringPts);
+    const centroidPt = centroidAverage(ringPts);
     const trueAreaM2 = mznFeat.get('areaM2') as number | undefined;
     const areaCorrectionFactor = computeAreaCorrectionFactor(areaM2, trueAreaM2);
     const linearCorrectionFactor = computeLinearCorrectionFactor(areaCorrectionFactor);
@@ -103,35 +94,14 @@ export class RecomputeManzanoLotsCommand extends Command {
 
     lots.forEach((lot, i) => {
       if (lot.pts.length < 3) return;
-      const closedRing = [...lot.pts];
-      if (
-        closedRing[0][0] !== closedRing[closedRing.length - 1][0] ||
-        closedRing[0][1] !== closedRing[closedRing.length - 1][1]
-      ) {
-        closedRing.push([closedRing[0][0], closedRing[0][1]]);
-      }
-      const newGeom = new PolygonGeom([closedRing]);
-      const newFeat = new FeatureOL({ geometry: newGeom });
-      const lotId = newId(`lot-${this.opts.manzanoId}`);
-      newFeat.setId(lotId);
-      newFeat.setProperties(
-        ensureKind(
-          {
-            subdivision: this.opts.method,
-            lotGroupId: String(this.opts.manzanoId),
-            label: lot.isRemnant ? `Remanente ${i + 1}` : `Lote ${i + 1}`,
-            areaM2: lot.areaM2,
-            frontM: lot.frontM,
-            depthM: lot.depthM,
-            isRemnant: lot.isRemnant,
-          },
-          'lote',
-        ),
-      );
-      ctx.drawSource.addFeature(newFeat);
-      const lid = resolveLayerId(this.opts.layerId, 'lote');
-      if (lid) newFeat.set('layerId', lid);
-      updateFeatureMetrics(newFeat as Feature<Geometry>);
+      const { feature, id: lotId } = createLotFeature(lot, {
+        manzanoId: this.opts.manzanoId,
+        index: i + 1,
+        method: this.opts.method,
+        preferredLayerId: this.opts.layerId,
+        autoCreateLayer: false,
+      });
+      ctx.drawSource.addFeature(feature);
       this.newLotIds.push(lotId);
     });
 

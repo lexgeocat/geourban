@@ -29,7 +29,6 @@ interface ManzanoState {
   getRotateDir: (id: string | number) => RotateDir | undefined;
   setGeomSnapshot: (id: string | number, snap: GeomSnapshot) => void;
   hasGeomChanged: (id: string | number, snap: GeomSnapshot) => boolean;
-  clearGeomSnapshot: (id: string | number) => void;
   startRotateLots: (
     id: string | number,
     anchor: [number, number],
@@ -87,12 +86,6 @@ export const useManzanoStore = create<ManzanoState>()((set, get) => ({
 
     return areaChanged || perimChanged || centroidChanged;
   },
-  clearGeomSnapshot: (id) =>
-    set((s) => {
-      const next = { ...s.geomSnapshots };
-      delete next[String(id)];
-      return { geomSnapshots: next };
-    }),
   startRotateLots: (id, anchor, handle) =>
     set({ rotatingId: id, rotateAnchor: anchor, rotateHandle: handle }),
   updateRotateHandle: (handle) => set({ rotateHandle: handle }),

@@ -1,33 +1,12 @@
-import { useRoundaboutStore, type Roundabout } from '../../../store/entities/roundaboutStore';
+import { useRoundaboutStore } from '../../../store/entities/roundaboutStore';
 import { useLayersStore } from '../../../store/entities/layersRegistryStore';
 import { roundaboutGeometry } from '../../../geo/roundabout/roundaboutEngine';
 import { formatMetricLength } from '../../../geo/metrics';
 import { withAlpha } from '../DrawLayerRenderer';
 import type { RoundaboutDrawPreview } from '../RoundaboutDrawInteraction';
-import type { Layer } from '../../../core/objectModel';
+import { getLayerByIdCached, resolveRoundaboutLayer } from './layersPainterHelpers';
 
 const FALLBACK_ROUNDABOUT_COLOR = '#f78166';
-
-/** Cache liviano para `useLayersStore.getState()` (Fase 8.2). */
-let layersByIdCache: { layers: Layer[]; byId: globalThis.Map<string, Layer> } | null = null;
-function getLayerByIdCached(layers: Layer[]): globalThis.Map<string, Layer> {
-  if (layersByIdCache && layersByIdCache.layers === layers) return layersByIdCache.byId;
-  const byId = new globalThis.Map(layers.map((l) => [l.id, l] as const));
-  layersByIdCache = { layers, byId };
-  return byId;
-}
-
-function resolveRoundaboutLayer(
-  rb: Roundabout,
-  registry: ReturnType<typeof useLayersStore.getState>,
-  byId: globalThis.Map<string, Layer>
-): Layer | undefined {
-  if (rb.layerId) {
-    const layer = byId.get(rb.layerId);
-    if (layer) return layer;
-  }
-  return registry.getLayerForKind('calle');
-}
 
 export class RoundaboutPainter {
   private currentPreview: RoundaboutDrawPreview | null = null;

@@ -1,4 +1,4 @@
-import { extend as extendExtent, intersects as extentIntersects, type Extent } from 'ol/extent.js';
+﻿import { extend as extendExtent, intersects as extentIntersects, type Extent } from 'ol/extent.js';
 import Feature from 'ol/Feature.js';
 import PolygonGeom from 'ol/geom/Polygon.js';
 import type Geometry from 'ol/geom/Geometry.js';
@@ -7,7 +7,7 @@ import type { FeatureCollection, Feature as GeoJSONFeature } from 'geojson';
 
 import { useMapStore } from '../store/map/mapStore';
 import { updateFeatureMetrics } from './metrics';
-import { polyArea, ringPerimeter, centroid, type Pt } from './math/polygonEngine';
+import { polyArea, ringPerimeter, centroidAverage, closeRing, type Pt } from './math/polygonEngine';
 import { useStreetStore, type Street } from '../store/entities/streetStore';
 import { useRoundaboutStore, type Roundabout } from '../store/entities/roundaboutStore';
 import { useManzanoStore } from '../store/entities/manzanoStore';
@@ -26,20 +26,13 @@ import type { ManzanoLoteMethod } from './subdivision/types';
 import { buildRoadNetworkRings } from './roads/roadNetworkEngine';
 import { roundRingReflex, pointOnRing } from './roads/ringFillet';
 import { resolveOrCreateLayerForKind } from '../store/entities/layerAutoCreate';
-import { pickLayerId } from '../store/entities/layerResolution';
 import { newId } from '../lib/id';
 import {
   StructuralDiffRecorder,
   EMPTY_STRUCTURAL_DIFF,
   type StructuralDiff,
 } from '../commands/core/structuralDiff';
-
-function closeGeoRing(ring: Pt[]): Pt[] {
-  const f = ring[0],
-    l = ring[ring.length - 1];
-  if (Math.abs(f[0] - l[0]) > 1e-9 || Math.abs(f[1] - l[1]) > 1e-9) return [...ring, [f[0], f[1]]];
-  return ring;
-}
+import { createLotFeature } from '../commands/lots/createLotFeature';
 
 const GEOMETRY_NOCHANGE_TOL = 1e-6;
 
@@ -62,8 +55,8 @@ function ringsShapeEquivalent(a: Pt[], b: Pt[]): boolean {
   const perimTol = Math.max(0.02, Math.max(perimA, perimB) * 5e-4);
   if (Math.abs(perimA - perimB) > perimTol) return false;
 
-  const centA = centroid(a);
-  const centB = centroid(b);
+  const centA = centroidAverage(a);
+  const centB = centroidAverage(b);
   const centroidTol = Math.max(0.02, Math.sqrt(Math.max(areaA, areaB, 1)) * 5e-4);
   if (Math.hypot(centA[0] - centB[0], centA[1] - centB[1]) > centroidTol) return false;
 
@@ -94,7 +87,7 @@ function restoreMemberToParcel(
 ): void {
   const alreadyLote = getFeatureKind(member) === 'lote';
   const currentRing = currentRingOf(member);
-  const targetRing = closeGeoRing(origPts);
+  const targetRing = closeRing(origPts);
   const idMatches = String(member.getId() ?? '') === rootId;
   const resolvedLayerId = rootLayerId ?? resolveOrCreateLayerForKind('perimetro');
   const layerAlreadyCorrect = (member.get('layerId') as string | undefined) === resolvedLayerId;
@@ -457,14 +450,6 @@ function syncPerimeterLayersVisibility(hasRoadNetwork: boolean): void {
     }
   }
 }
-function resolveLoteLayerId(preferredLayerId?: string): string {
-  return pickLayerId({
-    kind: 'lote',
-    override: preferredLayerId,
-    requireKindMatch: true,
-    autoCreate: true,
-  })!;
-}
 
 interface RelotTask {
   featureId: string;
@@ -510,35 +495,15 @@ async function applyRelotTasks(
       let created = 0;
       lots.forEach((lot, i) => {
         if (lot.pts.length < 3) return;
-        const closedRing = [...lot.pts];
-        if (
-          closedRing[0][0] !== closedRing[closedRing.length - 1][0] ||
-          closedRing[0][1] !== closedRing[closedRing.length - 1][1]
-        ) {
-          closedRing.push([closedRing[0][0], closedRing[0][1]]);
-        }
-        const lotFeat = new Feature({ geometry: new PolygonGeom([closedRing]) });
-        const lotId = newId(`lot-${task.featureId}`);
-        lotFeat.setId(lotId);
-        lotFeat.setProperties(
-          ensureKind(
-            {
-              subdivision: task.method,
-              lotGroupId: task.featureId,
-              label: lot.isRemnant ? `Remanente ${i + 1}` : `Lote ${i + 1}`,
-              areaM2: lot.areaM2,
-              frontM: lot.frontM,
-              depthM: lot.depthM,
-              isRemnant: lot.isRemnant,
-            },
-            'lote'
-          )
-        );
-        const lotLid = resolveLoteLayerId(task.layerId);
-        lotFeat.set('layerId', lotLid);
+        const { feature: lotFeat } = createLotFeature(lot, {
+          manzanoId: task.featureId,
+          index: i + 1,
+          method: task.method,
+          preferredLayerId: task.layerId,
+          autoCreateLayer: true,
+        });
         src.addFeature(lotFeat);
         recorder.recordAdd(lotFeat as Feature<Geometry>);
-        updateFeatureMetrics(lotFeat as Feature<Geometry>);
         created++;
       });
       setLotStatus(fragFeat, created > 0 ? 'subdivided' : 'pending');
@@ -546,7 +511,7 @@ async function applyRelotTasks(
       useManzanoStore.getState().setMethod(task.featureId, task.method);
       if (task.dirPref) useManzanoStore.getState().setRotateDir(task.featureId, task.dirPref);
     } catch (err) {
-      console.error('recomputeManzanos: fallo la re-lotización automática', err);
+      console.error('recomputeManzanos: fallo la re-lotizaciÃ³n automÃ¡tica', err);
       setLotStatus(fragFeat, 'pending');
       recorder.recordModifyAfter(fragFeat);
     }
@@ -674,7 +639,7 @@ async function recomputeManzanosImmediate(recorder: StructuralDiffRecorder): Pro
     features: roadRings.map((ring) => ({
       type: 'Feature',
       properties: {},
-      geometry: { type: 'Polygon', coordinates: [closeGeoRing(ring)] },
+      geometry: { type: 'Polygon', coordinates: [closeRing(ring)] },
     })) as never[],
   };
 
@@ -683,7 +648,7 @@ async function recomputeManzanosImmediate(recorder: StructuralDiffRecorder): Pro
     features: parcelIndexToGroup.map((group) => ({
       type: 'Feature',
       properties: {},
-      geometry: { type: 'Polygon', coordinates: [closeGeoRing(group.origPts)] },
+      geometry: { type: 'Polygon', coordinates: [closeRing(group.origPts)] },
     })) as never[],
   };
 
@@ -691,7 +656,7 @@ async function recomputeManzanosImmediate(recorder: StructuralDiffRecorder): Pro
   try {
     result = await computeManzanosInWorker(parcelsFC, roadNetworkFC);
   } catch (err) {
-    console.error('recomputeManzanos: fallo la unión/diferencia de la red vial', err);
+    console.error('recomputeManzanos: fallo la uniÃ³n/diferencia de la red vial', err);
     return;
   }
 
@@ -768,7 +733,7 @@ async function recomputeManzanosImmediate(recorder: StructuralDiffRecorder): Pro
       );
     } catch (err) {
       console.error(
-        'recomputeManzanos: matchFragmentsBatch falló en el motor nativo (sin fallback desde 2.7) — se aborta el recompute.',
+        'recomputeManzanos: matchFragmentsBatch fallÃ³ en el motor nativo (sin fallback desde 2.7) â€” se aborta el recompute.',
         err
       );
       return;
@@ -814,11 +779,11 @@ async function recomputeManzanosImmediate(recorder: StructuralDiffRecorder): Pro
   if (relotCandidates.length > 0) {
     const plural = relotCandidates.length > 1;
     allowAutoRelot = await confirmAsync(
-      `El trazado nuevo modificó lo suficiente ${plural ? 'a estos manzanos ya lotizados' : 'a este manzano ya lotizado'} ` +
-        `como para necesitar regenerar sus lotes automáticamente (el resto del proyecto no se ve afectado).\n\n` +
-        'Si cancelás, el corte igual se aplica pero esos lotes quedan pendientes de regenerar a mano.',
+      `El trazado nuevo modificÃ³ lo suficiente ${plural ? 'a estos manzanos ya lotizados' : 'a este manzano ya lotizado'} ` +
+        `como para necesitar regenerar sus lotes automÃ¡ticamente (el resto del proyecto no se ve afectado).\n\n` +
+        'Si cancelÃ¡s, el corte igual se aplica pero esos lotes quedan pendientes de regenerar a mano.',
       {
-        title: '¿Regenerar lotes automáticamente?',
+        title: 'Â¿Regenerar lotes automÃ¡ticamente?',
         confirmLabel: 'Continuar',
         cancelLabel: 'Cancelar',
       }
@@ -923,10 +888,10 @@ async function recomputeManzanosImmediate(recorder: StructuralDiffRecorder): Pro
         (roundedAreaM2 <= 0 || Math.abs(roundedAreaM2 - origAreaM2) > origAreaM2 * 0.2);
 
       if (rounded.length < 4 || areaDeviatesTooMuch) {
-        const fallback = oriented.length >= 3 ? closeGeoRing(oriented) : [];
+        const fallback = oriented.length >= 3 ? closeRing(oriented) : [];
         if (fallback.length < 4 || origAreaM2 < 0.5) {
           console.warn(
-            `recomputeManzanos: fragmento ${fi} del grupo ${group.origId} descartado por geometría degenerada`
+            `recomputeManzanos: fragmento ${fi} del grupo ${group.origId} descartado por geometrÃ­a degenerada`
           );
           continue;
         }
@@ -1007,7 +972,7 @@ async function recomputeManzanosImmediate(recorder: StructuralDiffRecorder): Pro
           {
             colorIdx: fi % 10,
             createdAt: new Date().toISOString(),
-            origParcelId: fragId, // ← auto-referencia
+            origParcelId: fragId, // â† auto-referencia
             origPts: rounded,
             rootParcelId: root.rootId,
             rootParcelPts: root.rootPts,
@@ -1110,7 +1075,7 @@ export async function reapplyRoadCornerMode(): Promise<void> {
       features: roadRings.map((ring) => ({
         type: 'Feature',
         properties: {},
-        geometry: { type: 'Polygon', coordinates: [closeGeoRing(ring)] },
+        geometry: { type: 'Polygon', coordinates: [closeRing(ring)] },
       })) as never[],
     };
 
@@ -1119,7 +1084,7 @@ export async function reapplyRoadCornerMode(): Promise<void> {
       features: touchedGroups.map((group) => ({
         type: 'Feature',
         properties: {},
-        geometry: { type: 'Polygon', coordinates: [closeGeoRing(group.origPts)] },
+        geometry: { type: 'Polygon', coordinates: [closeRing(group.origPts)] },
       })) as never[],
     };
 
@@ -1127,7 +1092,7 @@ export async function reapplyRoadCornerMode(): Promise<void> {
     try {
       result = await computeManzanosInWorker(parcelsFC, roadNetworkFC);
     } catch (err) {
-      console.error('reapplyRoadCornerMode: fallo la unión/diferencia de la red vial', err);
+      console.error('reapplyRoadCornerMode: fallo la uniÃ³n/diferencia de la red vial', err);
       return;
     }
 
@@ -1187,7 +1152,7 @@ export async function reapplyRoadCornerMode(): Promise<void> {
         );
       } catch (err) {
         console.error(
-          'reapplyRoadCornerMode: matchFragmentsBatch falló en el motor nativo (sin fallback desde 2.7) — se aborta la reaplicación.',
+          'reapplyRoadCornerMode: matchFragmentsBatch fallÃ³ en el motor nativo (sin fallback desde 2.7) â€” se aborta la reaplicaciÃ³n.',
           err
         );
         return;

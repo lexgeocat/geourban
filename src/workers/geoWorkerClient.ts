@@ -1,6 +1,6 @@
 ﻿import { invoke } from '@tauri-apps/api/core';
 import type { FeatureCollection, Polygon as GeoJsonPolygon } from 'geojson';
-import type { SubdivisionOptions, SubdivisionResult, ManzanoLoteMethod } from '../geo/subdivision/types';
+import type { ManzanoLoteMethod } from '../geo/subdivision/types';
 import type { LotResult } from '../geo/math/polygonEngine';
 import type { Street } from '../store/entities/streetStore';
 import type { RoundaboutParams } from '../geo/roundabout/roundaboutEngine';
@@ -19,35 +19,11 @@ function requireNativeRuntime(): void {
   }
 }
 
-function toNativeSubdivisionOptions(options: SubdivisionOptions) {
-  return {
-    method: options.method,
-    targetAreaM2: options.targetAreaM2 ?? null,
-    frontMinM: options.frontMinM ?? null,
-    dirAx: options.dirAx ?? null,
-    dirAy: options.dirAy ?? null,
-    frenteSeg: options.frenteSeg ?? null,
-    auxSeg: options.auxSeg ?? null,
-    cutLine: options.cutLine ?? null,
-  };
-}
-
 function toNativeDirPref(dirPref?: { ax: number; ay: number }) {
   return dirPref ? { ax: dirPref.ax, ay: dirPref.ay } : null;
 }
 
 // ─── Operaciones nativas ───────────────────────────────────────────────
-
-async function subdivideNative(
-  polygon: GeoJsonPolygon,
-  options: SubdivisionOptions,
-): Promise<SubdivisionResult> {
-  const result = await invoke<SubdivisionResult>('subdivide', {
-    coordinates: polygon.coordinates as unknown as Array<Array<[number, number]>>,
-    options: toNativeSubdivisionOptions(options),
-  });
-  return result;
-}
 
 async function subdivideManzanoNative(
   ring: [number, number][],
@@ -157,20 +133,6 @@ export async function computeManzanosInWorker(
     return nativeResult;
   } catch (err) {
     console.error('geoWorkerClient: "computeManzanos" falló en el motor nativo (sin fallback desde 2.7):', err);
-    throw err;
-  }
-}
-
-export async function subdivideInWorker(
-  polygon: GeoJsonPolygon,
-  options: SubdivisionOptions,
-): Promise<SubdivisionResult> {
-  requireNativeRuntime();
-  try {
-    const nativeResult = await subdivideNative(polygon, options);
-    return nativeResult;
-  } catch (err) {
-    console.error('geoWorkerClient: "subdivide" falló en el motor nativo (sin fallback desde 2.7):', err);
     throw err;
   }
 }

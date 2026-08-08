@@ -608,7 +608,7 @@ function useRegistryRows(
 
 /* ─────────── Header de sección ─────────── */
 
-function SectionHeader({ label, count, expanded, onToggle, isRef, panelId }: { label: string; count: number; expanded: boolean; onToggle: () => void; isRef?: boolean; panelId: string }) {
+function SectionHeader({ label, count, expanded, onToggle, panelId }: { label: string; count: number; expanded: boolean; onToggle: () => void; panelId: string }) {
   return (
     <button
       type="button"
@@ -619,10 +619,7 @@ function SectionHeader({ label, count, expanded, onToggle, isRef, panelId }: { l
       style={{ width: '100%', justifyContent: 'flex-start', gap: 5, padding: '3px 0' }}
     >
       <IconChevron open={expanded} />
-      {isRef && (
-        <span aria-hidden="true" style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--cad-text-dim)', fontStyle: 'italic' }}>Σ</span>
-      )}
-      <span style={{ fontSize: '0.68rem', color: 'var(--cad-text-dim)', fontWeight: 500, fontStyle: isRef ? 'italic' : 'normal' }}>{label}</span>
+      <span style={{ fontSize: '0.68rem', color: 'var(--cad-text-dim)', fontWeight: 500 }}>{label}</span>
       <span aria-hidden="true" style={{ fontSize: '0.6rem', color: 'var(--cad-text-dim)', marginLeft: 'auto' }}>{count}</span>
     </button>
   );

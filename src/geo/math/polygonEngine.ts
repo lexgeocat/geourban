@@ -11,18 +11,26 @@ export interface LotResult {
 
 // ─── Primitivas geométricas ─────────────────────────────────────────
 
-export function polyArea(pts: Pt[]): number {
+export function polySignedArea(pts: Pt[]): number {
   let a = 0;
   const n = pts.length;
   for (let i = 0; i < n; i++) {
     const j = (i + 1) % n;
     a += pts[i][0] * pts[j][1] - pts[j][0] * pts[i][1];
   }
-  return Math.abs(a) / 2;
+  return a / 2;
 }
 
-/** Centroide de un polígono */
-export function centroid(pts: Pt[]): Pt {
+export function polyArea(pts: Pt[]): number {
+  return Math.abs(polySignedArea(pts));
+}
+
+/**
+ * Centroide ingenuo (promedio de vértices). Útil solo cuando el polígono
+ * es degenerado o como aproximación barata donde la precisión geométrica
+ * no importa (snapshots de UI, etiquetas).
+ */
+export function centroidAverage(pts: Pt[]): Pt {
   let cx = 0,
     cy = 0;
   for (const p of pts) {
@@ -32,6 +40,7 @@ export function centroid(pts: Pt[]): Pt {
   return [cx / pts.length, cy / pts.length];
 }
 
+/** Centroide area-weighted (fórmula del polígono). Es el "centro real". */
 export function polygonCentroid(pts: Pt[]): Pt {
   const n = pts.length;
   if (n === 0) return [0, 0];
@@ -50,7 +59,7 @@ export function polygonCentroid(pts: Pt[]): Pt {
   }
 
   if (Math.abs(signedArea2) < 1e-9) {
-    return centroid(pts); // polígono degenerado: fallback al promedio simple
+    return centroidAverage(pts); // polígono degenerado: fallback al promedio simple
   }
 
   const factor = 1 / (3 * signedArea2);
@@ -66,6 +75,20 @@ export function ringPerimeter(pts: Pt[]): number {
     per += Math.hypot(b[0] - a[0], b[1] - a[1]);
   }
   return per;
+}
+
+/**
+ * Devuelve el ring cerrado (con primer punto repetido al final) si no lo
+ * estaba ya. Se usa al armar geometrías OL/GeoJSON a partir de rings abiertos.
+ */
+export function closeRing(pts: Pt[]): Pt[] {
+  if (!pts.length) return pts;
+  const f = pts[0];
+  const l = pts[pts.length - 1];
+  if (Math.abs(f[0] - l[0]) > 1e-9 || Math.abs(f[1] - l[1]) > 1e-9) {
+    return [...pts, [f[0], f[1]]];
+  }
+  return pts;
 }
 
 export function pathLength(pts: Pt[]): number {
@@ -180,7 +203,7 @@ function polylabel(ring: Pt[], precision = 0.1): Pt {
   if (cellSize <= 0) return [minX, minY];
 
   let h = cellSize / 2;
-  let cellQueue: PolylabelCell[] = [];
+  const cellQueue: PolylabelCell[] = [];
   for (let x = minX; x < maxX; x += cellSize) {
     for (let y = minY; y < maxY; y += cellSize) {
       cellQueue.push(makeCell(x + h, y + h, h, ring));
@@ -221,7 +244,7 @@ export function polygonLabelPoint(ringIn: Pt[]): Pt {
     last = ringIn[ringIn.length - 1];
   const closed = first[0] === last[0] && first[1] === last[1];
   const pts = closed ? ringIn.slice(0, -1) : ringIn;
-  if (pts.length < 3) return centroid(pts.length ? pts : ringIn);
+  if (pts.length < 3) return centroidAverage(pts.length ? pts : ringIn);
 
   let minX = Infinity,
     minY = Infinity,

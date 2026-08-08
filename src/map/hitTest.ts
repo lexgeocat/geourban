@@ -5,33 +5,15 @@ import MultiPolygon from 'ol/geom/MultiPolygon.js';
 import LineString from 'ol/geom/LineString.js';
 import Point from 'ol/geom/Point.js';
 import type VectorSource from 'ol/source/Vector.js';
-import { pointInPoly } from '../geo/math/polygonEngine';
+import { pointInPoly, polyArea } from '../geo/math/polygonEngine';
 import { queryRustSpatialIndex } from './rustSpatialIndex';
+import { distToSegmentXY } from '../geo/math/dist';
 
 export interface HitTestOptions {
   tolerance: number;
   exclude?: Feature<Geometry> | null;
   filter?: (feature: Feature<Geometry>) => boolean;
   extraFeatures?: Array<Feature<Geometry>>;
-}
-
-function distToSegment(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
-  const dx = bx - ax, dy = by - ay;
-  const lenSq = dx * dx + dy * dy;
-  if (lenSq < 1e-12) return Math.hypot(px - ax, py - ay);
-  let t = ((px - ax) * dx + (py - ay) * dy) / lenSq;
-  t = Math.max(0, Math.min(1, t));
-  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
-}
-
-function ringArea(ring: number[][]): number {
-  let a = 0;
-  for (let i = 0; i < ring.length; i++) {
-    const [x1, y1] = ring[i];
-    const [x2, y2] = ring[(i + 1) % ring.length];
-    a += x1 * y2 - x2 * y1;
-  }
-  return Math.abs(a) / 2;
 }
 
 function polygonHit(coord: number[], geom: Polygon, tolerance: number): { hit: boolean; area: number } {
@@ -45,12 +27,12 @@ function polygonHit(coord: number[], geom: Polygon, tolerance: number): { hit: b
         return { hit: false, area: Infinity };
       }
     }
-    return { hit: true, area: ringArea(outer) };
+    return { hit: true, area: polyArea(outer as [number, number][]) };
   }
 
   for (let i = 0; i < outer.length - 1; i++) {
-    if (distToSegment(coord[0], coord[1], outer[i][0], outer[i][1], outer[i + 1][0], outer[i + 1][1]) <= tolerance) {
-      return { hit: true, area: ringArea(outer) };
+    if (distToSegmentXY(coord[0], coord[1], outer[i][0], outer[i][1], outer[i + 1][0], outer[i + 1][1]) <= tolerance) {
+      return { hit: true, area: polyArea(outer as [number, number][]) };
     }
   }
   return { hit: false, area: Infinity };
@@ -60,7 +42,7 @@ function lineHit(coord: number[], geom: LineString, tolerance: number): { hit: b
   const coords = geom.getCoordinates();
   let best = Infinity;
   for (let i = 0; i < coords.length - 1; i++) {
-    const d = distToSegment(coord[0], coord[1], coords[i][0], coords[i][1], coords[i + 1][0], coords[i + 1][1]);
+    const d = distToSegmentXY(coord[0], coord[1], coords[i][0], coords[i][1], coords[i + 1][0], coords[i + 1][1]);
     if (d < best) best = d;
   }
   return { hit: best <= tolerance, dist: best };

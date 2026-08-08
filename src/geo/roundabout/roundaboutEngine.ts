@@ -1,4 +1,5 @@
 ﻿import type { Pt } from '../math/polygonEngine';
+import { polyArea } from '../math/polygonEngine';
 import { resolutionAwareSegments } from '../math/lod';
 
 export interface RoundaboutParams {
@@ -18,7 +19,7 @@ export interface RoundaboutGeometry {
   centerAxis: Pt[];
 }
 
-export function ngonRing(center: Pt, circumR: number, n: number, rot = 0): Pt[] {
+function ngonRing(center: Pt, circumR: number, n: number, rot = 0): Pt[] {
   const pts: Pt[] = [];
   for (let i = 0; i < n; i++) {
     const a = rot + (i * 2 * Math.PI) / n;
@@ -27,7 +28,7 @@ export function ngonRing(center: Pt, circumR: number, n: number, rot = 0): Pt[] 
   return pts;
 }
 
-export function circleRing(center: Pt, radius: number, segs?: number, resolution?: number): Pt[] {
+function circleRing(center: Pt, radius: number, segs?: number, resolution?: number): Pt[] {
   const n =
     segs ??
     (resolution != null
@@ -68,18 +69,9 @@ export function roundaboutGeometry(rb: RoundaboutParams, resolution?: number): R
 
 export function roundaboutRoadAreaM2(rb: RoundaboutParams): number {
   const geom = roundaboutGeometry(rb);
-  return Math.max(0, ringArea(geom.roadOuter) - (geom.island ? ringArea(geom.island) : 0));
+  return Math.max(0, polyArea(geom.roadOuter) - (geom.island ? polyArea(geom.island) : 0));
 }
 
-function ringArea(ring: Pt[]): number {
-  let a = 0;
-  for (let i = 0; i < ring.length; i++) {
-    const p = ring[i];
-    const q = ring[(i + 1) % ring.length];
-    a += p[0] * q[1] - q[0] * p[1];
-  }
-  return Math.abs(a) / 2;
-}
 export function validateRoundaboutParams(rb: RoundaboutParams): string | null {
   if (!(rb.radiusM > 0)) return 'El radio debe ser mayor a 0.';
   if (rb.sides !== 0 && rb.sides < 3) return 'Un polígono necesita al menos 3 lados (o 0 para círculo).';

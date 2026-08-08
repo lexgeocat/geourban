@@ -45,23 +45,6 @@ export function getLayerSuggestion(kind: GeoUrbanFeatureKind): LayerSuggestion |
   return LAYER_SUGGESTIONS.find((s) => s.kind === kind);
 }
 
-export const UNASSIGNED_LAYER_ID = 'unassigned';
-
-export function createUnassignedLayer(zIndex: number): Layer {
-  return {
-    id: UNASSIGNED_LAYER_ID,
-    name: 'Sin capa',
-    kind: 'lote',
-    zIndex,
-    color: '#94a3b8',
-    visible: true,
-    locked: false,
-    opacity: 1,
-    showLabel: false,
-    showCota: false,
-  };
-}
-
 export interface BaseFeatureProps {
   kind: GeoUrbanFeatureKind;
   createdAt: string;

@@ -14,13 +14,12 @@ type SelectionState = {
   remove: (id: string | number) => void;
   toggle: (id: string | number, additive?: boolean) => void;
   clear: () => void;
-  has: (id: string | number) => boolean;
 
   setSelectMode: (m: SelectMode) => void;
 };
 
 export const useSelectionStore = create<SelectionState>()(
-  immer((set, get) => ({
+  immer((set) => ({
     selectedIds: new Set<string | number>(),
     primaryId: null,
     selectMode: 'click',
@@ -68,8 +67,6 @@ export const useSelectionStore = create<SelectionState>()(
         state.selectedIds.clear();
         state.primaryId = null;
       }),
-
-    has: (id) => get().selectedIds.has(id),
 
     setSelectMode: (m) =>
       set((state) => {

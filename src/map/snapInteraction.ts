@@ -52,10 +52,6 @@ export default class SnapEngine extends Interaction {
     });
   }
 
-  getLastResult(): SnapResult | null {
-    return this.lastResult;
-  }
-
   private clear_() {
     if (this.lastResult !== null) {
       this.lastResult = null;

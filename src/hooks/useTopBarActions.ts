@@ -16,7 +16,7 @@ import { useProjectFileStore } from '../store/ui/projectFileStore';
 import { useLotsWorkflow } from './useLotsWorkflow';
 
 export function useTopBarActions() {
-  const { lotsBusy, runGenerateAllLots, cancelGenerateAllLots, focusManzanoInSidebar } = useLotsWorkflow();
+  const { lotsBusy, runGenerateAllLots, focusManzanoInSidebar } = useLotsWorkflow();
 
   const handleNewProject = async () => {
     const drawSource = useMapStore.getState().drawSource;
@@ -92,20 +92,6 @@ export function useTopBarActions() {
     await runGenerateAllLots();
   };
 
-  const handleToggleEdit = () => {
-    const mode = useDrawStore.getState().mode;
-    if (mode === 'edit') {
-      useDrawStore.getState().setMode('select');
-      return;
-    }
-    const primaryId = useSelectionStore.getState().primaryId;
-    if (!primaryId) {
-      toast('Seleccioná un polígono para editar sus vértices.', { variant: 'warning' });
-      return;
-    }
-    useDrawStore.getState().setMode('edit');
-  };
-
   const handleSaveProject = () => {
     useProjectFileStore.getState().setSaveModalOpen(true);
   };
@@ -124,7 +110,5 @@ export function useTopBarActions() {
     handleDeleteSelected,
     handleOpenSubdivision,
     handleGenerateLots,
-    handleCancelGenerateLots: cancelGenerateAllLots,
-    handleToggleEdit,
   };
 }

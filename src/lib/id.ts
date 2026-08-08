@@ -1,4 +1,4 @@
-export function createIdFactory(defaultPrefix = 'id') {
+function createIdFactory(defaultPrefix = 'id') {
   let counter = 0;
   return (prefix: string = defaultPrefix): string => {
     counter += 1;

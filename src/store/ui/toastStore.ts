@@ -15,7 +15,6 @@ interface ToastState {
   toasts: Toast[];
   push: (message: string, opts?: { variant?: ToastVariant; durationMs?: number }) => number;
   dismiss: (id: number) => void;
-  clear: () => void;
 }
 
 let nextId = 1;
@@ -44,7 +43,6 @@ export const useToastStore = create<ToastState>()((set, get) => ({
   },
 
   dismiss: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
-  clear: () => set({ toasts: [] }),
 }));
 
 /** Helper para llamar desde código no-React. */

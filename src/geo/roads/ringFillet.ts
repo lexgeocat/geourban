@@ -1,4 +1,6 @@
 ﻿import type { Pt } from '../math/polygonEngine';
+import { polySignedArea, closeRing } from '../math/polygonEngine';
+import { distToSegment } from '../math/dist';
 import { getFilletRadiusForAngle } from './streetEngine';
 
 export type CornerMode = 'fillet' | 'chamfer' | 'none';
@@ -6,30 +8,6 @@ export type CornerMode = 'fillet' | 'chamfer' | 'none';
 function normalize(dx: number, dy: number): Pt {
   const len = Math.hypot(dx, dy) || 1;
   return [dx / len, dy / len];
-}
-
-function ringSignedArea(ring: Pt[]): number {
-  let a = 0;
-  for (let i = 0; i < ring.length; i++) {
-    const p = ring[i], q = ring[(i + 1) % ring.length];
-    a += p[0] * q[1] - q[0] * p[1];
-  }
-  return a / 2;
-}
-
-function closeRing(pts: Pt[]): Pt[] {
-  if (!pts.length) return pts;
-  const f = pts[0], l = pts[pts.length - 1];
-  if (Math.abs(f[0] - l[0]) > 1e-9 || Math.abs(f[1] - l[1]) > 1e-9) return [...pts, [f[0], f[1]]];
-  return pts;
-}
-
-function distToSegment(p: Pt, a: Pt, b: Pt): number {
-  const dx = b[0] - a[0], dy = b[1] - a[1];
-  const lenSq = dx * dx + dy * dy;
-  if (lenSq < 1e-12) return Math.hypot(p[0] - a[0], p[1] - a[1]);
-  const t = Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / lenSq));
-  return Math.hypot(p[0] - (a[0] + t * dx), p[1] - (a[1] + t * dy));
 }
 
 export function pointOnRing(p: Pt, ring: Pt[], tol = 0.05): boolean {
@@ -117,7 +95,7 @@ export function roundRingReflex(
   if (n < 3) return closeRing(pts);
   if (mode === 'none') return closeRing(pts);
 
-  const rawCcw = ringSignedArea(pts) >= 0;
+  const rawCcw = polySignedArea(pts) >= 0;
   const ccw = isHole ? !rawCcw : rawCcw;
   const out: Pt[] = [];
 

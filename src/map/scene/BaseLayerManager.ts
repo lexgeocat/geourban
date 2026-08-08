@@ -6,11 +6,6 @@ export class BaseLayerManager {
   private currentLayer: BaseLayer | null = null;
   private cleanup: (() => void) | null = null;
 
-  /** Id del mapa base actualmente instalado. */
-  getCurrentId(): BaseMapId | null {
-    return this.currentLayer ? this.getIdOf(this.currentLayer) : null;
-  }
-
   private getIdOf(layer: BaseLayer): BaseMapId | null {
     for (const def of BASE_MAP_DEFS) {
       if (def.id === (layer.get('__baseMapId') as string)) return def.id;

@@ -2,7 +2,7 @@ import Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
 import Polygon from 'ol/geom/Polygon.js';
 import type VectorSource from 'ol/source/Vector.js';
-import { polyArea, centroid, ringPerimeter, type Pt } from '../math/polygonEngine';
+import { polyArea, centroidAverage, ringPerimeter, type Pt } from '../math/polygonEngine';
 import { getFeatureKind, getLotStatus, type LotStatus } from '../../core/objectModel';
 
 export interface LotInfo {
@@ -59,7 +59,7 @@ export function readManzanoRows(drawSource: VectorSource | null): ManzanoRow[] {
       : [];
     const areaM2 = (f.get('areaM2') as number | undefined) ?? (ring.length ? polyArea(ring) : 0);
     const perimeterM = ring.length ? ringPerimeter(ring) : 0;
-    const centroidPt: Pt = ring.length ? centroid(ring) : [0, 0];
+    const centroidPt: Pt = ring.length ? centroidAverage(ring) : [0, 0];
     const colorIdx = (f.get('colorIdx') as number | undefined) ?? fallbackIdx;
 
     rows.push({

@@ -14,7 +14,7 @@ const CAD_MINOR = 'rgba(36, 48, 68, 0.85)';
 const CAD_MAJOR = 'rgba(0, 212, 255, 0.22)';
 const CAD_AXIS = 'rgba(0, 212, 255, 0.45)';
 
-export function snapSpacing(meters: number) {
+function snapSpacing(meters: number) {
   for (const step of NICE_STEPS) {
     if (step >= meters) return step;
   }

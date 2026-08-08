@@ -1,68 +1,44 @@
-﻿import { Command, type CommandContext } from '../core/Command';
+﻿import { RoadEntityCommand } from './RoadEntityCommand';
 import { useRoundaboutStore } from '../../store/entities/roundaboutStore';
 import { useStreetTracingSessionStore } from '../../store/ui/streetTracingSessionStore';
-import { recomputeManzanos, waitForPendingRecompute } from '../../geo/recomputeManzanos';
-import { refreshSourceMetrics } from '../../geo/metrics';
-import {
-  composeStructuralDiffs,
-  applyStructuralDiffForward,
-  revertStructuralDiff,
-  approxStructuralDiffBytes,
-  EMPTY_STRUCTURAL_DIFF,
-  type StructuralDiff,
-} from '../core/structuralDiff';
+import type { Command } from '../core/Command';
 import type { RoundaboutParams } from '../../geo/roundabout/roundaboutEngine';
 
-interface RoundaboutEntry {
-  id: string | null;
-  params: RoundaboutParams;
-}
+// Re-export del tipo de input para no obligar a los consumidores a importar
+// desde `geo/roundabout/roundaboutEngine`.
+export type { RoundaboutParams };
 
-export class AddRoundaboutCommand extends Command {
+export class AddRoundaboutCommand extends RoadEntityCommand<
+  RoundaboutParams,
+  ReturnType<typeof useRoundaboutStore.getState>
+> {
   readonly label = 'Trazar rotonda';
-  readonly coalesceKey: string;
-
-  private entries: RoundaboutEntry[];
-  private diff: StructuralDiff = EMPTY_STRUCTURAL_DIFF;
 
   constructor(params: RoundaboutParams) {
-    super();
-    this.coalesceKey = `roundabout:${useStreetTracingSessionStore.getState().currentSessionId}`;
-    this.entries = [{ id: null, params }];
+    super(
+      'roundabout',
+      () => useStreetTracingSessionStore.getState().currentSessionId,
+      params,
+    );
   }
 
-  override async execute(_ctx: CommandContext): Promise<void> {
-    await waitForPendingRecompute();
-    const entry = this.entries[this.entries.length - 1];
-    entry.id = useRoundaboutStore.getState().addRoundabout(entry.params);
-    const stepDiff = await recomputeManzanos();
-    this.diff = composeStructuralDiffs(this.diff, stepDiff);
+  protected getStore() {
+    return useRoundaboutStore.getState();
   }
 
-  override undo(ctx: CommandContext): void {
-    for (const e of this.entries) {
-      if (e.id) useRoundaboutStore.getState().removeRoundabout(e.id);
-    }
-    revertStructuralDiff(ctx.drawSource, this.diff);
-    refreshSourceMetrics(ctx.drawSource);
+  protected addToStore(params: RoundaboutParams): string {
+    return useRoundaboutStore.getState().addRoundabout(params);
   }
 
-  override async redo(ctx: CommandContext): Promise<void> {
-    for (const e of this.entries) {
-      if (e.id) useRoundaboutStore.getState().addRoundaboutWithId(e.id, e.params);
-    }
-    applyStructuralDiffForward(ctx.drawSource, this.diff);
-    refreshSourceMetrics(ctx.drawSource);
+  protected addWithId(id: string, params: RoundaboutParams): void {
+    useRoundaboutStore.getState().addRoundaboutWithId(id, params);
   }
 
-  override coalesceInto(previous: Command): boolean {
-    if (!(previous instanceof AddRoundaboutCommand)) return false;
-    previous.entries.push(...this.entries);
-    previous.diff = composeStructuralDiffs(previous.diff, this.diff);
-    return true;
+  protected removeFromStore(id: string): void {
+    useRoundaboutStore.getState().removeRoundabout(id);
   }
 
-  override approxMemoryBytes(): number {
-    return approxStructuralDiffBytes(this.diff);
+  protected sameKind(other: Command): boolean {
+    return other instanceof AddRoundaboutCommand;
   }
 }

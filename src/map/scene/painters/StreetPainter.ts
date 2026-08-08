@@ -5,11 +5,13 @@ import { type CornerMode } from '../../../geo/roads/ringFillet';
 import type { RoadNetworkNet } from '../../../geo/roads/types';
 import { computeRoadNetworkNetInWorker } from '../../../workers/geoWorkerClient';
 import { type Pt } from '../../../geo/math/polygonEngine';
+import { distToSegment } from '../../../geo/math/dist';
 import { measureCachedWidth } from '../../textMeasureCache';
 import { useLayersStore } from '../../../store/entities/layersRegistryStore';
 import { withAlpha } from '../DrawLayerRenderer';
 import type { Layer } from '../../../core/objectModel';
 import { roundaboutGeometry } from '../../../geo/roundabout/roundaboutEngine';
+import { getLayerByIdCached, resolveRoundaboutLayer } from './layersPainterHelpers';
 
 type StreetChain = Array<{ from: Pt; to: Pt; len: number }>;
 type CrossingsMap = globalThis.Map<string, Pt[]>;
@@ -77,15 +79,6 @@ function computeStreetPairCrossings(si: Street, sj: Street): Pt[] {
     }
   }
   return points;
-}
-
-function distToSegment(p: Pt, a: Pt, b: Pt): number {
-  const dx = b[0] - a[0],
-    dy = b[1] - a[1];
-  const lenSq = dx * dx + dy * dy;
-  if (lenSq < 1e-12) return Math.hypot(p[0] - a[0], p[1] - a[1]);
-  const t = Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / lenSq));
-  return Math.hypot(p[0] - (a[0] + t * dx), p[1] - (a[1] + t * dy));
 }
 
 function clipSegmentOutsideCircle(a: Pt, b: Pt, center: Pt, radius: number): Array<[Pt, Pt]> {
@@ -289,31 +282,11 @@ function resolveStreetLayer(
   return registry.getLayerForKind('calle');
 }
 
-function resolveRoundaboutLayer(
-  rb: Roundabout,
-  registry: ReturnType<typeof useLayersStore.getState>,
-  byId: globalThis.Map<string, Layer>
-): Layer | undefined {
-  if (rb.layerId) {
-    const layer = byId.get(rb.layerId);
-    if (layer) return layer;
-  }
-  return registry.getLayerForKind('calle');
-}
-
 interface StreetLayerGroup {
   layerId: string;
   layer: Layer | undefined;
   streets: Street[];
   roundabouts: Roundabout[];
-}
-
-let layersByIdCache: { layers: Layer[]; byId: globalThis.Map<string, Layer> } | null = null;
-function getLayerByIdCached(layers: Layer[]): globalThis.Map<string, Layer> {
-  if (layersByIdCache && layersByIdCache.layers === layers) return layersByIdCache.byId;
-  const byId = new globalThis.Map(layers.map((l) => [l.id, l] as const));
-  layersByIdCache = { layers, byId };
-  return byId;
 }
 
 const NETWORK_CONNECT_MARGIN_M = 1;

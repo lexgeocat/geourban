@@ -10,13 +10,11 @@ export type RibbonTabId = 'map' | 'edit' | 'view';
 type UiShellState = {
   baseMap: BaseMapId;
   panelVisibility: Record<PanelKey, boolean>;
-  gridOrigin: [number, number];
   statsPanelVisible: boolean;
   activeTab: RibbonTabId;
   ribbonCollapsed: boolean;
   setBaseMap: (id: BaseMapId) => void;
   setPanelVisibility: (key: PanelKey, visible: boolean) => void;
-  setGridOrigin: (o: [number, number]) => void;
   setStatsPanelVisible: (v: boolean) => void;
   setActiveTab: (id: RibbonTabId) => void;
   setRibbonCollapsed: (v: boolean) => void;
@@ -28,7 +26,6 @@ export const useUiShellStore = create<UiShellState>()(
     panelVisibility: {
       properties: false,
     },
-    gridOrigin: [0, 0],
     statsPanelVisible: false,
     activeTab: 'map',
     ribbonCollapsed: false,
@@ -39,10 +36,6 @@ export const useUiShellStore = create<UiShellState>()(
     setPanelVisibility: (key, visible) =>
       set((state) => {
         state.panelVisibility[key] = visible;
-      }),
-    setGridOrigin: (o) =>
-      set((state) => {
-        state.gridOrigin = o;
       }),
     setStatsPanelVisible: (v) =>
       set((state) => {
