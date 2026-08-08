@@ -290,6 +290,8 @@ function ensurePerimeterWorkingCopies(src: VectorSource, recorder: StructuralDif
     const workingRing = ((workingGeom.getCoordinates()[0] ?? []) as number[][]).map(
       (c) => [c[0], c[1]] as Pt
     );
+    const perimLayerId =
+      (perim.get('layerId') as string | undefined) ?? resolveOrCreateLayerForKind('perimetro');
 
     const working = new Feature({ geometry: workingGeom });
     working.setId(workingId);
@@ -305,8 +307,6 @@ function ensurePerimeterWorkingCopies(src: VectorSource, recorder: StructuralDif
         'lote'
       )
     );
-    const perimLayerId =
-      (perim.get('layerId') as string | undefined) ?? resolveOrCreateLayerForKind('perimetro');
     working.set('layerId', perimLayerId, true);
     src.addFeature(working);
     recorder.recordAdd(working as Feature<Geometry>);
