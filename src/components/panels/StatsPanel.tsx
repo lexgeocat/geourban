@@ -16,6 +16,7 @@ import type { Street } from '../../store/entities/streetStore';
 
 interface ManzanoInfo {
   index: number;
+  code: string;
   areaM2: number;
   color: string;
   isManzana: boolean;
@@ -72,6 +73,7 @@ function computeStats(drawSource: VectorSource<Feature<Geometry>> | null, street
       result.manzanoAreaM2 += area;
       result.manzanos.push({
         index: mznIdx,
+        code: (f.get('code') as string | undefined) ?? '',
         areaM2: area,
         color: manzColor,
         isManzana: true,
@@ -243,7 +245,7 @@ export default function StatsPanel() {
                 background: m.color,
                 flexShrink: 0,
               }} />
-              <span style={{ color: 'var(--cad-text-dim)' }}>Mzo. {m.index + 1}</span>
+              <span style={{ color: 'var(--cad-text-dim)' }}>Mzo. {m.code || m.index + 1}</span>
               <span style={{ color: 'var(--cad-text-muted)', marginLeft: 'auto', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.62rem' }}>
                 {formatMetricArea(m.areaM2)}
               </span>

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
+import { autoName } from '../../lib/autoName';
 
 export interface Street {
   id: string;
@@ -34,16 +35,6 @@ function resetNextId(): void {
   nextId = 1;
 }
 
-function autoName(index: number): string {
-  let name = '';
-  let n = index;
-  do {
-    name = String.fromCharCode(65 + (n % 26)) + name;
-    n = Math.floor(n / 26) - 1;
-  } while (n >= 0);
-  return `Calle ${name}`;
-}
-
 export const useStreetStore = create<StreetState>()(
   immer((set) => ({
     streets: [],
@@ -56,7 +47,7 @@ export const useStreetStore = create<StreetState>()(
       set((state) => {
         const id = `street-${nextId++}`;
         newId = id;
-        const name = autoName(state.streets.length);
+        const name = autoName(state.streets.length, 'Calle');
         state.streets.push({
           ...street,
           widthM,
@@ -71,7 +62,7 @@ export const useStreetStore = create<StreetState>()(
     addStreetWithId: (id, street) =>
       set((state) => {
         if (state.streets.some((s) => s.id === id)) return;
-        const name = autoName(state.streets.length);
+        const name = autoName(state.streets.length, 'Calle');
         state.streets.push({ ...street, id, name });
       }),
 
@@ -88,7 +79,7 @@ export const useStreetStore = create<StreetState>()(
       set((state) => {
         state.streets = state.streets.filter((s) => s.id !== id);
         state.streets.forEach((s, i) => {
-          s.name = autoName(i);
+          s.name = autoName(i, 'Calle');
         });
       }),
 

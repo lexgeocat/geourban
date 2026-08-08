@@ -18,6 +18,7 @@ import { useCommandStack } from '../commands/core/CommandStack';
 import { resetIncrementalRoadTracking } from '../geo/recomputeManzanos';
 import { encodeWkb, decodeWkb, uint8ToBase64, base64ToUint8, type WkbGeometry } from './wkb';
 import { getOrCreateSpatialIndex } from '../map/spatialIndex';
+import { reseedManzanoSeqFromSource } from '../store/entities/manzanoNaming';
 import type { Layer } from '../core/objectModel';
 
 interface LayerDto {
@@ -180,6 +181,7 @@ export async function loadProject(name: string): Promise<void> {
   }
   drawSource.addFeatures(features);
   getOrCreateSpatialIndex().load(features as unknown as Feature<Polygon>[]);
+  reseedManzanoSeqFromSource(drawSource);
 
   for (const s of payload.streets) {
     useStreetStore.getState().addStreetWithId(s.id, {

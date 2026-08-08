@@ -6,7 +6,12 @@ import { useManzanoStore } from '../../store/entities/manzanoStore';
 import { getFeatureKind, getLotStatus, setLotStatus, type LotStatus } from '../../core/objectModel';
 import { subdivideManzanoBatchInWorker } from '../../workers/geoWorkerClient';
 import type { ManzanoLoteMethod } from '../../geo/subdivision/types';
-import { polyArea, ringPerimeter, centroidAverage, type LotResult } from '../../geo/math/polygonEngine';
+import {
+  polyArea,
+  ringPerimeter,
+  centroidAverage,
+  type LotResult,
+} from '../../geo/math/polygonEngine';
 import { useGenerateLotsProgressStore } from '../../store/ui/generateLotsProgressStore';
 import { estimateGeometryBytes } from '../core/memoryEstimate';
 import { computeAreaCorrectionFactor, computeLinearCorrectionFactor } from './areaCorrection';
@@ -56,7 +61,11 @@ export class GenerateLotsCommand extends Command {
     this.prevLotStatus = [];
     this.prevLotStatusSeen = new Set();
 
-    const manzanos: Array<{ id: string | number; ring: Array<[number, number]>; trueAreaM2?: number }> = [];
+    const manzanos: Array<{
+      id: string | number;
+      ring: Array<[number, number]>;
+      trueAreaM2?: number;
+    }> = [];
     ctx.drawSource.forEachFeature((f) => {
       const id = f.getId();
       if (id == null) return;
@@ -115,7 +124,7 @@ export class GenerateLotsCommand extends Command {
     ctx: CommandContext,
     chunk: ManzanoBatchInput[],
     chunkResults: Array<{ id: string | number; lots: LotResult[] }>,
-    methodById: Map<string, ManzanoLoteMethod>,
+    methodById: Map<string, ManzanoLoteMethod>
   ): void {
     const lotsById = new Map(chunkResults.map((r) => [String(r.id), r.lots]));
 
@@ -148,7 +157,11 @@ export class GenerateLotsCommand extends Command {
         if (g) {
           const props = { ...f.getProperties() };
           delete props.geometry;
-          this.removedLotSnapshots.push({ id: f.getId() as string | number, geometry: g.clone(), props });
+          this.removedLotSnapshots.push({
+            id: f.getId() as string | number,
+            geometry: g.clone(),
+            props,
+          });
         }
         ctx.drawSource.removeFeature(f);
       }
@@ -157,6 +170,7 @@ export class GenerateLotsCommand extends Command {
         if (lot.pts.length < 3) return;
         const { feature, id: lotId } = createLotFeature(lot, {
           manzanoId: id,
+          manzanoCode: mznFeat.get('code') as string | undefined,
           index: i + 1,
           method,
           preferredLayerId: this.opts.layerId,

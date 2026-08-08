@@ -11,9 +11,9 @@ export const GEOURBAN_MANZANA_COLOR = '#58a6ff';
 const GEOURBAN_TEXT_BG = 'rgba(13, 17, 23, 0.72)';
 const GEOURBAN_LIVE_BG = 'rgba(13, 17, 23, 0.80)';
 const DIM_EXT_COLOR_LOTE = 'rgba(56, 189, 248, 0.30)';
-const DIM_LINE_COLOR_LOTE = 'rgba(56, 189, 248, 0.92)';   // celeste suave
+const DIM_LINE_COLOR_LOTE = 'rgba(56, 189, 248, 0.92)'; // celeste suave
 const DIM_EXT_COLOR_MZN = 'rgba(255, 183, 121, 0.30)';
-const DIM_LINE_COLOR_MZN = 'rgba(255, 183, 121, 0.92)';   // ámbar suave
+const DIM_LINE_COLOR_MZN = 'rgba(255, 183, 121, 0.92)'; // ámbar suave
 const DIM_EXT_GAP_PX = 3;
 const DIM_TICK_PX = 6;
 const DIM_TEXT_HALO_COLOR = 'rgba(13, 17, 23, 0.85)';
@@ -29,13 +29,16 @@ export function computeCotaOpacity(zoom: number): number {
 
 // ─── Badge de número de lote (círculo en el centroide) ────────────────
 const LOT_BADGE_RADIUS_PX = 9;
-const LOT_BADGE_COLOR = 'rgba(56, 189, 248, 0.92)';         // celeste suave — lote normal
-const LOT_BADGE_COLOR_REMNANT = 'rgba(245, 187, 89, 0.92)'; // ámbar suave — remanente
+export const LOT_BADGE_COLOR = 'rgba(56, 189, 248, 0.92)'; // celeste suave — lote normal
+export const LOT_BADGE_COLOR_REMNANT = 'rgba(245, 187, 89, 0.92)'; // ámbar suave — remanente
 const LOT_BADGE_FILL = 'rgba(13, 17, 23, 0.45)';
 const LOT_AREA_CAPTION_COLOR = 'rgba(223, 252, 255, 0.92)';
 
 /** Área aproximada en pantalla (px²) del bbox de una geometría. */
-export function getApproxScreenArea(geometry: Geometry | null | undefined, resolution: number): number {
+export function getApproxScreenArea(
+  geometry: Geometry | null | undefined,
+  resolution: number
+): number {
   if (!geometry) return 0;
   const extent = geometry.getExtent();
   const widthPx = Math.abs(extent[2] - extent[0]) / resolution;
@@ -49,7 +52,7 @@ export type DimensionOrientation = 'inward' | 'outward';
 
 export function resolveDimensionOrientation(
   feature: Feature<Geometry>,
-  lotGroupCounts: Map<string, number>,
+  lotGroupCounts: Map<string, number>
 ): DimensionOrientation {
   if (getFeatureKind(feature) === 'manzana') return 'outward';
   const groupId = feature.get('lotGroupId') as string | undefined;
@@ -76,7 +79,7 @@ function drawExtensionLine(
   dirX: number,
   dirY: number,
   offsetPx: number,
-  color: string,
+  color: string
 ) {
   const startX = vertexPx[0] + dirX * DIM_EXT_GAP_PX;
   const startY = vertexPx[1] + dirY * DIM_EXT_GAP_PX;
@@ -96,7 +99,7 @@ function drawDimTick(
   ctx: CanvasRenderingContext2D,
   atPx: [number, number],
   angle: number,
-  color: string,
+  color: string
 ) {
   const half = DIM_TICK_PX / 2;
   ctx.save();
@@ -120,7 +123,7 @@ export function drawSegmentLabels(
   isManzana: boolean = false,
   opacity: number = 1,
   drawLines: boolean = true,
-  showBackground: boolean = true,
+  showBackground: boolean = true
 ): void {
   if (!segmentLengths || segmentLengths.length === 0) return;
   if (opacity <= 0.002) return;
@@ -187,7 +190,8 @@ export function drawSegmentLabels(
 
     const txC = (dimA[0] + dimB[0]) / 2;
     const tyC = (dimA[1] + dimB[1]) / 2;
-    const label = meta.lengthM >= 100 ? meta.lengthM.toFixed(1) + ' m' : meta.lengthM.toFixed(2) + ' m';
+    const label =
+      meta.lengthM >= 100 ? meta.lengthM.toFixed(1) + ' m' : meta.lengthM.toFixed(2) + ' m';
 
     ctx.save();
     ctx.translate(txC, tyC);
@@ -221,7 +225,7 @@ export function drawLotNumberBadge(
   toPixel: (coord: number[]) => [number, number],
   numberText: string,
   isRemnant: boolean,
-  opacity: number = 1,
+  opacity: number = 1
 ): void {
   if (opacity <= 0.002) return;
   const px = toPixel(labelPointWorld);
@@ -251,7 +255,7 @@ export function drawLotAreaCaption(
   labelPointWorld: [number, number],
   toPixel: (coord: number[]) => [number, number],
   areaText: string,
-  opacity: number = 1,
+  opacity: number = 1
 ): void {
   if (opacity <= 0.002) return;
   const px = toPixel(labelPointWorld);
@@ -277,7 +281,7 @@ export function drawMainMetricLabel(
   toPixel: (coord: number[]) => [number, number],
   text: string,
   isManzana: boolean,
-  options?: { extraLine?: string; color?: string; mainOpacity?: number; extraLineOpacity?: number },
+  options?: { extraLine?: string; color?: string; mainOpacity?: number; extraLineOpacity?: number }
 ): void {
   const mainOpacity = options?.mainOpacity ?? 1;
   const extraLineOpacity = options?.extraLineOpacity ?? 1;
@@ -339,4 +343,46 @@ export function createLiveDrawingLabelStyle(
       rotateWithView: true,
     }),
   });
+}
+
+// ─── Leader lines (callout estilo CAD) ─────────────────────────────────
+const LEADER_DOT_RADIUS_PX = 2;
+const LEADER_ELBOW_MIN_PX = 10;
+
+export function drawLeaderLine(
+  ctx: CanvasRenderingContext2D,
+  anchorPx: [number, number],
+  labelPx: [number, number],
+  color: string,
+  opacity: number = 1
+): void {
+  if (opacity <= 0.002) return;
+  const dx = labelPx[0] - anchorPx[0];
+  const dy = labelPx[1] - anchorPx[1];
+  const dist = Math.hypot(dx, dy);
+  if (dist < LEADER_ELBOW_MIN_PX) return;
+
+  const landingLen = Math.min(14, dist * 0.35);
+  const dirX = dx / dist,
+    dirY = dy / dist;
+  const elbowPx: [number, number] = [
+    labelPx[0] - dirX * landingLen,
+    labelPx[1] - dirY * landingLen,
+  ];
+
+  ctx.save();
+  ctx.globalAlpha *= opacity;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(anchorPx[0], anchorPx[1]);
+  ctx.lineTo(elbowPx[0], elbowPx[1]);
+  ctx.lineTo(labelPx[0], labelPx[1]);
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.arc(anchorPx[0], anchorPx[1], LEADER_DOT_RADIUS_PX, 0, Math.PI * 2);
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.restore();
 }

@@ -33,6 +33,7 @@ import {
   type StructuralDiff,
 } from '../commands/core/structuralDiff';
 import { createLotFeature } from '../commands/lots/createLotFeature';
+import { nextManzanoSeq, manzanoCodeFromSeq } from '../store/entities/manzanoNaming';
 
 const GEOMETRY_NOCHANGE_TOL = 1e-6;
 
@@ -497,6 +498,7 @@ async function applyRelotTasks(
         if (lot.pts.length < 3) return;
         const { feature: lotFeat } = createLotFeature(lot, {
           manzanoId: task.featureId,
+          manzanoCode: fragFeat.get('code') as string | undefined,
           index: i + 1,
           method: task.method,
           preferredLayerId: task.layerId,
@@ -923,6 +925,10 @@ async function recomputeManzanosImmediate(recorder: StructuralDiffRecorder): Pro
         if (!alreadyManzana) {
           reused.set('kind', 'manzana', true);
           reused.set('layerId', resolveManzanaLayerId(), true);
+          const mznSeq = nextManzanoSeq();
+          reused.set('mznSeq', mznSeq, true);
+          reused.set('code', manzanoCodeFromSeq(mznSeq), true);
+          reused.set('label', `Mzo. ${manzanoCodeFromSeq(mznSeq)}`, true);
           manzanoCreated = true;
         }
         reused.set('origParcelId', String(reused.getId()), true);
@@ -967,12 +973,17 @@ async function recomputeManzanosImmediate(recorder: StructuralDiffRecorder): Pro
         fragId = `${group.origId}-mzn-${fi}-${++dupSuffix}`;
       }
       newFeat.setId(fragId);
+      const mznSeq = nextManzanoSeq();
+      const mznCode = manzanoCodeFromSeq(mznSeq);
       newFeat.setProperties(
         ensureKind(
           {
             colorIdx: fi % 10,
+            mznSeq,
+            code: mznCode,
+            label: `Mzo. ${mznCode}`,
             createdAt: new Date().toISOString(),
-            origParcelId: fragId, // â† auto-referencia
+            origParcelId: fragId,
             origPts: rounded,
             rootParcelId: root.rootId,
             rootParcelPts: root.rootPts,

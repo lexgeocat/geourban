@@ -82,7 +82,7 @@ export default function ManzanoCard({
         title="Click: resalta este manzano en el mapa"
       >
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontWeight: 700, color }}>{`Mzo. ${row.colorIdx + 1}`}</div>
+          <div style={{ fontWeight: 700, color }}>{`Mzo. ${row.code}`}</div>
           <div style={{ color: 'var(--cad-text-muted)', fontSize: '0.65rem' }}>
             {formatMetricArea(row.areaM2)}{row.lots.length ? ` · ${row.lots.length} lotes` : ''}
             {geomChanged && <span style={{ color: 'var(--cad-accent-amber)' }}> · ⚠ desactualizado</span>}
@@ -143,7 +143,7 @@ export default function ManzanoCard({
                         <input
                           type="number" step={1} placeholder="grados" value={manualAngleValue}
                           onChange={(e) => setManualAngleValue(e.target.value)} className="cad-input"
-                          aria-label={`Ángulo de rotación de lotes para Mzo. ${row.colorIdx + 1}, en grados`}
+                           aria-label={`Ángulo de rotación de lotes para Mzo. ${row.code}, en grados`}
                         />
                         <button onClick={() => onManualAngleApply(row, parseFloat(manualAngleValue))} className="cad-icon-btn" style={{ height: 'auto', fontSize: '0.6rem', padding: '0 8px' }}>
                           Aplicar

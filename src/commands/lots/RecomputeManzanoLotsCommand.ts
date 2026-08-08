@@ -27,7 +27,11 @@ export class RecomputeManzanoLotsCommand extends Command {
   readonly label = 'Recalcular lotes del manzano';
   private readonly opts: RecomputeManzanoLotsOpts;
   private newLotIds: Array<string | number> = [];
-  private removedLotSnapshots: Array<{ id: string | number; geometry: Geometry; props: Record<string, unknown> }> = [];
+  private removedLotSnapshots: Array<{
+    id: string | number;
+    geometry: Geometry;
+    props: Record<string, unknown>;
+  }> = [];
   private prevLotStatus: LotStatus | null = null;
 
   constructor(opts: RecomputeManzanoLotsOpts) {
@@ -70,12 +74,13 @@ export class RecomputeManzanoLotsCommand extends Command {
       this.opts.method,
       this.opts.targetAreaM2 * areaCorrectionFactor,
       this.opts.frontMinM * linearCorrectionFactor,
-      this.opts.dirPref,
+      this.opts.dirPref
     );
 
     const toRemove: Feature<Geometry>[] = [];
     ctx.drawSource.forEachFeature((f) => {
-      if (f.get('lotGroupId') === String(this.opts.manzanoId)) toRemove.push(f as Feature<Geometry>);
+      if (f.get('lotGroupId') === String(this.opts.manzanoId))
+        toRemove.push(f as Feature<Geometry>);
     });
     for (const f of toRemove) {
       const g = f.getGeometry();
@@ -96,6 +101,7 @@ export class RecomputeManzanoLotsCommand extends Command {
       if (lot.pts.length < 3) return;
       const { feature, id: lotId } = createLotFeature(lot, {
         manzanoId: this.opts.manzanoId,
+        manzanoCode: mznFeat.get('code') as string | undefined,
         index: i + 1,
         method: this.opts.method,
         preferredLayerId: this.opts.layerId,
@@ -128,7 +134,9 @@ export class RecomputeManzanoLotsCommand extends Command {
       ctx.drawSource.addFeature(f);
     }
     if (this.prevLotStatus !== null) {
-      const mznFeat = ctx.drawSource.getFeatureById(this.opts.manzanoId) as Feature<Geometry> | null;
+      const mznFeat = ctx.drawSource.getFeatureById(
+        this.opts.manzanoId
+      ) as Feature<Geometry> | null;
       setLotStatus(mznFeat, this.prevLotStatus);
     }
     ctx.drawSource.changed();

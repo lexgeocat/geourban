@@ -10,6 +10,9 @@ import {
   drawMainMetricLabel,
   drawLotNumberBadge,
   drawLotAreaCaption,
+  drawLeaderLine,
+  LOT_BADGE_COLOR,
+  LOT_BADGE_COLOR_REMNANT,
   resolveDimensionOrientation,
   computeLotGroupCounts,
   getApproxScreenArea,
@@ -22,7 +25,12 @@ import { getFeatureKind, getLotStatus } from '../../../core/objectModel';
 import { useLayersStore } from '../../../store/entities/layersRegistryStore';
 import type { Layer } from '../../../core/objectModel';
 
-interface PlacedBox { x: number; y: number; w: number; h: number; }
+interface PlacedBox {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
 
 const COLLISION_GRID_CELL_PX = 48;
 
@@ -49,7 +57,12 @@ class LabelCollisionGrid {
         const bucket = this.cells.get(this.key(cx, cy));
         if (!bucket) continue;
         for (const b of bucket) {
-          if (box.x < b.x + b.w && box.x + box.w > b.x && box.y < b.y + b.h && box.y + box.h > b.y) {
+          if (
+            box.x < b.x + b.w &&
+            box.x + box.w > b.x &&
+            box.y < b.y + b.h &&
+            box.y + box.h > b.y
+          ) {
             return true;
           }
         }
@@ -84,27 +97,21 @@ function extractLotNumberText(label: string | undefined): string {
   return match ? match[1] : label;
 }
 
-function isColliding(
-  ctx: CanvasRenderingContext2D,
-  coord: [number, number],
-  text: string,
-  grid: LabelCollisionGrid,
-  toPx: (c: number[]) => [number, number],
-): boolean {
-  const px = toPx(coord);
-  const m = measureCached(ctx, text);
-  const w = Math.abs(m.left) + Math.abs(m.right) + 12;
-  const h = Math.abs(m.ascent) + Math.abs(m.descent) + 6;
-  const box: PlacedBox = { x: px[0] - w / 2, y: px[1] - h / 2, w, h };
-  if (grid.intersects(box)) return true;
-  grid.insert(box);
-  return false;
-}
-
 const LOD_TIER1_FEATURE_THRESHOLD = 350;
 const LOD_TIER2_FEATURE_THRESHOLD = 900;
 
 const HARD_VISIBLE_CAP = 15_000;
+
+const LEADER_CANDIDATE_OFFSETS_PX: Array<[number, number]> = [
+  [0, -22],
+  [26, -14],
+  [-26, -14],
+  [30, 6],
+  [-30, 6],
+  [0, 26],
+  [26, 20],
+  [-26, 20],
+];
 
 function computeLodTier(visibleCount: number): 0 | 1 | 2 {
   if (visibleCount > LOD_TIER2_FEATURE_THRESHOLD) return 2;
@@ -127,11 +134,13 @@ export class LabelPainter {
 
   private dataVersion = 0;
   private lastKey: string | null = null;
-  private cachedOps: Array<(ctx: CanvasRenderingContext2D, toPx: (c: number[]) => [number, number]) => void> = [];
+  private cachedOps: Array<
+    (ctx: CanvasRenderingContext2D, toPx: (c: number[]) => [number, number]) => void
+  > = [];
   private layersKeyCache: { layers: Layer[]; key: string } | null = null;
 
   private recordOp(
-    op: (ctx: CanvasRenderingContext2D, toPx: (c: number[]) => [number, number]) => void,
+    op: (ctx: CanvasRenderingContext2D, toPx: (c: number[]) => [number, number]) => void
   ): void {
     this.cachedOps.push(op);
   }
@@ -167,11 +176,41 @@ export class LabelPainter {
     return sig;
   }
 
+  private measureBox(ctx: CanvasRenderingContext2D, px: [number, number], text: string): PlacedBox {
+    const m = measureCached(ctx, text);
+    const w = Math.abs(m.left) + Math.abs(m.right) + 12;
+    const h = Math.abs(m.ascent) + Math.abs(m.descent) + 6;
+    return { x: px[0] - w / 2, y: px[1] - h / 2, w, h };
+  }
+
+  private tryPlaceLabel(
+    ctx: CanvasRenderingContext2D,
+    anchorWorld: [number, number],
+    text: string,
+    toPx: (c: number[]) => [number, number]
+  ): { px: [number, number]; leaderFrom?: [number, number] } | null {
+    const anchorPx = toPx(anchorWorld);
+    const naturalBox = this.measureBox(ctx, anchorPx, text);
+    if (!this.collisionGrid.intersects(naturalBox)) {
+      this.collisionGrid.insert(naturalBox);
+      return { px: anchorPx };
+    }
+    for (const [ox, oy] of LEADER_CANDIDATE_OFFSETS_PX) {
+      const candPx: [number, number] = [anchorPx[0] + ox, anchorPx[1] + oy];
+      const box = this.measureBox(ctx, candPx, text);
+      if (!this.collisionGrid.intersects(box)) {
+        this.collisionGrid.insert(box);
+        return { px: candPx, leaderFrom: anchorPx };
+      }
+    }
+    return null;
+  }
+
   private computeCacheKey(
     features: Array<Feature<Geometry>>,
     zoom: number,
     resolution: number,
-    extent: Extent | null,
+    extent: Extent | null
   ): string {
     if (!extent) return 'no-extent';
     const q = Math.max(resolution * 2, 1e-9);
@@ -196,7 +235,7 @@ export class LabelPainter {
     toPx: (c: number[]) => [number, number],
     interacting: boolean,
     extent: Extent | null,
-    drawSource: VectorSource,
+    drawSource: VectorSource
   ): void {
     if (interacting) return;
     const key = this.computeCacheKey(features, zoom, resolution, extent);
@@ -217,7 +256,7 @@ export class LabelPainter {
   private getCachedScreenArea(
     feature: Feature<Geometry>,
     geometry: Geometry,
-    resolution: number,
+    resolution: number
   ): number {
     const id = feature.getId();
     if (id == null) return getApproxScreenArea(geometry, resolution);
@@ -238,7 +277,7 @@ export class LabelPainter {
     zoom: number,
     resolution: number,
     toPx: (c: number[]) => [number, number],
-    drawSource: VectorSource,
+    drawSource: VectorSource
   ): void {
     const selectedIds = useSelectionStore.getState().selectedIds;
     this.collisionGrid.clear();
@@ -260,7 +299,17 @@ export class LabelPainter {
       const feature = features[fi];
       const featureId = feature.getId();
       const isSelected = featureId != null && selectedIds.has(featureId as string | number);
-      this.paintOneFeature(ctx, feature, isSelected, zoom, resolution, zoomFade, lodTier, registry, toPx);
+      this.paintOneFeature(
+        ctx,
+        feature,
+        isSelected,
+        zoom,
+        resolution,
+        zoomFade,
+        lodTier,
+        registry,
+        toPx
+      );
     }
   }
 
@@ -273,7 +322,7 @@ export class LabelPainter {
     zoomFade: number,
     lodTier: 0 | 1 | 2,
     registry: ReturnType<typeof useLayersStore.getState>,
-    toPx: (c: number[]) => [number, number],
+    toPx: (c: number[]) => [number, number]
   ): void {
     const rawKind = feature.get('kind') as string | undefined;
     if (rawKind === 'cota') return;
@@ -294,7 +343,7 @@ export class LabelPainter {
     const allowLabels = lodTier < 2 || isSelected;
 
     const labelOp = (featureLayer?.showLabel ?? false) ? 1 : 0;
-    const cotaOp = (featureLayer?.showCota ?? false ? 1 : 0) * zoomFade;
+    const cotaOp = ((featureLayer?.showCota ?? false) ? 1 : 0) * zoomFade;
 
     const orientation = resolveDimensionOrientation(feature, this.lotGroupCounts);
     const labelPoint = feature.get('labelPoint') as [number, number] | undefined;
@@ -312,16 +361,31 @@ export class LabelPainter {
         const showTitle = baseShow && labelOp > 0.002 && allowLabels;
         const showArea = areaText != null && cotaOp > 0.002 && allowLabels;
         if ((showTitle || showArea) && labelPoint) {
-          const text = `Mzo. ${colorIdx + 1}`;
-          if (!isColliding(ctx, labelPoint, text, this.collisionGrid, toPx)) {
+          const mznCode = (feature.get('code') as string | undefined) ?? String(colorIdx + 1);
+          const text = `Mzo. ${mznCode}`;
+          const placed = this.tryPlaceLabel(ctx, labelPoint, text, toPx);
+          if (placed) {
             const mznColor = featureLayer?.color ?? GEOURBAN_MANZANA_COLOR;
-            this.recordOp((c, px) =>
-              drawMainMetricLabel(c, labelPoint, px, text, true, {
+            const fixedToPx = () => placed.px;
+            if (placed.leaderFrom) {
+              const leaderFrom = placed.leaderFrom;
+              this.recordOp((c) =>
+                drawLeaderLine(
+                  c,
+                  leaderFrom,
+                  placed.px,
+                  mznColor,
+                  Math.max(showTitle ? labelOp : 0, showArea ? cotaOp : 0)
+                )
+              );
+            }
+            this.recordOp((c) =>
+              drawMainMetricLabel(c, labelPoint, fixedToPx, text, true, {
                 extraLine: areaText ?? undefined,
                 color: mznColor,
                 mainOpacity: showTitle ? labelOp : 0,
                 extraLineOpacity: showArea ? cotaOp : 0,
-              }),
+              })
             );
           }
         }
@@ -330,21 +394,47 @@ export class LabelPainter {
         const showBadge = baseShow && labelOp > 0.002 && allowLabels;
         const showCaption = areaText != null && cotaOp > 0.002 && allowLabels;
         if ((showBadge || showCaption) && labelPoint) {
-          const collisionText = areaText ?? '?';
-          if (!isColliding(ctx, labelPoint, collisionText, this.collisionGrid, toPx)) {
+          const collisionText = (feature.get('code') as string | undefined) ?? areaText ?? '?';
+          const placed = this.tryPlaceLabel(ctx, labelPoint, collisionText, toPx);
+          if (placed) {
+            const fixedToPx = () => placed.px;
+            const isRemnant = !!feature.get('isRemnant');
+            const badgeColor = isRemnant ? LOT_BADGE_COLOR_REMNANT : LOT_BADGE_COLOR;
+            if (placed.leaderFrom) {
+              const leaderFrom = placed.leaderFrom;
+              this.recordOp((c) =>
+                drawLeaderLine(
+                  c,
+                  leaderFrom,
+                  placed.px,
+                  badgeColor,
+                  Math.max(showBadge ? labelOp : 0, showCaption ? cotaOp : 0)
+                )
+              );
+            }
             if (showBadge) {
               const numberText = extractLotNumberText(feature.get('label') as string | undefined);
-              const isRemnant = !!feature.get('isRemnant');
-              this.recordOp((c, px) => drawLotNumberBadge(c, labelPoint, px, numberText, isRemnant, labelOp));
+              this.recordOp((c) =>
+                drawLotNumberBadge(c, labelPoint, fixedToPx, numberText, isRemnant, labelOp)
+              );
             }
             if (showCaption) {
-              this.recordOp((c, px) => drawLotAreaCaption(c, labelPoint, px, areaText!, cotaOp));
+              this.recordOp((c) => drawLotAreaCaption(c, labelPoint, fixedToPx, areaText!, cotaOp));
             }
           }
         }
       } else if (labelPoint && areaText && cotaOp > 0.002 && allowLabels) {
-        if (!isColliding(ctx, labelPoint, areaText, this.collisionGrid, toPx)) {
-          this.recordOp((c, px) => drawMainMetricLabel(c, labelPoint, px, areaText, false, { mainOpacity: cotaOp }));
+        const placed = this.tryPlaceLabel(ctx, labelPoint, areaText, toPx);
+        if (placed) {
+          const fixedToPx = () => placed.px;
+          if (placed.leaderFrom) {
+            const leaderFrom = placed.leaderFrom;
+            const fallbackColor = featureLayer?.color ?? GEOURBAN_MANZANA_COLOR;
+            this.recordOp((c) => drawLeaderLine(c, leaderFrom, placed.px, fallbackColor, cotaOp));
+          }
+          this.recordOp((c) =>
+            drawMainMetricLabel(c, labelPoint, fixedToPx, areaText, false, { mainOpacity: cotaOp })
+          );
         }
       }
 
@@ -359,8 +449,8 @@ export class LabelPainter {
             isManzana,
             cotaOp,
             !isLote,
-            !isLote,
-          ),
+            !isLote
+          )
         );
       }
     } else if (geometry instanceof LineString) {
@@ -371,8 +461,17 @@ export class LabelPainter {
         const lengthM = feature.get('lengthM') as number | undefined;
         if (lengthM !== undefined) {
           const text = formatMetricLength(lengthM);
-          if (!isColliding(ctx, labelPoint, text, this.collisionGrid, toPx)) {
-            this.recordOp((c, px) => drawMainMetricLabel(c, labelPoint, px, text, false, { mainOpacity: cotaOp }));
+          const placed = this.tryPlaceLabel(ctx, labelPoint, text, toPx);
+          if (placed) {
+            const fixedToPx = () => placed.px;
+            if (placed.leaderFrom) {
+              const leaderFrom = placed.leaderFrom;
+              const lineColor = featureLayer?.color ?? GEOURBAN_MANZANA_COLOR;
+              this.recordOp((c) => drawLeaderLine(c, leaderFrom, placed.px, lineColor, cotaOp));
+            }
+            this.recordOp((c) =>
+              drawMainMetricLabel(c, labelPoint, fixedToPx, text, false, { mainOpacity: cotaOp })
+            );
           }
         }
       }
@@ -385,8 +484,8 @@ export class LabelPainter {
             orientation,
             px,
             false,
-            cotaOp,
-          ),
+            cotaOp
+          )
         );
       }
     }

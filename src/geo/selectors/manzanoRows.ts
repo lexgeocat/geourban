@@ -4,6 +4,7 @@ import Polygon from 'ol/geom/Polygon.js';
 import type VectorSource from 'ol/source/Vector.js';
 import { polyArea, centroidAverage, ringPerimeter, type Pt } from '../math/polygonEngine';
 import { getFeatureKind, getLotStatus, type LotStatus } from '../../core/objectModel';
+import { autoLetterCode } from '../../lib/autoName';
 
 export interface LotInfo {
   label: string;
@@ -14,6 +15,7 @@ export interface LotInfo {
 export interface ManzanoRow {
   id: string | number;
   colorIdx: number;
+  code: string;
   areaM2: number;
   perimeterM: number;
   centroid: Pt;
@@ -54,17 +56,20 @@ export function readManzanoRows(drawSource: VectorSource | null): ManzanoRow[] {
     const id = f.getId();
     if (id == null) continue;
     const geom = f.getGeometry();
-    const ring: Pt[] = geom instanceof Polygon
-      ? ((geom.getCoordinates()[0] ?? []) as number[][]).map((c) => [c[0], c[1]] as Pt)
-      : [];
+    const ring: Pt[] =
+      geom instanceof Polygon
+        ? ((geom.getCoordinates()[0] ?? []) as number[][]).map((c) => [c[0], c[1]] as Pt)
+        : [];
     const areaM2 = (f.get('areaM2') as number | undefined) ?? (ring.length ? polyArea(ring) : 0);
     const perimeterM = ring.length ? ringPerimeter(ring) : 0;
     const centroidPt: Pt = ring.length ? centroidAverage(ring) : [0, 0];
     const colorIdx = (f.get('colorIdx') as number | undefined) ?? fallbackIdx;
+    const code = (f.get('code') as string | undefined) ?? autoLetterCode(fallbackIdx);
 
     rows.push({
       id,
       colorIdx,
+      code,
       areaM2,
       perimeterM,
       centroid: centroidPt,

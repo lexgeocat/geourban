@@ -2,6 +2,7 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import type { RoundaboutParams } from '../../geo/roundabout/roundaboutEngine';
+import { autoName } from '../../lib/autoName';
 
 export interface Roundabout extends RoundaboutParams {
   id: string;
@@ -33,16 +34,6 @@ function resetNextId(): void {
   nextId = 1;
 }
 
-function autoName(index: number): string {
-  let name = '';
-  let n = index;
-  do {
-    name = String.fromCharCode(65 + (n % 26)) + name;
-    n = Math.floor(n / 26) - 1;
-  } while (n >= 0);
-  return `Rotonda ${name}`;
-}
-
 export const useRoundaboutStore = create<RoundaboutState>()(
   immer((set) => ({
     roundabouts: [],
@@ -57,7 +48,7 @@ export const useRoundaboutStore = create<RoundaboutState>()(
       set((state) => {
         const id = `roundabout-${nextId++}`;
         newId = id;
-        state.roundabouts.push({ ...r, id, name: autoName(state.roundabouts.length) });
+        state.roundabouts.push({ ...r, id, name: autoName(state.roundabouts.length, 'Rotonda') });
       });
       return newId;
     },
@@ -65,7 +56,7 @@ export const useRoundaboutStore = create<RoundaboutState>()(
     addRoundaboutWithId: (id, r) =>
       set((state) => {
         if (state.roundabouts.some((x) => x.id === id)) return;
-        state.roundabouts.push({ ...r, id, name: autoName(state.roundabouts.length) });
+        state.roundabouts.push({ ...r, id, name: autoName(state.roundabouts.length, 'Rotonda') });
       }),
 
     updateRoundabout: (id, patch) =>
@@ -78,7 +69,7 @@ export const useRoundaboutStore = create<RoundaboutState>()(
       set((state) => {
         state.roundabouts = state.roundabouts.filter((r) => r.id !== id);
         state.roundabouts.forEach((r, i) => {
-          r.name = autoName(i);
+          r.name = autoName(i, 'Rotonda');
         });
       }),
 

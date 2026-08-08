@@ -14,6 +14,7 @@ import { confirmAsync } from '../store/ui/confirmDialogStore';
 import { toast } from '../store/ui/toastStore';
 import { useProjectFileStore } from '../store/ui/projectFileStore';
 import { useLotsWorkflow } from './useLotsWorkflow';
+import { resetManzanoSeq } from '../store/entities/manzanoNaming';
 
 export function useTopBarActions() {
   const { lotsBusy, runGenerateAllLots, focusManzanoInSidebar } = useLotsWorkflow();
@@ -31,6 +32,7 @@ export function useTopBarActions() {
     resetIncrementalRoadTracking();
     useLayersStore.getState().resetToEmpty();
     useManzanoStore.getState().resetAll();
+    resetManzanoSeq();
     useDrawStore.getState().setMode('select');
     useDrawStore.getState().setLastDrawnLineId(null);
     refreshSourceMetrics(drawSource);
