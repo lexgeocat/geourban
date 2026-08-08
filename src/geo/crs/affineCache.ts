@@ -99,7 +99,7 @@ interface TileCacheEntry {
   level: number;
 }
 
-export interface TiledAffineCacheOptions {
+interface TiledAffineCacheOptions {
   tileSizeM?: number;
   tilePaddingRatio?: number;
   minTilePaddingM?: number;
@@ -107,7 +107,7 @@ export interface TiledAffineCacheOptions {
   maxCacheEntries?: number;
   gridSize?: number;
 }
-export class TiledAffineCache {
+class TiledAffineCache {
   private readonly tileSizeM: number;
   private readonly tilePaddingRatio: number;
   private readonly minTilePaddingM: number;

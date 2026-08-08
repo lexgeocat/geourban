@@ -94,7 +94,7 @@ function solve3x3(A: number[][], bVec: number[]): number[] | null {
  * Ajusta por mínimos cuadrados una afín 2D que mapea `src` -> `dst`
  * (mismos índices, mínimo 3 puntos no colineales).
  */
-export function fitAffineLeastSquares(
+function fitAffineLeastSquares(
   src: ReadonlyArray<readonly [number, number]>,
   dst: ReadonlyArray<readonly [number, number]>,
 ): AffineTransform | null {

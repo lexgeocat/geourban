@@ -1,18 +1,18 @@
+// WKB solo cubre las geometrías que efectivamente persistimos/levantamos
+// del drawSource (Polygon, LineString, MultiPolygon). Point no se usa
+// porque ninguna feature persistible del modelo es puntual — cualquier
+// 'Point' en un WKB externo se rechaza en decodeWkb con un error claro.
 export type WkbGeometry =
-  | { type: 'Point'; coordinates: [number, number] }
   | { type: 'LineString'; coordinates: [number, number][] }
   | { type: 'Polygon'; coordinates: [number, number][][] }
   | { type: 'MultiPolygon'; coordinates: [number, number][][][] };
 
-const WKB_POINT = 1;
 const WKB_LINESTRING = 2;
 const WKB_POLYGON = 3;
 const WKB_MULTIPOLYGON = 6;
 
 function computeWkbSize(geom: WkbGeometry): number {
   switch (geom.type) {
-    case 'Point':
-      return 1 + 4 + 16;
     case 'LineString':
       return 1 + 4 + 4 + geom.coordinates.length * 16;
     case 'Polygon': {
@@ -49,11 +49,6 @@ export function encodeWkb(geom: WkbGeometry): Uint8Array {
   };
 
   switch (geom.type) {
-    case 'Point':
-      writeHeader(WKB_POINT);
-      view.setFloat64(offset, geom.coordinates[0], true); offset += 8;
-      view.setFloat64(offset, geom.coordinates[1], true); offset += 8;
-      break;
     case 'LineString':
       writeHeader(WKB_LINESTRING);
       writeRing(geom.coordinates);
@@ -98,11 +93,6 @@ export function decodeWkb(bytes: Uint8Array): WkbGeometry {
   };
 
   const type = readHeader();
-  if (type === WKB_POINT) {
-    const x = view.getFloat64(offset, true); offset += 8;
-    const y = view.getFloat64(offset, true); offset += 8;
-    return { type: 'Point', coordinates: [x, y] };
-  }
   if (type === WKB_LINESTRING) {
     return { type: 'LineString', coordinates: readRing() };
   }

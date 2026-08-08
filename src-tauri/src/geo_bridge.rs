@@ -3,16 +3,11 @@ use geourban_geo::{
     fragment_reconciliation::{match_fragments_to_members, FragmentAssignment},
     spatial::{IndexedEnvelope, SpatialIndex},
     CornerMode, DirPref, LotResult, ManzanoLoteMethod, Pt, RoundaboutParams, Street,
-    SubdivisionOptions, SubdivisionResult,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 use tauri::State;
 
-#[tauri::command]
-pub fn subdivide(coordinates: Vec<Vec<Pt>>, options: SubdivisionOptions) -> SubdivisionResult {
-    geourban_geo::subdivision::subdivide(&coordinates, &options)
-}
 #[tauri::command]
 pub fn subdivide_manzano(
     ring: Vec<Pt>,

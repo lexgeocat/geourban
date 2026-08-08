@@ -28,15 +28,6 @@ pub struct SliceResult {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum SubdivisionMethod {
-    Auto,
-    Modo2,
-    Exact,
-    ManualSlice,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ManzanoLoteMethod {
     Auto,
@@ -49,43 +40,6 @@ pub enum ManzanoLoteMethod {
 pub struct DirPref {
     pub ax: f64,
     pub ay: f64,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Segment {
-    pub a: Pt,
-    pub b: Pt,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CutLine {
-    pub p1: Pt,
-    pub p2: Pt,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SubdivisionOptions {
-    pub method: SubdivisionMethod,
-    pub target_area_m2: Option<f64>,
-    pub front_min_m: Option<f64>,
-    pub dir_ax: Option<f64>,
-    pub dir_ay: Option<f64>,
-    pub frente_seg: Option<Segment>,
-    pub aux_seg: Option<Segment>,
-    pub cut_line: Option<CutLine>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SubdivisionResult {
-    pub ok: bool,
-    pub features: Vec<serde_json::Value>,
-    pub warnings: Vec<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

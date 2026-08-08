@@ -25,4 +25,4 @@ tauri = { version = "2.11.3", features = [] }
 tauri-plugin-log = "2"
 rusqlite = { version = "0.31", features = ["bundled"] }
 base64 = "0.22"
-geourban-geo = { path = "crates/geourban-geo", features = ["geos-backend"] }
+geourban-geo = { path = "crates/geourban-geo" }

@@ -1,3 +1,5 @@
+// ⚠️ Espejo de crates/geourban-geo/src/math.rs::resolution_aware_segments —
+// heurística de LOD en cliente; motor autoritativo en Rust.
 const MIN_SEGMENTS = 8;
 const MAX_SEGMENTS = 160;
 

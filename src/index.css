@@ -36,10 +36,8 @@
   --cad-statusbar-height: 28px;
 
   /* ─── Shadows ─── */
-  --cad-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
   --cad-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
   --cad-shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.6);
-  --cad-shadow-glow: 0 0 12px rgba(0, 212, 255, 0.3);
 
   /* ─── Z-index scale ─── */
   --z-floating-panel: 100;
@@ -888,9 +886,6 @@ body,
     min-width: 32px;
   }
   .ribbon-tool-label {
-    display: none;
-  }
-  .topbar-app-menu .app-menu-label {
     display: none;
   }
 }

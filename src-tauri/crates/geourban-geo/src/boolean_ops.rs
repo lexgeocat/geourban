@@ -1,5 +1,3 @@
-#![cfg(feature = "geos-backend")]
-
 use std::time::Instant;
 
 use geos::{ContextHandle, CoordDimensions, CoordSeq, Geom, Geometry, GeometryTypes};

@@ -1,5 +1,3 @@
-#![cfg(feature = "geos-backend")]
-
 use serde::{Deserialize, Serialize};
 
 use crate::boolean_ops::ring_intersection_area;

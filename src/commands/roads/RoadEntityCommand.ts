@@ -13,12 +13,12 @@ import {
   type StructuralDiff,
 } from '../core/structuralDiff';
 
-export interface RoadEntityEntry<TParams> {
+interface RoadEntityEntry<TParams> {
   id: string | null;
   params: TParams;
 }
 
-export abstract class RoadEntityCommand<TParams, TStore> extends Command {
+export abstract class RoadEntityCommand<TParams> extends Command {
   abstract readonly label: string;
   readonly coalesceKey: string;
 
@@ -30,8 +30,6 @@ export abstract class RoadEntityCommand<TParams, TStore> extends Command {
     this.coalesceKey = `${coalescePrefix}:${sessionIdSource()}`;
     this.entries = [{ id: null, params }];
   }
-
-  protected abstract getStore(): TStore;
 
   /** Agrega una nueva entidad al store; devuelve el id asignado. */
   protected abstract addToStore(params: TParams): string;
@@ -71,7 +69,7 @@ export abstract class RoadEntityCommand<TParams, TStore> extends Command {
 
   override coalesceInto(previous: Command): boolean {
     if (!this.sameKind(previous)) return false;
-    const prev = previous as RoadEntityCommand<TParams, TStore>;
+    const prev = previous as RoadEntityCommand<TParams>;
     prev.entries.push(...this.entries);
     prev.diff = composeStructuralDiffs(prev.diff, this.diff);
     return true;

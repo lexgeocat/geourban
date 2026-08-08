@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use crate::types::Pt;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -12,27 +10,6 @@ pub struct Extent1D {
 pub struct PrincipalAxis {
     pub ux: f64,
     pub uy: f64,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct PolyHit {
-    pub seg_idx: usize,
-    pub u: f64,
-    pub pt: Pt,
-}
-
-#[derive(Debug, Clone)]
-pub struct CutPolys {
-    pub poly1: Vec<Pt>,
-    pub poly2: Vec<Pt>,
-    pub cut_a: Pt,
-    pub cut_b: Pt,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum PolyHitRole {
-    A,
-    B,
 }
 
 pub fn poly_area(pts: &[Pt]) -> f64 {
@@ -163,109 +140,6 @@ pub fn clip_half_plane(pts: &[Pt], lp1: Pt, lp2: Pt, keep_side: i32) -> Vec<Pt> 
     } else {
         Vec::new()
     }
-}
-
-pub fn point_in_poly(x: f64, y: f64, poly: &[Pt]) -> bool {
-    let n = poly.len();
-    if n == 0 {
-        return false;
-    }
-    let mut inside = false;
-    let mut j = n - 1;
-    for i in 0..n {
-        let (xi, yi) = poly[i];
-        let (xj, yj) = poly[j];
-        j = i;
-        if (yi > y) != (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi {
-            inside = !inside;
-        }
-    }
-    inside
-}
-
-pub fn build_cut_polys(wp: &[Pt], h_a: PolyHit, h_b: PolyHit) -> Option<CutPolys> {
-    let n = wp.len();
-    if n == 0 {
-        return None;
-    }
-
-    let mut ins: HashMap<usize, Vec<(f64, Pt, PolyHitRole)>> = HashMap::new();
-
-    let ua = h_a.u.max(0.0).min(1.0);
-    let ub = h_b.u.max(0.0).min(1.0);
-    ins.entry(h_a.seg_idx)
-        .or_default()
-        .push((ua, h_a.pt, PolyHitRole::A));
-    ins.entry(h_b.seg_idx)
-        .or_default()
-        .push((ub, h_b.pt, PolyHitRole::B));
-
-    for list in ins.values_mut() {
-        list.sort_by(|x, y| x.0.partial_cmp(&y.0).unwrap_or(std::cmp::Ordering::Equal));
-    }
-
-    let mut verts: Vec<(Pt, Option<PolyHitRole>)> = Vec::new();
-    for i in 0..n {
-        verts.push((wp[i], None));
-        if let Some(list) = ins.get(&i) {
-            for &(_, pt, role) in list {
-                verts.push((pt, Some(role)));
-            }
-        }
-    }
-
-    let mut idx_a: Option<usize> = None;
-    let mut idx_b: Option<usize> = None;
-    for (i, v) in verts.iter().enumerate() {
-        match v.1 {
-            Some(PolyHitRole::A) => idx_a = Some(i),
-            Some(PolyHitRole::B) => idx_b = Some(i),
-            None => {}
-        }
-    }
-    let (idx_a, idx_b) = match (idx_a, idx_b) {
-        (Some(a), Some(b)) => (a, b),
-        _ => return None,
-    };
-
-    let lv = verts.len();
-
-    let mut p1: Vec<Pt> = Vec::new();
-    let mut i = idx_a;
-    let mut st = 0usize;
-    loop {
-        p1.push(verts[i].0);
-        i = (i + 1) % lv;
-        st += 1;
-        if i == idx_b || st > lv + 2 {
-            break;
-        }
-    }
-    p1.push(verts[idx_b].0);
-
-    let mut p2: Vec<Pt> = Vec::new();
-    let mut i = idx_b;
-    let mut st = 0usize;
-    loop {
-        p2.push(verts[i].0);
-        i = (i + 1) % lv;
-        st += 1;
-        if i == idx_a || st > lv + 2 {
-            break;
-        }
-    }
-    p2.push(verts[idx_a].0);
-
-    if p1.len() < 3 || p2.len() < 3 {
-        return None;
-    }
-
-    Some(CutPolys {
-        poly1: p1,
-        poly2: p2,
-        cut_a: h_a.pt,
-        cut_b: h_b.pt,
-    })
 }
 
 pub fn clip_to_strip(pts: &[Pt], ax: f64, ay: f64, min_t: f64, max_t: f64) -> Vec<Pt> {

@@ -1236,7 +1236,6 @@ fn hb_lotize_with_baseline(mzn_pts: &[Pt], cfg: HbConfig, baseline: (Pt, Pt)) ->
     lots
 }
 
-#[cfg(feature = "geos-backend")]
 fn hb_merge_polys(a: &[Pt], b: &[Pt]) -> Vec<Pt> {
     let merged = crate::boolean_ops::union_rings(
         &[a.to_vec(), b.to_vec()],
@@ -1255,11 +1254,6 @@ fn hb_merge_polys(a: &[Pt], b: &[Pt]) -> Vec<Pt> {
             return ring;
         }
     }
-    hb_convex_hull_merge(a, b)
-}
-
-#[cfg(not(feature = "geos-backend"))]
-fn hb_merge_polys(a: &[Pt], b: &[Pt]) -> Vec<Pt> {
     hb_convex_hull_merge(a, b)
 }
 

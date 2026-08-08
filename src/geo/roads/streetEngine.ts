@@ -1,4 +1,6 @@
-﻿const FILLET_MAX_RADIUS_M = 8;
+﻿// ⚠️ Espejo de crates/geourban-geo/src/roads.rs::get_fillet_radius_for_angle
+// — tabla de radios por ángulo. Mantener sincronizada con Rust.
+const FILLET_MAX_RADIUS_M = 8;
 
 export function getFilletRadiusForAngle(angleDeg: number): number {
   if (angleDeg <= 35) return 2.5;

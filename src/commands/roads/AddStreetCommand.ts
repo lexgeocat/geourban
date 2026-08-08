@@ -3,10 +3,7 @@ import { useStreetStore, type Street } from '../../store/entities/streetStore';
 import { useStreetTracingSessionStore } from '../../store/ui/streetTracingSessionStore';
 import type { Command } from '../core/Command';
 
-export class AddStreetCommand extends RoadEntityCommand<
-  Omit<Street, 'id' | 'name'>,
-  ReturnType<typeof useStreetStore.getState>
-> {
+export class AddStreetCommand extends RoadEntityCommand<Omit<Street, 'id' | 'name'>> {
   readonly label = 'Trazar calle';
 
   constructor(
@@ -29,10 +26,6 @@ export class AddStreetCommand extends RoadEntityCommand<
         layerId,
       },
     );
-  }
-
-  protected getStore() {
-    return useStreetStore.getState();
   }
 
   protected addToStore(params: Omit<Street, 'id' | 'name'>): string {

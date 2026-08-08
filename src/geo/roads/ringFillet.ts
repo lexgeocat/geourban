@@ -1,4 +1,7 @@
-﻿import type { Pt } from '../math/polygonEngine';
+﻿// ⚠️ Espejo de crates/geourban-geo/src/roads.rs::round_ring_reflex —
+// preview en cliente; el motor autoritativo vive en Rust. Mantener
+// sincronizado (radio por ángulo, algoritmo de barrido).
+import type { Pt } from '../math/polygonEngine';
 import { polySignedArea, closeRing } from '../math/polygonEngine';
 import { distToSegment } from '../math/dist';
 import { getFilletRadiusForAngle } from './streetEngine';

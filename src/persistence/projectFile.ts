@@ -69,7 +69,8 @@ function wkbToGeometry(wkb: WkbGeometry): Geometry {
   if (wkb.type === 'Polygon') return new Polygon(wkb.coordinates);
   if (wkb.type === 'LineString') return new LineString(wkb.coordinates);
   if (wkb.type === 'MultiPolygon') return new MultiPolygon(wkb.coordinates);
-  throw new Error(`projectFile: geometría no soportada en drawSource (${wkb.type})`);
+  const _exhaustive: never = wkb;
+  throw new Error(`projectFile: geometría no soportada en drawSource (${(_exhaustive as { type: string }).type})`);
 }
 
 function buildPayload(): ProjectPayload {

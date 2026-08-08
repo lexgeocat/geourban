@@ -22,7 +22,6 @@ pub fn run() {
             project_store::project_load,
             project_store::project_list,
             project_store::project_delete,
-            geo_bridge::subdivide,
             geo_bridge::subdivide_manzano,
             geo_bridge::subdivide_manzano_batch,
             geo_bridge::compute_manzanos_cmd,

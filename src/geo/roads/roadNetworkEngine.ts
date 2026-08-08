@@ -1,4 +1,6 @@
-﻿import type { Pt } from '../math/polygonEngine';
+﻿// ⚠️ Espejo de crates/geourban-geo/src/roads.rs::build_road_network_rings —
+// anillo de red vial en cliente; motor autoritativo en Rust.
+import type { Pt } from '../math/polygonEngine';
 import type { Street } from '../../store/entities/streetStore';
 import { roundaboutGeometry, type RoundaboutParams } from '../roundabout/roundaboutEngine';
 

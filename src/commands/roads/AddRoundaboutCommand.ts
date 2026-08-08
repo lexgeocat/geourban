@@ -4,10 +4,7 @@ import { useStreetTracingSessionStore } from '../../store/ui/streetTracingSessio
 import type { Command } from '../core/Command';
 import type { RoundaboutParams } from '../../geo/roundabout/roundaboutEngine';
 
-export class AddRoundaboutCommand extends RoadEntityCommand<
-  RoundaboutParams,
-  ReturnType<typeof useRoundaboutStore.getState>
-> {
+export class AddRoundaboutCommand extends RoadEntityCommand<RoundaboutParams> {
   readonly label = 'Trazar rotonda';
 
   constructor(params: RoundaboutParams) {
@@ -16,10 +13,6 @@ export class AddRoundaboutCommand extends RoadEntityCommand<
       () => useStreetTracingSessionStore.getState().currentSessionId,
       params,
     );
-  }
-
-  protected getStore() {
-    return useRoundaboutStore.getState();
   }
 
   protected addToStore(params: RoundaboutParams): string {

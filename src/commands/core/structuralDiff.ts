@@ -117,10 +117,6 @@ export class StructuralDiffRecorder {
     if (snap) this.modifiedAfterById.set(id, snap);
   }
 
-  isEmpty(): boolean {
-    return this.addedIds.size === 0 && this.removedById.size === 0 && this.modifiedAfterById.size === 0;
-  }
-
   /** Vuelca lo grabado a un `StructuralDiff` — lee de `source` el estado final de los "added"/"modified". */
   toDiff(source: VectorSource): StructuralDiff {
     const added: FeatureSnapshot[] = [];

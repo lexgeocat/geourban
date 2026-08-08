@@ -1,4 +1,7 @@
-﻿import type { Pt } from '../math/polygonEngine';
+﻿// ⚠️ Espejo de crates/geourban-geo/src/roundabout.rs — preview/hit-testing
+// en el cliente; el motor autoritativo vive en Rust. Mantener fórmulas
+// (radio, islas, side_outer) sincronizadas con la versión Rust.
+import type { Pt } from '../math/polygonEngine';
 import { polyArea } from '../math/polygonEngine';
 import { resolutionAwareSegments } from '../math/lod';
 
