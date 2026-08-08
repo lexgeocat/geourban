@@ -1,12 +1,27 @@
 import type { LassoPreview } from '../LassoSelection';
 import type { Pt } from '../../../geo/math/polygonEngine';
 
+function lassoPreviewEqual(a: LassoPreview, b: LassoPreview): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  if (a.mode !== b.mode) return false;
+  if (a.mode === 'rect' && b.mode === 'rect') {
+    return a.start === b.start && a.current === b.current;
+  }
+  if (a.mode === 'lasso' && b.mode === 'lasso') {
+    return a.points === b.points && a.current === b.current;
+  }
+  return false;
+}
+
 export class OverlayPainter {
   private currentLassoPreview: LassoPreview = null;
   private currentSubdivisionPreview: Pt[][] | null = null;
 
-  setLassoPreview(preview: LassoPreview): void {
+  setLassoPreview(preview: LassoPreview): boolean {
+    if (lassoPreviewEqual(this.currentLassoPreview, preview)) return false;
     this.currentLassoPreview = preview;
+    return true;
   }
 
   setSubdivisionPreview(rings: Pt[][] | null): void {
@@ -18,7 +33,10 @@ export class OverlayPainter {
     this.paintSubdivisionPreview(ctx, toPx);
   }
 
-  private paintLassoPreview(ctx: CanvasRenderingContext2D, toPx: (c: number[]) => [number, number]): void {
+  private paintLassoPreview(
+    ctx: CanvasRenderingContext2D,
+    toPx: (c: number[]) => [number, number]
+  ): void {
     const preview = this.currentLassoPreview;
     if (!preview) return;
 
@@ -62,7 +80,10 @@ export class OverlayPainter {
     ctx.restore();
   }
 
-  private paintSubdivisionPreview(ctx: CanvasRenderingContext2D, toPx: (c: number[]) => [number, number]): void {
+  private paintSubdivisionPreview(
+    ctx: CanvasRenderingContext2D,
+    toPx: (c: number[]) => [number, number]
+  ): void {
     const rings = this.currentSubdivisionPreview;
     if (!rings || rings.length === 0) return;
     ctx.save();

@@ -5,7 +5,7 @@ import type Geometry from 'ol/geom/Geometry.js';
 import VectorSource from 'ol/source/Vector.js';
 import { useProjectCrsStore } from '../store/project/projectCrsStore';
 import { ensureUtmZoneRegistered } from './crs/utmZones';
-import { pathLength } from './math/polygonEngine';
+import { pathLength, polygonCentroid } from './math/polygonEngine';
 import {
   getMetricPlaneAffine,
   LOCAL_TANGENT_PLANE_KEY,
@@ -65,6 +65,7 @@ function normalizeTextAngle(angleRad: number) {
 }
 
 const ARC_MERGE_BREAK_RAD = (12 * Math.PI) / 180;
+const ARC_MERGE_MAX_CUMULATIVE_RAD = (20 * Math.PI) / 180;
 const ARC_MERGE_MAX_RUN = 48;
 
 function getSegmentMetrics(
@@ -75,20 +76,17 @@ function getSegmentMetrics(
   if (n < 2) return [];
 
   const edgeCount = n - 1;
-  const edgeLenM = new Array<number>(edgeCount);
   const dirX = new Array<number>(edgeCount);
   const dirY = new Array<number>(edgeCount);
 
   for (let i = 0; i < edgeCount; i++) {
-    const a3 = coords3857[i], b3 = coords3857[i + 1];
-    const aM = coordsMetric[i], bM = coordsMetric[i + 1];
-    if (!a3 || !b3 || !aM || !bM) {
-      edgeLenM[i] = 0;
+    const a3 = coords3857[i],
+      b3 = coords3857[i + 1];
+    if (!a3 || !b3) {
       dirX[i] = 0;
       dirY[i] = 0;
       continue;
     }
-    edgeLenM[i] = Math.hypot(bM[0] - aM[0], bM[1] - aM[1]);
     const dx = b3[0] - a3[0];
     const dy = b3[1] - a3[1];
     const len = Math.hypot(dx, dy) || 1;
@@ -101,10 +99,10 @@ function getSegmentMetrics(
   const flushRun = (runStart: number, runEndVertex: number) => {
     const start3857 = coords3857[runStart];
     const finish3857 = coords3857[runEndVertex];
-    if (!start3857 || !finish3857) return;
-
-    let lengthM = 0;
-    for (let k = runStart; k < runEndVertex; k++) lengthM += edgeLenM[k];
+    const startMetric = coordsMetric[runStart];
+    const finishMetric = coordsMetric[runEndVertex];
+    if (!start3857 || !finish3857 || !startMetric || !finishMetric) return;
+    const lengthM = Math.hypot(finishMetric[0] - startMetric[0], finishMetric[1] - startMetric[1]);
     if (!Number.isFinite(lengthM) || lengthM <= 0) return;
 
     const dx = finish3857[0] - start3857[0];
@@ -120,14 +118,23 @@ function getSegmentMetrics(
   };
 
   let runStart = 0;
+  let cumulativeTurn = 0;
   for (let i = 1; i < edgeCount; i++) {
     const dot = Math.max(-1, Math.min(1, dirX[i - 1] * dirX[i] + dirY[i - 1] * dirY[i]));
     const turn = Math.acos(dot);
     const runLen = i - runStart;
-    const isBreak = !Number.isFinite(turn) || turn > ARC_MERGE_BREAK_RAD || runLen >= ARC_MERGE_MAX_RUN;
+    const safeTurn = Number.isFinite(turn) ? turn : Infinity;
+    const isBreak =
+      !Number.isFinite(turn) ||
+      turn > ARC_MERGE_BREAK_RAD ||
+      cumulativeTurn + safeTurn > ARC_MERGE_MAX_CUMULATIVE_RAD ||
+      runLen >= ARC_MERGE_MAX_RUN;
     if (isBreak) {
       flushRun(runStart, i);
       runStart = i;
+      cumulativeTurn = 0;
+    } else {
+      cumulativeTurn += safeTurn;
     }
   }
   flushRun(runStart, edgeCount);
@@ -145,18 +152,11 @@ function calculatePolygonMetrics(geometry: Polygon): FeatureMetrics {
   const areaM2 = planarArea(ringMetric);
   const perimeterM = pathLength(ringMetric);
 
-  let cx = 0, cy = 0;
-  const vertexCount = ring3857.length - 1;
-  for (let i = 0; i < vertexCount; i++) {
-    cx += ring3857[i][0];
-    cy += ring3857[i][1];
-  }
-
   return {
     areaM2,
     perimeterM,
     segmentLengths: getSegmentMetrics(ring3857, ringMetric),
-    labelPoint: [cx / vertexCount, cy / vertexCount],
+    labelPoint: polygonCentroid(ring3857),
     metricsUpdatedAt: Date.now(),
   };
 }

@@ -6,6 +6,10 @@ import { useRoundaboutStore } from '../../../../store/entities/roundaboutStore';
 import { useLayersStore } from '../../../../store/entities/layersRegistryStore';
 import { useGenerateLotsProgressStore } from '../../../../store/ui/generateLotsProgressStore';
 import { recomputeManzanos, resetIncrementalRoadTracking } from '../../../../geo/recomputeManzanos';
+import { useMapStore } from '../../../../store/map/mapStore';
+import { runCommand } from '../../../../commands/core/CommandStack';
+import { RemoveLayerCommand } from '../../../../commands/layers/RemoveLayerCommand';
+import { computeLayerFeatureCounts } from '../../../../geo/selectors/layerStats';
 import { RibbonGroup, RibbonTool, RibbonToolDropdown } from '../RibbonPrimitives';
 import {
   IconCursor, IconEraser, IconPolygon, IconLine, IconRect, IconPerimeter,
@@ -30,11 +34,19 @@ export default function UrbanDesignTab({ lotsBusy, onOpenSubdivision, onGenerate
   const activeLayerId = useLayersStore((s) => s.activeLayerId);
   const setActiveLayer = useLayersStore((s) => s.setActiveLayer);
 
-  const handleClearStreets = () => {
+const handleClearStreets = async () => {
     clearStreets();
     clearRoundabouts();
     resetIncrementalRoadTracking();
-    void recomputeManzanos();
+    await recomputeManzanos();
+    const src = useMapStore.getState().drawSource;
+    const counts = computeLayerFeatureCounts(src);
+    for (const layer of useLayersStore.getState().layers) {
+      if (layer.locked) continue;
+      if (layer.kind !== 'manzana' && layer.kind !== 'lote') continue;
+      if ((counts[layer.id] ?? 0) > 0) continue;
+      void runCommand(new RemoveLayerCommand({ layerId: layer.id, action: 'delete' }));
+    }
   };
 
   return (

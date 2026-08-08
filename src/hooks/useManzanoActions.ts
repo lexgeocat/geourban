@@ -6,7 +6,7 @@ import type VectorSource from 'ol/source/Vector.js';
 import { useManzanoStore, type ManzanoLoteMethod } from '../store/entities/manzanoStore';
 import { useCommandStack } from '../commands/core/CommandStack';
 import { RecomputeManzanoLotsCommand } from '../commands/lots/RecomputeManzanoLotsCommand';
-import { centroid, type Pt } from '../geo/math/polygonEngine';
+import { polygonCentroid, type Pt } from '../geo/math/polygonEngine';
 import { useSubdivisionPreviewStore } from '../store/ui/subdivisionPreviewStore';
 import { subdivideManzanoInWorker } from '../workers/geoWorkerClient';
 import type { ManzanoRow } from '../geo/selectors/manzanoRows';
@@ -37,7 +37,14 @@ export function useManzanoActions(drawSource: VectorSource | null) {
         const method = getMethod(row.id);
         const dirPref = getRotateDir(row.id);
         await useCommandStack.getState().run(
-          new RecomputeManzanoLotsCommand({ manzanoId: row.id, targetAreaM2, frontMinM, method, dirPref, layerId }),
+          new RecomputeManzanoLotsCommand({
+            manzanoId: row.id,
+            targetAreaM2,
+            frontMinM,
+            method,
+            dirPref,
+            layerId,
+          })
         );
       } finally {
         setRecomputingIds((s) => {
@@ -47,7 +54,7 @@ export function useManzanoActions(drawSource: VectorSource | null) {
         });
       }
     },
-    [targetAreaM2, frontMinM, getMethod, getRotateDir],
+    [targetAreaM2, frontMinM, getMethod, getRotateDir]
   );
 
   const handleMethodClick = useCallback(
@@ -55,7 +62,7 @@ export function useManzanoActions(drawSource: VectorSource | null) {
       setMethod(row.id, method);
       void runRecompute(row);
     },
-    [setMethod, runRecompute],
+    [setMethod, runRecompute]
   );
 
   const handlePreviewLots = useCallback(
@@ -74,7 +81,7 @@ export function useManzanoActions(drawSource: VectorSource | null) {
         console.error('Preview de lotes falló', err);
       }
     },
-    [drawSource, getMethod, getRotateDir, targetAreaM2, frontMinM],
+    [drawSource, getMethod, getRotateDir, targetAreaM2, frontMinM]
   );
 
   const handleStartRotate = useCallback(
@@ -84,7 +91,7 @@ export function useManzanoActions(drawSource: VectorSource | null) {
       const geom = feat?.getGeometry();
       if (!(geom instanceof Polygon)) return;
       const ring = ((geom.getCoordinates()[0] ?? []) as number[][]).map((c) => [c[0], c[1]] as Pt);
-      const cen = centroid(ring);
+      const cen = polygonCentroid(ring);
       const existing = getRotateDir(row.id);
       const R = Math.max(6, Math.min(60, Math.sqrt(Math.max(1, row.areaM2)) * 0.45));
       const dir = existing ?? { ax: 1, ay: 0 };
@@ -92,7 +99,7 @@ export function useManzanoActions(drawSource: VectorSource | null) {
       const handle: [number, number] = [anchor[0] + dir.ax * R, anchor[1] + dir.ay * R];
       startRotateLots(row.id, anchor, handle);
     },
-    [drawSource, getRotateDir, startRotateLots],
+    [drawSource, getRotateDir, startRotateLots]
   );
 
   const handleResetRotate = useCallback(
@@ -100,7 +107,7 @@ export function useManzanoActions(drawSource: VectorSource | null) {
       setRotateDir(row.id, undefined);
       void runRecompute(row);
     },
-    [setRotateDir, runRecompute],
+    [setRotateDir, runRecompute]
   );
 
   const handleManualAngleApply = useCallback(
@@ -110,7 +117,7 @@ export function useManzanoActions(drawSource: VectorSource | null) {
       setRotateDir(row.id, { ax: Math.cos(rad), ay: Math.sin(rad) });
       void runRecompute(row);
     },
-    [setRotateDir, runRecompute],
+    [setRotateDir, runRecompute]
   );
 
   return {

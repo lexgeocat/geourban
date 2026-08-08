@@ -12,6 +12,7 @@ import { DeleteFeaturesCommand } from '../commands/features/DeleteFeaturesComman
 import { runCommand } from '../commands/core/CommandStack';
 import { toast } from '../store/ui/toastStore';
 import { useProjectFileStore } from '../store/ui/projectFileStore';
+import { useManzanoStore } from '../store/entities/manzanoStore';
 
 function isTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -124,6 +125,9 @@ export function useKeyboardShortcuts() {
       }
       if (key === 'Escape') {
         e.preventDefault();
+        if (useManzanoStore.getState().rotatingId != null) {
+          useManzanoStore.getState().cancelRotateLots();
+        }
         useDrawStore.getState().setMode('select');
         useSelectionStore.getState().setSelectMode('click');
         return;

@@ -23,12 +23,38 @@ export function polyArea(pts: Pt[]): number {
 
 /** Centroide de un polígono */
 export function centroid(pts: Pt[]): Pt {
-  let cx = 0, cy = 0;
+  let cx = 0,
+    cy = 0;
   for (const p of pts) {
     cx += p[0];
     cy += p[1];
   }
   return [cx / pts.length, cy / pts.length];
+}
+
+export function polygonCentroid(pts: Pt[]): Pt {
+  const n = pts.length;
+  if (n === 0) return [0, 0];
+  if (n === 1) return [pts[0][0], pts[0][1]];
+
+  let signedArea2 = 0;
+  let cx = 0;
+  let cy = 0;
+  for (let i = 0; i < n; i++) {
+    const [x0, y0] = pts[i];
+    const [x1, y1] = pts[(i + 1) % n];
+    const cross = x0 * y1 - x1 * y0;
+    signedArea2 += cross;
+    cx += (x0 + x1) * cross;
+    cy += (y0 + y1) * cross;
+  }
+
+  if (Math.abs(signedArea2) < 1e-9) {
+    return centroid(pts); // polígono degenerado: fallback al promedio simple
+  }
+
+  const factor = 1 / (3 * signedArea2);
+  return [cx * factor, cy * factor];
 }
 
 export function ringPerimeter(pts: Pt[]): number {
@@ -55,10 +81,11 @@ export function pointInPoly(x: number, y: number, poly: Pt[]): boolean {
   let inside = false;
   const n = poly.length;
   for (let i = 0, j = n - 1; i < n; j = i++) {
-    const xi = poly[i][0], yi = poly[i][1];
-    const xj = poly[j][0], yj = poly[j][1];
-    if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi)
-      inside = !inside;
+    const xi = poly[i][0],
+      yi = poly[i][1];
+    const xj = poly[j][0],
+      yj = poly[j][1];
+    if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
   }
   return inside;
 }
@@ -71,8 +98,10 @@ export function segmentIntersectsPoly(a: Pt, b: Pt, poly: Pt[]): boolean {
 
   const n = poly.length;
   for (let i = 0, j = n - 1; i < n; j = i++) {
-    const xi = poly[i][0], yi = poly[i][1];
-    const xj = poly[j][0], yj = poly[j][1];
+    const xi = poly[i][0],
+      yi = poly[i][1];
+    const xj = poly[j][0],
+      yj = poly[j][1];
     const dx = xj - xi;
     const dy = yj - yi;
     const denom = abx * dy - aby * dx;

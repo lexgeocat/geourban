@@ -20,7 +20,7 @@ function getLayerByIdCached(layers: Layer[]): globalThis.Map<string, Layer> {
 function resolveRoundaboutLayer(
   rb: Roundabout,
   registry: ReturnType<typeof useLayersStore.getState>,
-  byId: globalThis.Map<string, Layer>,
+  byId: globalThis.Map<string, Layer>
 ): Layer | undefined {
   if (rb.layerId) {
     const layer = byId.get(rb.layerId);
@@ -32,11 +32,22 @@ function resolveRoundaboutLayer(
 export class RoundaboutPainter {
   private currentPreview: RoundaboutDrawPreview | null = null;
 
-  setPreview(preview: RoundaboutDrawPreview | null): void {
+  setPreview(preview: RoundaboutDrawPreview | null): boolean {
+    const prev = this.currentPreview;
+    if (prev === preview) return false;
+    if (!prev && !preview) return false;
+    if (prev && preview && prev.center === preview.center && prev.current === preview.current) {
+      return false;
+    }
     this.currentPreview = preview;
+    return true;
   }
 
-  paint(ctx: CanvasRenderingContext2D, toPx: (c: number[]) => [number, number], resolution: number): void {
+  paint(
+    ctx: CanvasRenderingContext2D,
+    toPx: (c: number[]) => [number, number],
+    resolution: number
+  ): void {
     const { roundabouts } = useRoundaboutStore.getState();
     const registry = useLayersStore.getState();
     const byId = getLayerByIdCached(registry.layers);
@@ -87,7 +98,7 @@ export class RoundaboutPainter {
             roadWidthM: defaults.defaultRoadWidthM,
             sidewalkWidthM: defaults.defaultSidewalkWidthM,
           },
-          resolution,
+          resolution
         );
         ctx.save();
         ctx.setLineDash([6, 4]);
@@ -113,7 +124,13 @@ export class RoundaboutPainter {
     }
   }
 
-  private strokeRing(ctx: CanvasRenderingContext2D, ring: Array<[number, number]>, toPx: (c: number[]) => [number, number], color: string, width: number): void {
+  private strokeRing(
+    ctx: CanvasRenderingContext2D,
+    ring: Array<[number, number]>,
+    toPx: (c: number[]) => [number, number],
+    color: string,
+    width: number
+  ): void {
     if (ring.length < 2) return;
     ctx.save();
     ctx.strokeStyle = color;

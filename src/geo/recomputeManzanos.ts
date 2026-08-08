@@ -89,13 +89,21 @@ function restoreMemberToParcel(
   rootId: string,
   rootPts: Pt[],
   src: VectorSource,
-  recorder: StructuralDiffRecorder
+  recorder: StructuralDiffRecorder,
+  rootLayerId?: string
 ): void {
   const alreadyLote = getFeatureKind(member) === 'lote';
   const currentRing = currentRingOf(member);
   const targetRing = closeGeoRing(origPts);
   const idMatches = String(member.getId() ?? '') === rootId;
-  if (alreadyLote && currentRing && ringsEffectivelyUnchanged(currentRing, targetRing)) {
+  const resolvedLayerId = rootLayerId ?? resolveOrCreateLayerForKind('perimetro');
+  const layerAlreadyCorrect = (member.get('layerId') as string | undefined) === resolvedLayerId;
+  if (
+    alreadyLote &&
+    currentRing &&
+    layerAlreadyCorrect &&
+    ringsEffectivelyUnchanged(currentRing, targetRing)
+  ) {
     return;
   }
   recorder.recordModifyBefore(member);
@@ -106,6 +114,8 @@ function restoreMemberToParcel(
   member.set('origPts', origPts, true);
   member.set('rootParcelId', rootId, true);
   member.set('rootParcelPts', rootPts, true);
+  if (rootLayerId) member.set('rootLayerId', rootLayerId, true);
+  member.set('layerId', resolvedLayerId, true);
   if (!idMatches && src.getFeatureById(rootId) == null) member.setId(rootId);
   src.addFeature(member);
   updateFeatureMetrics(member);
@@ -290,6 +300,7 @@ function ensurePerimeterWorkingCopies(src: VectorSource, recorder: StructuralDif
           perimeterSourceId: String(perimId),
           rootParcelId: workingId,
           rootParcelPts: workingRing,
+          rootLayerId: perimLayerId,
         },
         'lote'
       )
@@ -361,16 +372,27 @@ function resolveRootParcel(
   feature: Feature<Geometry> | undefined,
   fallbackId: string,
   fallbackPts: Pt[]
-): { rootId: string; rootPts: Pt[] } {
+): { rootId: string; rootPts: Pt[]; rootLayerId?: string } {
   const rid = feature?.get('rootParcelId') as string | undefined;
   const rpts = feature?.get('rootParcelPts') as Pt[] | undefined;
-  if (rid && rpts && rpts.length >= 3) return { rootId: rid, rootPts: rpts };
-  return { rootId: fallbackId, rootPts: fallbackPts };
+  if (rid && rpts && rpts.length >= 3) {
+    return {
+      rootId: rid,
+      rootPts: rpts,
+      rootLayerId: feature?.get('rootLayerId') as string | undefined,
+    };
+  }
+  return {
+    rootId: fallbackId,
+    rootPts: fallbackPts,
+    rootLayerId: feature?.get('layerId') as string | undefined,
+  };
 }
 
 interface RootGroup {
   rootId: string;
   rootPts: Pt[];
+  rootLayerId?: string;
   members: Array<Feature<Geometry>>;
 }
 function collectRootGroups(src: VectorSource): {
@@ -407,12 +429,14 @@ function collectRootGroups(src: VectorSource): {
       (feature.get('origParcelId') as string | undefined) ??
       (feature.getId() != null ? String(feature.getId()) : newId('parcel'));
 
-    const { rootId, rootPts } = resolveRootParcel(feature, fallbackId, fallbackPts);
+    const { rootId, rootPts, rootLayerId } = resolveRootParcel(feature, fallbackId, fallbackPts);
 
     let group = groups.get(rootId);
     if (!group) {
-      group = { rootId, rootPts, members: [] };
+      group = { rootId, rootPts, rootLayerId, members: [] };
       groups.set(rootId, group);
+    } else if (!group.rootLayerId && rootLayerId) {
+      group.rootLayerId = rootLayerId;
     }
     group.members.push(feature);
   });
@@ -573,7 +597,8 @@ async function recomputeManzanosImmediate(recorder: StructuralDiffRecorder): Pro
         group.rootId,
         group.rootPts,
         src,
-        recorder
+        recorder,
+        group.rootLayerId
       );
     }
 
@@ -845,7 +870,8 @@ async function recomputeManzanosImmediate(recorder: StructuralDiffRecorder): Pro
         root.rootId,
         root.rootPts,
         src,
-        recorder
+        recorder,
+        root.rootLayerId
       );
       continue;
     }
@@ -938,6 +964,7 @@ async function recomputeManzanosImmediate(recorder: StructuralDiffRecorder): Pro
         reused.set('origPts', rounded, true);
         reused.set('rootParcelId', root.rootId, true);
         reused.set('rootParcelPts', root.rootPts, true);
+        if (root.rootLayerId) reused.set('rootLayerId', root.rootLayerId, true);
         updateFeatureMetrics(reused as Feature<Geometry>);
         recorder.recordModifyAfter(reused);
 
@@ -984,6 +1011,7 @@ async function recomputeManzanosImmediate(recorder: StructuralDiffRecorder): Pro
             origPts: rounded,
             rootParcelId: root.rootId,
             rootParcelPts: root.rootPts,
+            rootLayerId: root.rootLayerId,
           },
           'manzana'
         )

@@ -30,7 +30,11 @@ interface ManzanoState {
   setGeomSnapshot: (id: string | number, snap: GeomSnapshot) => void;
   hasGeomChanged: (id: string | number, snap: GeomSnapshot) => boolean;
   clearGeomSnapshot: (id: string | number) => void;
-  startRotateLots: (id: string | number, anchor: [number, number], handle: [number, number]) => void;
+  startRotateLots: (
+    id: string | number,
+    anchor: [number, number],
+    handle: [number, number]
+  ) => void;
   updateRotateHandle: (handle: [number, number]) => void;
   finishRotateLots: () => { id: string | number; dir: RotateDir } | null;
   cancelRotateLots: () => void;
@@ -61,7 +65,8 @@ export const useManzanoStore = create<ManzanoState>()((set, get) => ({
   getMethod: (id) => get().methods[String(id)] ?? 'auto',
   setRotateDir: (id, dir) => set((s) => ({ rotateDir: { ...s.rotateDir, [String(id)]: dir } })),
   getRotateDir: (id) => get().rotateDir[String(id)],
-  setGeomSnapshot: (id, snap) => set((s) => ({ geomSnapshots: { ...s.geomSnapshots, [String(id)]: snap } })),
+  setGeomSnapshot: (id, snap) =>
+    set((s) => ({ geomSnapshots: { ...s.geomSnapshots, [String(id)]: snap } })),
   hasGeomChanged: (id, snap) => {
     const prev = get().geomSnapshots[String(id)];
     if (!prev) return false;
@@ -73,7 +78,10 @@ export const useManzanoStore = create<ManzanoState>()((set, get) => ({
     let centroidChanged = false;
     if (prev.centroid && snap.centroid) {
       const centroidTol = Math.max(0.1, Math.sqrt(Math.max(1, prev.area)) * 1e-3);
-      const d = Math.hypot(snap.centroid[0] - prev.centroid[0], snap.centroid[1] - prev.centroid[1]);
+      const d = Math.hypot(
+        snap.centroid[0] - prev.centroid[0],
+        snap.centroid[1] - prev.centroid[1]
+      );
       centroidChanged = d > centroidTol;
     }
 
@@ -85,11 +93,11 @@ export const useManzanoStore = create<ManzanoState>()((set, get) => ({
       delete next[String(id)];
       return { geomSnapshots: next };
     }),
-  startRotateLots: (id, anchor, handle) => set({ rotatingId: id, rotateAnchor: anchor, rotateHandle: handle }),
+  startRotateLots: (id, anchor, handle) =>
+    set({ rotatingId: id, rotateAnchor: anchor, rotateHandle: handle }),
   updateRotateHandle: (handle) => set({ rotateHandle: handle }),
   finishRotateLots: () => {
     const { rotatingId, rotateAnchor, rotateHandle } = get();
-    set({ rotatingId: null, rotateAnchor: null, rotateHandle: null });
     if (rotatingId == null || !rotateAnchor || !rotateHandle) return null;
     const dx = rotateHandle[0] - rotateAnchor[0];
     const dy = rotateHandle[1] - rotateAnchor[1];
@@ -102,8 +110,7 @@ export const useManzanoStore = create<ManzanoState>()((set, get) => ({
   cancelRotateLots: () => set({ rotatingId: null, rotateAnchor: null, rotateHandle: null }),
   toggleCardOpen: (id) =>
     set((s) => ({ openCards: { ...s.openCards, [String(id)]: !s.openCards[String(id)] } })),
-  setCardOpen: (id, open) =>
-    set((s) => ({ openCards: { ...s.openCards, [String(id)]: open } })),
+  setCardOpen: (id, open) => set((s) => ({ openCards: { ...s.openCards, [String(id)]: open } })),
   setTargetAreaM2: (v) => set({ targetAreaM2: v }),
   setFrontMinM: (v) => set({ frontMinM: v }),
 
