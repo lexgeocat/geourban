@@ -43,7 +43,6 @@
 
   /* ─── Z-index scale ─── */
   --z-floating-panel: 100;
-  --z-docked-panel: 110;
   --z-dropdown: 200;
   --z-panel-menu: 300;
   --z-ribbon-dropdown: 950;
@@ -51,7 +50,6 @@
   --z-modal: 1001;
   --z-stats: 1000;
   --z-toast-stack: 2000;
-  --z-debug: 5000;
   --z-tooltip: 9999;
 
   /* ─── Transitions ─── */
@@ -128,7 +126,7 @@ body,
     opacity var(--cad-transition),
     transform var(--cad-transition);
   transform: translateY(-50%) translateX(-4px);
-  z-index: 9999;
+  z-index: var(--z-tooltip);
 }
 .cad-tooltip:hover::after {
   opacity: 1;

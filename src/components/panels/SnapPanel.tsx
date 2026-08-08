@@ -93,7 +93,7 @@ export default function SnapPanel() {
       {open && (
         <div
           className="cad-panel-glass animate-fade-in"
-          style={{ position: 'absolute', bottom: '100%', left: 0, marginBottom: 4, minWidth: 210, padding: 8, borderRadius: 6, zIndex: 200 }}
+          style={{ position: 'absolute', bottom: '100%', left: 0, marginBottom: 4, minWidth: 210, padding: 8, borderRadius: 6, zIndex: 'var(--z-dropdown)' }}
         >
           <button
             onClick={toggleEnabled}

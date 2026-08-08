@@ -35,8 +35,3 @@ export function measureCached(ctx: CanvasRenderingContext2D, text: string): Cach
 export function measureCachedWidth(ctx: CanvasRenderingContext2D, text: string): number {
   return measureCached(ctx, text).width;
 }
-
-/** Solo para tests/depuración. */
-export function _clearTextMeasureCacheForTests(): void {
-  cache.clear();
-}

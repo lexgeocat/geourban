@@ -139,7 +139,7 @@ export function RibbonToolDropdown({
           ref={menuRef}
           className="cad-panel-glass animate-fade-in"
           role="menu"
-          style={{ position: 'fixed', top: pos.top, left: pos.left, minWidth: 170, padding: 4, zIndex: 999, display: 'flex', flexDirection: 'column', gap: 1 }}
+          style={{ position: 'fixed', top: pos.top, left: pos.left, minWidth: 170, padding: 4, zIndex: 'var(--z-ribbon-dropdown)', display: 'flex', flexDirection: 'column', gap: 1 }}
         >
           {options.map((opt) => (
             <button

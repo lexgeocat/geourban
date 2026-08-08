@@ -9,7 +9,7 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write \"src/**/*.{ts,tsx,css}\"",
-    "test": "node scripts/run-vitest-with-watchdog.mjs run",
+    "test": "vitest run",
     "test:watch": "vitest",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",

@@ -4,10 +4,6 @@ import { useStreetTracingSessionStore } from '../../store/ui/streetTracingSessio
 import type { Command } from '../core/Command';
 import type { RoundaboutParams } from '../../geo/roundabout/roundaboutEngine';
 
-// Re-export del tipo de input para no obligar a los consumidores a importar
-// desde `geo/roundabout/roundaboutEngine`.
-export type { RoundaboutParams };
-
 export class AddRoundaboutCommand extends RoadEntityCommand<
   RoundaboutParams,
   ReturnType<typeof useRoundaboutStore.getState>

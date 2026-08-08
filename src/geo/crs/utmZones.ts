@@ -40,7 +40,3 @@ export function utmZoneFromLonLat(lon: number, lat: number): { zone: number; hem
   const hemisphere: UtmHemisphere = lat >= 0 ? 'N' : 'S';
   return { zone, hemisphere };
 }
-
-export function utmZoneLabel(zone: number, hemisphere: UtmHemisphere): string {
-  return `UTM ${zone}${hemisphere}`;
-}

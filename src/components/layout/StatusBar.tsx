@@ -264,7 +264,7 @@ export default function StatusBar() {
                 minWidth: 230,
                 padding: 10,
                 borderRadius: 6,
-                zIndex: 200,
+                zIndex: 'var(--z-dropdown)',
               }}
             >
               <div style={{ fontSize: '0.6rem', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--cad-text-dim)', marginBottom: 8, borderBottom: '1px solid var(--cad-border)', paddingBottom: 6 }}>
@@ -371,7 +371,7 @@ export default function StatusBar() {
                 minWidth: 160,
                 padding: 6,
                 borderRadius: 6,
-                zIndex: 200,
+                zIndex: 'var(--z-dropdown)',
               }}
             >
               {BASE_MAP_DEFS.map((def) => (

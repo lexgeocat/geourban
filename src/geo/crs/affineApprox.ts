@@ -131,7 +131,7 @@ export function fitAffineLeastSquares(
 }
 
 /** Máximo residuo (en unidades de destino, típicamente metros) entre el afín y las muestras exactas. */
-export function maxResidual(
+function maxResidual(
   t: AffineTransform,
   src: ReadonlyArray<readonly [number, number]>,
   dst: ReadonlyArray<readonly [number, number]>,

@@ -1,4 +1,4 @@
-﻿import { RoadEntityCommand, type RoadEntityEntry } from './RoadEntityCommand';
+﻿import { RoadEntityCommand } from './RoadEntityCommand';
 import { useStreetStore, type Street } from '../../store/entities/streetStore';
 import { useStreetTracingSessionStore } from '../../store/ui/streetTracingSessionStore';
 import type { Command } from '../core/Command';
@@ -51,5 +51,3 @@ export class AddStreetCommand extends RoadEntityCommand<
     return other instanceof AddStreetCommand;
   }
 }
-
-export type StreetCommandEntry = RoadEntityEntry<Omit<Street, 'id' | 'name'>>;

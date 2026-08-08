@@ -479,7 +479,7 @@ function LayerRow({
             className="cad-panel-glass animate-fade-in"
             role="menu"
             aria-label={`Opciones de ${data.name}`}
-            style={{ position: 'absolute', top: '100%', right: 0, marginTop: 4, minWidth: 200, padding: 8, borderRadius: 6, zIndex: 300, display: 'flex', flexDirection: 'column', gap: 2 }}
+            style={{ position: 'absolute', top: '100%', right: 0, marginTop: 4, minWidth: 200, padding: 8, borderRadius: 6, zIndex: 'var(--z-panel-menu)', display: 'flex', flexDirection: 'column', gap: 2 }}
           >
             <div style={{ padding: '4px 2px 8px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.62rem', color: 'var(--cad-text-dim)', marginBottom: 4 }}>

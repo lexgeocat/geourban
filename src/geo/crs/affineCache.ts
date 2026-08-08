@@ -202,17 +202,6 @@ export class TiledAffineCache {
     return out;
   }
 
-  get size(): number {
-    return this.tiles.size;
-  }
-
-  sizeForKey(key: string): number {
-    let n = 0;
-    const prefix = `${key}|`;
-    for (const k of this.tiles.keys()) if (k.startsWith(prefix)) n++;
-    return n;
-  }
-
   clear(): void {
     this.tiles.clear();
   }

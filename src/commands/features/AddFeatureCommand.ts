@@ -5,7 +5,7 @@ import { GeoUrbanFeatureKind } from '../../core/objectModel';
 import { pickLayerId } from '../../store/entities/layerResolution';
 import { nextId } from '../../lib/id';
 
-export function resolveLayerId(override?: string, kind?: GeoUrbanFeatureKind): string | undefined {
+function resolveLayerId(override?: string, kind?: GeoUrbanFeatureKind): string | undefined {
   if (!kind) return undefined;
   return pickLayerId({ kind, override, requireKindMatch: true, autoCreate: false });
 }
