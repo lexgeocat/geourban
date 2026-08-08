@@ -94,33 +94,6 @@ pub fn convex_hull(pts: &[Pt]) -> Vec<Pt> {
     lower
 }
 
-pub fn ring_perimeter(pts: &[Pt]) -> f64 {
-    let n = pts.len();
-    if n == 0 {
-        return 0.0;
-    }
-    let mut per = 0.0;
-    for i in 0..n {
-        let a = pts[i];
-        let b = pts[(i + 1) % n];
-        per += (b.0 - a.0).hypot(b.1 - a.1);
-    }
-    per
-}
-
-pub fn path_length(pts: &[Pt]) -> f64 {
-    if pts.is_empty() {
-        return 0.0;
-    }
-    let mut total = 0.0;
-    for i in 0..pts.len() - 1 {
-        let dx = pts[i + 1].0 - pts[i].0;
-        let dy = pts[i + 1].1 - pts[i].1;
-        total += dx.hypot(dy);
-    }
-    total
-}
-
 pub fn orient_ring_ccw(ring: &[Pt]) -> Vec<Pt> {
     let n = ring.len();
     let mut area = 0.0;
@@ -208,41 +181,6 @@ pub fn point_in_poly(x: f64, y: f64, poly: &[Pt]) -> bool {
         }
     }
     inside
-}
-
-pub fn segment_intersects_poly(a: Pt, b: Pt, poly: &[Pt]) -> bool {
-    if point_in_poly(a.0, a.1, poly) || point_in_poly(b.0, b.1, poly) {
-        return true;
-    }
-
-    let abx = b.0 - a.0;
-    let aby = b.1 - a.1;
-
-    let n = poly.len();
-    if n == 0 {
-        return false;
-    }
-    let mut j = n - 1;
-    for i in 0..n {
-        let (xi, yi) = poly[i];
-        let (xj, yj) = poly[j];
-        j = i;
-
-        let dx = xj - xi;
-        let dy = yj - yi;
-        let denom = abx * dy - aby * dx;
-        if denom == 0.0 {
-            continue; // paralelos
-        }
-        let qx = a.0 - xi;
-        let qy = a.1 - yi;
-        let t = -(qx * dy - qy * dx) / denom;
-        let u = -(qx * aby - qy * abx) / denom;
-        if (0.0..=1.0).contains(&t) && (0.0..=1.0).contains(&u) {
-            return true;
-        }
-    }
-    false
 }
 
 pub fn build_cut_polys(wp: &[Pt], h_a: PolyHit, h_b: PolyHit) -> Option<CutPolys> {

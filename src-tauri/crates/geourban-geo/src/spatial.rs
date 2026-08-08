@@ -102,10 +102,6 @@ impl SpatialIndex {
         ids.iter().filter(|id| self.remove(id)).count()
     }
 
-    pub fn contains(&self, id: &Value) -> bool {
-        self.by_id.contains_key(&canonicalize_id(id.clone()))
-    }
-
     pub fn search(&self, min_x: f64, min_y: f64, max_x: f64, max_y: f64, out: &mut Vec<Value>) {
         let query = AABB::from_corners([min_x, min_y], [max_x, max_y]);
         for item in self.tree.locate_in_envelope_intersecting(&query) {
@@ -115,14 +111,5 @@ impl SpatialIndex {
 
     pub fn len(&self) -> usize {
         self.by_id.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.by_id.is_empty()
-    }
-
-    pub fn clear(&mut self) {
-        self.tree = RTree::new();
-        self.by_id.clear();
     }
 }

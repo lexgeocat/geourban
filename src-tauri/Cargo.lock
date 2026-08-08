@@ -1089,7 +1089,6 @@ dependencies = [
  "tauri",
  "tauri-build",
  "tauri-plugin-log",
- "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -1101,7 +1100,6 @@ dependencies = [
  "rstar",
  "serde",
  "serde_json",
- "thiserror 1.0.69",
 ]
 
 [[package]]

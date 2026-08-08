@@ -1,5 +1,4 @@
 mod geo_bridge;
-mod process_memory;
 mod project_store;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -23,12 +22,14 @@ pub fn run() {
             project_store::project_load,
             project_store::project_list,
             project_store::project_delete,
-            geo_bridge::geo_engine_version,
+            project_store::project_save,
+            project_store::project_load,
+            project_store::project_list,
+            project_store::project_delete,
             geo_bridge::subdivide,
             geo_bridge::subdivide_manzano,
             geo_bridge::subdivide_manzano_batch,
             geo_bridge::compute_manzanos_cmd,
-            geo_bridge::compute_manzanos_batch,
             geo_bridge::compute_road_network_net_cmd,
             geo_bridge::match_fragments_batch,
             geo_bridge::spatial_index_load,
@@ -36,7 +37,6 @@ pub fn run() {
             geo_bridge::spatial_index_remove_batch,
             geo_bridge::spatial_index_clear,
             geo_bridge::spatial_index_query,
-            process_memory::process_memory,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

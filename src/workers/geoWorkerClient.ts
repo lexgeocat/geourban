@@ -299,10 +299,6 @@ async function spatialIndexQueryNative(
   return result;
 }
 
-async function spatialIndexClearNative(slot: string): Promise<void> {
-  await invoke('spatial_index_clear', { slot });
-}
-
 export async function spatialIndexLoadInWorker(items: SpatialIndexItem[], slot: string): Promise<number> {
   requireNativeRuntime();
   return spatialIndexLoadNative(items, slot);
@@ -327,9 +323,4 @@ export async function spatialIndexQueryInWorker(
 ): Promise<SpatialIndexQueryResult> {
   requireNativeRuntime();
   return spatialIndexQueryNative(minX, minY, maxX, maxY, slot);
-}
-
-export async function spatialIndexClearInWorker(slot: string): Promise<void> {
-  requireNativeRuntime();
-  await spatialIndexClearNative(slot);
 }

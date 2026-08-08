@@ -10,10 +10,6 @@ use std::sync::Mutex;
 use tauri::State;
 
 #[tauri::command]
-pub fn geo_engine_version() -> String {
-    geourban_geo::crate_version().to_string()
-}
-#[tauri::command]
 pub fn subdivide(coordinates: Vec<Vec<Pt>>, options: SubdivisionOptions) -> SubdivisionResult {
     geourban_geo::subdivision::subdivide(&coordinates, &options)
 }
@@ -68,27 +64,12 @@ pub fn subdivide_manzano_batch(
         .collect()
 }
 
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ComputeManzanosItem {
-    pub parcels: Vec<Vec<Vec<Pt>>>,
-    pub road_network: Vec<Vec<Pt>>,
-}
-
 #[tauri::command]
 pub fn compute_manzanos_cmd(
     parcels: Vec<Vec<Vec<Pt>>>,
     road_network: Vec<Vec<Pt>>,
 ) -> Vec<ManzanoFragment> {
     compute_manzanos(&parcels, &road_network)
-}
-
-#[tauri::command]
-pub fn compute_manzanos_batch(items: Vec<ComputeManzanosItem>) -> Vec<Vec<ManzanoFragment>> {
-    items
-        .into_iter()
-        .map(|item| compute_manzanos(&item.parcels, &item.road_network))
-        .collect()
 }
 
 #[tauri::command]

@@ -69,7 +69,6 @@ fn ring_to_linear_ring(ring: &[Pt]) -> Result<Geometry<'static>, geos::Error> {
     Ok(unsafe { std::mem::transmute(geom) })
 }
 
-#[allow(dead_code)]
 fn ring_to_polygon(ring: &[Pt]) -> Result<Geometry<'static>, geos::Error> {
     let shell = ring_to_linear_ring(ring)?;
     let poly = Geometry::create_polygon(shell, vec![])?;

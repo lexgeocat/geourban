@@ -239,27 +239,6 @@ fn close_ring(pts: Vec<Pt>) -> Vec<Pt> {
     }
 }
 
-fn dist_to_segment(p: Pt, a: Pt, b: Pt) -> f64 {
-    let dx = b.0 - a.0;
-    let dy = b.1 - a.1;
-    let len_sq = dx * dx + dy * dy;
-    if len_sq < 1e-12 {
-        return (p.0 - a.0).hypot(p.1 - a.1);
-    }
-    let t = (((p.0 - a.0) * dx + (p.1 - a.1) * dy) / len_sq).clamp(0.0, 1.0);
-    (p.0 - (a.0 + t * dx)).hypot(p.1 - (a.1 + t * dy))
-}
-
-pub fn point_on_ring(p: Pt, ring: &[Pt], tol: f64) -> bool {
-    let n = ring.len();
-    for i in 0..n {
-        if dist_to_segment(p, ring[i], ring[(i + 1) % n]) < tol {
-            return true;
-        }
-    }
-    false
-}
-
 struct CornerTangents {
     ta: Pt,
     tb: Pt,

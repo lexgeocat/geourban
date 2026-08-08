@@ -3,7 +3,6 @@ import type Geometry from 'ol/geom/Geometry.js';
 import {
   spatialIndexLoadInWorker,
   spatialIndexQueryInWorker,
-  spatialIndexClearInWorker,
   spatialIndexUpsertBatchInWorker,
   spatialIndexRemoveBatchInWorker,
   type SpatialIndexItem,
@@ -96,17 +95,6 @@ export async function reloadRustSpatialIndex(features: Array<Feature<Geometry>>)
     });
   currentLoadPromise = promise;
   await promise;
-}
-
-export async function clearRustSpatialIndex(): Promise<void> {
-  pendingUpserts.clear();
-  pendingRemovals.clear();
-  currentLoadPromise = Promise.resolve();
-  try {
-    await spatialIndexClearInWorker(DRAW_SOURCE_SPATIAL_SLOT);
-  } catch (err: unknown) {
-    console.error('rustSpatialIndex: clear falló', toErrorMessage(err));
-  }
 }
 
 export async function queryRustSpatialIndex(
