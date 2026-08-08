@@ -114,3 +114,127 @@ export function segmentIntersectsPoly(a: Pt, b: Pt, poly: Pt[]): boolean {
   }
   return false;
 }
+
+interface PolylabelCell {
+  x: number;
+  y: number;
+  h: number;
+  d: number;
+  max: number;
+}
+
+function segDistSq(px: number, py: number, a: Pt, b: Pt): number {
+  let x = a[0],
+    y = a[1];
+  let dx = b[0] - x,
+    dy = b[1] - y;
+  if (dx !== 0 || dy !== 0) {
+    const t = ((px - x) * dx + (py - y) * dy) / (dx * dx + dy * dy);
+    if (t > 1) {
+      x = b[0];
+      y = b[1];
+    } else if (t > 0) {
+      x += dx * t;
+      y += dy * t;
+    }
+  }
+  dx = px - x;
+  dy = py - y;
+  return dx * dx + dy * dy;
+}
+
+function cellDistance(x: number, y: number, ring: Pt[]): number {
+  let inside = false;
+  let minDistSq = Infinity;
+  const len = ring.length;
+  for (let i = 0, j = len - 1; i < len; j = i++) {
+    const a = ring[i],
+      b = ring[j];
+    if (a[1] > y !== b[1] > y && x < ((b[0] - a[0]) * (y - a[1])) / (b[1] - a[1] || 1e-12) + a[0]) {
+      inside = !inside;
+    }
+    minDistSq = Math.min(minDistSq, segDistSq(x, y, a, b));
+  }
+  return (inside ? 1 : -1) * Math.sqrt(minDistSq);
+}
+
+function makeCell(x: number, y: number, h: number, ring: Pt[]): PolylabelCell {
+  const d = cellDistance(x, y, ring);
+  return { x, y, h, d, max: d + h * Math.SQRT2 };
+}
+
+function polylabel(ring: Pt[], precision = 0.1): Pt {
+  let minX = Infinity,
+    minY = Infinity,
+    maxX = -Infinity,
+    maxY = -Infinity;
+  for (const [x, y] of ring) {
+    if (x < minX) minX = x;
+    if (x > maxX) maxX = x;
+    if (y < minY) minY = y;
+    if (y > maxY) maxY = y;
+  }
+  const width = maxX - minX;
+  const height = maxY - minY;
+  const cellSize = Math.min(width, height);
+  if (cellSize <= 0) return [minX, minY];
+
+  let h = cellSize / 2;
+  let cellQueue: PolylabelCell[] = [];
+  for (let x = minX; x < maxX; x += cellSize) {
+    for (let y = minY; y < maxY; y += cellSize) {
+      cellQueue.push(makeCell(x + h, y + h, h, ring));
+    }
+  }
+
+  let best = makeCell(minX + width / 2, minY + height / 2, 0, ring);
+  const bboxCell = makeCell(minX, minY, 0, ring);
+  if (bboxCell.d > best.d) best = bboxCell;
+
+  let numProbes = cellQueue.length;
+  const maxProbes = 3000;
+
+  while (cellQueue.length > 0 && numProbes < maxProbes) {
+    let bestIdx = 0;
+    for (let i = 1; i < cellQueue.length; i++) {
+      if (cellQueue[i].max > cellQueue[bestIdx].max) bestIdx = i;
+    }
+    const cell = cellQueue.splice(bestIdx, 1)[0];
+
+    if (cell.d > best.d) best = cell;
+    if (cell.max - best.d <= precision) continue;
+
+    h = cell.h / 2;
+    cellQueue.push(makeCell(cell.x - h, cell.y - h, h, ring));
+    cellQueue.push(makeCell(cell.x + h, cell.y - h, h, ring));
+    cellQueue.push(makeCell(cell.x - h, cell.y + h, h, ring));
+    cellQueue.push(makeCell(cell.x + h, cell.y + h, h, ring));
+    numProbes += 4;
+  }
+
+  return [best.x, best.y];
+}
+
+export function polygonLabelPoint(ringIn: Pt[]): Pt {
+  if (ringIn.length < 3) return ringIn[0] ?? [0, 0];
+  const first = ringIn[0],
+    last = ringIn[ringIn.length - 1];
+  const closed = first[0] === last[0] && first[1] === last[1];
+  const pts = closed ? ringIn.slice(0, -1) : ringIn;
+  if (pts.length < 3) return centroid(pts.length ? pts : ringIn);
+
+  let minX = Infinity,
+    minY = Infinity,
+    maxX = -Infinity,
+    maxY = -Infinity;
+  for (const [x, y] of pts) {
+    if (x < minX) minX = x;
+    if (x > maxX) maxX = x;
+    if (y < minY) minY = y;
+    if (y > maxY) maxY = y;
+  }
+  const sizeRef = Math.max(maxX - minX, maxY - minY);
+  if (sizeRef <= 0) return pts[0];
+
+  return polylabel(pts, Math.max(sizeRef / 200, 1e-4));
+}

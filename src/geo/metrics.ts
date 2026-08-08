@@ -5,7 +5,7 @@ import type Geometry from 'ol/geom/Geometry.js';
 import VectorSource from 'ol/source/Vector.js';
 import { useProjectCrsStore } from '../store/project/projectCrsStore';
 import { ensureUtmZoneRegistered } from './crs/utmZones';
-import { pathLength, polygonCentroid } from './math/polygonEngine';
+import { pathLength, polygonLabelPoint } from './math/polygonEngine';
 import {
   getMetricPlaneAffine,
   LOCAL_TANGENT_PLANE_KEY,
@@ -156,7 +156,7 @@ function calculatePolygonMetrics(geometry: Polygon): FeatureMetrics {
     areaM2,
     perimeterM,
     segmentLengths: getSegmentMetrics(ring3857, ringMetric),
-    labelPoint: polygonCentroid(ring3857),
+    labelPoint: polygonLabelPoint(ring3857),
     metricsUpdatedAt: Date.now(),
   };
 }
