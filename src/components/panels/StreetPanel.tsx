@@ -5,6 +5,9 @@ import { useRoadCornerStore } from '../../store/map/roadCornerStore';
 import { type CornerMode } from '../../geo/roads/ringFillet';
 import { recomputeManzanos } from '../../geo/recomputeManzanos';
 import { formatMetricLength, formatMetricArea, streetLengthMetricM } from '../../geo/metrics';
+import { useEntityLabelStore } from '../../store/entities/entityLabelStore';
+import { useLabelConfigModalStore } from '../../store/ui/labelConfigModalStore';
+import { defaultLabelStyleConfig, defaultColorForKind } from '../../core/labelModel';
 
 const CORNER_MODE_OPTIONS: { value: CornerMode; label: string }[] = [
   { value: 'fillet', label: 'Ochave' },
@@ -47,6 +50,8 @@ export default function StreetPanel() {
   const [editName, setEditName] = useState('');
   const selectedIds = useSelectionStore((s) => s.selectedIds);
   const selectOnMap = useSelectionStore((s) => s.setSelection);
+  const entityLabels = useEntityLabelStore((s) => s.byId);
+  const openEntityLabel = useLabelConfigModalStore((s) => s.openForEntity);
 
   const applyStreetPatch = (id: string, patch: { widthM?: number; sideWidthM?: number }) => {
     updateStreet(id, patch);
@@ -55,6 +60,7 @@ export default function StreetPanel() {
 
   const handleDelete = (id: string) => {
     removeStreet(id);
+    useEntityLabelStore.getState().remove(id);
     void recomputeManzanos();
   };
 
@@ -157,6 +163,22 @@ export default function StreetPanel() {
                   {s.name}
                 </span>
               )}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const existing = entityLabels[s.id];
+                  openEntityLabel(
+                    'street',
+                    s.id,
+                    existing?.config ?? defaultLabelStyleConfig({ prefix: 'Calle', color: defaultColorForKind('calle') }),
+                    existing?.text ?? s.name,
+                  );
+                }}
+                style={{ background: 'none', border: 'none', color: 'var(--cad-accent)', cursor: 'pointer', fontSize: '0.72rem' }}
+                title="Generar etiqueta"
+              >
+                🏷
+              </button>
               <button
                 onClick={(e) => { e.stopPropagation(); handleDelete(s.id); }}
                 style={{ background: 'none', border: 'none', color: 'var(--cad-accent-red)', cursor: 'pointer', fontSize: '0.75rem' }}

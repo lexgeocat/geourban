@@ -7,6 +7,7 @@ import { useSnapSettingsStore } from '../store/map/snapSettingsStore';
 import { useLayersStore } from '../store/entities/layersRegistryStore';
 import { useStreetStore } from '../store/entities/streetStore';
 import { useRoundaboutStore } from '../store/entities/roundaboutStore';
+import { useEntityLabelStore } from '../store/entities/entityLabelStore';
 import { recomputeManzanos } from '../geo/recomputeManzanos';
 import { DeleteFeaturesCommand } from '../commands/features/DeleteFeaturesCommand';
 import { runCommand } from '../commands/core/CommandStack';
@@ -65,8 +66,8 @@ function handleDeleteSelection(): void {
     }
   }
   if (streetIds.length > 0 || roundaboutIds.length > 0) {
-    streetIds.forEach((sid) => useStreetStore.getState().removeStreet(sid));
-    roundaboutIds.forEach((rid) => useRoundaboutStore.getState().removeRoundabout(rid));
+    streetIds.forEach((sid) => { useStreetStore.getState().removeStreet(sid); useEntityLabelStore.getState().remove(sid); });
+    roundaboutIds.forEach((rid) => { useRoundaboutStore.getState().removeRoundabout(rid); useEntityLabelStore.getState().remove(rid); });
     useSelectionStore.getState().clear();
     void recomputeManzanos();
   }

@@ -9,6 +9,7 @@ import { useSubdivisionPreviewStore } from '../../store/ui/subdivisionPreviewSto
 import { formatMetricArea } from '../../geo/metrics';
 import LotParamsCard from './manzano/LotParamsCard';
 import ManzanoCard from './manzano/ManzanoCard';
+import ManzanoLabelingCard from './manzano/ManzanoLabelingCard';
 
 export default function ManzanoPanel() {
   const drawSource = useMapStore((s) => s.drawSource);
@@ -45,6 +46,7 @@ export default function ManzanoPanel() {
         onGenerarTodos={actions.handleGenerarTodos}
         onCancelGenerarTodos={actions.handleCancelGenerarTodos}
       />
+      <ManzanoLabelingCard />
 
       {rows.length === 0 ? (
         <p style={{ fontSize: '0.68rem', color: 'var(--cad-text-muted)' }}>

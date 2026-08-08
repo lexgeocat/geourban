@@ -15,6 +15,7 @@ import { activateRectangle } from './modes/RectangleMode';
 import { activateStreet } from './modes/StreetMode';
 import { activateRoundabout } from './modes/RoundaboutMode';
 import { activateErase } from './modes/EraseMode';
+import { activateLabelOrder } from './modes/LabelOrderMode';
 
 export interface InteractionContext {
   map: Map;
@@ -51,7 +52,7 @@ export class InteractionModeController {
 
     const viewport = map.getViewport();
     const previousCursor = viewport.getAttribute('data-cursor');
-    if (mode === 'polygon' || mode === 'line' || mode === 'rectangle' || mode === 'roundabout') {
+    if (mode === 'polygon' || mode === 'line' || mode === 'rectangle' || mode === 'roundabout' || mode === 'labelOrder') {
       viewport.setAttribute('data-cursor', mode);
     } else {
       viewport.removeAttribute('data-cursor');
@@ -104,6 +105,9 @@ export class InteractionModeController {
         break;
       case 'erase':
         activateErase(modeCtx);
+        break;
+      case 'labelOrder':
+        activateLabelOrder(modeCtx);
         break;
       case 'none':
         break;

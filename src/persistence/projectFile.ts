@@ -19,7 +19,9 @@ import { resetIncrementalRoadTracking } from '../geo/recomputeManzanos';
 import { encodeWkb, decodeWkb, uint8ToBase64, base64ToUint8, type WkbGeometry } from './wkb';
 import { getOrCreateSpatialIndex } from '../map/spatialIndex';
 import { reseedManzanoSeqFromSource } from '../store/entities/manzanoNaming';
+import { useEntityLabelStore } from '../store/entities/entityLabelStore';
 import type { Layer } from '../core/objectModel';
+import type { LabelStyleConfig } from '../core/labelModel';
 
 interface LayerDto {
   id: string; name: string; kind: string; zIndex: number;
@@ -51,6 +53,7 @@ interface ProjectMeta {
   crs: { mode: ProjectCrsMode; utmZone: number; utmHemisphere: UtmHemisphere };
   manzano: { targetAreaM2: number; frontMinM: number };
   viewConfig: { center: [number, number]; zoom: number };
+  entityLabels?: Record<string, { config: LabelStyleConfig; text: string }>;
 }
 
 export interface ProjectSummary {
@@ -130,6 +133,7 @@ function buildPayload(): ProjectPayload {
     crs: { mode: crsState.mode, utmZone: crsState.utmZone, utmHemisphere: crsState.utmHemisphere },
     manzano: { targetAreaM2: manzanoState.targetAreaM2, frontMinM: manzanoState.frontMinM },
     viewConfig,
+    entityLabels: useEntityLabelStore.getState().byId,
   };
 
   return { layers, features, streets, roundabouts, metaJson: JSON.stringify(meta) };
@@ -206,6 +210,7 @@ export async function loadProject(name: string): Promise<void> {
     useManzanoStore.getState().setFrontMinM(meta.manzano.frontMinM);
   }
   if (meta.viewConfig) useMapStore.getState().setViewConfig(meta.viewConfig);
+  useEntityLabelStore.getState().loadAll(meta.entityLabels ?? {});
 
   drawSource.changed();
 }

@@ -11,6 +11,9 @@ import { useStreetStore } from '../../store/entities/streetStore';
 import { useRoundaboutStore } from '../../store/entities/roundaboutStore';
 import { useDraggablePanel } from '../../hooks/useDraggablePanel';
 import { useLotsWorkflow } from '../../hooks/useLotsWorkflow';
+import { useLabelConfigModalStore } from '../../store/ui/labelConfigModalStore';
+import { useEntityLabelStore } from '../../store/entities/entityLabelStore';
+import { defaultLabelStyleConfig, defaultColorForKind } from '../../core/labelModel';
 
 const basePanelStyle: React.CSSProperties = {
   position: 'absolute',
@@ -39,6 +42,9 @@ export default function PropertyPanel() {
   const { focusManzanoInSidebar } = useLotsWorkflow();
   const streets = useStreetStore((s) => s.streets);
   const roundabouts = useRoundaboutStore((s) => s.roundabouts);
+  const openLabelModal = useLabelConfigModalStore((s) => s.openForFeature);
+  const entityLabels = useEntityLabelStore((s) => s.byId);
+  const openEntityLabel = useLabelConfigModalStore((s) => s.openForEntity);
 
   const { position, onDragHandleMouseDown: handleMouseDown } = useDraggablePanel({
     initial: { top: 10, left: Math.max(8, window.innerWidth - 260) },
@@ -79,6 +85,14 @@ export default function PropertyPanel() {
             <p style={{ fontSize: '0.75rem', color: 'var(--cad-text)', marginBottom: 8 }}>{street.name}</p>
             <div className="cad-row"><span>Calzada</span><span className="cad-row-value">{formatMetricLength(street.widthM)}</span></div>
             <div className="cad-row"><span>Vereda</span><span className="cad-row-value">{formatMetricLength(street.sideWidthM)}</span></div>
+            <button onClick={() => {
+              const existing = entityLabels[street.id];
+              openEntityLabel('street', street.id,
+                existing?.config ?? defaultLabelStyleConfig({ prefix: 'Calle', color: defaultColorForKind('calle') }),
+                existing?.text ?? street.name);
+            }} className="cad-icon-btn" style={{ width: '100%', height: 'auto', padding: '6px 10px', fontSize: '0.7rem', marginTop: 8, background: 'var(--cad-bg-surface)', border: '1px solid var(--cad-border)', color: 'var(--cad-text-dim)', borderRadius: 4 }}>
+              🏷 Generar etiqueta
+            </button>
           </div>
         </div>
       );
@@ -94,6 +108,14 @@ export default function PropertyPanel() {
             <p style={{ fontSize: '0.75rem', color: 'var(--cad-text)', marginBottom: 8 }}>{roundabout.name}</p>
             <div className="cad-row"><span>Radio</span><span className="cad-row-value">{formatMetricLength(roundabout.radiusM)}</span></div>
             <div className="cad-row"><span>Calzada</span><span className="cad-row-value">{formatMetricLength(roundabout.roadWidthM)}</span></div>
+            <button onClick={() => {
+              const existing = entityLabels[roundabout.id];
+              openEntityLabel('roundabout', roundabout.id,
+                existing?.config ?? defaultLabelStyleConfig({ prefix: 'Rotonda', color: defaultColorForKind('rotonda') }),
+                existing?.text ?? roundabout.name);
+            }} className="cad-icon-btn" style={{ width: '100%', height: 'auto', padding: '6px 10px', fontSize: '0.7rem', marginTop: 8, background: 'var(--cad-bg-surface)', border: '1px solid var(--cad-border)', color: 'var(--cad-text-dim)', borderRadius: 4 }}>
+              🏷 Generar etiqueta
+            </button>
           </div>
         </div>
       );
@@ -194,29 +216,55 @@ export default function PropertyPanel() {
             </p>
           )}
           {isPolygon && featureKind !== 'perimetro' && (
-            <button
-              onClick={() => {
-                focusManzanoInSidebar(primaryId);
-              }}
-              className="cad-icon-btn"
-              style={{
-                width: '100%',
-                height: 'auto',
-                padding: '6px 10px',
-                fontSize: '0.7rem',
-                fontWeight: 500,
-                background: 'var(--cad-bg-surface)',
-                border: '1px solid var(--cad-border)',
-                color: 'var(--cad-text-dim)',
-                borderRadius: 4,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 4,
-              }}
-            >
-              Subdividir este polígono
-            </button>
+            <>
+              <button
+                onClick={() => {
+                  focusManzanoInSidebar(primaryId);
+                }}
+                className="cad-icon-btn"
+                style={{
+                  width: '100%',
+                  height: 'auto',
+                  padding: '6px 10px',
+                  fontSize: '0.7rem',
+                  fontWeight: 500,
+                  background: 'var(--cad-bg-surface)',
+                  border: '1px solid var(--cad-border)',
+                  color: 'var(--cad-text-dim)',
+                  borderRadius: 4,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 4,
+                }}
+              >
+                Subdividir este polígono
+              </button>
+              <button
+                onClick={() => {
+                  const existing = feat.get('labelConfig');
+                  openLabelModal(primaryId, existing ?? defaultLabelStyleConfig({ color: defaultColorForKind(featureKind) }));
+                }}
+                className="cad-icon-btn"
+                style={{
+                  width: '100%',
+                  height: 'auto',
+                  padding: '6px 10px',
+                  fontSize: '0.7rem',
+                  fontWeight: 500,
+                  background: 'var(--cad-bg-surface)',
+                  border: '1px solid var(--cad-border)',
+                  color: 'var(--cad-text-dim)',
+                  borderRadius: 4,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 4,
+                }}
+              >
+                🏷 Generar etiqueta
+              </button>
+            </>
           )}
         </div>
       </div>

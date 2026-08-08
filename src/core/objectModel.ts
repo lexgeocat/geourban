@@ -1,5 +1,6 @@
 import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
+import type { LabelStyleConfig } from './labelModel';
 
 export type GeoUrbanFeatureKind =
   'lote' | 'manzana' | 'calle' | 'equipamiento' | 'linea' | 'rotonda' | 'perimetro';
@@ -49,6 +50,8 @@ export interface BaseFeatureProps {
   createdAt: string;
   label?: string;
   layerId?: string;
+  labelConfig?: LabelStyleConfig;
+  labelText?: string;
 }
 
 export interface LoteProps extends BaseFeatureProps {

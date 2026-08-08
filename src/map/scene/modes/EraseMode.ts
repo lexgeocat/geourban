@@ -6,6 +6,7 @@ import { runCommand } from '../../../commands/core/CommandStack';
 import { DeleteFeaturesCommand } from '../../../commands/features/DeleteFeaturesCommand';
 import { useStreetStore } from '../../../store/entities/streetStore';
 import { useRoundaboutStore } from '../../../store/entities/roundaboutStore';
+import { useEntityLabelStore } from '../../../store/entities/entityLabelStore';
 import { recomputeManzanos } from '../../../geo/recomputeManzanos';
 import { getOrCreateRoadSnapSource } from '../../roadSnapSource';
 import { toast } from '../../../store/ui/toastStore';
@@ -38,11 +39,13 @@ export function activateErase(ctx: ModeContext): void {
       const kind = f.get('kind') as string | undefined;
       if (kind === 'calle') {
         useStreetStore.getState().removeStreet(String(id));
+        useEntityLabelStore.getState().remove(String(id));
         removedRoadEntity = true;
         return;
       }
       if (kind === 'rotonda') {
         useRoundaboutStore.getState().removeRoundabout(String(id));
+        useEntityLabelStore.getState().remove(String(id));
         removedRoadEntity = true;
         return;
       }

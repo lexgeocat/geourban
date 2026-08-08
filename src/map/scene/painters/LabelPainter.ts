@@ -3,27 +3,15 @@ import type Geometry from 'ol/geom/Geometry.js';
 import type { Extent } from 'ol/extent.js';
 import type VectorSource from 'ol/source/Vector.js';
 import Polygon from 'ol/geom/Polygon.js';
-import LineString from 'ol/geom/LineString.js';
-import { useSelectionStore } from '../../../store/map/selectionStore';
-import {
-  drawSegmentLabels,
-  drawMainMetricLabel,
-  drawLotNumberBadge,
-  drawLotAreaCaption,
-  drawLeaderLine,
-  LOT_BADGE_COLOR,
-  LOT_BADGE_COLOR_REMNANT,
-  resolveDimensionOrientation,
-  computeLotGroupCounts,
-  getApproxScreenArea,
-  computeCotaOpacity,
-  GEOURBAN_MANZANA_COLOR,
-} from '../../styleFactory';
-import { formatMetricLength, formatMetricArea, type SegmentMetric } from '../../../geo/metrics';
-import { measureCached } from '../../textMeasureCache';
 import { getFeatureKind, getLotStatus } from '../../../core/objectModel';
 import { useLayersStore } from '../../../store/entities/layersRegistryStore';
-import type { Layer } from '../../../core/objectModel';
+import { useStreetStore, type Street } from '../../../store/entities/streetStore';
+import { useRoundaboutStore, type Roundabout } from '../../../store/entities/roundaboutStore';
+import { useEntityLabelStore } from '../../../store/entities/entityLabelStore';
+import { roundaboutRoadAreaM2 } from '../../../geo/roundabout/roundaboutEngine';
+import { formatAreaWithUnit, type LabelStyleConfig } from '../../../core/labelModel';
+import { measureCached } from '../../textMeasureCache';
+import { formatMetricLength, streetLengthMetricM, type SegmentMetric } from '../../../geo/metrics';
 
 interface PlacedBox {
   x: number;
@@ -33,14 +21,13 @@ interface PlacedBox {
 }
 
 const COLLISION_GRID_CELL_PX = 48;
+const HARD_VISIBLE_CAP = 20_000;
 
 class LabelCollisionGrid {
-  private cells = new globalThis.Map<string, PlacedBox[]>();
-
+  private cells = new Map<string, PlacedBox[]>();
   private key(cx: number, cy: number): string {
     return cx + ',' + cy;
   }
-
   private range(box: PlacedBox) {
     return {
       cx0: Math.floor(box.x / COLLISION_GRID_CELL_PX),
@@ -49,7 +36,6 @@ class LabelCollisionGrid {
       cy1: Math.floor((box.y + box.h) / COLLISION_GRID_CELL_PX),
     };
   }
-
   intersects(box: PlacedBox): boolean {
     const { cx0, cy0, cx1, cy1 } = this.range(box);
     for (let cx = cx0; cx <= cx1; cx++) {
@@ -70,7 +56,6 @@ class LabelCollisionGrid {
     }
     return false;
   }
-
   insert(box: PlacedBox): void {
     const { cx0, cy0, cx1, cy1 } = this.range(box);
     for (let cx = cx0; cx <= cx1; cx++) {
@@ -85,409 +70,280 @@ class LabelCollisionGrid {
       }
     }
   }
-
   clear(): void {
     this.cells.clear();
   }
 }
 
-function extractLotNumberText(label: string | undefined): string {
-  if (!label) return '?';
-  const match = label.match(/(\d+)/);
-  return match ? match[1] : label;
+function buildLabelLines(feature: Feature<Geometry>, cfg: LabelStyleConfig): string[] {
+  const lines: string[] = [];
+  const customText = (feature.get('labelText') as string | undefined) ?? '';
+  const prefixPart = cfg.showPrefix && cfg.prefix ? cfg.prefix : '';
+  const title = [prefixPart, customText].filter(Boolean).join(' ').trim();
+  if (title) lines.push(title);
+
+  const areaM2 = feature.get('areaM2') as number | undefined;
+  const perimeterM = feature.get('perimeterM') as number | undefined;
+  if (cfg.showArea && areaM2 !== undefined) lines.push(formatAreaWithUnit(areaM2, cfg.unit));
+  if (cfg.showPerimeter && perimeterM !== undefined)
+    lines.push(`Perím. ${perimeterM.toFixed(2)} m`);
+  return lines;
 }
 
-const LOD_TIER1_FEATURE_THRESHOLD = 350;
-const LOD_TIER2_FEATURE_THRESHOLD = 900;
-
-const HARD_VISIBLE_CAP = 15_000;
-
-const LEADER_CANDIDATE_OFFSETS_PX: Array<[number, number]> = [
-  [0, -22],
-  [26, -14],
-  [-26, -14],
-  [30, 6],
-  [-30, 6],
-  [0, 26],
-  [26, 20],
-  [-26, 20],
-];
-
-function computeLodTier(visibleCount: number): 0 | 1 | 2 {
-  if (visibleCount > LOD_TIER2_FEATURE_THRESHOLD) return 2;
-  if (visibleCount > LOD_TIER1_FEATURE_THRESHOLD) return 1;
-  return 0;
+function streetAllCoords(s: Street): [number, number][] {
+  return [s.start, ...(s.waypoints ?? []), s.end];
 }
 
-interface ScreenAreaCacheEntry {
-  bucket: number;
-  version: number;
-  area: number;
+function polylineMidpoint(coords: [number, number][]): [number, number] {
+  if (coords.length === 0) return [0, 0];
+  if (coords.length === 1) return coords[0];
+  const segLens: number[] = [];
+  let total = 0;
+  for (let i = 0; i < coords.length - 1; i++) {
+    const d = Math.hypot(coords[i + 1][0] - coords[i][0], coords[i + 1][1] - coords[i][1]);
+    segLens.push(d);
+    total += d;
+  }
+  const half = total / 2;
+  let walked = 0;
+  for (let i = 0; i < segLens.length; i++) {
+    const isLast = i === segLens.length - 1;
+    if (walked + segLens[i] >= half || isLast) {
+      const t = segLens[i] > 1e-9 ? Math.max(0, Math.min(1, (half - walked) / segLens[i])) : 0;
+      const a = coords[i],
+        b = coords[i + 1];
+      return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+    }
+    walked += segLens[i];
+  }
+  return coords[coords.length - 1];
 }
 
-const SCREEN_AREA_CACHE_MAX = 6000;
+function buildStreetLabelLines(street: Street, cfg: LabelStyleConfig, text: string): string[] {
+  const lines: string[] = [];
+  const prefixPart = cfg.showPrefix && cfg.prefix ? cfg.prefix : '';
+  const title = [prefixPart, text].filter(Boolean).join(' ').trim();
+  if (title) lines.push(title);
+  if (cfg.showArea) lines.push(formatMetricLength(streetLengthMetricM(street)));
+  if (cfg.showPerimeter) lines.push(`Calzada ${street.widthM.toFixed(2)} m`);
+  return lines;
+}
 
-export class LabelPainter {
-  private lotGroupCounts = new globalThis.Map<string, number>();
-  private readonly collisionGrid = new LabelCollisionGrid();
-  private readonly screenAreaCache = new globalThis.Map<string | number, ScreenAreaCacheEntry>();
+function buildRoundaboutLabelLines(rb: Roundabout, cfg: LabelStyleConfig, text: string): string[] {
+  const lines: string[] = [];
+  const prefixPart = cfg.showPrefix && cfg.prefix ? cfg.prefix : '';
+  const title = [prefixPart, text].filter(Boolean).join(' ').trim();
+  if (title) lines.push(title);
+  if (cfg.showArea) lines.push(formatAreaWithUnit(roundaboutRoadAreaM2(rb), cfg.unit));
+  if (cfg.showPerimeter) lines.push(`Radio ${rb.radiusM.toFixed(2)} m`);
+  return lines;
+}
 
-  private dataVersion = 0;
-  private lastKey: string | null = null;
-  private cachedOps: Array<
-    (ctx: CanvasRenderingContext2D, toPx: (c: number[]) => [number, number]) => void
-  > = [];
-  private layersKeyCache: { layers: Layer[]; key: string } | null = null;
+function drawEdgeCotas(
+  ctx: CanvasRenderingContext2D,
+  segmentLengths: SegmentMetric[] | undefined,
+  centroidWorld: [number, number] | undefined,
+  toPx: (c: number[]) => [number, number],
+  cfg: LabelStyleConfig
+): void {
+  if (!segmentLengths || segmentLengths.length === 0) return;
+  const MIN_SEGMENT_PX = 30;
+  const offsetPx = 13;
+  const fs = cfg.cotaFontSizePx;
+  const cenPx = centroidWorld ? toPx(centroidWorld) : null;
 
-  private recordOp(
-    op: (ctx: CanvasRenderingContext2D, toPx: (c: number[]) => [number, number]) => void
-  ): void {
-    this.cachedOps.push(op);
-  }
+  ctx.save();
+  for (const meta of segmentLengths) {
+    if (!meta || !Number.isFinite(meta.lengthM) || meta.lengthM <= 0) continue;
+    if (!meta.p0 || !meta.p1) continue;
+    const aPx = toPx(meta.p0);
+    const bPx = toPx(meta.p1);
+    const dxPx = bPx[0] - aPx[0];
+    const dyPx = bPx[1] - aPx[1];
+    const lenPx = Math.hypot(dxPx, dyPx);
+    if (lenPx < MIN_SEGMENT_PX) continue;
 
-  private selectionKey(): number {
-    const ids = useSelectionStore.getState().selectedIds;
-    let h = ids.size;
-    let i = 0;
-    for (const id of ids) {
-      if (i >= 512) break;
-      const s = String(id);
-      for (let j = 0; j < s.length; j++) h = (Math.imul(h, 31) + s.charCodeAt(j)) | 0;
-      i++;
-    }
-    return h;
-  }
+    let ang = Math.atan2(dyPx, dxPx);
+    if (ang > Math.PI / 2 || ang < -Math.PI / 2) ang += Math.PI;
 
-  private layersKey(): string {
-    const layers = useLayersStore.getState().layers;
-    if (this.layersKeyCache && this.layersKeyCache.layers === layers) {
-      return this.layersKeyCache.key;
-    }
-    let sig = '';
-    for (const layer of layers) {
-      sig +=
-        layer.id +
-        (layer.visible ? '1' : '0') +
-        (layer.showLabel ? '1' : '0') +
-        (layer.showCota ? '1' : '0') +
-        '|';
-    }
-    this.layersKeyCache = { layers, key: sig };
-    return sig;
-  }
-
-  private measureBox(ctx: CanvasRenderingContext2D, px: [number, number], text: string): PlacedBox {
-    const m = measureCached(ctx, text);
-    const w = Math.abs(m.left) + Math.abs(m.right) + 12;
-    const h = Math.abs(m.ascent) + Math.abs(m.descent) + 6;
-    return { x: px[0] - w / 2, y: px[1] - h / 2, w, h };
-  }
-
-  private tryPlaceLabel(
-    ctx: CanvasRenderingContext2D,
-    anchorWorld: [number, number],
-    text: string,
-    toPx: (c: number[]) => [number, number]
-  ): { px: [number, number]; leaderFrom?: [number, number] } | null {
-    const anchorPx = toPx(anchorWorld);
-    const naturalBox = this.measureBox(ctx, anchorPx, text);
-    if (!this.collisionGrid.intersects(naturalBox)) {
-      this.collisionGrid.insert(naturalBox);
-      return { px: anchorPx };
-    }
-    for (const [ox, oy] of LEADER_CANDIDATE_OFFSETS_PX) {
-      const candPx: [number, number] = [anchorPx[0] + ox, anchorPx[1] + oy];
-      const box = this.measureBox(ctx, candPx, text);
-      if (!this.collisionGrid.intersects(box)) {
-        this.collisionGrid.insert(box);
-        return { px: candPx, leaderFrom: anchorPx };
+    let nx = -dyPx / lenPx;
+    let ny = dxPx / lenPx;
+    if (cenPx) {
+      const midPx: [number, number] = [(aPx[0] + bPx[0]) / 2, (aPx[1] + bPx[1]) / 2];
+      const pointsAway = (midPx[0] - cenPx[0]) * nx + (midPx[1] - cenPx[1]) * ny >= 0;
+      if (!pointsAway) {
+        nx = -nx;
+        ny = -ny;
       }
     }
-    return null;
-  }
 
-  private computeCacheKey(
-    features: Array<Feature<Geometry>>,
-    zoom: number,
-    resolution: number,
-    extent: Extent | null
-  ): string {
-    if (!extent) return 'no-extent';
-    const q = Math.max(resolution * 2, 1e-9);
-    const [minX, minY, maxX, maxY] = extent;
-    const e = `${Math.round(minX / q)},${Math.round(minY / q)},${Math.round(maxX / q)},${Math.round(maxY / q)}`;
-    return `${e}|${zoom.toFixed(4)}|${features.length}|${this.dataVersion}|${this.selectionKey()}|${this.layersKey()}`;
-  }
+    const dimA: [number, number] = [aPx[0] + nx * offsetPx, aPx[1] + ny * offsetPx];
+    const dimB: [number, number] = [bPx[0] + nx * offsetPx, bPx[1] + ny * offsetPx];
 
-  update(features: Array<Feature<Geometry>>, changed: boolean): void {
-    if (changed) {
-      this.lotGroupCounts = computeLotGroupCounts(features);
-      this.dataVersion++;
-    }
-    if (this.screenAreaCache.size > SCREEN_AREA_CACHE_MAX) this.screenAreaCache.clear();
+    ctx.strokeStyle = cfg.color;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(aPx[0] + nx * 3, aPx[1] + ny * 3);
+    ctx.lineTo(dimA[0], dimA[1]);
+    ctx.moveTo(bPx[0] + nx * 3, bPx[1] + ny * 3);
+    ctx.lineTo(dimB[0], dimB[1]);
+    ctx.moveTo(dimA[0], dimA[1]);
+    ctx.lineTo(dimB[0], dimB[1]);
+    ctx.stroke();
+
+    const txC = (dimA[0] + dimB[0]) / 2;
+    const tyC = (dimA[1] + dimB[1]) / 2;
+    const text =
+      meta.lengthM >= 100 ? meta.lengthM.toFixed(1) + ' m' : meta.lengthM.toFixed(2) + ' m';
+    ctx.save();
+    ctx.translate(txC, tyC);
+    ctx.rotate(ang);
+    ctx.font = `500 ${fs}px ${cfg.fontFamily}`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = 'rgba(13, 17, 23, 0.85)';
+    ctx.strokeText(text, 0, 0);
+    ctx.fillStyle = cfg.color;
+    ctx.fillText(text, 0, 0);
+    ctx.restore();
   }
+  ctx.restore();
+}
+
+export class LabelPainter {
+  private readonly collisionGrid = new LabelCollisionGrid();
+
+  update(_features: Array<Feature<Geometry>>, _changed: boolean): void {}
 
   paint(
     ctx: CanvasRenderingContext2D,
     features: Array<Feature<Geometry>>,
-    zoom: number,
+    _zoom: number,
     resolution: number,
     toPx: (c: number[]) => [number, number],
     interacting: boolean,
-    extent: Extent | null,
-    drawSource: VectorSource
+    _extent: Extent | null,
+    _drawSource: VectorSource
   ): void {
     if (interacting) return;
-    const key = this.computeCacheKey(features, zoom, resolution, extent);
-    if (key !== 'no-extent' && key === this.lastKey) {
-      for (const op of this.cachedOps) op(ctx, toPx);
-      return;
-    }
-    this.lastKey = key;
-    this.cachedOps = [];
-    this.paintFeatureLabels(ctx, features, zoom, resolution, toPx, drawSource);
-    for (const op of this.cachedOps) op(ctx, toPx);
-  }
+    if (features.length > HARD_VISIBLE_CAP) return;
 
-  private resolutionBucket(resolution: number): number {
-    return Math.round(Math.log(resolution) / Math.log(1.35));
-  }
-
-  private getCachedScreenArea(
-    feature: Feature<Geometry>,
-    geometry: Geometry,
-    resolution: number
-  ): number {
-    const id = feature.getId();
-    if (id == null) return getApproxScreenArea(geometry, resolution);
-
-    const bucket = this.resolutionBucket(resolution);
-    const version = (feature.get('metricsUpdatedAt') as number | undefined) ?? 0;
-    const hit = this.screenAreaCache.get(id);
-    if (hit && hit.bucket === bucket && hit.version === version) return hit.area;
-
-    const area = getApproxScreenArea(geometry, resolution);
-    this.screenAreaCache.set(id, { bucket, version, area });
-    return area;
-  }
-
-  private paintFeatureLabels(
-    ctx: CanvasRenderingContext2D,
-    features: Array<Feature<Geometry>>,
-    zoom: number,
-    resolution: number,
-    toPx: (c: number[]) => [number, number],
-    drawSource: VectorSource
-  ): void {
-    const selectedIds = useSelectionStore.getState().selectedIds;
     this.collisionGrid.clear();
-    const zoomFade = computeCotaOpacity(zoom);
     const registry = useLayersStore.getState();
 
-    if (features.length > HARD_VISIBLE_CAP) {
-      if (selectedIds.size === 0) return;
-      for (const id of selectedIds) {
-        const feature = drawSource.getFeatureById(id) as Feature<Geometry> | null;
-        if (!feature) continue;
-        this.paintOneFeature(ctx, feature, true, zoom, resolution, zoomFade, 2, registry, toPx);
+    for (const feature of features) {
+      const cfg = feature.get('labelConfig') as LabelStyleConfig | undefined;
+      if (!cfg || !cfg.enabled) continue;
+
+      const kind = getFeatureKind(feature);
+      if (kind === 'manzana' && getLotStatus(feature) === 'subdivided') continue;
+
+      const geometry = feature.getGeometry();
+      if (!(geometry instanceof Polygon)) continue;
+
+      const layerId = feature.get('layerId') as string | undefined;
+      const layer = layerId ? registry.getById(layerId) : undefined;
+      if (layer && !layer.visible) continue;
+
+      const labelPoint = feature.get('labelPoint') as [number, number] | undefined;
+      if (!labelPoint) continue;
+
+      if (!layer || layer.showLabel !== false) {
+        const lines = buildLabelLines(feature, cfg);
+        if (lines.length > 0) this.drawLabelBlock(ctx, toPx(labelPoint), lines, cfg);
       }
-      return;
+
+      if (cfg.showEdgeCotas && (!layer || layer.showCota !== false)) {
+        drawEdgeCotas(
+          ctx,
+          feature.get('segmentLengths') as SegmentMetric[] | undefined,
+          labelPoint,
+          toPx,
+          cfg
+        );
+      }
     }
 
-    const lodTier = computeLodTier(features.length);
-    for (let fi = 0; fi < features.length; fi++) {
-      const feature = features[fi];
-      const featureId = feature.getId();
-      const isSelected = featureId != null && selectedIds.has(featureId as string | number);
-      this.paintOneFeature(
-        ctx,
-        feature,
-        isSelected,
-        zoom,
-        resolution,
-        zoomFade,
-        lodTier,
-        registry,
-        toPx
-      );
+    this.paintStreetLabels(ctx, toPx);
+    this.paintRoundaboutLabels(ctx, toPx, resolution);
+  }
+
+  private paintStreetLabels(
+    ctx: CanvasRenderingContext2D,
+    toPx: (c: number[]) => [number, number]
+  ): void {
+    const entries = useEntityLabelStore.getState().byId;
+    const streets = useStreetStore.getState().streets;
+    for (const s of streets) {
+      const entry = entries[s.id];
+      if (!entry || !entry.config.enabled) continue;
+      const lines = buildStreetLabelLines(s, entry.config, entry.text);
+      if (lines.length === 0) continue;
+      const anchor = polylineMidpoint(streetAllCoords(s));
+      const px = toPx(anchor);
+      this.drawLabelBlock(ctx, [px[0], px[1] + 26], lines, entry.config);
     }
   }
 
-  private paintOneFeature(
+  private paintRoundaboutLabels(
     ctx: CanvasRenderingContext2D,
-    feature: Feature<Geometry>,
-    isSelected: boolean,
-    zoom: number,
-    resolution: number,
-    zoomFade: number,
-    lodTier: 0 | 1 | 2,
-    registry: ReturnType<typeof useLayersStore.getState>,
-    toPx: (c: number[]) => [number, number]
+    toPx: (c: number[]) => [number, number],
+    resolution: number
   ): void {
-    const rawKind = feature.get('kind') as string | undefined;
-    if (rawKind === 'cota') return;
-    const geometry = feature.getGeometry();
-    if (!geometry) return;
-
-    const layerId = feature.get('layerId') as string | undefined;
-    const featureLayer = layerId ? registry.getById(layerId) : undefined;
-    if (featureLayer && !featureLayer.visible) return;
-
-    const featureKind = getFeatureKind(feature);
-    const isManzana = featureKind === 'manzana';
-    if (isManzana && getLotStatus(feature) === 'subdivided') return;
-    const isLote = featureKind === 'lote';
-    const colorIdx = feature.get('colorIdx') ?? 0;
-
-    const allowSegmentCotas = lodTier === 0 || isSelected;
-    const allowLabels = lodTier < 2 || isSelected;
-
-    const labelOp = (featureLayer?.showLabel ?? false) ? 1 : 0;
-    const cotaOp = ((featureLayer?.showCota ?? false) ? 1 : 0) * zoomFade;
-
-    const orientation = resolveDimensionOrientation(feature, this.lotGroupCounts);
-    const labelPoint = feature.get('labelPoint') as [number, number] | undefined;
-
-    if (geometry instanceof Polygon) {
-      const coordinates = geometry.getCoordinates()[0] ?? [];
-      if (coordinates.length < 3) return;
-
-      const areaM2 = feature.get('areaM2') as number | undefined;
-      const areaText = areaM2 !== undefined ? formatMetricArea(areaM2) : null;
-      const screenArea = this.getCachedScreenArea(feature, geometry, resolution);
-
-      if (isManzana) {
-        const baseShow = isSelected || zoom > 15.5 || screenArea >= 4200;
-        const showTitle = baseShow && labelOp > 0.002 && allowLabels;
-        const showArea = areaText != null && cotaOp > 0.002 && allowLabels;
-        if ((showTitle || showArea) && labelPoint) {
-          const mznCode = (feature.get('code') as string | undefined) ?? String(colorIdx + 1);
-          const text = `Mzo. ${mznCode}`;
-          const placed = this.tryPlaceLabel(ctx, labelPoint, text, toPx);
-          if (placed) {
-            const mznColor = featureLayer?.color ?? GEOURBAN_MANZANA_COLOR;
-            const fixedToPx = () => placed.px;
-            if (placed.leaderFrom) {
-              const leaderFrom = placed.leaderFrom;
-              this.recordOp((c) =>
-                drawLeaderLine(
-                  c,
-                  leaderFrom,
-                  placed.px,
-                  mznColor,
-                  Math.max(showTitle ? labelOp : 0, showArea ? cotaOp : 0)
-                )
-              );
-            }
-            this.recordOp((c) =>
-              drawMainMetricLabel(c, labelPoint, fixedToPx, text, true, {
-                extraLine: areaText ?? undefined,
-                color: mznColor,
-                mainOpacity: showTitle ? labelOp : 0,
-                extraLineOpacity: showArea ? cotaOp : 0,
-              })
-            );
-          }
-        }
-      } else if (isLote) {
-        const baseShow = isSelected || zoom > 15.5 || screenArea >= 4200;
-        const showBadge = baseShow && labelOp > 0.002 && allowLabels;
-        const showCaption = areaText != null && cotaOp > 0.002 && allowLabels;
-        if ((showBadge || showCaption) && labelPoint) {
-          const collisionText = (feature.get('code') as string | undefined) ?? areaText ?? '?';
-          const placed = this.tryPlaceLabel(ctx, labelPoint, collisionText, toPx);
-          if (placed) {
-            const fixedToPx = () => placed.px;
-            const isRemnant = !!feature.get('isRemnant');
-            const badgeColor = isRemnant ? LOT_BADGE_COLOR_REMNANT : LOT_BADGE_COLOR;
-            if (placed.leaderFrom) {
-              const leaderFrom = placed.leaderFrom;
-              this.recordOp((c) =>
-                drawLeaderLine(
-                  c,
-                  leaderFrom,
-                  placed.px,
-                  badgeColor,
-                  Math.max(showBadge ? labelOp : 0, showCaption ? cotaOp : 0)
-                )
-              );
-            }
-            if (showBadge) {
-              const numberText = extractLotNumberText(feature.get('label') as string | undefined);
-              this.recordOp((c) =>
-                drawLotNumberBadge(c, labelPoint, fixedToPx, numberText, isRemnant, labelOp)
-              );
-            }
-            if (showCaption) {
-              this.recordOp((c) => drawLotAreaCaption(c, labelPoint, fixedToPx, areaText!, cotaOp));
-            }
-          }
-        }
-      } else if (labelPoint && areaText && cotaOp > 0.002 && allowLabels) {
-        const placed = this.tryPlaceLabel(ctx, labelPoint, areaText, toPx);
-        if (placed) {
-          const fixedToPx = () => placed.px;
-          if (placed.leaderFrom) {
-            const leaderFrom = placed.leaderFrom;
-            const fallbackColor = featureLayer?.color ?? GEOURBAN_MANZANA_COLOR;
-            this.recordOp((c) => drawLeaderLine(c, leaderFrom, placed.px, fallbackColor, cotaOp));
-          }
-          this.recordOp((c) =>
-            drawMainMetricLabel(c, labelPoint, fixedToPx, areaText, false, { mainOpacity: cotaOp })
-          );
-        }
-      }
-
-      if (allowSegmentCotas) {
-        this.recordOp((c, px) =>
-          drawSegmentLabels(
-            c,
-            feature.get('segmentLengths') as SegmentMetric[] | undefined,
-            labelPoint,
-            orientation,
-            px,
-            isManzana,
-            cotaOp,
-            !isLote,
-            !isLote
-          )
-        );
-      }
-    } else if (geometry instanceof LineString) {
-      const coordinates = geometry.getCoordinates() ?? [];
-      if (coordinates.length < 2) return;
-      const showMainLabel = (isSelected || zoom > 15.5) && cotaOp > 0.002 && allowLabels;
-      if (showMainLabel && labelPoint) {
-        const lengthM = feature.get('lengthM') as number | undefined;
-        if (lengthM !== undefined) {
-          const text = formatMetricLength(lengthM);
-          const placed = this.tryPlaceLabel(ctx, labelPoint, text, toPx);
-          if (placed) {
-            const fixedToPx = () => placed.px;
-            if (placed.leaderFrom) {
-              const leaderFrom = placed.leaderFrom;
-              const lineColor = featureLayer?.color ?? GEOURBAN_MANZANA_COLOR;
-              this.recordOp((c) => drawLeaderLine(c, leaderFrom, placed.px, lineColor, cotaOp));
-            }
-            this.recordOp((c) =>
-              drawMainMetricLabel(c, labelPoint, fixedToPx, text, false, { mainOpacity: cotaOp })
-            );
-          }
-        }
-      }
-      if (allowSegmentCotas) {
-        this.recordOp((c, px) =>
-          drawSegmentLabels(
-            c,
-            feature.get('segmentLengths') as SegmentMetric[] | undefined,
-            labelPoint,
-            orientation,
-            px,
-            false,
-            cotaOp
-          )
-        );
-      }
+    const entries = useEntityLabelStore.getState().byId;
+    const roundabouts = useRoundaboutStore.getState().roundabouts;
+    for (const rb of roundabouts) {
+      const entry = entries[rb.id];
+      if (!entry || !entry.config.enabled) continue;
+      const lines = buildRoundaboutLabelLines(rb, entry.config, entry.text);
+      if (lines.length === 0) continue;
+      const px = toPx(rb.center);
+      const offsetPx = rb.radiusM / resolution + 18;
+      this.drawLabelBlock(ctx, [px[0], px[1] + offsetPx], lines, entry.config);
     }
+  }
+
+  private drawLabelBlock(
+    ctx: CanvasRenderingContext2D,
+    px: [number, number],
+    lines: string[],
+    cfg: LabelStyleConfig
+  ): void {
+    const fs = cfg.labelFontSizePx;
+    const lineHeight = fs * 1.25;
+    ctx.save();
+    ctx.font = `700 ${fs}px ${cfg.fontFamily}`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    let maxW = 0;
+    for (const line of lines) {
+      const w = measureCached(ctx, line).width;
+      if (w > maxW) maxW = w;
+    }
+    const totalH = lines.length * lineHeight;
+    const box: PlacedBox = {
+      x: px[0] - maxW / 2 - 4,
+      y: px[1] - totalH / 2 - 2,
+      w: maxW + 8,
+      h: totalH + 4,
+    };
+    if (this.collisionGrid.intersects(box)) {
+      ctx.restore();
+      return;
+    }
+    this.collisionGrid.insert(box);
+
+    ctx.fillStyle = 'rgba(13, 17, 23, 0.72)';
+    ctx.fillRect(box.x, box.y, box.w, box.h);
+
+    ctx.fillStyle = cfg.color;
+    let y = px[1] - totalH / 2 + lineHeight / 2;
+    for (const line of lines) {
+      ctx.fillText(line, px[0], y);
+      y += lineHeight;
+    }
+    ctx.restore();
   }
 }

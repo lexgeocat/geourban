@@ -11,6 +11,7 @@ export type DrawMode =
   | 'roundabout' // Rotonda: 2 clics (centro → radio)
   | 'erase'      // Delete selected features
   | 'edit'       // Enter vertex editing mode (modify selected geometry)
+  | 'labelOrder' // Trazado de línea para ordenar etiquetas de manzanos
   | 'none';       // No tool selected (for UI state)
 
 /** Tipo de feature que se creará al dibujar un polígono */

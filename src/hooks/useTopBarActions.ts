@@ -5,6 +5,7 @@ import { ClearFeaturesCommand } from '../commands/features/ClearFeaturesCommand'
 import { useSelectionStore } from '../store/map/selectionStore';
 import { useStreetStore } from '../store/entities/streetStore';
 import { useRoundaboutStore } from '../store/entities/roundaboutStore';
+import { useEntityLabelStore } from '../store/entities/entityLabelStore';
 import { useManzanoStore } from '../store/entities/manzanoStore';
 import { useLayersStore } from '../store/entities/layersRegistryStore';
 import { useDrawStore } from '../store/map/drawStore';
@@ -29,6 +30,7 @@ export function useTopBarActions() {
     await useCommandStack.getState().run(new ClearFeaturesCommand());
     useStreetStore.getState().clearStreets();
     useRoundaboutStore.getState().clearRoundabouts();
+    useEntityLabelStore.getState().clear();
     resetIncrementalRoadTracking();
     useLayersStore.getState().resetToEmpty();
     useManzanoStore.getState().resetAll();

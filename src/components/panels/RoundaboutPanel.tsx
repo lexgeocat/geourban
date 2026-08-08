@@ -4,6 +4,9 @@ import { useSelectionStore } from '../../store/map/selectionStore';
 import { useDrawStore } from '../../store/map/drawStore';
 import { roundaboutRoadAreaM2 } from '../../geo/roundabout/roundaboutEngine';
 import { formatMetricArea } from '../../geo/metrics';
+import { useEntityLabelStore } from '../../store/entities/entityLabelStore';
+import { useLabelConfigModalStore } from '../../store/ui/labelConfigModalStore';
+import { defaultLabelStyleConfig, defaultColorForKind } from '../../core/labelModel';
 
 const SIDES_OPTIONS: Array<{ value: number; label: string }> = [
   { value: 0, label: 'Círculo' },
@@ -32,6 +35,8 @@ export default function RoundaboutPanel() {
   const setMode = useDrawStore((s) => s.setMode);
   const selectedIds = useSelectionStore((s) => s.selectedIds);
   const selectOnMap = useSelectionStore((s) => s.setSelection);
+  const entityLabels = useEntityLabelStore((s) => s.byId);
+  const openEntityLabel = useLabelConfigModalStore((s) => s.openForEntity);
 
   return (
     <div style={{ height: '100%', overflowY: 'auto', fontSize: '0.72rem' }}>
@@ -92,13 +97,31 @@ export default function RoundaboutPanel() {
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ fontWeight: 700, color: 'var(--cad-text)' }}>{rb.name}</span>
-              <button
-                onClick={(e) => { e.stopPropagation(); removeRoundabout(rb.id); }}
-                style={{ background: 'none', border: 'none', color: 'var(--cad-accent-red)', cursor: 'pointer', fontSize: '0.75rem' }}
-                title="Eliminar rotonda"
-              >
-                ✕
-              </button>
+              <div style={{ display: 'flex', gap: 4 }}>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const existing = entityLabels[rb.id];
+                    openEntityLabel(
+                      'roundabout',
+                      rb.id,
+                      existing?.config ?? defaultLabelStyleConfig({ prefix: 'Rotonda', color: defaultColorForKind('rotonda') }),
+                      existing?.text ?? rb.name,
+                    );
+                  }}
+                  style={{ background: 'none', border: 'none', color: 'var(--cad-accent)', cursor: 'pointer', fontSize: '0.75rem' }}
+                  title="Generar etiqueta"
+                >
+                  🏷
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); removeRoundabout(rb.id); useEntityLabelStore.getState().remove(rb.id); }}
+                  style={{ background: 'none', border: 'none', color: 'var(--cad-accent-red)', cursor: 'pointer', fontSize: '0.75rem' }}
+                  title="Eliminar rotonda"
+                >
+                  ✕
+                </button>
+              </div>
             </div>
             <div style={{ color: 'var(--cad-text-muted)', fontSize: '0.65rem', marginBottom: 4 }}>
               {formatMetricArea(roundaboutRoadAreaM2(rb))} de calzada

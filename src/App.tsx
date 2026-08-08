@@ -12,6 +12,7 @@ import ConfirmDialog from './components/modals/ConfirmDialog';
 import ToastStack from './components/ui/ToastStack';
 import SaveProjectModal from './components/modals/SaveProjectModal';
 import OpenProjectModal from './components/modals/OpenProjectModal';
+import LabelConfigModal from './components/modals/LabelConfigModal';
 
 function App() {
   useKeyboardShortcuts();
@@ -54,6 +55,7 @@ function App() {
       <ConfirmDialog />
       <SaveProjectModal />
       <OpenProjectModal />
+      <LabelConfigModal />
       <ToastStack />
 
       <StatusBar />
