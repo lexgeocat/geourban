@@ -7,7 +7,6 @@ import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
 import { useLayersStore } from '../../store/entities/layersRegistryStore';
 import type { Layer } from '../../core/objectModel';
-import { MZN_COLORS, MZN_COLOR_COUNT } from '../../geo/manzanoColor';
 
 export type WorkVisibility = {
   lots: boolean;
@@ -49,37 +48,13 @@ function safeDisposeLayer(layer: { dispose: () => void }): void {
 
 function buildSingleLayerStyle(layer: Layer): Record<string, unknown> {
   const op = layer.opacity ?? 1;
-  const isManzanaLayer = layer.kind === 'manzana';
-
-  const suppressFillIfSubdivided = (expr: unknown): unknown =>
-    isManzanaLayer
-      ? ['case', ['==', ['get', 'lotStatus'], 'subdivided'], 'rgba(0,0,0,0)', expr]
-      : expr;
-
-  if (layer.colorMode !== 'colorIdx') {
-    return {
-      'fill-color': suppressFillIfSubdivided(withAlpha(layer.fillColor ?? layer.color, 0.3 * op)),
-      'stroke-color': withAlpha(layer.color, op),
-      'stroke-width': 2,
-    };
-  }
-  const fillExpr: unknown[] = ['match', ['get', 'colorIdx']];
-  const strokeExpr: unknown[] = ['match', ['get', 'colorIdx']];
-  for (let i = 0; i < MZN_COLOR_COUNT; i++) {
-    fillExpr.push(i, withAlpha(MZN_COLORS[i], 0.3 * op));
-    strokeExpr.push(i, withAlpha(MZN_COLORS[i], op));
-  }
-  fillExpr.push(withAlpha(MZN_COLORS[0], 0.3 * op));
-  strokeExpr.push(withAlpha(MZN_COLORS[0], op));
   return {
-    'fill-color': suppressFillIfSubdivided(fillExpr),
-    'stroke-color': strokeExpr,
+    'stroke-color': withAlpha(layer.color, op),
     'stroke-width': 2,
   };
 }
 
 const FALLBACK_STYLE = {
-  'fill-color': 'rgba(16,185,129,0.30)',
   'stroke-color': '#10b981',
   'stroke-width': 2,
 };
@@ -97,10 +72,7 @@ interface MirrorEntry {
 
 interface PoolLayerColor {
   color: string;
-  fillColor: string;
   opacity: number;
-  suppressIfSubdivided: boolean;
-  colorMode: 'solid' | 'colorIdx';
 }
 
 interface PoolSlot {
@@ -149,7 +121,7 @@ export class LayeredWebglRenderer {
     return { source, layer };
   }
   private static layerSignature(layer: Layer): string {
-    return `${layer.color}|${layer.fillColor}|${layer.opacity}|${layer.colorMode}|${layer.kind}`;
+    return `${layer.color}|${layer.opacity}`;
   }
 
   private getByIdMap(): globalThis.Map<string, Layer> {
@@ -288,50 +260,20 @@ export class LayeredWebglRenderer {
 
   private static poolSlotSig(layers: PoolLayerColor[]): string {
   return layers
-    .map((l) => `${l.color}|${l.fillColor}|${l.opacity}|${l.suppressIfSubdivided ? 1 : 0}|${l.colorMode}`)
+    .map((l) => `${l.color}|${l.opacity}`)
     .join(',');
 }
 
 private static buildPoolSlotStyle(colors: PoolLayerColor[]): Record<string, unknown> {
-  const fillMatch: unknown[] = ['match', ['get', 'webglSlotIdx']];
   const strokeMatch: unknown[] = ['match', ['get', 'webglSlotIdx']];
 
   for (let i = 0; i < colors.length; i++) {
     const c = colors[i];
-
-    if (c.colorMode === 'colorIdx') {
-      const fillIdxExpr: unknown[] = ['match', ['get', 'colorIdx']];
-      const strokeIdxExpr: unknown[] = ['match', ['get', 'colorIdx']];
-      for (let k = 0; k < MZN_COLOR_COUNT; k++) {
-        fillIdxExpr.push(k, withAlpha(MZN_COLORS[k], 0.3 * c.opacity));
-        strokeIdxExpr.push(k, withAlpha(MZN_COLORS[k], c.opacity));
-      }
-      fillIdxExpr.push(withAlpha(MZN_COLORS[0], 0.3 * c.opacity));
-      strokeIdxExpr.push(withAlpha(MZN_COLORS[0], c.opacity));
-
-      const fill = c.suppressIfSubdivided
-        ? ['case', ['==', ['get', 'lotStatus'], 'subdivided'], 'rgba(0,0,0,0)', fillIdxExpr]
-        : fillIdxExpr;
-
-      fillMatch.push(i, fill);
-      strokeMatch.push(i, strokeIdxExpr);
-      continue;
-    }
-
-    const fill = withAlpha(c.fillColor, 0.3 * c.opacity);
-    const stroke = withAlpha(c.color, c.opacity);
-    fillMatch.push(
-      i,
-      c.suppressIfSubdivided
-        ? ['case', ['==', ['get', 'lotStatus'], 'subdivided'], 'rgba(0,0,0,0)', fill]
-        : fill,
-    );
-    strokeMatch.push(i, stroke);
+    strokeMatch.push(i, withAlpha(c.color, c.opacity));
   }
 
-  fillMatch.push('rgba(0,0,0,0)');
   strokeMatch.push('rgba(0,0,0,0)');
-  return { 'fill-color': fillMatch, 'stroke-color': strokeMatch, 'stroke-width': 2 };
+  return { 'stroke-color': strokeMatch, 'stroke-width': 2 };
 }
 
   private allocatePoolSlots(layers: Layer[]): void {
@@ -360,10 +302,7 @@ private static buildPoolSlotStyle(colors: PoolLayerColor[]): Record<string, unkn
     for (let i = 0; i < nSlots; i++) {
       const colorTable: PoolLayerColor[] = slotLayers[i].map((entry) => ({
   color: entry.layer.color,
-  fillColor: entry.layer.fillColor,
   opacity: entry.layer.opacity,
-  suppressIfSubdivided: entry.layer.kind === 'manzana',
-  colorMode: entry.layer.colorMode,
 }));
       const sig = LayeredWebglRenderer.poolSlotSig(colorTable);
       const existing = oldSlots[i];

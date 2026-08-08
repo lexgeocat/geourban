@@ -7,7 +7,7 @@ import { measureCachedWidth } from './textMeasureCache';
 import { getFeatureKind } from '../core/objectModel';
 
 // ─── Colores
-const GEOURBAN_MANZANA_COLOR = '#58a6ff';
+export const GEOURBAN_MANZANA_COLOR = '#58a6ff';
 const GEOURBAN_TEXT_BG = 'rgba(13, 17, 23, 0.72)';
 const GEOURBAN_LIVE_BG = 'rgba(13, 17, 23, 0.80)';
 const DIM_EXT_COLOR_LOTE = 'rgba(56, 189, 248, 0.30)';

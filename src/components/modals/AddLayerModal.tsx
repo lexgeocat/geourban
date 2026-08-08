@@ -26,10 +26,9 @@ export default function AddLayerModal({ open, onOpenChange }: AddLayerModalProps
     const id = newId('layer');
     void runCommand(new AddLayerCommand({
       id, name: name.trim(), kind,
-      color, fillColor: color,
+      color,
       visible: true, locked: false, opacity: 1,
       showLabel: false, showCota: false,
-      colorMode: kind === 'manzana' ? 'colorIdx' : 'solid',
     }));
     setName('');
     setKind('lote');
@@ -70,7 +69,7 @@ export default function AddLayerModal({ open, onOpenChange }: AddLayerModalProps
         </label>
 
         <label style={{ fontSize: '0.72rem', color: 'var(--cad-text-dim)', display: 'flex', flexDirection: 'column', gap: 4 }}>
-          Color de capa (contorno + relleno)
+          Color de capa (contorno)
           <input
             type="color"
             value={color}

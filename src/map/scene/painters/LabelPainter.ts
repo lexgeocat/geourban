@@ -14,9 +14,9 @@ import {
   computeLotGroupCounts,
   getApproxScreenArea,
   computeCotaOpacity,
+  GEOURBAN_MANZANA_COLOR,
 } from '../../styleFactory';
 import { formatMetricLength, formatMetricArea, type SegmentMetric } from '../../../geo/metrics';
-import { manzanoDisplayColor } from '../../../geo/manzanoColor';
 import { measureCached } from '../../textMeasureCache';
 import { getFeatureKind, getLotStatus } from '../../../core/objectModel';
 import { useLayersStore } from '../../../store/entities/layersRegistryStore';
@@ -314,7 +314,7 @@ export class LabelPainter {
         if ((showTitle || showArea) && labelPoint) {
           const text = `Mzo. ${colorIdx + 1}`;
           if (!isColliding(ctx, labelPoint, text, this.collisionGrid, toPx)) {
-            const mznColor = manzanoDisplayColor(colorIdx);
+            const mznColor = featureLayer?.color ?? GEOURBAN_MANZANA_COLOR;
             this.recordOp((c, px) =>
               drawMainMetricLabel(c, labelPoint, px, text, true, {
                 extraLine: areaText ?? undefined,

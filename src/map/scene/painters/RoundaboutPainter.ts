@@ -46,15 +46,12 @@ export class RoundaboutPainter {
       if (!layer?.visible) continue;
 
       const color = layer.color ?? FALLBACK_ROUNDABOUT_COLOR;
-      const fillColor = layer.fillColor ?? color;
       const op = layer.opacity ?? 1;
 
       const geom = roundaboutGeometry(rb, resolution);
-      this.fillRing(ctx, geom.roadOuter, toPx, withAlpha(fillColor, 0.10 * op));
       this.strokeRing(ctx, geom.sideOuter, toPx, withAlpha(color, 0.55 * op), 1.5);
       this.strokeRing(ctx, geom.roadOuter, toPx, withAlpha(color, 0.75 * op), 2);
       if (geom.island) {
-        this.fillRing(ctx, geom.island, toPx, 'rgba(63, 185, 80, 0.18)');
         this.strokeRing(ctx, geom.island, toPx, 'rgba(63, 185, 80, 0.6)', 1.25);
       }
       ctx.save();
@@ -130,22 +127,6 @@ export class RoundaboutPainter {
     }
     ctx.closePath();
     ctx.stroke();
-    ctx.restore();
-  }
-
-  private fillRing(ctx: CanvasRenderingContext2D, ring: Array<[number, number]>, toPx: (c: number[]) => [number, number], color: string): void {
-    if (ring.length < 3) return;
-    ctx.save();
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    const first = toPx(ring[0]);
-    ctx.moveTo(first[0], first[1]);
-    for (let i = 1; i < ring.length; i++) {
-      const p = toPx(ring[i]);
-      ctx.lineTo(p[0], p[1]);
-    }
-    ctx.closePath();
-    ctx.fill();
     ctx.restore();
   }
 }

@@ -35,7 +35,6 @@ export type LayerState = {
   getLayerForKind: (kind: string) => Layer | undefined;
   getKind: (id: string) => LayerKind | null;
   hasKind: (kind: LayerKind) => boolean;
-  getColorMode: (id: string) => 'solid' | 'colorIdx';
 };
 
 export const useLayersStore = create<LayerState>()(
@@ -52,10 +51,8 @@ export const useLayersStore = create<LayerState>()(
         const withDefaults: Layer = {
           ...layer,
           kind: safeKind,
-          fillColor: layer.fillColor ?? layer.color,
           showLabel: layer.showLabel ?? false,
           showCota: layer.showCota ?? false,
-          colorMode: layer.colorMode ?? (safeKind === 'manzana' ? 'colorIdx' : 'solid'),
           zIndex: newZIndex,
         };
         state.layers.push(withDefaults);
@@ -77,11 +74,6 @@ export const useLayersStore = create<LayerState>()(
         const index = state.index.get(patch.id);
         if (index === undefined) return;
         Object.assign(state.layers[index], patch);
-        if ('kind' in patch) {
-          const safeKind: LayerKind = isLayerKind(patch.kind) ? patch.kind : 'lote';
-          state.layers[index].kind = safeKind;
-          state.layers[index].colorMode = safeKind === 'manzana' ? 'colorIdx' : 'solid';
-        }
         if ('zIndex' in patch) {
           state.layers.sort((a, b) => a.zIndex - b.zIndex);
           state.index = new Map(
@@ -174,9 +166,6 @@ export const useLayersStore = create<LayerState>()(
         const next = layers.map((l) => ({
           ...l,
           kind: isLayerKind(l.kind) ? l.kind : 'lote',
-          colorMode: l.colorMode === 'colorIdx'
-            ? 'colorIdx' as const
-            : (isLayerKind(l.kind) && l.kind === 'manzana' ? 'colorIdx' as const : 'solid' as const),
         }));
         state.layers = next;
         state.index = new Map(next.map((l, idx) => [l.id, idx]));
@@ -246,11 +235,6 @@ export const useLayersStore = create<LayerState>()(
     },
     hasKind: (kind) => {
       return get().layers.some((l) => l.kind === kind);
-    },
-    getColorMode: (id) => {
-      const index = get().index.get(id);
-      if (index === undefined) return 'solid';
-      return get().layers[index].colorMode;
     },
   }))
 );

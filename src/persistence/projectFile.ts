@@ -22,8 +22,8 @@ import type { Layer } from '../core/objectModel';
 
 interface LayerDto {
   id: string; name: string; kind: string; zIndex: number;
-  color: string; fillColor: string; visible: boolean; locked: boolean;
-  opacity: number; showLabel: boolean; showCota: boolean; colorMode: string;
+  color: string; visible: boolean; locked: boolean;
+  opacity: number; showLabel: boolean; showCota: boolean;
 }
 interface FeatureDto {
   id: string; layerId: string | null; kind: string;
@@ -84,8 +84,8 @@ function buildPayload(): ProjectPayload {
 
   const layers: LayerDto[] = layersState.layers.map((l: Layer) => ({
     id: l.id, name: l.name, kind: l.kind, zIndex: l.zIndex,
-    color: l.color, fillColor: l.fillColor, visible: l.visible, locked: l.locked,
-    opacity: l.opacity, showLabel: l.showLabel, showCota: l.showCota, colorMode: l.colorMode,
+    color: l.color, visible: l.visible, locked: l.locked,
+    opacity: l.opacity, showLabel: l.showLabel, showCota: l.showCota,
   }));
 
   const features: FeatureDto[] = [];
@@ -161,9 +161,8 @@ export async function loadProject(name: string): Promise<void> {
 
   const layers: Layer[] = payload.layers.map((l) => ({
     id: l.id, name: l.name, kind: l.kind as Layer['kind'], zIndex: l.zIndex,
-    color: l.color, fillColor: l.fillColor, visible: l.visible, locked: l.locked,
+    color: l.color, visible: l.visible, locked: l.locked,
     opacity: l.opacity, showLabel: l.showLabel, showCota: l.showCota,
-    colorMode: l.colorMode as Layer['colorMode'],
   }));
 
   const meta: ProjectMeta = JSON.parse(payload.metaJson || '{}');

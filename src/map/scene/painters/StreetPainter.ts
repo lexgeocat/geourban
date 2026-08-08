@@ -415,13 +415,12 @@ export class StreetPainter {
       if (!cache) continue;
 
       const strokeColor = layer.color ?? FALLBACK_STREET_COLOR;
-      const fillColor = layer.fillColor ?? strokeColor;
       const layerOp = layer.opacity ?? 1;
 
       if (!interacting) {
         this.paintRings(ctx, cache.net.outer, toPx, { fill: null, stroke: withAlpha('#c8c8c8', 0.55 * layerOp), lineWidth: 1 });
         this.paintRings(ctx, cache.net.road, toPx, {
-          fill: withAlpha(fillColor, 0.08 * layerOp),
+          fill: null,
           stroke: withAlpha(strokeColor, 0.75 * layerOp),
           lineWidth: 1.5,
         });

@@ -5,7 +5,6 @@ import { useLayerPanelUiStore } from '../../store/ui/layerPanelUiStore';
 import { useIncrementalRender } from '../../hooks/useIncrementalRender';
 import { useViewportWidth } from '../../hooks/useViewportWidth';
 import { useDrawSourceTick } from '../../hooks/useDrawSourceTick';
-import { manzanoDisplayColor } from '../../geo/manzanoColor';
 import { computeLayerFeatureCounts, computeLayerExtent } from '../../geo/selectors/layerStats';
 import { useMapStore } from '../../store/map/mapStore';
 import { useSelectionStore } from '../../store/map/selectionStore';
@@ -154,7 +153,7 @@ const IconRuler = () => (
   </svg>
 );
 
-/* ─────────── Color Picker (un solo swatch: setea contorno + relleno) ─────────── */
+/* ─────────── Color Picker (contorno de capa) ─────────── */
 
 function ColorDot({ color, onChange, title, warn }: { color: string; onChange: (c: string) => void; title?: string; warn?: boolean }) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -263,7 +262,6 @@ interface LayerRowData {
   visible: boolean;
   opacity: number;
   color: string;
-  fillColor: string;
   showLabel: boolean;
   showCota: boolean;
   editableName: boolean;
@@ -271,7 +269,6 @@ interface LayerRowData {
   lockable: boolean;
   locked?: boolean;
   kind: LayerKind;
-  colorMode: 'solid' | 'colorIdx';
   reorderable: boolean;
   featureCount?: number;
   isDataLayer: boolean;
@@ -282,7 +279,6 @@ interface LayerRowData {
   onColor: (c: string) => void;
   onToggleLabel: () => void;
   onToggleCota: () => void;
-  onSetColorMode: (mode: 'solid' | 'colorIdx') => void;
   onRename?: (name: string) => void;
   onToggleLock?: () => void;
   onRemove?: () => void;
@@ -291,11 +287,6 @@ interface LayerRowData {
   onDuplicate?: () => void;
   onMoveSelectionHere?: () => void;
 }
-
-const gearLabelStyle: React.CSSProperties = {
-  display: 'flex', alignItems: 'center', gap: 6, padding: '4px 2px',
-  fontSize: '0.68rem', color: 'var(--cad-text-dim)', cursor: 'pointer', whiteSpace: 'nowrap',
-};
 
 const gearActionStyle: React.CSSProperties = {
   display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '6px 4px',
@@ -372,7 +363,7 @@ function LayerRow({
         {geometryIconForKind(data.kind)}
       </span>
 
-      <ColorDot color={data.color} onChange={data.onColor} title="Color de capa (contorno + relleno)" warn={data.colorDuplicated} />
+      <ColorDot color={data.color} onChange={data.onColor} title="Color de capa (contorno)" warn={data.colorDuplicated} />
 
       {data.editableName && editingName ? (
         <input
@@ -498,23 +489,6 @@ function LayerRow({
               <OpacitySlider value={data.opacity} onChange={data.onOpacity} layerName={data.name} full />
             </div>
 
-            {data.kind === 'manzana' && (
-              <>
-                <div style={{ height: 1, background: 'var(--cad-border)', margin: '2px 0 6px' }} />
-                <div style={{ fontSize: '0.62rem', color: 'var(--cad-text-dim)', marginBottom: 4 }}>Color de manzanos</div>
-                <label style={{ ...gearLabelStyle, padding: '2px 0' }}>
-                  <input type="radio" name={`cm-${data.id}`} className="cad-toggle" checked={data.colorMode === 'solid'} onChange={() => data.onSetColorMode('solid')} />
-                  <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 2, background: data.color, flexShrink: 0 }} />
-                  Sólido (capa)
-                </label>
-                <label style={{ ...gearLabelStyle, padding: '2px 0' }}>
-                  <input type="radio" name={`cm-${data.id}`} className="cad-toggle" checked={data.colorMode === 'colorIdx'} onChange={() => data.onSetColorMode('colorIdx')} />
-                  <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 2, background: manzanoDisplayColor(0), flexShrink: 0 }} />
-                  Por manzano
-                </label>
-              </>
-            )}
-
             {(data.onZoomToExtent || data.onDuplicate || data.lockable || data.removable) && (
               <div style={{ height: 1, background: 'var(--cad-border)', margin: '6px 0 2px' }} />
             )}
@@ -604,7 +578,6 @@ function useRegistryRows(
     visible: l.visible,
     opacity: l.opacity,
     color: l.color,
-    fillColor: l.fillColor ?? l.color,
     showLabel: l.showLabel,
     showCota: l.showCota,
     editableName: true,
@@ -612,7 +585,6 @@ function useRegistryRows(
     lockable: true,
     locked: l.locked,
     kind: l.kind,
-    colorMode: l.colorMode,
     reorderable: true,
     isDataLayer: true,
     featureCount: featureCounts[l.id] ?? 0,
@@ -621,10 +593,9 @@ function useRegistryRows(
     zIndex: l.zIndex,
     onToggleVisible: () => void runCommand(new UpdateLayerCommand(l.id, { visible: !l.visible }, 'Visibilidad de capa')),
     onOpacity: (v) => void runCommand(new UpdateLayerCommand(l.id, { opacity: v }, 'Opacidad de capa')),
-    onColor: (c) => void runCommand(new UpdateLayerCommand(l.id, { color: c, fillColor: c }, 'Color de capa')),
+    onColor: (c) => void runCommand(new UpdateLayerCommand(l.id, { color: c }, 'Color de capa')),
     onToggleLabel: () => void runCommand(new UpdateLayerCommand(l.id, { showLabel: !l.showLabel }, 'Mostrar etiqueta de capa')),
     onToggleCota: () => void runCommand(new UpdateLayerCommand(l.id, { showCota: !l.showCota }, 'Mostrar acotación de capa')),
-    onSetColorMode: (mode) => void runCommand(new UpdateLayerCommand(l.id, { colorMode: mode }, 'Modo de color de capa')),
     onRename: (name) => void runCommand(new UpdateLayerCommand(l.id, { name }, 'Renombrar capa')),
     onToggleLock: () => void runCommand(new UpdateLayerCommand(l.id, { locked: !l.locked }, 'Bloqueo de capa')),
     onRemove: () => onRequestRemove({ id: l.id, name: l.name }),
@@ -850,7 +821,7 @@ export default function LayerPanel() {
           <div style={{ marginTop: 8, paddingTop: 6, borderTop: '1px solid var(--cad-border)', fontSize: '0.6rem', color: 'var(--cad-text-dim)' }}>
             {registryRows.filter((r) => r.visible).map((r) => (
               <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 2 }}>
-                <span aria-hidden="true" style={{ width: 8, height: 8, background: r.fillColor, borderRadius: 2, flexShrink: 0 }} />
+                <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 2, border: '1.5px solid ' + r.color, flexShrink: 0 }} />
                 <span style={{ whiteSpace: 'normal', overflowWrap: 'anywhere' }}>{r.name}</span>
                 {r.locked && <span aria-hidden="true" style={{ fontSize: '0.55rem', opacity: 0.5, marginLeft: 'auto' }}>🔒</span>}
               </div>

@@ -18,31 +18,27 @@ export interface Layer {
   kind: LayerKind;
   zIndex: number;
   color: string;
-  fillColor: string;
   visible: boolean;
   locked: boolean;
   opacity: number;
   showLabel: boolean;
   showCota: boolean;
-  colorMode: 'solid' | 'colorIdx';
 }
 
 export interface LayerSuggestion {
   kind: GeoUrbanFeatureKind;
   name: string;
   color: string;
-  fillColor: string;
-  colorMode: 'solid' | 'colorIdx';
   geometryHint: 'polygon' | 'line' | 'point';
 }
 
 export const LAYER_SUGGESTIONS: LayerSuggestion[] = [
-  { kind: 'perimetro', name: 'Perímetro', color: '#f0f6fc', fillColor: '#f0f6fc', colorMode: 'solid', geometryHint: 'polygon' },
-  { kind: 'manzana', name: 'Manzano', color: '#f59e0b', fillColor: '#f59e0b', colorMode: 'colorIdx', geometryHint: 'polygon' },
-  { kind: 'lote', name: 'Lote', color: '#58a6ff', fillColor: '#58a6ff', colorMode: 'solid', geometryHint: 'polygon' },
-  { kind: 'equipamiento', name: 'Áreas de equipamientos', color: '#4dd0c4', fillColor: '#4dd0c4', colorMode: 'solid', geometryHint: 'polygon' },
-  { kind: 'calle', name: 'Vías', color: '#8b5cf6', fillColor: '#8b5cf6', colorMode: 'solid', geometryHint: 'line' },
-  { kind: 'rotonda', name: 'Rotonda', color: '#f78166', fillColor: '#f78166', colorMode: 'solid', geometryHint: 'line' },
+  { kind: 'perimetro', name: 'Perímetro', color: '#f0f6fc', geometryHint: 'polygon' },
+  { kind: 'manzana', name: 'Manzano', color: '#f59e0b', geometryHint: 'polygon' },
+  { kind: 'lote', name: 'Lote', color: '#58a6ff', geometryHint: 'polygon' },
+  { kind: 'equipamiento', name: 'Áreas de equipamientos', color: '#4dd0c4', geometryHint: 'polygon' },
+  { kind: 'calle', name: 'Vías', color: '#8b5cf6', geometryHint: 'line' },
+  { kind: 'rotonda', name: 'Rotonda', color: '#f78166', geometryHint: 'line' },
 ];
 
 export function getLayerSuggestion(kind: GeoUrbanFeatureKind): LayerSuggestion | undefined {
@@ -58,13 +54,11 @@ export function createUnassignedLayer(zIndex: number): Layer {
     kind: 'lote',
     zIndex,
     color: '#94a3b8',
-    fillColor: '#94a3b8',
     visible: true,
     locked: false,
     opacity: 1,
     showLabel: false,
     showCota: false,
-    colorMode: 'solid',
   };
 }
 

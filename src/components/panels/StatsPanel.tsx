@@ -11,7 +11,7 @@ import type Geometry from 'ol/geom/Geometry.js';
 import Polygon from 'ol/geom/Polygon.js';
 import type VectorSource from 'ol/source/Vector.js';
 import { getFeatureKind, getLotStatus } from '../../core/objectModel';
-import { manzanoDisplayColor } from '../../geo/manzanoColor';
+import { useLayersStore } from '../../store/entities/layersRegistryStore';
 import type { Street } from '../../store/entities/streetStore';
 
 interface ManzanoInfo {
@@ -33,7 +33,7 @@ interface StatsData {
   manzanos: ManzanoInfo[];
 }
 
-function computeStats(drawSource: VectorSource<Feature<Geometry>> | null, streets: Street[]): StatsData {
+function computeStats(drawSource: VectorSource<Feature<Geometry>> | null, streets: Street[], manzColor: string): StatsData {
   const result: StatsData = {
     totalAreaM2: 0,
     manzanoCount: 0,
@@ -73,7 +73,7 @@ function computeStats(drawSource: VectorSource<Feature<Geometry>> | null, street
       result.manzanos.push({
         index: mznIdx,
         areaM2: area,
-        color: manzanoDisplayColor(mznIdx),
+        color: manzColor,
         isManzana: true,
         vertexCount: coords[0].length - 1,
       });
@@ -95,6 +95,7 @@ function computeStats(drawSource: VectorSource<Feature<Geometry>> | null, street
 export default function StatsPanel() {
   const drawSource = useMapStore((s) => s.drawSource);
   const streets = useStreetStore((s) => s.streets);
+  const manzanoColor = useLayersStore((s) => s.getLayerForKind('manzana')?.color ?? '#f59e0b');
   const visible = useUiShellStore((s) => s.statsPanelVisible);
   const setStatsPanelVisible = useUiShellStore((s) => s.setStatsPanelVisible);
 
@@ -104,8 +105,8 @@ export default function StatsPanel() {
 
   const tick = useDrawSourceTick(drawSource);
 
-  const stats = useMemo(() => computeStats(drawSource, streets),
-  [drawSource, streets, tick]);
+  const stats = useMemo(() => computeStats(drawSource, streets, manzanoColor),
+  [drawSource, streets, tick, manzanoColor]);
 
   if (!visible) return null;
   if (stats.totalAreaM2 === 0 && stats.streetCount === 0) return null;

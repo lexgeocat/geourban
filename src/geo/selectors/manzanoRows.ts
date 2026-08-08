@@ -4,7 +4,6 @@ import Polygon from 'ol/geom/Polygon.js';
 import type VectorSource from 'ol/source/Vector.js';
 import { polyArea, centroid, ringPerimeter, type Pt } from '../math/polygonEngine';
 import { getFeatureKind, getLotStatus, type LotStatus } from '../../core/objectModel';
-import { MZN_COLORS } from '../manzanoColor';
 
 export interface LotInfo {
   label: string;
@@ -65,7 +64,7 @@ export function readManzanoRows(drawSource: VectorSource | null): ManzanoRow[] {
 
     rows.push({
       id,
-      colorIdx: colorIdx % MZN_COLORS.length,
+      colorIdx,
       areaM2,
       perimeterM,
       centroid: centroidPt,
