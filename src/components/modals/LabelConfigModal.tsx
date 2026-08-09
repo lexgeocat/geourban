@@ -213,14 +213,10 @@ export default function LabelConfigModal() {
     setName(initialText ?? '');
   }, [open, initialConfig, initialText]);
 
-  if (!target) return null;
-
-  const isBatch = target.kind === 'batch-manzanos';
-  const isBatchLots = target.kind === 'batch-lots';
-  const isEntity = target.kind === 'entity';
-  const entityCopy = isEntity ? ENTITY_COPY[target.entityType] : null;
-
-  const patch = (p: Partial<LabelStyleConfig>) => setCfg((c) => ({ ...c, ...p }));
+  const isBatch = target?.kind === 'batch-manzanos';
+  const isBatchLots = target?.kind === 'batch-lots';
+  const isEntity = target?.kind === 'entity';
+  const entityCopy = target && target.kind === 'entity' ? ENTITY_COPY[target.entityType] : null;
 
   const previewMetrics = useMemo(() => computePreviewMetrics(target, numberingMode), [target, numberingMode]);
   const previewText = isBatch || isBatchLots ? (previewMetrics.text ?? '') : (name.trim() || previewMetrics.text || 'Etiqueta');
@@ -228,6 +224,10 @@ export default function LabelConfigModal() {
     () => composeLabelLines(cfg, { ...previewMetrics, text: previewText }),
     [cfg, previewMetrics, previewText],
   );
+
+  if (!target) return null;
+
+  const patch = (p: Partial<LabelStyleConfig>) => setCfg((c) => ({ ...c, ...p }));
 
   const handleApplyOnly = () => {
     if (target.kind === 'feature') {
@@ -251,10 +251,10 @@ export default function LabelConfigModal() {
   };
 
   const handleTraceOrder = () => {
-    if (isBatch) {
+    if (target.kind === 'batch-manzanos') {
       setLastManzanoConfig(cfg);
       useLabelConfigModalStore.getState().startOrderTrace({ kind: 'manzana', config: cfg, numbering: numberingMode });
-    } else if (isBatchLots) {
+    } else if (target.kind === 'batch-lots') {
       setLastLotsConfig(cfg);
       useLabelConfigModalStore.getState().startOrderTrace({
         kind: 'lote',
@@ -278,14 +278,13 @@ export default function LabelConfigModal() {
         : 'Generar etiqueta';
 
   let subtitle: string | null = null;
-  if (isBatchLots) {
+  if (target.kind === 'batch-lots') {
     subtitle = target.manzanoId != null ? 'Lotes del manzano seleccionado' : 'Todos los lotes del proyecto';
-  } else if (isBatch) {
+  } else if (target.kind === 'batch-manzanos') {
     subtitle = 'Todos los manzanos trazados';
   }
 
   const primaryLabel = isBatch ? 'Guardar estilo' : isBatchLots ? 'Aplicar automático' : 'Aplicar';
-
   return (
     <Modal
       open={open}
@@ -332,8 +331,8 @@ export default function LabelConfigModal() {
         )}
 
         <div style={{ display: 'flex', gap: 8 }}>
-          {(!isEntity || target.entityType === 'roundabout') && (
-            <Field label="Unidad" style={{ flex: 1 }}>
+          {(!isEntity || (target.kind === 'entity' && target.entityType === 'roundabout')) && (
+          <Field label="Unidad" style={{ flex: 1 }}>
               <select value={cfg.unit} onChange={(e) => patch({ unit: e.target.value as AreaUnit })} className="cad-input">
                 {AREA_UNIT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
