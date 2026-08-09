@@ -5,18 +5,25 @@ import type { LabelStyleConfig } from '../../core/labelModel';
 import { autoLetterCode } from '../../lib/autoName';
 import type { LabelNumberingMode } from '../../store/ui/labelConfigModalStore';
 
-export class AssignManzanoLabelOrderCommand extends Command {
-  readonly label = 'Etiquetar manzanos en orden';
+export interface AssignLabelOrderOptions {
+  orderedIds: Array<string | number>;
+  config: LabelStyleConfig;
+  numbering: LabelNumberingMode;
+  label?: string;
+}
+export class AssignLabelOrderCommand extends Command {
+  readonly label: string;
   private readonly orderedIds: Array<string | number>;
   private readonly config: LabelStyleConfig;
   private readonly numbering: LabelNumberingMode;
   private before = new Map<string | number, { config?: LabelStyleConfig; text?: string }>();
 
-  constructor(orderedIds: Array<string | number>, config: LabelStyleConfig, numbering: LabelNumberingMode) {
+  constructor(opts: AssignLabelOrderOptions) {
     super();
-    this.orderedIds = orderedIds;
-    this.config = config;
-    this.numbering = numbering;
+    this.orderedIds = opts.orderedIds;
+    this.config = opts.config;
+    this.numbering = opts.numbering;
+    this.label = opts.label ?? 'Etiquetar en orden';
   }
 
   execute(ctx: CommandContext): void {

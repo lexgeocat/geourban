@@ -1,33 +1,197 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import type Feature from 'ol/Feature.js';
+import type Geometry from 'ol/geom/Geometry.js';
 import { Modal } from '../ui/Modal';
-import { useLabelConfigModalStore, type LabelNumberingMode } from '../../store/ui/labelConfigModalStore';
+import {
+  useLabelConfigModalStore,
+  type LabelNumberingMode,
+  type LabelConfigTarget,
+} from '../../store/ui/labelConfigModalStore';
 import {
   AREA_UNIT_OPTIONS,
   LABEL_FONT_OPTIONS,
   defaultLabelStyleConfig,
+  composeLabelLines,
   type LabelStyleConfig,
   type AreaUnit,
+  type LabelLineMetrics,
 } from '../../core/labelModel';
 import { runCommand } from '../../commands/core/CommandStack';
 import { ApplyLabelConfigCommand } from '../../commands/labels/ApplyLabelConfigCommand';
 import { ApplyEntityLabelConfigCommand } from '../../commands/labels/ApplyEntityLabelConfigCommand';
 import { AssignLotsLabelConfigCommand } from '../../commands/labels/AssignLotsLabelConfigCommand';
 import { useDrawStore } from '../../store/map/drawStore';
+import { useMapStore } from '../../store/map/mapStore';
+import { useStreetStore } from '../../store/entities/streetStore';
+import { useRoundaboutStore } from '../../store/entities/roundaboutStore';
+import { formatMetricLength, streetLengthMetricM } from '../../geo/metrics';
+import { roundaboutRoadAreaM2 } from '../../geo/roundabout/roundaboutEngine';
+import { getFeatureKind } from '../../core/objectModel';
+import { autoLetterCode } from '../../lib/autoName';
 
 const ENTITY_COPY: Record<'street' | 'roundabout', { title: string; nameHint: string; metricLabel: string; secondaryLabel: string }> = {
   street: {
     title: 'Generar etiqueta de vía',
     nameHint: 'Ej. Av. Principal',
-    metricLabel: 'Mostrar longitud',
-    secondaryLabel: 'Mostrar ancho de calzada',
+    metricLabel: 'Longitud',
+    secondaryLabel: 'Ancho de calzada',
   },
   roundabout: {
     title: 'Generar etiqueta de rotonda',
     nameHint: 'Ej. Rotonda Central',
-    metricLabel: 'Mostrar área de calzada',
-    secondaryLabel: 'Mostrar radio',
+    metricLabel: 'Área de calzada',
+    secondaryLabel: 'Radio',
   },
 };
+
+/* ─────────── Sub-componentes compactos (compartidos por todos los campos) ─────────── */
+
+function Field({
+  label, children, style,
+}: { label: string; children: React.ReactNode; style?: React.CSSProperties }) {
+  return (
+    <label style={{ fontSize: '0.65rem', color: 'var(--cad-text-dim)', display: 'flex', flexDirection: 'column', gap: 3, ...style }}>
+      {label}
+      {children}
+    </label>
+  );
+}
+
+function ToggleRow({
+  label, checked, onChange,
+}: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.68rem', color: 'var(--cad-text)', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+      <input type="checkbox" className="cad-toggle" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+      {label}
+    </label>
+  );
+}
+
+/** Previsualización en vivo — replica el look real del `LabelPainter` (fondo oscuro + texto en negrita). */
+function LabelPreview({ cfg, lines }: { cfg: LabelStyleConfig; lines: string[] }) {
+  const previewFontSize = Math.min(Math.max(cfg.labelFontSizePx, 9), 22);
+  return (
+    <div
+      style={{
+        background: 'var(--cad-bg-deepest)',
+        border: '1px solid var(--cad-border)',
+        borderRadius: 6,
+        padding: '10px 8px',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 4,
+        minHeight: 50,
+      }}
+    >
+      {cfg.enabled && lines.length > 0 ? (
+        <div
+          style={{
+            background: 'rgba(13, 17, 23, 0.72)',
+            padding: '3px 7px',
+            borderRadius: 3,
+            textAlign: 'center',
+            fontFamily: cfg.fontFamily,
+            lineHeight: 1.3,
+          }}
+        >
+          {lines.map((line, i) => (
+            <div key={i} style={{ fontSize: previewFontSize, fontWeight: 700, color: cfg.color, whiteSpace: 'nowrap' }}>
+              {line}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <span style={{ fontSize: '0.62rem', color: 'var(--cad-text-muted)', fontStyle: 'italic' }}>
+          {cfg.enabled ? 'Sin datos para previsualizar' : 'Etiqueta deshabilitada'}
+        </span>
+      )}
+      {cfg.showEdgeCotas && (
+        <span style={{ fontSize: '0.56rem', color: 'var(--cad-text-muted)' }}>+ cotas por lado en el mapa</span>
+      )}
+      <span style={{ fontSize: '0.54rem', color: 'var(--cad-text-muted)', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+        Vista previa
+      </span>
+    </div>
+  );
+}
+
+/** Busca una feature real (manzano/lote) para que el preview de un batch use métricas reales cuando existen. */
+function findSampleFeatureMetrics(
+  kind: 'manzana' | 'lote',
+  scopeManzanoId?: string | number,
+): { primaryValue?: number; secondaryValue?: number } | null {
+  const src = useMapStore.getState().drawSource;
+  if (!src) return null;
+  let found: { primaryValue?: number; secondaryValue?: number } | null = null;
+  src.forEachFeature((f) => {
+    if (found) return;
+    const feat = f as Feature<Geometry>;
+    if (getFeatureKind(feat) !== kind) return;
+    if (kind === 'lote' && scopeManzanoId != null && feat.get('lotGroupId') !== String(scopeManzanoId)) return;
+    found = {
+      primaryValue: feat.get('areaM2') as number | undefined,
+      secondaryValue: feat.get('perimeterM') as number | undefined,
+    };
+  });
+  return found;
+}
+
+/** Resuelve las métricas a mostrar en el preview según el tipo de target (real cuando existe, ilustrativa si no). */
+function computePreviewMetrics(target: LabelConfigTarget | null, numberingMode: LabelNumberingMode): LabelLineMetrics {
+  if (!target) return { text: 'Etiqueta' };
+
+  if (target.kind === 'feature') {
+    const src = useMapStore.getState().drawSource;
+    const f = src?.getFeatureById(target.featureId) as Feature<Geometry> | null;
+    if (f) {
+      return {
+        text: (f.get('label') as string | undefined) ?? '',
+        primaryValue: f.get('areaM2') as number | undefined,
+        secondaryValue: f.get('perimeterM') as number | undefined,
+      };
+    }
+    return { text: 'Elemento' };
+  }
+
+  if (target.kind === 'entity') {
+    if (target.entityType === 'street') {
+      const s = useStreetStore.getState().streets.find((x) => x.id === target.entityId);
+      if (s) {
+        return {
+          text: s.name,
+          primaryValue: streetLengthMetricM(s),
+          primaryFormatter: (v) => formatMetricLength(v),
+          secondaryLabel: 'Calzada',
+          secondaryValue: s.widthM,
+        };
+      }
+    } else {
+      const r = useRoundaboutStore.getState().roundabouts.find((x) => x.id === target.entityId);
+      if (r) {
+        return {
+          text: r.name,
+          primaryValue: roundaboutRoadAreaM2(r),
+          secondaryLabel: 'Radio',
+          secondaryValue: r.radiusM,
+        };
+      }
+    }
+    return { text: 'Elemento' };
+  }
+
+  const orderSample = numberingMode === 'alpha' ? autoLetterCode(0) : '1';
+  if (target.kind === 'batch-manzanos') {
+    const sample = findSampleFeatureMetrics('manzana');
+    return { text: orderSample, primaryValue: sample?.primaryValue ?? 480, secondaryValue: sample?.secondaryValue ?? 92 };
+  }
+  const sample = findSampleFeatureMetrics('lote', target.manzanoId);
+  return { text: orderSample, primaryValue: sample?.primaryValue ?? 180, secondaryValue: sample?.secondaryValue ?? 54 };
+}
+
+/* ─────────── Modal principal ─────────── */
 
 export default function LabelConfigModal() {
   const open = useLabelConfigModalStore((s) => s.open);
@@ -50,12 +214,20 @@ export default function LabelConfigModal() {
   }, [open, initialConfig, initialText]);
 
   if (!target) return null;
+
   const isBatch = target.kind === 'batch-manzanos';
   const isBatchLots = target.kind === 'batch-lots';
   const isEntity = target.kind === 'entity';
   const entityCopy = isEntity ? ENTITY_COPY[target.entityType] : null;
 
   const patch = (p: Partial<LabelStyleConfig>) => setCfg((c) => ({ ...c, ...p }));
+
+  const previewMetrics = useMemo(() => computePreviewMetrics(target, numberingMode), [target, numberingMode]);
+  const previewText = isBatch || isBatchLots ? (previewMetrics.text ?? '') : (name.trim() || previewMetrics.text || 'Etiqueta');
+  const previewLines = useMemo(
+    () => composeLabelLines(cfg, { ...previewMetrics, text: previewText }),
+    [cfg, previewMetrics, previewText],
+  );
 
   const handleApplyOnly = () => {
     if (target.kind === 'feature') {
@@ -79,7 +251,20 @@ export default function LabelConfigModal() {
   };
 
   const handleTraceOrder = () => {
-    setLastManzanoConfig(cfg);
+    if (isBatch) {
+      setLastManzanoConfig(cfg);
+      useLabelConfigModalStore.getState().startOrderTrace({ kind: 'manzana', config: cfg, numbering: numberingMode });
+    } else if (isBatchLots) {
+      setLastLotsConfig(cfg);
+      useLabelConfigModalStore.getState().startOrderTrace({
+        kind: 'lote',
+        scopeManzanoId: target.manzanoId,
+        config: cfg,
+        numbering: numberingMode,
+      });
+    } else {
+      return;
+    }
     close();
     useDrawStore.getState().setMode('labelOrder');
   };
@@ -92,121 +277,118 @@ export default function LabelConfigModal() {
         ? entityCopy.title
         : 'Generar etiqueta';
 
+  let subtitle: string | null = null;
+  if (isBatchLots) {
+    subtitle = target.manzanoId != null ? 'Lotes del manzano seleccionado' : 'Todos los lotes del proyecto';
+  } else if (isBatch) {
+    subtitle = 'Todos los manzanos trazados';
+  }
+
+  const primaryLabel = isBatch ? 'Guardar estilo' : isBatchLots ? 'Aplicar automático' : 'Aplicar';
+
   return (
     <Modal
       open={open}
       onOpenChange={(o) => { if (!o) close(); }}
       title="Configurar etiqueta"
       visuallyHiddenTitle
-      width="min(460px, 92vw)"
+      width="min(400px, 92vw)"
     >
-      <h2 style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--cad-text)', marginBottom: 12 }}>
-        {title}
-      </h2>
+      <div style={{ marginBottom: 8 }}>
+        <h2 style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--cad-text)' }}>{title}</h2>
+        {subtitle && (
+          <p style={{ fontSize: '0.62rem', color: 'var(--cad-text-muted)', marginTop: 1 }}>{subtitle}</p>
+        )}
+      </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: '65vh', overflowY: 'auto', paddingRight: 4 }}>
+      <LabelPreview cfg={cfg} lines={previewLines} />
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: '48vh', overflowY: 'auto', paddingRight: 4, marginTop: 10 }}>
         {!isBatch && !isBatchLots && (
-          <label style={{ fontSize: '0.72rem', color: 'var(--cad-text-dim)', display: 'flex', flexDirection: 'column', gap: 4 }}>
-            Nombre
+          <Field label="Nombre">
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
               className="cad-input"
               placeholder={entityCopy?.nameHint ?? 'Ej. Lote 12'}
             />
-          </label>
+          </Field>
         )}
 
-        <label style={{ fontSize: '0.72rem', color: 'var(--cad-text-dim)', display: 'flex', flexDirection: 'column', gap: 4 }}>
-          Prefijo {isBatch ? '(se combina con la letra/número de orden)' : ''}
-          <input value={cfg.prefix} onChange={(e) => patch({ prefix: e.target.value })} className="cad-input" placeholder="Ej. Mzo., Lote, Calle" />
-        </label>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+          <Field label={`Prefijo${isBatch || isBatchLots ? ' (+ letra/número de orden)' : ''}`} style={{ flex: 1 }}>
+            <input value={cfg.prefix} onChange={(e) => patch({ prefix: e.target.value })} className="cad-input" placeholder="Ej. Mzo., Lote, Calle" />
+          </Field>
+          <ToggleRow label="Mostrar" checked={cfg.showPrefix} onChange={(v) => patch({ showPrefix: v })} />
+        </div>
 
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.75rem', color: 'var(--cad-text)' }}>
-          <input type="checkbox" className="cad-toggle" checked={cfg.showPrefix} onChange={(e) => patch({ showPrefix: e.target.checked })} />
-          Mostrar prefijo
-        </label>
-
-        {isBatch && (
-          <label style={{ fontSize: '0.72rem', color: 'var(--cad-text-dim)', display: 'flex', flexDirection: 'column', gap: 4 }}>
-            Numeración del trazado
+        {(isBatch || isBatchLots) && (
+          <Field label="Numeración del trazado">
             <select value={numberingMode} onChange={(e) => setNumberingMode(e.target.value as LabelNumberingMode)} className="cad-input">
               <option value="alpha">Alfabética (A, B, C…)</option>
               <option value="numeric">Numérica (1, 2, 3…)</option>
             </select>
-          </label>
+          </Field>
         )}
 
         <div style={{ display: 'flex', gap: 8 }}>
           {(!isEntity || target.entityType === 'roundabout') && (
-            <label style={{ flex: 1, fontSize: '0.72rem', color: 'var(--cad-text-dim)', display: 'flex', flexDirection: 'column', gap: 4 }}>
-              Unidad de superficie
+            <Field label="Unidad" style={{ flex: 1 }}>
               <select value={cfg.unit} onChange={(e) => patch({ unit: e.target.value as AreaUnit })} className="cad-input">
                 {AREA_UNIT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
-            </label>
+            </Field>
           )}
-          <label style={{ flex: 1, fontSize: '0.72rem', color: 'var(--cad-text-dim)', display: 'flex', flexDirection: 'column', gap: 4 }}>
-            Fuente
+          <Field label="Fuente" style={{ flex: 1 }}>
             <select value={cfg.fontFamily} onChange={(e) => patch({ fontFamily: e.target.value })} className="cad-input">
               {LABEL_FONT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
-          </label>
+          </Field>
         </div>
 
-        <div style={{ display: 'flex', gap: 12 }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.75rem', color: 'var(--cad-text)' }}>
-            <input type="checkbox" className="cad-toggle" checked={cfg.showArea} onChange={(e) => patch({ showArea: e.target.checked })} />
-            {entityCopy?.metricLabel ?? 'Mostrar área'}
-          </label>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.75rem', color: 'var(--cad-text)' }}>
-            <input type="checkbox" className="cad-toggle" checked={cfg.showPerimeter} onChange={(e) => patch({ showPerimeter: e.target.checked })} />
-            {entityCopy?.secondaryLabel ?? 'Mostrar perímetro'}
-          </label>
+        <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+          <ToggleRow label={entityCopy?.metricLabel ?? 'Área'} checked={cfg.showArea} onChange={(v) => patch({ showArea: v })} />
+          <ToggleRow label={entityCopy?.secondaryLabel ?? 'Perímetro'} checked={cfg.showPerimeter} onChange={(v) => patch({ showPerimeter: v })} />
+          {!isEntity && (
+            <ToggleRow label="Cotas por lado" checked={cfg.showEdgeCotas} onChange={(v) => patch({ showEdgeCotas: v })} />
+          )}
         </div>
-
-        {!isEntity && (
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.75rem', color: 'var(--cad-text)' }}>
-            <input type="checkbox" className="cad-toggle" checked={cfg.showEdgeCotas} onChange={(e) => patch({ showEdgeCotas: e.target.checked })} />
-            Mostrar cotas por lado (dimensión de cada arista)
-          </label>
-        )}
 
         <div style={{ display: 'flex', gap: 8 }}>
-          <label style={{ flex: 1, fontSize: '0.72rem', color: 'var(--cad-text-dim)', display: 'flex', flexDirection: 'column', gap: 4 }}>
-            Tamaño de etiqueta (px)
+          <Field label="Tam. etiqueta (px)" style={{ flex: 1 }}>
             <input type="number" min={7} max={40} value={cfg.labelFontSizePx}
               onChange={(e) => patch({ labelFontSizePx: Math.max(7, parseInt(e.target.value, 10) || cfg.labelFontSizePx) })} className="cad-input" />
-          </label>
-          <label style={{ flex: 1, fontSize: '0.72rem', color: 'var(--cad-text-dim)', display: 'flex', flexDirection: 'column', gap: 4 }}>
-            Tamaño de cotas (px)
+          </Field>
+          <Field label="Tam. cotas (px)" style={{ flex: 1 }}>
             <input type="number" min={6} max={30} value={cfg.cotaFontSizePx}
               onChange={(e) => patch({ cotaFontSizePx: Math.max(6, parseInt(e.target.value, 10) || cfg.cotaFontSizePx) })} className="cad-input" />
-          </label>
+          </Field>
         </div>
 
-        <label style={{ fontSize: '0.72rem', color: 'var(--cad-text-dim)', display: 'flex', flexDirection: 'column', gap: 4 }}>
-          Color
-          <input type="color" value={cfg.color} onChange={(e) => patch({ color: e.target.value })}
-            style={{ width: '100%', height: 32, background: 'none', border: '1px solid var(--cad-border)', borderRadius: 4, cursor: 'pointer' }} />
-        </label>
-
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.75rem', color: 'var(--cad-text)' }}>
-          <input type="checkbox" className="cad-toggle" checked={cfg.enabled} onChange={(e) => patch({ enabled: e.target.checked })} />
-          Etiqueta habilitada (visible en el mapa)
-        </label>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <Field label="Color" style={{ flexShrink: 0 }}>
+            <input
+              type="color"
+              value={cfg.color}
+              onChange={(e) => patch({ color: e.target.value })}
+              style={{ width: 46, height: 26, background: 'none', border: '1px solid var(--cad-border)', borderRadius: 4, cursor: 'pointer', padding: 0 }}
+            />
+          </Field>
+          <div style={{ flex: 1 }} />
+          <ToggleRow label="Habilitada" checked={cfg.enabled} onChange={(v) => patch({ enabled: v })} />
+        </div>
       </div>
 
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, marginTop: 16, flexWrap: 'wrap' }}>
-        <button onClick={close} className="cad-icon-btn" style={{ width: 'auto', height: 'auto', padding: '7px 12px', fontSize: '0.72rem', color: 'var(--cad-text-dim)', border: '1px solid var(--cad-border)', borderRadius: 6 }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, marginTop: 12, flexWrap: 'wrap' }}>
+        <button onClick={close} className="cad-icon-btn" style={{ width: 'auto', height: 'auto', padding: '6px 10px', fontSize: '0.7rem', color: 'var(--cad-text-dim)', border: '1px solid var(--cad-border)', borderRadius: 6 }}>
           Cancelar
         </button>
-        <button onClick={handleApplyOnly} className="cad-icon-btn" style={{ width: 'auto', height: 'auto', padding: '7px 14px', fontSize: '0.72rem', fontWeight: 600, color: 'var(--cad-accent)', border: '1px solid var(--cad-accent)', borderRadius: 6 }}>
-          {isBatch ? 'Guardar estilo' : isBatchLots ? 'Aplicar a lotes' : 'Aplicar'}
+        <button onClick={handleApplyOnly} className="cad-icon-btn" style={{ width: 'auto', height: 'auto', padding: '6px 12px', fontSize: '0.7rem', fontWeight: 600, color: 'var(--cad-accent)', border: '1px solid var(--cad-accent)', borderRadius: 6 }}>
+          {primaryLabel}
         </button>
-        {isBatch && (
-          <button onClick={handleTraceOrder} className="cad-icon-btn" style={{ width: 'auto', height: 'auto', padding: '7px 14px', fontSize: '0.72rem', fontWeight: 700, color: '#0d1117', background: 'var(--cad-accent)', border: '1px solid var(--cad-accent)', borderRadius: 6 }}>
-            ▶ Trazar orden de etiquetado…
+        {(isBatch || isBatchLots) && (
+          <button onClick={handleTraceOrder} className="cad-icon-btn" style={{ width: 'auto', height: 'auto', padding: '6px 12px', fontSize: '0.7rem', fontWeight: 700, color: '#0d1117', background: 'var(--cad-accent)', border: '1px solid var(--cad-accent)', borderRadius: 6 }}>
+            ▶ Trazar orden…
           </button>
         )}
       </div>

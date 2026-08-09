@@ -9,7 +9,11 @@ import {
   type EntityLabelEntry,
 } from '../../../store/entities/entityLabelStore';
 import { roundaboutRoadAreaM2 } from '../../../geo/roundabout/roundaboutEngine';
-import { formatAreaWithUnit, type LabelStyleConfig } from '../../../core/labelModel';
+import {
+  formatAreaWithUnit,
+  composeLabelLines,
+  type LabelStyleConfig,
+} from '../../../core/labelModel';
 import { measureCached } from '../../textMeasureCache';
 import { formatMetricLength, streetLengthMetricM, type SegmentMetric } from '../../../geo/metrics';
 import {
@@ -83,20 +87,12 @@ class LabelCollisionGrid {
 }
 
 function buildLabelLines(feature: Feature<Geometry>, cfg: LabelStyleConfig): string[] {
-  const lines: string[] = [];
-  const customText = (feature.get('labelText') as string | undefined) ?? '';
-  const prefixPart = cfg.showPrefix && cfg.prefix ? cfg.prefix : '';
-  const title = [prefixPart, customText].filter(Boolean).join(' ').trim();
-  if (title) lines.push(title);
-
-  const areaM2 = feature.get('areaM2') as number | undefined;
-  const perimeterM = feature.get('perimeterM') as number | undefined;
-  if (cfg.showArea && areaM2 !== undefined) lines.push(formatAreaWithUnit(areaM2, cfg.unit));
-  if (cfg.showPerimeter && perimeterM !== undefined)
-    lines.push(`Perím. ${perimeterM.toFixed(2)} m`);
-  return lines;
+  return composeLabelLines(cfg, {
+    text: (feature.get('labelText') as string | undefined) ?? '',
+    primaryValue: feature.get('areaM2') as number | undefined,
+    secondaryValue: feature.get('perimeterM') as number | undefined,
+  });
 }
-
 function streetAllCoords(s: Street): [number, number][] {
   return [s.start, ...(s.waypoints ?? []), s.end];
 }
@@ -127,23 +123,22 @@ function polylineMidpoint(coords: [number, number][]): [number, number] {
 }
 
 function buildStreetLabelLines(street: Street, cfg: LabelStyleConfig, text: string): string[] {
-  const lines: string[] = [];
-  const prefixPart = cfg.showPrefix && cfg.prefix ? cfg.prefix : '';
-  const title = [prefixPart, text].filter(Boolean).join(' ').trim();
-  if (title) lines.push(title);
-  if (cfg.showArea) lines.push(formatMetricLength(streetLengthMetricM(street)));
-  if (cfg.showPerimeter) lines.push(`Calzada ${street.widthM.toFixed(2)} m`);
-  return lines;
+  return composeLabelLines(cfg, {
+    text,
+    primaryValue: streetLengthMetricM(street),
+    primaryFormatter: (v) => formatMetricLength(v),
+    secondaryLabel: 'Calzada',
+    secondaryValue: street.widthM,
+  });
 }
 
 function buildRoundaboutLabelLines(rb: Roundabout, cfg: LabelStyleConfig, text: string): string[] {
-  const lines: string[] = [];
-  const prefixPart = cfg.showPrefix && cfg.prefix ? cfg.prefix : '';
-  const title = [prefixPart, text].filter(Boolean).join(' ').trim();
-  if (title) lines.push(title);
-  if (cfg.showArea) lines.push(formatAreaWithUnit(roundaboutRoadAreaM2(rb), cfg.unit));
-  if (cfg.showPerimeter) lines.push(`Radio ${rb.radiusM.toFixed(2)} m`);
-  return lines;
+  return composeLabelLines(cfg, {
+    text,
+    primaryValue: roundaboutRoadAreaM2(rb),
+    secondaryLabel: 'Radio',
+    secondaryValue: rb.radiusM,
+  });
 }
 
 function drawEdgeCotas(

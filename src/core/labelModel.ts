@@ -9,7 +9,6 @@ export interface LabelStyleConfig {
   unit: AreaUnit;
   showArea: boolean;
   showPerimeter: boolean;
-  /** Cotas por lado (dimensiones de cada arista, con líneas de extensión). */
   showEdgeCotas: boolean;
   labelFontSizePx: number;
   cotaFontSizePx: number;
@@ -78,4 +77,29 @@ export function formatAreaWithUnit(areaM2: number | undefined, unit: AreaUnit): 
     default:
       return `${v.toFixed(2)} m²`;
   }
+}
+
+export interface LabelLineMetrics {
+  text?: string;
+  primaryValue?: number;
+  primaryFormatter?: (value: number, unit: AreaUnit) => string;
+  secondaryLabel?: string;
+  secondaryValue?: number;
+}
+
+export function composeLabelLines(cfg: LabelStyleConfig, metrics: LabelLineMetrics): string[] {
+  const lines: string[] = [];
+  const prefixPart = cfg.showPrefix && cfg.prefix ? cfg.prefix : '';
+  const title = [prefixPart, metrics.text ?? ''].filter(Boolean).join(' ').trim();
+  if (title) lines.push(title);
+
+  if (cfg.showArea && metrics.primaryValue !== undefined) {
+    const format =
+      metrics.primaryFormatter ?? ((v: number, unit: AreaUnit) => formatAreaWithUnit(v, unit));
+    lines.push(format(metrics.primaryValue, cfg.unit));
+  }
+  if (cfg.showPerimeter && metrics.secondaryValue !== undefined) {
+    lines.push(`${metrics.secondaryLabel ?? 'Perím.'} ${metrics.secondaryValue.toFixed(2)} m`);
+  }
+  return lines;
 }

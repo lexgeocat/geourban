@@ -14,6 +14,7 @@ import { runCommand } from '../commands/core/CommandStack';
 import { toast } from '../store/ui/toastStore';
 import { useProjectFileStore } from '../store/ui/projectFileStore';
 import { useManzanoStore } from '../store/entities/manzanoStore';
+import { useLabelConfigModalStore } from '../store/ui/labelConfigModalStore';
 
 function isTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -66,8 +67,14 @@ function handleDeleteSelection(): void {
     }
   }
   if (streetIds.length > 0 || roundaboutIds.length > 0) {
-    streetIds.forEach((sid) => { useStreetStore.getState().removeStreet(sid); useEntityLabelStore.getState().remove(sid); });
-    roundaboutIds.forEach((rid) => { useRoundaboutStore.getState().removeRoundabout(rid); useEntityLabelStore.getState().remove(rid); });
+    streetIds.forEach((sid) => {
+      useStreetStore.getState().removeStreet(sid);
+      useEntityLabelStore.getState().remove(sid);
+    });
+    roundaboutIds.forEach((rid) => {
+      useRoundaboutStore.getState().removeRoundabout(rid);
+      useEntityLabelStore.getState().remove(rid);
+    });
     useSelectionStore.getState().clear();
     void recomputeManzanos();
   }
@@ -128,6 +135,9 @@ export function useKeyboardShortcuts() {
         e.preventDefault();
         if (useManzanoStore.getState().rotatingId != null) {
           useManzanoStore.getState().cancelRotateLots();
+        }
+        if (useDrawStore.getState().mode === 'labelOrder') {
+          useLabelConfigModalStore.getState().clearOrderTrace();
         }
         useDrawStore.getState().setMode('select');
         useSelectionStore.getState().setSelectMode('click');

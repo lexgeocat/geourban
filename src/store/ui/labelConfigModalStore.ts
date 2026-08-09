@@ -1,7 +1,11 @@
 import { create } from 'zustand';
 import type { LabelStyleConfig } from '../../core/labelModel';
+import type { GeoUrbanFeatureKind } from '../../core/objectModel';
 
 export type LabelNumberingMode = 'numeric' | 'alpha';
+
+/** Subconjunto de kinds que soportan trazado de orden de etiquetado. */
+export type LabelOrderKind = Extract<GeoUrbanFeatureKind, 'manzana' | 'lote'>;
 
 interface FeatureTarget {
   kind: 'feature';
@@ -22,6 +26,15 @@ interface BatchLotsTarget {
 
 export type LabelConfigTarget = FeatureTarget | EntityTarget | BatchTarget | BatchLotsTarget;
 
+/** Pedido de trazado de orden en curso — lo consume `LabelOrderMode` al terminar el trazo. */
+export interface LabelOrderRequest {
+  kind: LabelOrderKind;
+  /** Si se da (solo aplica a 'lote'), restringe el trazado a los lotes de ese manzano. */
+  scopeManzanoId?: string | number;
+  config: LabelStyleConfig;
+  numbering: LabelNumberingMode;
+}
+
 interface LabelConfigModalState {
   open: boolean;
   target: LabelConfigTarget | null;
@@ -30,6 +43,7 @@ interface LabelConfigModalState {
   lastManzanoConfig: LabelStyleConfig | null;
   lastLotsConfig: LabelStyleConfig | null;
   numberingMode: LabelNumberingMode;
+  orderRequest: LabelOrderRequest | null;
   openForFeature: (
     featureId: string | number,
     initial: LabelStyleConfig,
@@ -46,6 +60,10 @@ interface LabelConfigModalState {
   setNumberingMode: (m: LabelNumberingMode) => void;
   setLastManzanoConfig: (cfg: LabelStyleConfig) => void;
   setLastLotsConfig: (cfg: LabelStyleConfig) => void;
+  /** Activa el modo de trazado de orden con el estilo/numeración actuales del modal. */
+  startOrderTrace: (req: LabelOrderRequest) => void;
+  /** Limpia el pedido de trazado (al completarlo, cancelarlo o abortar con Escape). */
+  clearOrderTrace: () => void;
   close: () => void;
 }
 
@@ -57,6 +75,7 @@ export const useLabelConfigModalStore = create<LabelConfigModalState>()((set) =>
   lastManzanoConfig: null,
   lastLotsConfig: null,
   numberingMode: 'alpha',
+  orderRequest: null,
   openForFeature: (featureId, initial, initialText = '') =>
     set({
       open: true,
@@ -88,5 +107,7 @@ export const useLabelConfigModalStore = create<LabelConfigModalState>()((set) =>
   setNumberingMode: (m) => set({ numberingMode: m }),
   setLastManzanoConfig: (cfg) => set({ lastManzanoConfig: cfg }),
   setLastLotsConfig: (cfg) => set({ lastLotsConfig: cfg }),
+  startOrderTrace: (req) => set({ orderRequest: req }),
+  clearOrderTrace: () => set({ orderRequest: null }),
   close: () => set({ open: false, target: null, initialConfig: null, initialText: '' }),
 }));
