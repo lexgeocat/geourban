@@ -1060,6 +1060,68 @@ export function waitForPendingRecompute(): Promise<void> {
   return recomputeInFlight ? recomputeInFlight.then(() => undefined) : Promise.resolve();
 }
 
+async function relotAfterCornerModeChange(
+  targets: Array<{ id: string | number }>,
+  src: VectorSource
+): Promise<void> {
+  const targetAreaM2 = useManzanoStore.getState().targetAreaM2;
+  const frontMinM = useManzanoStore.getState().frontMinM;
+
+  for (const { id } of targets) {
+    const mznFeat = src.getFeatureById(id) as Feature<Geometry> | null;
+    if (!mznFeat || getFeatureKind(mznFeat) !== 'manzana') continue;
+    const geom = mznFeat.getGeometry();
+    if (!(geom instanceof PolygonGeom)) continue;
+    const ring = ((geom.getCoordinates()[0] ?? []) as number[][]).map((c) => [c[0], c[1]] as Pt);
+    if (ring.length < 4) continue;
+
+    const method = useManzanoStore.getState().getMethod(id);
+    const dirPref = useManzanoStore.getState().getRotateDir(id);
+
+    try {
+      const lots = await subdivideManzanoInWorker(ring, method, targetAreaM2, frontMinM, dirPref);
+
+      const oldLots: Feature<Geometry>[] = [];
+      let carriedLabelConfig: unknown;
+      let carriedLayerId: string | undefined;
+      src.forEachFeature((f) => {
+        if (f.get('lotGroupId') === String(id)) {
+          const feat = f as Feature<Geometry>;
+          oldLots.push(feat);
+          if (!carriedLabelConfig) carriedLabelConfig = feat.get('labelConfig');
+          if (!carriedLayerId) carriedLayerId = feat.get('layerId') as string | undefined;
+        }
+      });
+      for (const f of oldLots) src.removeFeature(f);
+
+      let created = 0;
+      lots.forEach((lot, i) => {
+        if (lot.pts.length < 3) return;
+        const { feature } = createLotFeature(lot, {
+          manzanoId: id,
+          manzanoCode: mznFeat.get('code') as string | undefined,
+          index: i + 1,
+          method,
+          preferredLayerId: carriedLayerId,
+          autoCreateLayer: false,
+        });
+        if (carriedLabelConfig) {
+          feature.set('labelConfig', carriedLabelConfig, true);
+          feature.set('labelText', feature.get('code') as string, true);
+        }
+        src.addFeature(feature);
+        created++;
+      });
+      setLotStatus(mznFeat, created > 0 ? 'subdivided' : 'pending');
+    } catch (err) {
+      console.error(
+        'reapplyRoadCornerMode: no se pudo re-lotizar tras cambiar el modo de esquina',
+        err
+      );
+    }
+  }
+}
+
 export async function reapplyRoadCornerMode(): Promise<void> {
   const src = useMapStore.getState().drawSource;
   if (!src) return;
@@ -1174,6 +1236,8 @@ export async function reapplyRoadCornerMode(): Promise<void> {
       batchResults.map((r) => [r.groupIdx, r.assignments])
     );
 
+    const relotTargets: Array<{ id: string | number }> = [];
+
     for (const task of reconTasks) {
       const rawAssignments = resultsByGroupIdx.get(task.groupIdx) ?? [];
       const group = touchedGroups[task.groupIdx];
@@ -1195,7 +1259,16 @@ export async function reapplyRoadCornerMode(): Promise<void> {
         if (rounded.length < 4) continue;
         feat.setGeometry(new PolygonGeom([rounded]));
         updateFeatureMetrics(feat as Feature<Geometry>);
+
+        if (getLotStatus(feat as Feature<Geometry>) === 'subdivided') {
+          const mid = feat.getId();
+          if (mid != null) relotTargets.push({ id: mid });
+        }
       }
+    }
+
+    if (relotTargets.length > 0) {
+      await relotAfterCornerModeChange(relotTargets, src);
     }
 
     src.changed();

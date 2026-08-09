@@ -151,16 +151,17 @@ function calculatePolygonMetrics(geometry: Polygon): FeatureMetrics {
   const ringMetric = projectRingToMetricPlane(ring3857);
   const areaM2 = planarArea(ringMetric);
   const perimeterM = pathLength(ringMetric);
+  const raw3857Perimeter = pathLength(ring3857);
+  const labelScale = raw3857Perimeter > 1e-9 ? perimeterM / raw3857Perimeter : 1;
 
   return {
     areaM2,
     perimeterM,
     segmentLengths: getSegmentMetrics(ring3857, ringMetric),
-    labelPoint: polygonLabelPoint(ring3857),
+    labelPoint: polygonLabelPoint(ring3857, labelScale),
     metricsUpdatedAt: Date.now(),
   };
 }
-
 function calculateLineMetrics(geometry: LineString): FeatureMetrics {
   const coords3857 = geometry.getCoordinates() as [number, number][];
   if (!coords3857 || coords3857.length < 2) {
