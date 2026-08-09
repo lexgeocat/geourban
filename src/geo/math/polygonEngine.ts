@@ -1,4 +1,4 @@
-// ─── Tipos exportados ───────────────────────────────────────────────
+import { distToSegment } from './dist';
 export type Pt = [number, number];
 
 export interface LotResult {
@@ -8,8 +8,6 @@ export interface LotResult {
   depthM: number;
   areaM2: number;
 }
-
-// ─── Primitivas geométricas ─────────────────────────────────────────
 
 export function polySignedArea(pts: Pt[]): number {
   let a = 0;
@@ -25,11 +23,6 @@ export function polyArea(pts: Pt[]): number {
   return Math.abs(polySignedArea(pts));
 }
 
-/**
- * Centroide ingenuo (promedio de vértices). Útil solo cuando el polígono
- * es degenerado o como aproximación barata donde la precisión geométrica
- * no importa (snapshots de UI, etiquetas).
- */
 export function centroidAverage(pts: Pt[]): Pt {
   let cx = 0,
     cy = 0;
@@ -40,7 +33,6 @@ export function centroidAverage(pts: Pt[]): Pt {
   return [cx / pts.length, cy / pts.length];
 }
 
-/** Centroide area-weighted (fórmula del polígono). Es el "centro real". */
 export function polygonCentroid(pts: Pt[]): Pt {
   const n = pts.length;
   if (n === 0) return [0, 0];
@@ -59,7 +51,7 @@ export function polygonCentroid(pts: Pt[]): Pt {
   }
 
   if (Math.abs(signedArea2) < 1e-9) {
-    return centroidAverage(pts); // polígono degenerado: fallback al promedio simple
+    return centroidAverage(pts);
   }
 
   const factor = 1 / (3 * signedArea2);
@@ -77,10 +69,6 @@ export function ringPerimeter(pts: Pt[]): number {
   return per;
 }
 
-/**
- * Devuelve el ring cerrado (con primer punto repetido al final) si no lo
- * estaba ya. Se usa al armar geometrías OL/GeoJSON a partir de rings abiertos.
- */
 export function closeRing(pts: Pt[]): Pt[] {
   if (!pts.length) return pts;
   const f = pts[0];
@@ -99,7 +87,6 @@ export function pathLength(pts: Pt[]): number {
   return total;
 }
 
-/** Punto-en-polígono (ray casting) — exportado para subdivisionAlgorithms.ts */
 export function pointInPoly(x: number, y: number, poly: Pt[]): boolean {
   let inside = false;
   const n = poly.length;
@@ -238,28 +225,134 @@ function polylabel(ring: Pt[], precision = 0.1): Pt {
   return [best.x, best.y];
 }
 
+const LABEL_COLLINEAR_EPS = 1e-7;
+function cleanRingForLabeling(pts: Pt[]): Pt[] {
+  if (pts.length < 3) return pts;
+
+  let minEdge = Infinity;
+  for (let i = 0; i < pts.length; i++) {
+    const a = pts[i];
+    const b = pts[(i + 1) % pts.length];
+    const d = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    if (d > 1e-9 && d < minEdge) minEdge = d;
+  }
+  const mergeTol = Number.isFinite(minEdge) ? Math.max(1e-6, Math.min(0.03, minEdge * 0.05)) : 1e-6;
+
+  const deduped: Pt[] = [];
+  for (const p of pts) {
+    const prev = deduped[deduped.length - 1];
+    if (!prev || Math.hypot(p[0] - prev[0], p[1] - prev[1]) > mergeTol) deduped.push(p);
+  }
+  if (deduped.length > 1) {
+    const f = deduped[0],
+      l = deduped[deduped.length - 1];
+    if (Math.hypot(f[0] - l[0], f[1] - l[1]) <= mergeTol) deduped.pop();
+  }
+  if (deduped.length < 3) return pts;
+
+  const out: Pt[] = [];
+  const n = deduped.length;
+  for (let i = 0; i < n; i++) {
+    const a = deduped[(i - 1 + n) % n];
+    const b = deduped[i];
+    const c = deduped[(i + 1) % n];
+    const abx = b[0] - a[0],
+      aby = b[1] - a[1];
+    const bcx = c[0] - b[0],
+      bcy = c[1] - b[1];
+    const lenAB = Math.hypot(abx, aby) || 1e-9;
+    const lenBC = Math.hypot(bcx, bcy) || 1e-9;
+    const cross = (abx / lenAB) * (bcy / lenBC) - (aby / lenAB) * (bcx / lenBC);
+    if (Math.abs(cross) > LABEL_COLLINEAR_EPS) out.push(b);
+  }
+  return out.length >= 3 ? out : deduped;
+}
+
+function isLeft(a: Pt, b: Pt, p: Pt): number {
+  return (b[0] - a[0]) * (p[1] - a[1]) - (p[0] - a[0]) * (b[1] - a[1]);
+}
+
+function isInsideNonzero(p: Pt, ring: Pt[]): boolean {
+  let wn = 0;
+  const n = ring.length;
+  for (let i = 0; i < n; i++) {
+    const a = ring[i];
+    const b = ring[(i + 1) % n];
+    if (a[1] <= p[1]) {
+      if (b[1] > p[1] && isLeft(a, b, p) > 0) wn++;
+    } else if (b[1] <= p[1] && isLeft(a, b, p) < 0) {
+      wn--;
+    }
+  }
+  return wn !== 0;
+}
+
+function minDistanceToBoundary(p: Pt, ring: Pt[]): number {
+  let best = Infinity;
+  const n = ring.length;
+  for (let i = 0; i < n; i++) {
+    const d = distToSegment(p, ring[i], ring[(i + 1) % n]);
+    if (d < best) best = d;
+  }
+  return best;
+}
+
+function minRequiredClearance(ring: Pt[]): number {
+  let minX = Infinity,
+    minY = Infinity,
+    maxX = -Infinity,
+    maxY = -Infinity;
+  for (const [x, y] of ring) {
+    if (x < minX) minX = x;
+    if (x > maxX) maxX = x;
+    if (y < minY) minY = y;
+    if (y > maxY) maxY = y;
+  }
+  const sizeRef = Math.max(maxX - minX, maxY - minY);
+  return sizeRef > 0 ? Math.min(0.4, sizeRef * 0.04) : 0;
+}
+
+function nudgeTowardValidPoint(centroid: Pt, safe: Pt, ring: Pt[], clearance: number): Pt {
+  const isValid = (pt: Pt) =>
+    isInsideNonzero(pt, ring) && minDistanceToBoundary(pt, ring) >= clearance;
+  if (!isValid(safe)) return safe;
+
+  let lo = 0,
+    hi = 1;
+  for (let i = 0; i < 18; i++) {
+    const t = (lo + hi) / 2;
+    const cand: Pt = [
+      centroid[0] + (safe[0] - centroid[0]) * t,
+      centroid[1] + (safe[1] - centroid[1]) * t,
+    ];
+    if (isValid(cand)) hi = t;
+    else lo = t;
+  }
+  return [centroid[0] + (safe[0] - centroid[0]) * hi, centroid[1] + (safe[1] - centroid[1]) * hi];
+}
+
 export function polygonLabelPoint(ringIn: Pt[]): Pt {
   if (ringIn.length < 3) return ringIn[0] ?? [0, 0];
   const first = ringIn[0],
     last = ringIn[ringIn.length - 1];
   const closed = first[0] === last[0] && first[1] === last[1];
-  const pts = closed ? ringIn.slice(0, -1) : ringIn;
-  if (pts.length < 3) return centroidAverage(pts.length ? pts : ringIn);
+  const rawPts = closed ? ringIn.slice(0, -1) : ringIn;
+  if (rawPts.length < 3) return centroidAverage(rawPts.length ? rawPts : ringIn);
 
-  // Regla dura: la etiqueta va SIEMPRE en el centroide geométrico real
-  // (area-weighted). Es la ubicación esperada en el caso normal —
-  // rectángulos, polígonos convexos, la gran mayoría de lotes/manzanos.
+  const pts = cleanRingForLabeling(rawPts);
+  if (pts.length < 3) return centroidAverage(rawPts);
+
   const centroid = polygonCentroid(pts);
-  if (pointInPoly(centroid[0], centroid[1], pts)) {
+  const clearance = minRequiredClearance(pts);
+
+  if (isInsideNonzero(centroid, pts) && minDistanceToBoundary(centroid, pts) >= clearance) {
     return centroid;
   }
 
-  // Excepción, y SOLO esta: el centroide cayó fuera del polígono
-  // (formas cóncavas — en L, en U, remanentes con muescas, siluetas
-  // muy angostas). Ahí usamos el "polo de inaccesibilidad" — el punto
-  // interior más alejado de los bordes — como el mejor sustituto
-  // posible, para nunca dejar la etiqueta flotando fuera de la figura.
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  let minX = Infinity,
+    minY = Infinity,
+    maxX = -Infinity,
+    maxY = -Infinity;
   for (const [x, y] of pts) {
     if (x < minX) minX = x;
     if (x > maxX) maxX = x;
@@ -268,6 +361,7 @@ export function polygonLabelPoint(ringIn: Pt[]): Pt {
   }
   const sizeRef = Math.max(maxX - minX, maxY - minY);
   if (sizeRef <= 0) return pts[0];
+  const safe = polylabel(pts, Math.max(sizeRef / 200, 1e-4));
 
-  return polylabel(pts, Math.max(sizeRef / 200, 1e-4));
+  return nudgeTowardValidPoint(centroid, safe, pts, clearance);
 }
