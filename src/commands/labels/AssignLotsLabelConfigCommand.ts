@@ -56,8 +56,4 @@ export class AssignLotsLabelConfigCommand extends Command {
     }
     ctx.drawSource.changed();
   }
-
-  override redo(ctx: CommandContext): void {
-    this.execute(ctx);
-  }
 }

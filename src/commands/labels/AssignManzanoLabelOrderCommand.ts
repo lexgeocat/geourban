@@ -43,8 +43,4 @@ export class AssignManzanoLabelOrderCommand extends Command {
     }
     ctx.drawSource.changed();
   }
-
-  override redo(ctx: CommandContext): void {
-    this.execute(ctx);
-  }
 }

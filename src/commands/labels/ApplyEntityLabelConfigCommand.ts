@@ -32,8 +32,4 @@ export class ApplyEntityLabelConfigCommand extends Command {
     else store.remove(this.entityId);
     useMapStore.getState().mapInstance?.render();
   }
-
-  override redo(): void {
-    this.execute();
-  }
 }

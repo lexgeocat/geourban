@@ -3,6 +3,7 @@ import { Trash2 } from 'lucide-react';
 import { useDrawStore } from '../../../../store/map/drawStore';
 import { useStreetStore } from '../../../../store/entities/streetStore';
 import { useRoundaboutStore } from '../../../../store/entities/roundaboutStore';
+import { useEntityLabelStore } from '../../../../store/entities/entityLabelStore';
 import { useLayersStore } from '../../../../store/entities/layersRegistryStore';
 import { useGenerateLotsProgressStore } from '../../../../store/ui/generateLotsProgressStore';
 import { recomputeManzanos, resetIncrementalRoadTracking } from '../../../../geo/recomputeManzanos';
@@ -37,6 +38,7 @@ export default function UrbanDesignTab({ lotsBusy, onOpenSubdivision, onGenerate
 const handleClearStreets = async () => {
     clearStreets();
     clearRoundabouts();
+    useEntityLabelStore.getState().clear(); // ← evita que IDs reciclados hereden etiquetas viejas
     resetIncrementalRoadTracking();
     await recomputeManzanos();
     const src = useMapStore.getState().drawSource;

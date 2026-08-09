@@ -246,10 +246,20 @@ export function polygonLabelPoint(ringIn: Pt[]): Pt {
   const pts = closed ? ringIn.slice(0, -1) : ringIn;
   if (pts.length < 3) return centroidAverage(pts.length ? pts : ringIn);
 
-  let minX = Infinity,
-    minY = Infinity,
-    maxX = -Infinity,
-    maxY = -Infinity;
+  // Regla dura: la etiqueta va SIEMPRE en el centroide geométrico real
+  // (area-weighted). Es la ubicación esperada en el caso normal —
+  // rectángulos, polígonos convexos, la gran mayoría de lotes/manzanos.
+  const centroid = polygonCentroid(pts);
+  if (pointInPoly(centroid[0], centroid[1], pts)) {
+    return centroid;
+  }
+
+  // Excepción, y SOLO esta: el centroide cayó fuera del polígono
+  // (formas cóncavas — en L, en U, remanentes con muescas, siluetas
+  // muy angostas). Ahí usamos el "polo de inaccesibilidad" — el punto
+  // interior más alejado de los bordes — como el mejor sustituto
+  // posible, para nunca dejar la etiqueta flotando fuera de la figura.
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   for (const [x, y] of pts) {
     if (x < minX) minX = x;
     if (x > maxX) maxX = x;

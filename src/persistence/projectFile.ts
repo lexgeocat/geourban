@@ -18,6 +18,8 @@ import { useCommandStack } from '../commands/core/CommandStack';
 import { resetIncrementalRoadTracking } from '../geo/recomputeManzanos';
 import { encodeWkb, decodeWkb, uint8ToBase64, base64ToUint8, type WkbGeometry } from './wkb';
 import { getOrCreateSpatialIndex } from '../map/spatialIndex';
+import { reloadRustSpatialIndex } from '../map/rustSpatialIndex';
+import { refreshSourceMetrics } from '../geo/metrics';
 import { reseedManzanoSeqFromSource } from '../store/entities/manzanoNaming';
 import { useEntityLabelStore } from '../store/entities/entityLabelStore';
 import type { Layer } from '../core/objectModel';
@@ -185,6 +187,7 @@ export async function loadProject(name: string): Promise<void> {
   }
   drawSource.addFeatures(features);
   getOrCreateSpatialIndex().load(features as unknown as Feature<Polygon>[]);
+  void reloadRustSpatialIndex(features); // ← sincroniza también el índice nativo
   reseedManzanoSeqFromSource(drawSource);
 
   for (const s of payload.streets) {
@@ -212,5 +215,8 @@ export async function loadProject(name: string): Promise<void> {
   if (meta.viewConfig) useMapStore.getState().setViewConfig(meta.viewConfig);
   useEntityLabelStore.getState().loadAll(meta.entityLabels ?? {});
 
-  drawSource.changed();
+  refreshSourceMetrics(drawSource); // ← reemplaza el `drawSource.changed()` final:
+                                     //   recalcula áreas/perímetros/labelPoint con el
+                                     //   CRS ya cargado (más preciso) y "migra" en caliente
+                                     //   los proyectos viejos al nuevo algoritmo de centroide
 }
