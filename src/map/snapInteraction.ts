@@ -23,6 +23,18 @@ const SNAP_COORD_EVENT_TYPES = new Set([
   'singleclick',
 ]);
 
+/** Eventos que "confirman" una acción: siempre recalculan el snap en
+ *  fresco, porque son mucho menos frecuentes que pointermove/pointerdrag
+ *  y ahí sí importa la precisión exacta. */
+const SNAP_COMMIT_EVENT_TYPES = new Set(['pointerdown', 'pointerup', 'click', 'singleclick']);
+
+/** Cada cuánto (ms) se recalcula el snap completo durante pointermove/drag.
+ *  Antes se recalculaba en CADA evento crudo de pointermove (que dispara
+ *  mucho más seguido que el refresco de pantalla), lo cual era la causa
+ *  principal del lag con snap activo. Entre recálculos se reutiliza el
+ *  último resultado mientras el cursor siga dentro de su radio de captura. */
+const SNAP_COMPUTE_THROTTLE_MS = 32;
+
 export interface SnapEngineOptions {
   getSource: () => VectorSource | null;
   spatialIndex?: SpatialIndexLike;
@@ -40,6 +52,7 @@ export interface SnapEngineOptions {
 export default class SnapEngine extends Interaction {
   private opts: SnapEngineOptions;
   private lastResult: SnapResult | null = null;
+  private lastComputeAt = 0;
   private readonly emitVisualUpdate_: (result: SnapResult | null) => void;
 
   constructor(opts: SnapEngineOptions) {
@@ -83,22 +96,41 @@ export default class SnapEngine extends Interaction {
       return true;
     }
 
-    const effective = getEffectiveSnapSettings();
-    const roadFeatures = getOrCreateRoadSnapSource().getFeatures() as Feature[];
-    const result = findSnap(evt.coordinate, src, {
-      resolution,
-      pixelTolerance: this.opts.pixelTolerance ?? 10,
-      spatialIndex: this.opts.spatialIndex,
-      enabled: effective,
-      previous: this.lastResult,
-      anchor: this.opts.getAnchor?.(),
-      excludeFeature: this.opts.getExcludeFeature?.(),
-      extraFeatures: roadFeatures,
-      filter: this.opts.getFilter?.() as ((feature: import('ol/Feature.js').default) => boolean) | undefined,
-    });
+    const tolerancePx = this.opts.pixelTolerance ?? 10;
+    const now = performance.now();
+    const mustRecompute =
+      SNAP_COMMIT_EVENT_TYPES.has(type) || now - this.lastComputeAt >= SNAP_COMPUTE_THROTTLE_MS;
 
-    this.lastResult = result;
-    this.emitVisualUpdate_(result);
+    let result: SnapResult | null;
+    if (mustRecompute) {
+      const effective = getEffectiveSnapSettings();
+      const roadFeatures = getOrCreateRoadSnapSource().getFeatures() as Feature[];
+      result = findSnap(evt.coordinate, src, {
+        resolution,
+        pixelTolerance: tolerancePx,
+        spatialIndex: this.opts.spatialIndex,
+        enabled: effective,
+        previous: this.lastResult,
+        anchor: this.opts.getAnchor?.(),
+        excludeFeature: this.opts.getExcludeFeature?.(),
+        extraFeatures: roadFeatures,
+        filter: this.opts.getFilter?.() as
+          ((feature: import('ol/Feature.js').default) => boolean) | undefined,
+      });
+      this.lastComputeAt = now;
+      this.lastResult = result;
+      this.emitVisualUpdate_(result);
+    } else {
+      const cached = this.lastResult;
+      const baseTolerance = tolerancePx * resolution;
+      result =
+        cached &&
+        Math.hypot(cached.point[0] - evt.coordinate[0], cached.point[1] - evt.coordinate[1]) <
+          baseTolerance * 1.5
+          ? cached
+          : null;
+    }
+
     if (result && this.opts.shouldSnapCoordinate(type)) {
       evt.coordinate = [result.point[0], result.point[1]];
       const px = map.getPixelFromCoordinate(result.point);

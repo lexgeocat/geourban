@@ -27,14 +27,10 @@ const SnapIcon = ({ type, color, size = 12 }: { type: SnapType; color: string; s
       return <svg viewBox="0 0 12 12" {...props}><polygon points="6,1.5 9.9,8.3 2.1,8.3" /></svg>;
     case 'intersection':
       return <svg viewBox="0 0 12 12" {...props}><line x1="2" y1="2" x2="10" y2="10" /><line x1="10" y1="2" x2="2" y2="10" /></svg>;
-    case 'apparentIntersection':
-      return <svg viewBox="0 0 12 12" {...props}><polygon points="6,1 11,6 6,11 1,6" /></svg>;
     case 'extension':
       return <svg viewBox="0 0 12 12" {...props}><line x1="6" y1="2" x2="6" y2="10" /><line x1="2" y1="6" x2="10" y2="6" /></svg>;
     case 'perpendicular':
       return <svg viewBox="0 0 12 12" {...props}><polygon points="6,1.5 10.3,4.6 8.6,9.6 3.4,9.6 1.7,4.6" /></svg>;
-    case 'parallel':
-      return <svg viewBox="0 0 12 12" {...props}><polygon points="6,1.5 9.9,3.8 9.9,8.3 6,10.5 2.1,8.3 2.1,3.8" /></svg>;
     case 'nearest':
       return <svg viewBox="0 0 12 12" {...props}><circle cx="6" cy="6" r="4.5" /></svg>;
     default:

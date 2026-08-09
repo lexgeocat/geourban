@@ -208,13 +208,10 @@ export default function MapView() {
       endpoint:             { radius: 7,  points: 4,               angle: Math.PI / 4 }, // Cuadrado □
       midpoint:             { radius: 8,  points: 3,               angle: -Math.PI / 2 }, // Triángulo △
       intersection:         { radius: 8,  points: 4, radius2: 2,  angle: Math.PI / 4 },  // Cruz (X)
-      apparentIntersection: { radius: 7,  points: 4,               angle: 0 },            // Diamante ◇
       extension:            { radius: 7,  points: 4, radius2: 2,  angle: 0 },             // Cruz (+)
       perpendicular:        { radius: 7,  points: 5,               angle: -Math.PI / 2 }, // Pentágono
-      parallel:             { radius: 7,  points: 6,               angle: -Math.PI / 2 }, // Hexágono
       nearest:              { radius: 5 },                                                // Círculo
       center:               { radius: 7,  points: 4,               angle: Math.PI / 4 },  // Cuadrado pequeño (centro de círculo)
-      tangent:              { radius: 7,  points: 3,               angle: -Math.PI / 2 }, // Triángulo (tangente)
     };
     for (const [type, color] of Object.entries(SNAP_COLORS)) {
       const cfg = SNAP_SHAPES[type]!;
