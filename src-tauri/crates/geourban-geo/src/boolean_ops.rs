@@ -49,7 +49,8 @@ fn ensure_geos_ctx() {
         let mut borrow = cell.borrow_mut();
         if borrow.is_none() {
             let ctx = ContextHandle::init().expect("GEOS_init_r no debería fallar");
-            let ctx: ContextHandle<'static> = unsafe { std::mem::transmute(ctx) };
+            let ctx: ContextHandle<'static> =
+        unsafe { std::mem::transmute::<ContextHandle<'_>, ContextHandle<'static>>(ctx) };
             *borrow = Some(ctx);
         }
     });
@@ -64,13 +65,13 @@ fn ring_to_linear_ring(ring: &[Pt]) -> Result<Geometry<'static>, geos::Error> {
         cs.set_y(i, y)?;
     }
     let geom = Geometry::create_linear_ring(cs)?;
-    Ok(unsafe { std::mem::transmute(geom) })
+    Ok(unsafe { std::mem::transmute::<Geometry<'_>, Geometry<'static>>(geom) })
 }
 
 fn ring_to_polygon(ring: &[Pt]) -> Result<Geometry<'static>, geos::Error> {
     let shell = ring_to_linear_ring(ring)?;
     let poly = Geometry::create_polygon(shell, vec![])?;
-    Ok(unsafe { std::mem::transmute(poly) })
+    Ok(unsafe { std::mem::transmute::<Geometry<'_>, Geometry<'static>>(poly) })
 }
 pub(crate) fn ring_intersection_area(a: &[Pt], b: &[Pt]) -> f64 {
     if a.len() < 3 || b.len() < 3 {
@@ -119,11 +120,11 @@ fn rings_to_polygon(rings: &[Vec<Pt>]) -> Result<Geometry<'static>, geos::Error>
         holes.push(ring_to_linear_ring(hole)?);
     }
     let poly = Geometry::create_polygon(shell, holes)?;
-    Ok(unsafe { std::mem::transmute(poly) })
+    Ok(unsafe { std::mem::transmute::<Geometry<'_>, Geometry<'static>>(poly) })
 }
 
 fn coord_seq_to_ring(cs: &CoordSeq) -> Result<Vec<Pt>, geos::Error> {
-    let n = cs.size()? as usize;
+    let n = cs.size()?;
     let mut out = Vec::with_capacity(n);
     for i in 0..n {
         out.push((cs.get_x(i)?, cs.get_y(i)?));
@@ -135,7 +136,7 @@ fn polygon_to_rings<'a, G: Geom<'a>>(poly: &G) -> Result<Vec<Vec<Pt>>, geos::Err
     let exterior = poly.get_exterior_ring()?;
     rings.push(coord_seq_to_ring(&exterior.get_coord_seq()?)?);
 
-    let n_holes = poly.get_num_interior_rings()? as usize;
+    let n_holes = poly.get_num_interior_rings()?;
     for i in 0..n_holes {
         let hole = poly.get_interior_ring_n(i as u32)?;
         rings.push(coord_seq_to_ring(&hole.get_coord_seq()?)?);
@@ -157,7 +158,7 @@ fn split_into_polygon_geoms(
             }
         }
         GeometryTypes::MultiPolygon | GeometryTypes::GeometryCollection => {
-            let n = geom.get_num_geometries()? as usize;
+            let n = geom.get_num_geometries()?;
             let mut out = Vec::with_capacity(n);
             for i in 0..n {
                 let part = geom.get_geometry_n(i)?;
@@ -183,7 +184,7 @@ fn geometry_to_polygons(geom: &Geometry<'static>) -> Result<Vec<Vec<Vec<Pt>>>, g
             }
         }
         GeometryTypes::MultiPolygon | GeometryTypes::GeometryCollection => {
-            let n = geom.get_num_geometries()? as usize;
+            let n = geom.get_num_geometries()?;
             let mut out = Vec::with_capacity(n);
             for i in 0..n {
                 let part = geom.get_geometry_n(i)?;
@@ -261,15 +262,15 @@ fn unary_union_of_geoms(polys: Vec<Geometry<'static>>) -> Result<Geometry<'stati
         .expect("unary_union_of_geoms: llamar solo con `polys` no vacío");
     match it.next() {
         None => {
-            let result = first.unary_union()?;
-            Ok(unsafe { std::mem::transmute(result) })
+            let result: Geometry<'static> = first.unary_union()?;
+            Ok(unsafe { std::mem::transmute::<Geometry<'_>, Geometry<'static>>(result) })
         }
         Some(second) => {
             let mut rest = vec![first, second];
             rest.extend(it);
             let collection = Geometry::create_geometry_collection(rest)?;
-            let result = collection.unary_union()?;
-            Ok(unsafe { std::mem::transmute(result) })
+            let result: Geometry<'static> = collection.unary_union()?;
+            Ok(unsafe { std::mem::transmute::<Geometry<'_>, Geometry<'static>>(result) })
         }
     }
 }
@@ -413,7 +414,9 @@ pub fn compute_manzanos(
 
         let diff_geom: Geometry<'static> = match &road_union {
             Some(ru) => match parcel_geom.difference(ru) {
-                Ok(d) => unsafe { std::mem::transmute(d) },
+                Ok(d) => unsafe {
+                    std::mem::transmute::<Geometry<'_>, Geometry<'static>>(d)
+                },
                 Err(err) => {
                     log::warn!(
                         "computeManzanos: difference() falló para la parcela {index}: {err:?}"
@@ -643,7 +646,7 @@ pub fn fill_polygon_gaps(outer_ring: &[Pt], covering_rings: &[Vec<Pt>]) -> Vec<V
         };
 
     let diff: Geometry<'static> = match poly_outer.difference(&union_cover) {
-        Ok(d) => unsafe { std::mem::transmute(d) },
+        Ok(d) => unsafe { std::mem::transmute::<Geometry<'_>, Geometry<'static>>(d) },
         Err(err) => {
             log::warn!("subdivision.fillPolygonGaps: difference() falló buscando huecos: {err:?}");
             return Vec::new();

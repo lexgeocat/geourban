@@ -256,7 +256,7 @@ fn compute_corner_tangents(prev: Pt, cur: Pt, next: Pt, r: f64) -> Option<Corner
     let b = normalize(next.0 - cur.0, next.1 - cur.1);
     let dot = (a.0 * b.0 + a.1 * b.1).clamp(-1.0, 1.0);
     let ang = dot.acos();
-    if ang < 1e-3 || ang > std::f64::consts::PI - 1e-3 {
+    if !(1e-3..=std::f64::consts::PI - 1e-3).contains(&ang) {
         return None;
     }
 

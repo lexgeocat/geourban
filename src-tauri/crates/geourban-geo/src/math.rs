@@ -238,15 +238,17 @@ const LOD_MIN_SEGMENTS: u32 = 8;
 const LOD_MAX_SEGMENTS: u32 = 160;
 
 pub fn resolution_aware_segments(radius_map_units: f64, resolution: f64, px_error: f64) -> u32 {
-    if !(radius_map_units > 0.0) || !(resolution > 0.0) {
+    if radius_map_units.partial_cmp(&0.0) != Some(std::cmp::Ordering::Greater)
+        || resolution.partial_cmp(&0.0) != Some(std::cmp::Ordering::Greater)
+    {
         return LOD_MIN_SEGMENTS;
     }
     let error_map_units = px_error * resolution;
     let ratio = (error_map_units / radius_map_units).min(1.0);
     let max_angle = 2.0 * (1.0 - ratio).acos();
-    if !(max_angle > 0.0) || !max_angle.is_finite() {
+    if max_angle.partial_cmp(&0.0) != Some(std::cmp::Ordering::Greater) || !max_angle.is_finite() {
         return LOD_MAX_SEGMENTS;
     }
     let needed = ((2.0 * std::f64::consts::PI) / max_angle).ceil() as u32;
-    needed.max(LOD_MIN_SEGMENTS).min(LOD_MAX_SEGMENTS)
+    needed.clamp(LOD_MIN_SEGMENTS, LOD_MAX_SEGMENTS)
 }

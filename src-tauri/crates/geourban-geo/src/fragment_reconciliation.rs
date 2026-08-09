@@ -126,8 +126,8 @@ pub fn match_fragments_to_members(
         member_assigned[c.member_idx] = true;
     }
 
-    for fi in 0..fragments.len() {
-        if !frag_assigned[fi] {
+    for (fi, assigned) in frag_assigned.iter().enumerate() {
+        if !*assigned {
             assignments.push(FragmentAssignment {
                 fragment_idx: fi,
                 member_idx: None,

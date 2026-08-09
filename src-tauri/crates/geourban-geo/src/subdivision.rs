@@ -5,6 +5,7 @@ use crate::types::{CutResult, LotResult, ManzanoLoteMethod};
 
 const NARROW_RATIO: f64 = 1.6;
 
+#[allow(clippy::too_many_arguments)]
 fn compute_cuts(
     half_poly: &[Pt],
     half_ext: Extent1D,
@@ -93,6 +94,7 @@ fn compute_cuts(
     Some(cuts)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn compute_lots_on_half(
     full_poly: &[Pt],
     ext_l: Extent1D,
@@ -181,6 +183,7 @@ fn compute_lots_on_half(
     lots
 }
 
+#[allow(clippy::too_many_arguments)]
 fn subdivide_half(
     poly: &[Pt],
     lx: f64,

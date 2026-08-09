@@ -5,8 +5,8 @@ use std::cell::Cell;
 const OP_BUDGET_MAX: i64 = 2_000_000;
 
 thread_local! {
-    static OP_BUDGET_REMAINING: Cell<i64> = Cell::new(OP_BUDGET_MAX);
-    static CURRENT_DIST_EPS: Cell<f64> = Cell::new(1e-7);
+    static OP_BUDGET_REMAINING: Cell<i64> = const { Cell::new(OP_BUDGET_MAX) };
+    static CURRENT_DIST_EPS: Cell<f64> = const { Cell::new(1e-7) };
 }
 
 fn tick_op_budget() -> bool {
@@ -137,7 +137,7 @@ fn min_area_bounding_quad(pts: &[Pt]) -> Vec<Pt> {
             }
         }
         let area = (max_x - min_x) * (max_y - min_y);
-        if best.as_ref().map_or(true, |b| area < b.area) {
+        if best.as_ref().is_none_or(|b| area < b.area) {
             best = Some(Best {
                 area,
                 min_x,
@@ -269,10 +269,9 @@ fn unfillet_manzano(ring_in: &[Pt]) -> Vec<Pt> {
             }
             None => true,
         };
-        let ip = if ip.is_none() || far {
-            ((prev.e.0 + cur.s.0) / 2.0, (prev.e.1 + cur.s.1) / 2.0)
-        } else {
-            ip.unwrap()
+        let ip = match ip {
+            Some(p) if !far => p,
+            _ => ((prev.e.0 + cur.s.0) / 2.0, (prev.e.1 + cur.s.1) / 2.0),
         };
         v.push(ip);
     }
@@ -560,8 +559,8 @@ fn hb_auto_head_plan(
         let u_b = (u_max - depth).max(u_min);
         let w1 = width_at_u((u_min + u_a) / 2.0).max(1e-6);
         let w2 = width_at_u((u_max + u_b) / 2.0).max(1e-6);
-        let c1 = ((w1 / frontage).floor() as i64).max(1).min(MAX_HB_DIM);
-        let c2 = ((w2 / frontage).floor() as i64).max(1).min(MAX_HB_DIM);
+        let c1 = ((w1 / frontage).floor() as i64).clamp(1, MAX_HB_DIM);
+        let c2 = ((w2 / frontage).floor() as i64).clamp(1, MAX_HB_DIM);
         (c1, c2)
     };
 
@@ -610,7 +609,7 @@ fn hb_fit_body_rows(
     }
     let head_l = (head_rows * (head_cols1 + head_cols2)) as f64;
     let cap = ((total_area / target) - head_l) / body_cols as f64;
-    (cap.round() as i64).max(1).min(MAX_HB_DIM)
+    (cap.round() as i64).clamp(1, MAX_HB_DIM)
 }
 
 #[derive(Debug, Clone)]

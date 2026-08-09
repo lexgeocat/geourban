@@ -15,7 +15,7 @@ pub fn circle_ring(center: Pt, radius: f64, segs: Option<u32>, resolution: Optio
         Some(res) => resolution_aware_segments(radius, res, 1.5),
         None => {
             let raw = (radius * 4.0).round();
-            raw.max(32.0).min(160.0) as u32
+            raw.clamp(32.0, 160.0) as u32
         }
     });
     let mut pts = Vec::with_capacity(n as usize);

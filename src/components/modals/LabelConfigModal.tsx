@@ -22,10 +22,12 @@ import { runCommand } from '../../commands/core/CommandStack';
 import { ApplyLabelConfigCommand } from '../../commands/labels/ApplyLabelConfigCommand';
 import { ApplyEntityLabelConfigCommand } from '../../commands/labels/ApplyEntityLabelConfigCommand';
 import { AssignLotsLabelConfigCommand } from '../../commands/labels/AssignLotsLabelConfigCommand';
+import { RestyleBatchLabelsCommand } from '../../commands/labels/RestyleBatchLabelsCommand';
 import { useDrawStore } from '../../store/map/drawStore';
 import { useMapStore } from '../../store/map/mapStore';
 import { useStreetStore } from '../../store/entities/streetStore';
 import { useRoundaboutStore } from '../../store/entities/roundaboutStore';
+import { toast } from '../../store/ui/toastStore';
 import { formatMetricLength, streetLengthMetricM } from '../../geo/metrics';
 import { roundaboutRoadAreaM2 } from '../../geo/roundabout/roundaboutEngine';
 import { getFeatureKind } from '../../core/objectModel';
@@ -244,7 +246,7 @@ export default function LabelConfigModal() {
       return;
     }
     if (target.kind === 'batch-lots') {
-      void runCommand(new AssignLotsLabelConfigCommand(cfg, { manzanoId: target.manzanoId }));
+      void runCommand(new AssignLotsLabelConfigCommand(cfg, { manzanoId: target.manzanoId, numbering: numberingMode }));
       setLastLotsConfig(cfg);
       close();
       return;
@@ -252,6 +254,27 @@ export default function LabelConfigModal() {
     setLastManzanoConfig(cfg);
     close();
   };
+
+  const handleRestyleOnly = () => {
+  if (target.kind !== 'batch-manzanos' && target.kind !== 'batch-lots') return;
+  const kind = target.kind === 'batch-manzanos' ? 'manzana' : 'lote';
+  const manzanoId = target.kind === 'batch-lots' ? target.manzanoId : undefined;
+  const cmd = new RestyleBatchLabelsCommand({ kind, manzanoId, config: cfg });
+  void runCommand(cmd).then((result) => {
+    if (!result.ok) return;
+    if (cmd.affectedCount === 0) {
+      toast('No hay elementos etiquetados todavía — usá "Trazar orden…" o "Aplicar" primero.', {
+        variant: 'warning',
+        durationMs: 6000,
+      });
+    } else {
+      toast(`Estilo actualizado en ${cmd.affectedCount} elemento(s).`, { variant: 'success' });
+    }
+  });
+  if (target.kind === 'batch-manzanos') setLastManzanoConfig(cfg);
+  else setLastLotsConfig(cfg);
+  close();
+};
 
   const handleTraceOrder = () => {
     if (target.kind === 'batch-manzanos') {
@@ -427,6 +450,16 @@ export default function LabelConfigModal() {
         <button onClick={close} className="cad-icon-btn" style={{ width: 'auto', height: 'auto', padding: '6px 10px', fontSize: '0.7rem', color: 'var(--cad-text-dim)', border: '1px solid var(--cad-border)', borderRadius: 6 }}>
           Cancelar
         </button>
+        {(isBatch || isBatchLots) && (
+          <button
+            onClick={handleRestyleOnly}
+            className="cad-icon-btn"
+            title="Actualiza color, tamaño, fuente, prefijo, cotas, etc. de lo YA etiquetado — sin renumerar ni volver a trazar."
+            style={{ width: 'auto', height: 'auto', padding: '6px 12px', fontSize: '0.7rem', fontWeight: 600, color: 'var(--cad-text-dim)', border: '1px solid var(--cad-border)', borderRadius: 6 }}
+          >
+            🎨 Solo actualizar estilo
+          </button>
+        )}
         <button onClick={handleApplyOnly} className="cad-icon-btn" style={{ width: 'auto', height: 'auto', padding: '6px 12px', fontSize: '0.7rem', fontWeight: 600, color: 'var(--cad-accent)', border: '1px solid var(--cad-accent)', borderRadius: 6 }}>
           {primaryLabel}
         </button>

@@ -432,7 +432,7 @@ pub fn project_list(app: AppHandle) -> Result<Vec<ProjectSummary>, String> {
             size_bytes: metadata.len() as i64,
         });
     }
-    out.sort_by(|a, b| b.modified_at_ms.cmp(&a.modified_at_ms));
+    out.sort_by_key(|x| std::cmp::Reverse(x.modified_at_ms));
     Ok(out)
 }
 
