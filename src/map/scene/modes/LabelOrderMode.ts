@@ -11,6 +11,7 @@ import { AssignManzanoLabelOrderCommand } from '../../../commands/labels/AssignM
 import { useLabelConfigModalStore } from '../../../store/ui/labelConfigModalStore';
 import { useDrawStore } from '../../../store/map/drawStore';
 import { toast } from '../../../store/ui/toastStore';
+import { polygonLabelPoint } from '../../../geo/math/polygonEngine';
 import type { ModeContext } from './ModeContext';
 
 /** Distancia acumulada (arco) hasta el punto de `line` más cercano a `pt`. */
@@ -67,9 +68,10 @@ export function activateLabelOrder(ctx: ModeContext): void {
       if (!(g instanceof Polygon)) return;
       const id = feat.getId();
       if (id == null) return;
+      const ring = (g.getCoordinates()[0] ?? []) as [number, number][];
       const anchor =
         (feat.get('labelPoint') as [number, number] | undefined) ??
-        (g.getInteriorPoint().getCoordinates() as [number, number]);
+        (ring.length >= 3 ? polygonLabelPoint(ring) : (g.getInteriorPoint().getCoordinates() as [number, number]));
       manzanos.push({ id, arc: nearestArcLength(anchor, line) });
     });
 

@@ -38,7 +38,7 @@ import { ensureUtmZoneRegistered } from '../geo/crs/utmZones';
 import { useManzanoStore } from '../store/entities/manzanoStore';
 import { runCommand } from '../commands/core/CommandStack';
 import { RecomputeManzanoLotsCommand } from '../commands/lots/RecomputeManzanoLotsCommand';
-import { polyArea, centroidAverage, ringPerimeter } from '../geo/math/polygonEngine';
+import { polyArea, polygonCentroid, ringPerimeter } from '../geo/math/polygonEngine';
 import { rafThrottle } from '../utils/rafThrottle';
 import { useSubdivisionPreviewStore } from '../store/ui/subdivisionPreviewStore';
 import { useStreetStore } from '../store/entities/streetStore';
@@ -345,7 +345,7 @@ const rotateLotsInteraction = new RotateLotsInteraction(map, (id, dir) => {
       const geom = feat?.getGeometry();
       if (geom instanceof Polygon) {
         const ring = ((geom.getCoordinates()[0] ?? []) as number[][]).map((c) => [c[0], c[1]] as [number, number]);
-        setGeomSnapshot(id, { area: polyArea(ring), perimeter: ringPerimeter(ring), centroid: centroidAverage(ring) });
+        setGeomSnapshot(id, { area: polyArea(ring), perimeter: ringPerimeter(ring), centroid: polygonCentroid(ring) });
       }
       void (async () => {
         const layerId = await requireLayerForKind('lote');

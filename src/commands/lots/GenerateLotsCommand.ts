@@ -9,7 +9,7 @@ import type { ManzanoLoteMethod } from '../../geo/subdivision/types';
 import {
   polyArea,
   ringPerimeter,
-  centroidAverage,
+  polygonCentroid,
   type LotResult,
 } from '../../geo/math/polygonEngine';
 import { useGenerateLotsProgressStore } from '../../store/ui/generateLotsProgressStore';
@@ -147,7 +147,7 @@ export class GenerateLotsCommand extends Command {
       useManzanoStore.getState().setGeomSnapshot(id, {
         area: polyArea(ringPts),
         perimeter: ringPerimeter(ringPts),
-        centroid: centroidAverage(ringPts),
+        centroid: polygonCentroid(ringPts),
       });
       const oldLots: Feature<Geometry>[] = [];
       let carriedLabelConfig: LabelStyleConfig | undefined;

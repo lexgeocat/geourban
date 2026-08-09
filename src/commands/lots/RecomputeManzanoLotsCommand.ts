@@ -7,7 +7,7 @@ import type { ManzanoLoteMethod } from '../../geo/subdivision/types';
 import { getFeatureKind, getLotStatus, setLotStatus, type LotStatus } from '../../core/objectModel';
 import { subdivideManzanoInWorker } from '../../workers/geoWorkerClient';
 import { useManzanoStore } from '../../store/entities/manzanoStore';
-import { polyArea, ringPerimeter, centroidAverage } from '../../geo/math/polygonEngine';
+import { polyArea, ringPerimeter, polygonCentroid } from '../../geo/math/polygonEngine';
 import { estimateGeometryBytes } from '../core/memoryEstimate';
 import { computeAreaCorrectionFactor, computeLinearCorrectionFactor } from './areaCorrection';
 import { createLotFeature } from './createLotFeature';
@@ -65,7 +65,7 @@ export class RecomputeManzanoLotsCommand extends Command {
     const ringPts = ring.map((c) => [c[0], c[1]] as [number, number]);
     const areaM2 = polyArea(ringPts);
     const perimeterM = ringPerimeter(ringPts);
-    const centroidPt = centroidAverage(ringPts);
+    const centroidPt = polygonCentroid(ringPts);
     const trueAreaM2 = mznFeat.get('areaM2') as number | undefined;
     const areaCorrectionFactor = computeAreaCorrectionFactor(areaM2, trueAreaM2);
     const linearCorrectionFactor = computeLinearCorrectionFactor(areaCorrectionFactor);

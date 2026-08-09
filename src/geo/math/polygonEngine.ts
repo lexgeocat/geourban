@@ -37,25 +37,34 @@ export function polygonCentroid(pts: Pt[]): Pt {
   const n = pts.length;
   if (n === 0) return [0, 0];
   if (n === 1) return [pts[0][0], pts[0][1]];
+  const ox = pts[0][0];
+  const oy = pts[0][1];
 
   let signedArea2 = 0;
   let cx = 0;
   let cy = 0;
   for (let i = 0; i < n; i++) {
-    const [x0, y0] = pts[i];
-    const [x1, y1] = pts[(i + 1) % n];
+    const x0 = pts[i][0] - ox;
+    const y0 = pts[i][1] - oy;
+    const next = pts[(i + 1) % n];
+    const x1 = next[0] - ox;
+    const y1 = next[1] - oy;
     const cross = x0 * y1 - x1 * y0;
     signedArea2 += cross;
     cx += (x0 + x1) * cross;
     cy += (y0 + y1) * cross;
   }
 
-  if (Math.abs(signedArea2) < 1e-9) {
+  const { minX, minY, maxX, maxY } = ringBounds(pts);
+  const bboxDiag = Math.hypot(maxX - minX, maxY - minY);
+  const degenerateEps = Math.max(1e-9, bboxDiag * bboxDiag * 1e-12);
+
+  if (Math.abs(signedArea2) < degenerateEps) {
     return centroidAverage(pts);
   }
 
   const factor = 1 / (3 * signedArea2);
-  return [cx * factor, cy * factor];
+  return [ox + cx * factor, oy + cy * factor];
 }
 
 export function ringPerimeter(pts: Pt[]): number {
@@ -187,14 +196,50 @@ function ringBounds(pts: Pt[]): { minX: number; minY: number; maxX: number; maxY
   return { minX, minY, maxX, maxY };
 }
 
-/**
- * Búsqueda tipo "polo de inaccesibilidad" (visual center — misma familia
- * que `polylabel` de Mapbox): refina una grilla de celdas priorizando
- * siempre la de mayor distancia potencial al borde, hasta converger en el
- * punto más profundo dentro del polígono. A diferencia de un centroide de
- * área, funciona bien en formas cóncavas, angostas o con remanentes
- * fusionados por boolean-ops.
- */
+class MaxHeap<T> {
+  private items: T[] = [];
+  constructor(private readonly key: (item: T) => number) {}
+
+  get size(): number {
+    return this.items.length;
+  }
+
+  push(item: T): void {
+    const items = this.items;
+    items.push(item);
+    let i = items.length - 1;
+    while (i > 0) {
+      const parent = (i - 1) >> 1;
+      if (this.key(items[parent]) >= this.key(items[i])) break;
+      [items[parent], items[i]] = [items[i], items[parent]];
+      i = parent;
+    }
+  }
+
+  pop(): T | undefined {
+    const items = this.items;
+    if (items.length === 0) return undefined;
+    const top = items[0];
+    const last = items.pop()!;
+    if (items.length > 0) {
+      items[0] = last;
+      let i = 0;
+      const n = items.length;
+      for (;;) {
+        const left = i * 2 + 1;
+        const right = i * 2 + 2;
+        let largest = i;
+        if (left < n && this.key(items[left]) > this.key(items[largest])) largest = left;
+        if (right < n && this.key(items[right]) > this.key(items[largest])) largest = right;
+        if (largest === i) break;
+        [items[i], items[largest]] = [items[largest], items[i]];
+        i = largest;
+      }
+    }
+    return top;
+  }
+}
+
 function poleOfInaccessibility(ring: Pt[], precision: number): PolylabelCell {
   const { minX, minY, maxX, maxY } = ringBounds(ring);
   const width = maxX - minX;
@@ -203,7 +248,7 @@ function poleOfInaccessibility(ring: Pt[], precision: number): PolylabelCell {
   if (cellSize <= 0) return makeCell(minX, minY, 0, ring);
 
   let h = cellSize / 2;
-  const cellQueue: PolylabelCell[] = [];
+  const cellQueue = new MaxHeap<PolylabelCell>((c) => c.max);
   for (let x = minX; x < maxX; x += cellSize) {
     for (let y = minY; y < maxY; y += cellSize) {
       cellQueue.push(makeCell(x + h, y + h, h, ring));
@@ -214,17 +259,11 @@ function poleOfInaccessibility(ring: Pt[], precision: number): PolylabelCell {
   const bboxCell = makeCell(minX, minY, 0, ring);
   if (bboxCell.d > best.d) best = bboxCell;
 
-  let numProbes = cellQueue.length;
-  // Margen generoso: lotes remanentes/rotados necesitan más refinamiento
-  // que una forma convexa simple para converger al punto correcto.
-  const maxProbes = 5000;
+  let numProbes = cellQueue.size;
+  const maxProbes = 20000;
 
-  while (cellQueue.length > 0 && numProbes < maxProbes) {
-    let bestIdx = 0;
-    for (let i = 1; i < cellQueue.length; i++) {
-      if (cellQueue[i].max > cellQueue[bestIdx].max) bestIdx = i;
-    }
-    const cell = cellQueue.splice(bestIdx, 1)[0];
+  while (cellQueue.size > 0 && numProbes < maxProbes) {
+    const cell = cellQueue.pop()!;
 
     if (cell.d > best.d) best = cell;
     if (cell.max - best.d <= precision) continue;
@@ -240,8 +279,67 @@ function poleOfInaccessibility(ring: Pt[], precision: number): PolylabelCell {
   return best;
 }
 
-/** Ángulo (rad) del eje principal del polígono, vía PCA sobre sus vértices. */
 function principalAxisAngle(pts: Pt[]): number {
+  const n = pts.length;
+  if (n < 2) return 0;
+  const ox = pts[0][0];
+  const oy = pts[0][1];
+
+  let area2 = 0;
+  let sxx = 0;
+  let syy = 0;
+  let sxy = 0;
+  let cxAcc = 0;
+  let cyAcc = 0;
+
+  for (let i = 0; i < n; i++) {
+    const x0 = pts[i][0] - ox;
+    const y0 = pts[i][1] - oy;
+    const next = pts[(i + 1) % n];
+    const x1 = next[0] - ox;
+    const y1 = next[1] - oy;
+    const cross = x0 * y1 - x1 * y0;
+    area2 += cross;
+    cxAcc += (x0 + x1) * cross;
+    cyAcc += (y0 + y1) * cross;
+    sxx += (x0 * x0 + x0 * x1 + x1 * x1) * cross; // ∫x² dA (×12)
+    syy += (y0 * y0 + y0 * y1 + y1 * y1) * cross; // ∫y² dA (×12)
+    sxy += (x0 * y1 + 2 * x0 * y0 + 2 * x1 * y1 + x1 * y0) * cross; // ∫xy dA (×24)
+  }
+
+  const area = area2 / 2;
+  if (Math.abs(area) < 1e-9) {
+    return principalAxisAngleFromVertices(pts);
+  }
+
+  const cx = cxAcc / (6 * area);
+  const cy = cyAcc / (6 * area);
+  const mxx = sxx / (12 * area) - cx * cx;
+  const myy = syy / (12 * area) - cy * cy;
+  const mxy = sxy / (24 * area) - cx * cy;
+  const trace = mxx + myy;
+  const det = mxx * myy - mxy * mxy;
+  const disc = Math.sqrt(Math.max(0, (trace * trace) / 4 - det));
+  const l1 = trace / 2 + disc;
+
+  let ex: number, ey: number;
+  if (Math.abs(mxy) > 1e-10) {
+    ex = l1 - myy;
+    ey = mxy;
+  } else if (mxx >= myy) {
+    ex = 1;
+    ey = 0;
+  } else {
+    ex = 0;
+    ey = 1;
+  }
+
+  const rawLen = Math.hypot(ex, ey);
+  const len = rawLen === 0 ? 1 : rawLen;
+  return Math.atan2(ey / len, ex / len);
+}
+
+function principalAxisAngleFromVertices(pts: Pt[]): number {
   const n = pts.length;
   if (n < 2) return 0;
   let mx = 0,
@@ -279,7 +377,9 @@ function principalAxisAngle(pts: Pt[]): number {
     ex = 0;
     ey = 1;
   }
-  return Math.atan2(ey, ex);
+  const rawLen = Math.hypot(ex, ey);
+  const len = rawLen === 0 ? 1 : rawLen;
+  return Math.atan2(ey / len, ex / len);
 }
 
 function rotatePoint(p: Pt, pivot: Pt, cosA: number, sinA: number): Pt {
@@ -297,11 +397,6 @@ function rotateRing(pts: Pt[], pivot: Pt, angleRad: number): Pt[] {
 const LABEL_COLLINEAR_EPS = 1e-7;
 function cleanRingForLabeling(pts: Pt[]): Pt[] {
   if (pts.length < 3) return pts;
-
-  // Tolerancia de fusión de vértices casi-duplicados como fracción del
-  // TAMAÑO del polígono (diagonal del bbox), no de la arista más corta:
-  // una sola arista minúscula (típica de un arco de fillet con muchos
-  // puntos juntos) ya no desajusta la tolerancia para todo el anillo.
   const { minX, minY, maxX, maxY } = ringBounds(pts);
   const diag = Math.hypot(maxX - minX, maxY - minY);
   const mergeTol = Math.max(1e-6, Math.min(0.03, diag * 1e-4));
@@ -389,25 +484,33 @@ export function polygonLabelPoint(ringIn: Pt[], scale = 1): Pt {
   if (sizeRef <= 0) return pts[0];
 
   const clearance = minRequiredClearance(pts, scale);
+  const precision = Math.max(sizeRef / 1000, 1e-4);
 
   const centroid = polygonCentroid(pts);
   const centroidDist = isInsideNonzero(centroid, pts)
     ? minDistanceToBoundary(centroid, pts)
     : -Infinity;
-
   const pivot = centroid;
   const angle = principalAxisAngle(pts);
   const rotatedPts = rotateRing(pts, pivot, -angle);
-  const precision = Math.max(sizeRef / 400, 1e-4);
-  const cell = poleOfInaccessibility(rotatedPts, precision);
-  const pole = rotatePoint([cell.x, cell.y], pivot, Math.cos(angle), Math.sin(angle));
-  const poleDist = cell.d;
+  const cellAligned = poleOfInaccessibility(rotatedPts, precision);
+  const poleAligned = rotatePoint(
+    [cellAligned.x, cellAligned.y],
+    pivot,
+    Math.cos(angle),
+    Math.sin(angle)
+  );
+  const cellAxisAligned = poleOfInaccessibility(pts, precision);
+
+  const useAligned = cellAligned.d >= cellAxisAligned.d;
+  const pole = useAligned ? poleAligned : ([cellAxisAligned.x, cellAxisAligned.y] as Pt);
+  const poleDist = useAligned ? cellAligned.d : cellAxisAligned.d;
 
   const useCentroid = centroidDist >= poleDist;
   const bestPt = useCentroid ? centroid : pole;
   const bestDist = useCentroid ? centroidDist : poleDist;
 
   if (bestDist >= clearance) return bestPt;
-  if (bestDist > -Infinity) return bestPt; // dentro igual, aunque angosto: mejor que nada
-  return centroidAverage(pts); // último recurso absoluto
+  if (bestDist > -Infinity) return bestPt;
+  return centroidAverage(pts);
 }

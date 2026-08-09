@@ -7,7 +7,7 @@ import type { FeatureCollection, Feature as GeoJSONFeature } from 'geojson';
 
 import { useMapStore } from '../store/map/mapStore';
 import { updateFeatureMetrics } from './metrics';
-import { polyArea, ringPerimeter, centroidAverage, closeRing, type Pt } from './math/polygonEngine';
+import { polyArea, ringPerimeter, polygonCentroid, closeRing, type Pt } from './math/polygonEngine';
 import { useStreetStore, type Street } from '../store/entities/streetStore';
 import { useRoundaboutStore, type Roundabout } from '../store/entities/roundaboutStore';
 import { useManzanoStore } from '../store/entities/manzanoStore';
@@ -56,8 +56,8 @@ function ringsShapeEquivalent(a: Pt[], b: Pt[]): boolean {
   const perimTol = Math.max(0.02, Math.max(perimA, perimB) * 5e-4);
   if (Math.abs(perimA - perimB) > perimTol) return false;
 
-  const centA = centroidAverage(a);
-  const centB = centroidAverage(b);
+  const centA = polygonCentroid(a);
+  const centB = polygonCentroid(b);
   const centroidTol = Math.max(0.02, Math.sqrt(Math.max(areaA, areaB, 1)) * 5e-4);
   if (Math.hypot(centA[0] - centB[0], centA[1] - centB[1]) > centroidTol) return false;
 
