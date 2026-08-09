@@ -1,8 +1,9 @@
 import { create } from 'zustand';
 import type { LabelStyleConfig } from '../../core/labelModel';
 import type { GeoUrbanFeatureKind } from '../../core/objectModel';
+import type { LabelNumberingMode } from '../../core/labelNumbering';
 
-export type LabelNumberingMode = 'numeric' | 'alpha';
+export type { LabelNumberingMode };
 
 /** Subconjunto de kinds que soportan trazado de orden de etiquetado. */
 export type LabelOrderKind = Extract<GeoUrbanFeatureKind, 'manzana' | 'lote'>;
@@ -74,7 +75,7 @@ export const useLabelConfigModalStore = create<LabelConfigModalState>()((set) =>
   initialText: '',
   lastManzanoConfig: null,
   lastLotsConfig: null,
-  numberingMode: 'alpha',
+  numberingMode: 'alpha-upper',
   orderRequest: null,
   openForFeature: (featureId, initial, initialText = '') =>
     set({

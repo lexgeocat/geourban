@@ -14,10 +14,9 @@ import {
 } from '../../../store/ui/labelConfigModalStore';
 import { useDrawStore } from '../../../store/map/drawStore';
 import { toast } from '../../../store/ui/toastStore';
-import { polygonLabelPoint } from '../../../geo/math/polygonEngine';
+import { polygonCentroidLabelPoint } from '../../../geo/math/polygonEngine';
 import type { ModeContext } from './ModeContext';
 
-/** Distancia acumulada (arco) hasta el punto de `line` más cercano a `pt`. */
 function nearestArcLength(pt: [number, number], line: [number, number][]): number {
   let bestDist = Infinity;
   let bestArc = 0;
@@ -63,11 +62,18 @@ export function activateLabelOrder(ctx: ModeContext): void {
     }),
   });
 
+  const finishAndExit = () => {
+    map.removeInteraction(draw);
+    if (ctx.activeDrawRef.current === draw) ctx.activeDrawRef.current = null;
+    useDrawStore.getState().setMode('select');
+  };
+
   draw.on('drawend', (event) => {
     const sketch = event.feature as Feature<Geometry>;
     const geom = sketch.getGeometry();
     src.removeFeature(sketch); // el trazo es solo una herramienta, no queda como feature
     src.changed();
+    map.render(); // repinta ya — no deja ningún frame donde el sketch pueda seguir vivo
     if (!(geom instanceof LineString)) return;
 
     const request = useLabelConfigModalStore.getState().orderRequest;
@@ -76,7 +82,7 @@ export function activateLabelOrder(ctx: ModeContext): void {
         variant: 'warning',
         durationMs: 6000,
       });
-      useDrawStore.getState().setMode('select');
+      finishAndExit();
       return;
     }
     const { kind, scopeManzanoId, config, numbering } = request;
@@ -108,7 +114,7 @@ export function activateLabelOrder(ctx: ModeContext): void {
       const anchor =
         (feat.get('labelPoint') as [number, number] | undefined) ??
         (ring.length >= 3
-          ? polygonLabelPoint(ring)
+          ? polygonCentroidLabelPoint(ring)
           : (g.getInteriorPoint().getCoordinates() as [number, number]));
       items.push({ id, arc: nearestArcLength(anchor, line) });
     });
@@ -116,7 +122,7 @@ export function activateLabelOrder(ctx: ModeContext): void {
     if (items.length === 0) {
       toast(`No hay ${kindInfo.noun} para etiquetar.`, { variant: 'warning' });
       useLabelConfigModalStore.getState().clearOrderTrace();
-      useDrawStore.getState().setMode('select');
+      finishAndExit();
       return;
     }
 
@@ -130,7 +136,7 @@ export function activateLabelOrder(ctx: ModeContext): void {
       variant: 'success',
     });
     useLabelConfigModalStore.getState().clearOrderTrace();
-    useDrawStore.getState().setMode('select');
+    finishAndExit();
   });
 
   ctx.activeDrawRef.current = draw;

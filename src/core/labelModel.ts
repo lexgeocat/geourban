@@ -14,14 +14,93 @@ export interface LabelStyleConfig {
   cotaFontSizePx: number;
   color: string;
   fontFamily: string;
+  bold: boolean;
+  cotaStyle: 'lines' | 'text';
+  cotaPosition: 'external' | 'internal';
+  titleBadge: 'none' | 'circle';
 }
 
-export const LABEL_FONT_OPTIONS: { value: string; label: string }[] = [
-  { value: "'JetBrains Mono', monospace", label: 'JetBrains Mono' },
-  { value: "'Courier New', monospace", label: 'Courier New' },
-  { value: 'Arial, sans-serif', label: 'Arial' },
-  { value: 'Georgia, serif', label: 'Georgia' },
-  { value: 'Verdana, sans-serif', label: 'Verdana' },
+export interface LabelFontOption {
+  value: string;
+  label: string;
+  group: (typeof LABEL_FONT_GROUPS)[number];
+}
+
+export const LABEL_FONT_GROUPS = [
+  'Monoespaciadas (CAD)',
+  'Técnicas / Ingeniería',
+  'Sans profesionales',
+] as const;
+
+export const LABEL_FONT_OPTIONS: LabelFontOption[] = [
+  // Monoespaciadas — estilo "callout" de AutoCAD / QGIS / notas técnicas
+  {
+    value: "'JetBrains Mono', 'Fira Code', monospace",
+    label: 'JetBrains Mono',
+    group: 'Monoespaciadas (CAD)',
+  },
+  {
+    value: "'Fira Code', 'JetBrains Mono', monospace",
+    label: 'Fira Code',
+    group: 'Monoespaciadas (CAD)',
+  },
+  {
+    value: "'IBM Plex Mono', 'Courier New', monospace",
+    label: 'IBM Plex Mono',
+    group: 'Monoespaciadas (CAD)',
+  },
+  {
+    value: "'Roboto Mono', 'Courier New', monospace",
+    label: 'Roboto Mono',
+    group: 'Monoespaciadas (CAD)',
+  },
+  {
+    value: "'Source Code Pro', 'Courier New', monospace",
+    label: 'Source Code Pro',
+    group: 'Monoespaciadas (CAD)',
+  },
+  {
+    value: "'Space Mono', 'Courier New', monospace",
+    label: 'Space Mono',
+    group: 'Monoespaciadas (CAD)',
+  },
+  {
+    value: "Consolas, 'Lucida Console', monospace",
+    label: 'Consolas',
+    group: 'Monoespaciadas (CAD)',
+  },
+  {
+    value: "'Lucida Console', Consolas, monospace",
+    label: 'Lucida Console',
+    group: 'Monoespaciadas (CAD)',
+  },
+  {
+    value: "'DejaVu Sans Mono', Consolas, monospace",
+    label: 'DejaVu Sans Mono',
+    group: 'Monoespaciadas (CAD)',
+  },
+  {
+    value: "'Courier New', Courier, monospace",
+    label: 'Courier New',
+    group: 'Monoespaciadas (CAD)',
+  },
+  // Técnicas — usadas en rotulado de planos AutoCAD / Civil3D / ArcGIS
+  {
+    value: "Bahnschrift, 'Segoe UI', sans-serif",
+    label: 'Bahnschrift',
+    group: 'Técnicas / Ingeniería',
+  },
+  {
+    value: "'Century Gothic', 'Century Gothic MT', sans-serif",
+    label: 'Century Gothic',
+    group: 'Técnicas / Ingeniería',
+  },
+  { value: 'Tahoma, Geneva, sans-serif', label: 'Tahoma', group: 'Técnicas / Ingeniería' },
+  // Sans profesionales — legibilidad general en mapas
+  { value: 'Arial, Helvetica, sans-serif', label: 'Arial', group: 'Sans profesionales' },
+  { value: 'Calibri, Candara, sans-serif', label: 'Calibri', group: 'Sans profesionales' },
+  { value: 'Verdana, Geneva, sans-serif', label: 'Verdana', group: 'Sans profesionales' },
+  { value: "Georgia, 'Times New Roman', serif", label: 'Georgia', group: 'Sans profesionales' },
 ];
 
 export const AREA_UNIT_OPTIONS: { value: AreaUnit; label: string }[] = [
@@ -61,7 +140,11 @@ export function defaultLabelStyleConfig(overrides?: Partial<LabelStyleConfig>): 
     labelFontSizePx: 11,
     cotaFontSizePx: 10,
     color: '#dffcff',
-    fontFamily: "'JetBrains Mono', monospace",
+    fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+    bold: true,
+    cotaStyle: 'lines',
+    cotaPosition: 'external',
+    titleBadge: 'none',
     ...overrides,
   };
 }

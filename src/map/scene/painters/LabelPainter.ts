@@ -34,6 +34,10 @@ const HARD_VISIBLE_CAP = 20_000;
 const STREET_LABEL_MIN_ZOOM = 12;
 const STREET_LABEL_REPEAT_M = 140;
 
+function labelFontWeight(cfg: LabelStyleConfig): number {
+  return cfg.bold === false ? 400 : 700;
+}
+
 class LabelCollisionGrid {
   private cells = new Map<string, PlacedBox[]>();
   private key(cx: number, cy: number): string {
@@ -153,6 +157,9 @@ function drawEdgeCotas(
   const offsetPx = 13;
   const fs = cfg.cotaFontSizePx;
   const cenPx = centroidWorld ? toPx(centroidWorld) : null;
+  // Defensivo: proyectos viejos pueden no tener estos campos en el labelConfig persistido.
+  const showLines = cfg.cotaStyle !== 'text';
+  const internal = cfg.cotaPosition === 'internal';
 
   ctx.save();
   for (const meta of segmentLengths) {
@@ -173,7 +180,10 @@ function drawEdgeCotas(
     if (cenPx) {
       const midPx: [number, number] = [(aPx[0] + bPx[0]) / 2, (aPx[1] + bPx[1]) / 2];
       const pointsAway = (midPx[0] - cenPx[0]) * nx + (midPx[1] - cenPx[1]) * ny >= 0;
-      if (!pointsAway) {
+      // 'external' (default): la normal debe apuntar afuera del centroide.
+      // 'internal': se invierte para que apunte hacia el centroide.
+      const shouldPointAway = !internal;
+      if (pointsAway !== shouldPointAway) {
         nx = -nx;
         ny = -ny;
       }
@@ -182,16 +192,18 @@ function drawEdgeCotas(
     const dimA: [number, number] = [aPx[0] + nx * offsetPx, aPx[1] + ny * offsetPx];
     const dimB: [number, number] = [bPx[0] + nx * offsetPx, bPx[1] + ny * offsetPx];
 
-    ctx.strokeStyle = cfg.color;
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(aPx[0] + nx * 3, aPx[1] + ny * 3);
-    ctx.lineTo(dimA[0], dimA[1]);
-    ctx.moveTo(bPx[0] + nx * 3, bPx[1] + ny * 3);
-    ctx.lineTo(dimB[0], dimB[1]);
-    ctx.moveTo(dimA[0], dimA[1]);
-    ctx.lineTo(dimB[0], dimB[1]);
-    ctx.stroke();
+    if (showLines) {
+      ctx.strokeStyle = cfg.color;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(aPx[0] + nx * 3, aPx[1] + ny * 3);
+      ctx.lineTo(dimA[0], dimA[1]);
+      ctx.moveTo(bPx[0] + nx * 3, bPx[1] + ny * 3);
+      ctx.lineTo(dimB[0], dimB[1]);
+      ctx.moveTo(dimA[0], dimA[1]);
+      ctx.lineTo(dimB[0], dimB[1]);
+      ctx.stroke();
+    }
 
     const txC = (dimA[0] + dimB[0]) / 2;
     const tyC = (dimA[1] + dimB[1]) / 2;
@@ -255,7 +267,7 @@ export class LabelPainter {
       if (lines.length === 0) continue;
 
       ctx.save();
-      ctx.font = `bold ${entry.config.labelFontSizePx}px ${entry.config.fontFamily}`;
+      ctx.font = `${labelFontWeight(entry.config)} ${entry.config.labelFontSizePx}px ${entry.config.fontFamily}`;
       let maxW = 0;
       for (const line of lines) maxW = Math.max(maxW, measureCached(ctx, line).width);
       ctx.restore();
@@ -367,26 +379,93 @@ export class LabelPainter {
     }
   }
 
+  private measureBadge(
+    ctx: CanvasRenderingContext2D,
+    text: string,
+    fontSizePx: number
+  ): { w: number; h: number } {
+    const m = measureCached(ctx, text);
+    const padX = fontSizePx * 0.55;
+    const padY = fontSizePx * 0.36;
+    let w = m.width + padX * 2;
+    let h = fontSizePx * 1.15 + padY * 2;
+    if (w <= h * 1.6) {
+      w = Math.max(w, h);
+      h = w;
+    }
+    return { w, h };
+  }
+  private paintBadge(
+    ctx: CanvasRenderingContext2D,
+    cx: number,
+    cy: number,
+    text: string,
+    fontSizePx: number,
+    fontWeight: number,
+    cfg: LabelStyleConfig
+  ): void {
+    const { w, h } = this.measureBadge(ctx, text, fontSizePx);
+    const isCircle = w === h;
+
+    ctx.save();
+    ctx.beginPath();
+    if (isCircle) {
+      ctx.arc(cx, cy, w / 2, 0, Math.PI * 2);
+    } else {
+      const r = h / 2;
+      const halfW = w / 2;
+      ctx.moveTo(cx - halfW + r, cy - r);
+      ctx.lineTo(cx + halfW - r, cy - r);
+      ctx.arc(cx + halfW - r, cy, r, -Math.PI / 2, Math.PI / 2);
+      ctx.lineTo(cx - halfW + r, cy + r);
+      ctx.arc(cx - halfW + r, cy, r, Math.PI / 2, (3 * Math.PI) / 2);
+      ctx.closePath();
+    }
+    ctx.fillStyle = 'rgba(13, 17, 23, 0.92)';
+    ctx.fill();
+    ctx.lineWidth = Math.max(1.25, fontSizePx * 0.1);
+    ctx.strokeStyle = cfg.color;
+    ctx.stroke();
+
+    ctx.font = `${fontWeight} ${fontSizePx}px ${cfg.fontFamily}`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = cfg.color;
+    ctx.fillText(text, cx, cy + fontSizePx * 0.02);
+    ctx.restore();
+  }
+
   private drawLabelBlock(
     ctx: CanvasRenderingContext2D,
     px: [number, number],
     lines: string[],
     cfg: LabelStyleConfig
   ): void {
+    if (lines.length === 0) return;
     const fs = cfg.labelFontSizePx;
     const lineHeight = fs * 1.25;
+    const weight = labelFontWeight(cfg);
+    const useBadge = cfg.titleBadge === 'circle';
+
     ctx.save();
-    ctx.font = `700 ${fs}px ${cfg.fontFamily}`;
+    ctx.font = `${weight} ${fs}px ${cfg.fontFamily}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
+    const bodyLines = useBadge ? lines.slice(1) : lines;
     let maxW = 0;
-    for (const line of lines) maxW = Math.max(maxW, measureCached(ctx, line).width);
-    const totalH = lines.length * lineHeight;
+    for (const line of bodyLines) maxW = Math.max(maxW, measureCached(ctx, line).width);
+    const bodyH = bodyLines.length * lineHeight;
+
+    const badge = useBadge ? this.measureBadge(ctx, lines[0], fs) : null;
+    const gap = badge && bodyLines.length > 0 ? 4 : 0;
+    const totalH = (badge?.h ?? 0) + gap + bodyH;
+    const boxW = Math.max(maxW + 8, badge ? badge.w + 4 : 0);
+
     const box: PlacedBox = {
-      x: px[0] - maxW / 2 - 4,
+      x: px[0] - boxW / 2,
       y: px[1] - totalH / 2 - 2,
-      w: maxW + 8,
+      w: boxW,
       h: totalH + 4,
     };
     if (this.collisionGrid.intersects(box)) {
@@ -395,14 +474,21 @@ export class LabelPainter {
     }
     this.collisionGrid.insert(box);
 
-    ctx.fillStyle = 'rgba(13, 17, 23, 0.72)';
-    ctx.fillRect(box.x, box.y, box.w, box.h);
+    let cursorY = box.y + 2;
+    if (badge) {
+      this.paintBadge(ctx, px[0], cursorY + badge.h / 2, lines[0], fs, weight, cfg);
+      cursorY += badge.h + gap;
+    }
 
-    ctx.fillStyle = cfg.color;
-    let y = px[1] - totalH / 2 + lineHeight / 2;
-    for (const line of lines) {
-      ctx.fillText(line, px[0], y);
-      y += lineHeight;
+    if (bodyLines.length > 0) {
+      ctx.fillStyle = 'rgba(13, 17, 23, 0.72)';
+      ctx.fillRect(box.x, cursorY, box.w, bodyH + 2);
+      ctx.fillStyle = cfg.color;
+      let y = cursorY + lineHeight / 2 + 1;
+      for (const line of bodyLines) {
+        ctx.fillText(line, px[0], y);
+        y += lineHeight;
+      }
     }
     ctx.restore();
   }
@@ -417,7 +503,7 @@ export class LabelPainter {
     const fs = cfg.labelFontSizePx;
     const lineHeight = fs * 1.25;
     ctx.save();
-    ctx.font = `700 ${fs}px ${cfg.fontFamily}`;
+    ctx.font = `${labelFontWeight(cfg)} ${fs}px ${cfg.fontFamily}`;
 
     let maxW = 0;
     for (const line of lines) maxW = Math.max(maxW, measureCached(ctx, line).width);

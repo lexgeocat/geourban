@@ -514,3 +514,17 @@ export function polygonLabelPoint(ringIn: Pt[], scale = 1): Pt {
   if (bestDist > -Infinity) return bestPt;
   return centroidAverage(pts);
 }
+
+export function polygonCentroidLabelPoint(ringIn: Pt[]): Pt {
+  if (ringIn.length < 3) return ringIn[0] ?? [0, 0];
+  const first = ringIn[0],
+    last = ringIn[ringIn.length - 1];
+  const closed = Math.abs(first[0] - last[0]) < 1e-9 && Math.abs(first[1] - last[1]) < 1e-9;
+  const pts = closed ? ringIn.slice(0, -1) : ringIn;
+  if (pts.length < 3) return centroidAverage(pts.length ? pts : ringIn);
+
+  const centroid = polygonCentroid(pts);
+  if (isInsideNonzero(centroid, pts)) return centroid;
+
+  return polygonLabelPoint(ringIn);
+}

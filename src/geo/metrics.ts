@@ -5,13 +5,13 @@ import type Geometry from 'ol/geom/Geometry.js';
 import VectorSource from 'ol/source/Vector.js';
 import { useProjectCrsStore } from '../store/project/projectCrsStore';
 import { ensureUtmZoneRegistered } from './crs/utmZones';
-import { pathLength, polygonLabelPoint } from './math/polygonEngine';
 import {
   getMetricPlaneAffine,
   LOCAL_TANGENT_PLANE_KEY,
   projectPathThroughUtmTiles,
 } from './crs/affineCache';
 import { applyAffineBatch, extentOfPoints } from './crs/affineApprox';
+import { pathLength, polygonCentroidLabelPoint } from './math/polygonEngine';
 
 export type SegmentMetric = {
   p0: [number, number];
@@ -151,14 +151,12 @@ function calculatePolygonMetrics(geometry: Polygon): FeatureMetrics {
   const ringMetric = projectRingToMetricPlane(ring3857);
   const areaM2 = planarArea(ringMetric);
   const perimeterM = pathLength(ringMetric);
-  const raw3857Perimeter = pathLength(ring3857);
-  const labelScale = raw3857Perimeter > 1e-9 ? perimeterM / raw3857Perimeter : 1;
 
   return {
     areaM2,
     perimeterM,
     segmentLengths: getSegmentMetrics(ring3857, ringMetric),
-    labelPoint: polygonLabelPoint(ring3857, labelScale),
+    labelPoint: polygonCentroidLabelPoint(ring3857),
     metricsUpdatedAt: Date.now(),
   };
 }

@@ -10,12 +10,14 @@ import {
 import {
   AREA_UNIT_OPTIONS,
   LABEL_FONT_OPTIONS,
+  LABEL_FONT_GROUPS,
   defaultLabelStyleConfig,
   composeLabelLines,
   type LabelStyleConfig,
   type AreaUnit,
   type LabelLineMetrics,
 } from '../../core/labelModel';
+import { formatOrderLabel, LABEL_NUMBERING_MODES } from '../../core/labelNumbering';
 import { runCommand } from '../../commands/core/CommandStack';
 import { ApplyLabelConfigCommand } from '../../commands/labels/ApplyLabelConfigCommand';
 import { ApplyEntityLabelConfigCommand } from '../../commands/labels/ApplyEntityLabelConfigCommand';
@@ -27,7 +29,6 @@ import { useRoundaboutStore } from '../../store/entities/roundaboutStore';
 import { formatMetricLength, streetLengthMetricM } from '../../geo/metrics';
 import { roundaboutRoadAreaM2 } from '../../geo/roundabout/roundaboutEngine';
 import { getFeatureKind } from '../../core/objectModel';
-import { autoLetterCode } from '../../lib/autoName';
 
 const ENTITY_COPY: Record<'street' | 'roundabout', { title: string; nameHint: string; metricLabel: string; secondaryLabel: string }> = {
   street: {
@@ -71,6 +72,7 @@ function ToggleRow({
 /** Previsualización en vivo — replica el look real del `LabelPainter` (fondo oscuro + texto en negrita). */
 function LabelPreview({ cfg, lines }: { cfg: LabelStyleConfig; lines: string[] }) {
   const previewFontSize = Math.min(Math.max(cfg.labelFontSizePx, 9), 22);
+  const previewFontWeight = cfg.bold === false ? 500 : 700;
   return (
     <div
       style={{
@@ -98,7 +100,7 @@ function LabelPreview({ cfg, lines }: { cfg: LabelStyleConfig; lines: string[] }
           }}
         >
           {lines.map((line, i) => (
-            <div key={i} style={{ fontSize: previewFontSize, fontWeight: 700, color: cfg.color, whiteSpace: 'nowrap' }}>
+            <div key={i} style={{ fontSize: previewFontSize, fontWeight: previewFontWeight, color: cfg.color, whiteSpace: 'nowrap' }}>
               {line}
             </div>
           ))}
@@ -182,7 +184,8 @@ function computePreviewMetrics(target: LabelConfigTarget | null, numberingMode: 
     return { text: 'Elemento' };
   }
 
-  const orderSample = numberingMode === 'alpha' ? autoLetterCode(0) : '1';
+ const isLotsTarget = target.kind === 'batch-lots';
+  const orderSample = formatOrderLabel(numberingMode, 0, 8, isLotsTarget ? 'A' : undefined);
   if (target.kind === 'batch-manzanos') {
     const sample = findSampleFeatureMetrics('manzana');
     return { text: orderSample, primaryValue: sample?.primaryValue ?? 480, secondaryValue: sample?.secondaryValue ?? 92 };
@@ -324,8 +327,12 @@ export default function LabelConfigModal() {
         {(isBatch || isBatchLots) && (
           <Field label="Numeración del trazado">
             <select value={numberingMode} onChange={(e) => setNumberingMode(e.target.value as LabelNumberingMode)} className="cad-input">
-              <option value="alpha">Alfabética (A, B, C…)</option>
-              <option value="numeric">Numérica (1, 2, 3…)</option>
+              {LABEL_NUMBERING_MODES.map((m) => (
+                <option key={m.key} value={m.key}>
+                  {m.label} — {m.example}
+                  {m.needsParent && isBatch ? ' (usa código de manzano; sin efecto acá)' : ''}
+                </option>
+              ))}
             </select>
           </Field>
         )}
@@ -340,10 +347,17 @@ export default function LabelConfigModal() {
           )}
           <Field label="Fuente" style={{ flex: 1 }}>
             <select value={cfg.fontFamily} onChange={(e) => patch({ fontFamily: e.target.value })} className="cad-input">
-              {LABEL_FONT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              {LABEL_FONT_GROUPS.map((group) => (
+                <optgroup key={group} label={group}>
+                  {LABEL_FONT_OPTIONS.filter((o) => o.group === group).map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </optgroup>
+              ))}
             </select>
           </Field>
         </div>
+        <ToggleRow label="Negrita" checked={cfg.bold !== false} onChange={(v) => patch({ bold: v })} />
 
         <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
           <ToggleRow label={entityCopy?.metricLabel ?? 'Área'} checked={cfg.showArea} onChange={(v) => patch({ showArea: v })} />
@@ -352,6 +366,37 @@ export default function LabelConfigModal() {
             <ToggleRow label="Cotas por lado" checked={cfg.showEdgeCotas} onChange={(v) => patch({ showEdgeCotas: v })} />
           )}
         </div>
+
+        {!isEntity && (
+          <div
+            style={{
+              display: 'flex', gap: 8,
+              opacity: cfg.showEdgeCotas ? 1 : 0.4,
+              pointerEvents: cfg.showEdgeCotas ? 'auto' : 'none',
+            }}
+          >
+            <Field label="Estilo de cota" style={{ flex: 1 }}>
+              <select
+                value={cfg.cotaStyle ?? 'lines'}
+                onChange={(e) => patch({ cotaStyle: e.target.value as LabelStyleConfig['cotaStyle'] })}
+                className="cad-input"
+              >
+                <option value="lines">Con líneas de cota</option>
+                <option value="text">Solo texto (sin líneas)</option>
+             </select>
+            </Field>
+            <Field label="Posición" style={{ flex: 1 }}>
+              <select
+                value={cfg.cotaPosition ?? 'external'}
+                onChange={(e) => patch({ cotaPosition: e.target.value as LabelStyleConfig['cotaPosition'] })}
+                className="cad-input"
+              >
+                <option value="external">Externa (hacia afuera)</option>
+                <option value="internal">Interna (hacia el centro)</option>
+              </select>
+            </Field>
+          </div>
+        )}
 
         <div style={{ display: 'flex', gap: 8 }}>
           <Field label="Tam. etiqueta (px)" style={{ flex: 1 }}>

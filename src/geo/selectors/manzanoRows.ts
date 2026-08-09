@@ -5,9 +5,11 @@ import type VectorSource from 'ol/source/Vector.js';
 import { polyArea, polygonCentroid, ringPerimeter, type Pt } from '../math/polygonEngine';
 import { getFeatureKind, getLotStatus, type LotStatus } from '../../core/objectModel';
 import { autoLetterCode } from '../../lib/autoName';
+import { composeLabelLines, type LabelStyleConfig } from '../../core/labelModel';
 
 export interface LotInfo {
   label: string;
+  displayLabel: string;
   areaM2: number;
   isRemnant: boolean;
 }
@@ -16,6 +18,7 @@ export interface ManzanoRow {
   id: string | number;
   colorIdx: number;
   code: string;
+  displayLabel: string;
   areaM2: number;
   perimeterM: number;
   centroid: Pt;
@@ -23,10 +26,21 @@ export interface ManzanoRow {
   lotStatus: LotStatus;
 }
 
+/** Título compuesto (prefijo + texto) según el labelConfig/labelText ya aplicados a la feature,
+ *  igual que lo que se pinta en el mapa. Si todavía no se etiquetó, cae al nombre por defecto. */
+function resolveDisplayLabel(f: Feature<Geometry>, fallback: string): string {
+  const cfg = f.get('labelConfig') as LabelStyleConfig | undefined;
+  if (cfg?.enabled) {
+    const text = f.get('labelText') as string | undefined;
+    const lines = composeLabelLines(cfg, { text: text ?? '' });
+    if (lines.length > 0 && lines[0].trim()) return lines[0];
+  }
+  return fallback;
+}
+
 export function readManzanoRows(drawSource: VectorSource | null): ManzanoRow[] {
   if (!drawSource) return [];
 
-  // Un solo recorrido: agrupamos lotes por lotGroupId y separamos manzanos/equipamientos.
   const lotsByGroup = new Map<string, LotInfo[]>();
   const manzanoFeatures: Feature<Geometry>[] = [];
 
@@ -39,8 +53,10 @@ export function readManzanoRows(drawSource: VectorSource | null): ManzanoRow[] {
     if (kind === 'lote') {
       const groupId = f.get('lotGroupId') as string | undefined;
       if (!groupId) return;
+      const label = (f.get('label') as string) ?? 'Lote';
       const info: LotInfo = {
-        label: (f.get('label') as string) ?? 'Lote',
+        label,
+        displayLabel: resolveDisplayLabel(f, label),
         areaM2: (f.get('areaM2') as number) ?? 0,
         isRemnant: !!f.get('isRemnant'),
       };
@@ -70,6 +86,7 @@ export function readManzanoRows(drawSource: VectorSource | null): ManzanoRow[] {
       id,
       colorIdx,
       code,
+      displayLabel: resolveDisplayLabel(f, `Mzo. ${code}`),
       areaM2,
       perimeterM,
       centroid: centroidPt,

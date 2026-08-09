@@ -89,7 +89,7 @@ export default function ManzanoCard({
         title="Click: resalta este manzano en el mapa"
       >
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontWeight: 700, color }}>{`Mzo. ${row.code}`}</div>
+          <div style={{ fontWeight: 700, color }}>{row.displayLabel}</div>
           <div style={{ color: 'var(--cad-text-muted)', fontSize: '0.65rem' }}>
             {formatMetricArea(row.areaM2)}{row.lots.length ? ` · ${row.lots.length} lotes` : ''}
             {geomChanged && <span style={{ color: 'var(--cad-accent-amber)' }}> · ⚠ desactualizado</span>}
@@ -183,7 +183,7 @@ export default function ManzanoCard({
                     <div style={{ maxHeight: 120, overflowY: 'auto', marginTop: 4 }}>
                       {row.lots.map((l, i) => (
                         <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.6rem', padding: '2px 4px', color: l.isRemnant ? 'var(--cad-accent-amber)' : 'var(--cad-text-dim)' }}>
-                          <span>{l.label}</span>
+                          <span>{l.displayLabel}</span>
                           <span>{formatMetricArea(l.areaM2)}</span>
                         </div>
                       ))}

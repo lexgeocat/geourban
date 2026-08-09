@@ -2,7 +2,7 @@ import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
 import { Command, type CommandContext } from '../core/Command';
 import type { LabelStyleConfig } from '../../core/labelModel';
-import { autoLetterCode } from '../../lib/autoName';
+import { formatOrderLabel } from '../../core/labelNumbering';
 import type { LabelNumberingMode } from '../../store/ui/labelConfigModalStore';
 
 export interface AssignLabelOrderOptions {
@@ -11,6 +11,7 @@ export interface AssignLabelOrderOptions {
   numbering: LabelNumberingMode;
   label?: string;
 }
+
 export class AssignLabelOrderCommand extends Command {
   readonly label: string;
   private readonly orderedIds: Array<string | number>;
@@ -25,15 +26,28 @@ export class AssignLabelOrderCommand extends Command {
     this.numbering = opts.numbering;
     this.label = opts.label ?? 'Etiquetar en orden';
   }
+  private resolveParentCode(f: Feature<Geometry>, ctx: CommandContext): string | undefined {
+    const groupId = f.get('lotGroupId') as string | undefined;
+    if (!groupId) return undefined;
+    const parent = ctx.drawSource.getFeatureById(groupId) as Feature<Geometry> | null;
+    return (parent?.get('code') as string | undefined) ?? undefined;
+  }
 
   execute(ctx: CommandContext): void {
     this.before.clear();
+    const total = this.orderedIds.length;
+    const isCircledMode = this.numbering === 'circled' || this.numbering === 'circled-alpha';
+    const effectiveConfig: LabelStyleConfig = {
+      ...this.config,
+      titleBadge: isCircledMode ? 'circle' : 'none',
+    };
     this.orderedIds.forEach((id, i) => {
       const f = ctx.drawSource.getFeatureById(id) as Feature<Geometry> | null;
       if (!f) return;
       this.before.set(id, { config: f.get('labelConfig'), text: f.get('labelText') });
-      const suffix = this.numbering === 'alpha' ? autoLetterCode(i) : String(i + 1);
-      f.set('labelConfig', this.config, true);
+      const parentCode = this.resolveParentCode(f, ctx);
+      const suffix = formatOrderLabel(this.numbering, i, total, parentCode);
+      f.set('labelConfig', effectiveConfig, true);
       f.set('labelText', suffix, true);
     });
     ctx.drawSource.changed();
