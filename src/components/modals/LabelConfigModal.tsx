@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
 import { Modal } from '../ui/Modal';
@@ -211,12 +211,15 @@ export default function LabelConfigModal() {
 
   const [cfg, setCfg] = useState<LabelStyleConfig>(defaultLabelStyleConfig());
   const [name, setName] = useState('');
+  const [prevOpen, setPrevOpen] = useState(open);
 
-  useEffect(() => {
-    if (!open) return;
-    setCfg(initialConfig ?? defaultLabelStyleConfig());
-    setName(initialText ?? '');
-  }, [open, initialConfig, initialText]);
+  if (open !== prevOpen) {
+    setPrevOpen(open);
+    if (open) {
+      setCfg(initialConfig ?? defaultLabelStyleConfig());
+      setName(initialText ?? '');
+    }
+  }
 
   const isBatch = target?.kind === 'batch-manzanos';
   const isBatchLots = target?.kind === 'batch-lots';
