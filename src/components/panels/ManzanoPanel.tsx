@@ -10,6 +10,7 @@ import { formatMetricArea } from '../../geo/metrics';
 import LotParamsCard from './manzano/LotParamsCard';
 import ManzanoCard from './manzano/ManzanoCard';
 import ManzanoLabelingCard from './manzano/ManzanoLabelingCard';
+import LoteLabelingCard from './manzano/LoteLabelingCard';
 
 export default function ManzanoPanel() {
   const drawSource = useMapStore((s) => s.drawSource);
@@ -47,6 +48,7 @@ export default function ManzanoPanel() {
         onCancelGenerarTodos={actions.handleCancelGenerarTodos}
       />
       <ManzanoLabelingCard />
+      <LoteLabelingCard />
 
       {rows.length === 0 ? (
         <p style={{ fontSize: '0.68rem', color: 'var(--cad-text-muted)' }}>

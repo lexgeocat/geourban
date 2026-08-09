@@ -1,17 +1,22 @@
 import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
-import type { Extent } from 'ol/extent.js';
-import type VectorSource from 'ol/source/Vector.js';
 import Polygon from 'ol/geom/Polygon.js';
-import { getFeatureKind, getLotStatus } from '../../../core/objectModel';
 import { useLayersStore } from '../../../store/entities/layersRegistryStore';
 import { useStreetStore, type Street } from '../../../store/entities/streetStore';
 import { useRoundaboutStore, type Roundabout } from '../../../store/entities/roundaboutStore';
-import { useEntityLabelStore } from '../../../store/entities/entityLabelStore';
+import {
+  useEntityLabelStore,
+  type EntityLabelEntry,
+} from '../../../store/entities/entityLabelStore';
 import { roundaboutRoadAreaM2 } from '../../../geo/roundabout/roundaboutEngine';
 import { formatAreaWithUnit, type LabelStyleConfig } from '../../../core/labelModel';
 import { measureCached } from '../../textMeasureCache';
 import { formatMetricLength, streetLengthMetricM, type SegmentMetric } from '../../../geo/metrics';
+import {
+  computeStreetCrossings,
+  pickStreetLabelSlots,
+  type StreetLabelSlot,
+} from '../../labels/streetLabelSlots';
 
 interface PlacedBox {
   x: number;
@@ -22,6 +27,8 @@ interface PlacedBox {
 
 const COLLISION_GRID_CELL_PX = 48;
 const HARD_VISIBLE_CAP = 20_000;
+const STREET_LABEL_MIN_ZOOM = 12;
+const STREET_LABEL_REPEAT_M = 140;
 
 class LabelCollisionGrid {
   private cells = new Map<string, PlacedBox[]>();
@@ -211,20 +218,73 @@ function drawEdgeCotas(
   ctx.restore();
 }
 
+function streetLabelSignature(
+  streets: Street[],
+  entries: Record<string, EntityLabelEntry>,
+  zoomBucket: number
+): string {
+  let sig = `z${zoomBucket}`;
+  for (const s of streets) {
+    const e = entries[s.id];
+    if (!e || !e.config.enabled) continue;
+    sig +=
+      `|${s.id}:${s.start[0]},${s.start[1]}-${s.end[0]},${s.end[1]}:${s.widthM}:${s.sideWidthM}` +
+      `:${(s.waypoints ?? []).length}:${e.text}:${e.config.prefix}:${e.config.showPrefix}` +
+      `:${e.config.showArea}:${e.config.showPerimeter}:${e.config.labelFontSizePx}:${e.config.fontFamily}`;
+  }
+  return sig;
+}
+
 export class LabelPainter {
   private readonly collisionGrid = new LabelCollisionGrid();
+  private readonly streetSlots = new globalThis.Map<string, StreetLabelSlot[]>();
+  private streetSlotsSignature = '';
 
-  update(_features: Array<Feature<Geometry>>, _changed: boolean): void {}
+  /** Recalcula los slots de etiqueta de calle (posición + evita cruces/extremos) cuando cambia algo relevante. */
+  update(ctx: CanvasRenderingContext2D, zoom: number, resolution: number): void {
+    const streets = useStreetStore.getState().streets;
+    const entries = useEntityLabelStore.getState().byId;
+    const zoomBucket = Math.round(zoom * 4);
+    const sig = streetLabelSignature(streets, entries, zoomBucket);
+    if (sig === this.streetSlotsSignature) return;
+    this.streetSlotsSignature = sig;
+    this.streetSlots.clear();
+
+    const relevant = streets.filter((s) => entries[s.id]?.config.enabled);
+    if (relevant.length === 0) return;
+
+    const crossings = computeStreetCrossings(streets);
+    for (const s of relevant) {
+      const entry = entries[s.id];
+      const lines = buildStreetLabelLines(s, entry.config, entry.text);
+      if (lines.length === 0) continue;
+
+      ctx.save();
+      ctx.font = `bold ${entry.config.labelFontSizePx}px ${entry.config.fontFamily}`;
+      let maxW = 0;
+      for (const line of lines) maxW = Math.max(maxW, measureCached(ctx, line).width);
+      ctx.restore();
+
+      const textHalfWidthMapUnits = (maxW / 2 + 4) * resolution;
+      this.streetSlots.set(
+        s.id,
+        pickStreetLabelSlots(
+          s,
+          crossings.get(s.id) ?? [],
+          textHalfWidthMapUnits,
+          STREET_LABEL_REPEAT_M
+        )
+      );
+    }
+  }
 
   paint(
     ctx: CanvasRenderingContext2D,
     features: Array<Feature<Geometry>>,
-    _zoom: number,
+    zoom: number,
     resolution: number,
     toPx: (c: number[]) => [number, number],
-    interacting: boolean,
-    _extent: Extent | null,
-    _drawSource: VectorSource
+    interacting: boolean
   ): void {
     if (interacting) return;
     if (features.length > HARD_VISIBLE_CAP) return;
@@ -235,9 +295,6 @@ export class LabelPainter {
     for (const feature of features) {
       const cfg = feature.get('labelConfig') as LabelStyleConfig | undefined;
       if (!cfg || !cfg.enabled) continue;
-
-      const kind = getFeatureKind(feature);
-      if (kind === 'manzana' && getLotStatus(feature) === 'subdivided') continue;
 
       const geometry = feature.getGeometry();
       if (!(geometry instanceof Polygon)) continue;
@@ -265,7 +322,7 @@ export class LabelPainter {
       }
     }
 
-    this.paintStreetLabels(ctx, toPx);
+    if (zoom > STREET_LABEL_MIN_ZOOM) this.paintStreetLabels(ctx, toPx);
     this.paintRoundaboutLabels(ctx, toPx, resolution);
   }
 
@@ -280,9 +337,20 @@ export class LabelPainter {
       if (!entry || !entry.config.enabled) continue;
       const lines = buildStreetLabelLines(s, entry.config, entry.text);
       if (lines.length === 0) continue;
-      const anchor = polylineMidpoint(streetAllCoords(s));
-      const px = toPx(anchor);
-      this.drawLabelBlock(ctx, [px[0], px[1] + 26], lines, entry.config);
+
+      const slots = this.streetSlots.get(s.id);
+      if (!slots || slots.length === 0) {
+        const anchor = polylineMidpoint(streetAllCoords(s));
+        this.drawLabelBlock(ctx, toPx(anchor), lines, entry.config);
+        continue;
+      }
+      for (const slot of slots) {
+        const a = toPx(slot.segFrom);
+        const b = toPx(slot.segTo);
+        let angle = Math.atan2(b[1] - a[1], b[0] - a[0]);
+        if (angle > Math.PI / 2 || angle < -Math.PI / 2) angle += Math.PI;
+        this.drawRotatedLabelBlock(ctx, toPx(slot.pos), angle, lines, entry.config);
+      }
     }
   }
 
@@ -318,10 +386,7 @@ export class LabelPainter {
     ctx.textBaseline = 'middle';
 
     let maxW = 0;
-    for (const line of lines) {
-      const w = measureCached(ctx, line).width;
-      if (w > maxW) maxW = w;
-    }
+    for (const line of lines) maxW = Math.max(maxW, measureCached(ctx, line).width);
     const totalH = lines.length * lineHeight;
     const box: PlacedBox = {
       x: px[0] - maxW / 2 - 4,
@@ -342,6 +407,50 @@ export class LabelPainter {
     let y = px[1] - totalH / 2 + lineHeight / 2;
     for (const line of lines) {
       ctx.fillText(line, px[0], y);
+      y += lineHeight;
+    }
+    ctx.restore();
+  }
+
+  private drawRotatedLabelBlock(
+    ctx: CanvasRenderingContext2D,
+    px: [number, number],
+    angle: number,
+    lines: string[],
+    cfg: LabelStyleConfig
+  ): void {
+    const fs = cfg.labelFontSizePx;
+    const lineHeight = fs * 1.25;
+    ctx.save();
+    ctx.font = `700 ${fs}px ${cfg.fontFamily}`;
+
+    let maxW = 0;
+    for (const line of lines) maxW = Math.max(maxW, measureCached(ctx, line).width);
+    const totalH = lines.length * lineHeight;
+    const w = maxW + 8;
+    const h = totalH + 4;
+
+    const cos = Math.abs(Math.cos(angle));
+    const sin = Math.abs(Math.sin(angle));
+    const boundW = w * cos + h * sin;
+    const boundH = w * sin + h * cos;
+    const box: PlacedBox = { x: px[0] - boundW / 2, y: px[1] - boundH / 2, w: boundW, h: boundH };
+    if (this.collisionGrid.intersects(box)) {
+      ctx.restore();
+      return;
+    }
+    this.collisionGrid.insert(box);
+
+    ctx.translate(px[0], px[1]);
+    ctx.rotate(angle);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = 'rgba(13, 17, 23, 0.72)';
+    ctx.fillRect(-w / 2, -h / 2, w, h);
+    ctx.fillStyle = cfg.color;
+    let y = -totalH / 2 + lineHeight / 2;
+    for (const line of lines) {
+      ctx.fillText(line, 0, y);
       y += lineHeight;
     }
     ctx.restore();

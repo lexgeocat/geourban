@@ -11,6 +11,7 @@ import { polyArea, ringPerimeter, centroidAverage } from '../../geo/math/polygon
 import { estimateGeometryBytes } from '../core/memoryEstimate';
 import { computeAreaCorrectionFactor, computeLinearCorrectionFactor } from './areaCorrection';
 import { createLotFeature } from './createLotFeature';
+import type { LabelStyleConfig } from '../../core/labelModel';
 
 const geoJsonFormat = new GeoJSON();
 
@@ -78,9 +79,14 @@ export class RecomputeManzanoLotsCommand extends Command {
     );
 
     const toRemove: Feature<Geometry>[] = [];
+    let carriedLabelConfig: LabelStyleConfig | undefined;
     ctx.drawSource.forEachFeature((f) => {
-      if (f.get('lotGroupId') === String(this.opts.manzanoId))
-        toRemove.push(f as Feature<Geometry>);
+      if (f.get('lotGroupId') === String(this.opts.manzanoId)) {
+        const feat = f as Feature<Geometry>;
+        toRemove.push(feat);
+        if (!carriedLabelConfig)
+          carriedLabelConfig = feat.get('labelConfig') as LabelStyleConfig | undefined;
+      }
     });
     for (const f of toRemove) {
       const g = f.getGeometry();
@@ -107,6 +113,10 @@ export class RecomputeManzanoLotsCommand extends Command {
         preferredLayerId: this.opts.layerId,
         autoCreateLayer: false,
       });
+      if (carriedLabelConfig) {
+        feature.set('labelConfig', carriedLabelConfig, true);
+        feature.set('labelText', feature.get('code') as string, true);
+      }
       ctx.drawSource.addFeature(feature);
       this.newLotIds.push(lotId);
     });

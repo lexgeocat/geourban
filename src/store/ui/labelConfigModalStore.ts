@@ -15,8 +15,12 @@ interface EntityTarget {
 interface BatchTarget {
   kind: 'batch-manzanos';
 }
+interface BatchLotsTarget {
+  kind: 'batch-lots';
+  manzanoId?: string | number;
+}
 
-export type LabelConfigTarget = FeatureTarget | EntityTarget | BatchTarget;
+export type LabelConfigTarget = FeatureTarget | EntityTarget | BatchTarget | BatchLotsTarget;
 
 interface LabelConfigModalState {
   open: boolean;
@@ -24,6 +28,7 @@ interface LabelConfigModalState {
   initialConfig: LabelStyleConfig | null;
   initialText: string;
   lastManzanoConfig: LabelStyleConfig | null;
+  lastLotsConfig: LabelStyleConfig | null;
   numberingMode: LabelNumberingMode;
   openForFeature: (
     featureId: string | number,
@@ -37,8 +42,10 @@ interface LabelConfigModalState {
     initialText?: string
   ) => void;
   openForManzanoBatch: (initial: LabelStyleConfig) => void;
+  openForLotsBatch: (manzanoId: string | number | undefined, initial: LabelStyleConfig) => void;
   setNumberingMode: (m: LabelNumberingMode) => void;
   setLastManzanoConfig: (cfg: LabelStyleConfig) => void;
+  setLastLotsConfig: (cfg: LabelStyleConfig) => void;
   close: () => void;
 }
 
@@ -48,6 +55,7 @@ export const useLabelConfigModalStore = create<LabelConfigModalState>()((set) =>
   initialConfig: null,
   initialText: '',
   lastManzanoConfig: null,
+  lastLotsConfig: null,
   numberingMode: 'alpha',
   openForFeature: (featureId, initial, initialText = '') =>
     set({
@@ -70,7 +78,15 @@ export const useLabelConfigModalStore = create<LabelConfigModalState>()((set) =>
       initialConfig: initial,
       initialText: '',
     }),
+  openForLotsBatch: (manzanoId, initial) =>
+    set({
+      open: true,
+      target: { kind: 'batch-lots', manzanoId },
+      initialConfig: initial,
+      initialText: '',
+    }),
   setNumberingMode: (m) => set({ numberingMode: m }),
   setLastManzanoConfig: (cfg) => set({ lastManzanoConfig: cfg }),
+  setLastLotsConfig: (cfg) => set({ lastLotsConfig: cfg }),
   close: () => set({ open: false, target: null, initialConfig: null, initialText: '' }),
 }));

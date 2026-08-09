@@ -16,6 +16,7 @@ import { useGenerateLotsProgressStore } from '../../store/ui/generateLotsProgres
 import { estimateGeometryBytes } from '../core/memoryEstimate';
 import { computeAreaCorrectionFactor, computeLinearCorrectionFactor } from './areaCorrection';
 import { createLotFeature } from './createLotFeature';
+import type { LabelStyleConfig } from '../../core/labelModel';
 
 const geoJsonFormat = new GeoJSON();
 
@@ -149,6 +150,7 @@ export class GenerateLotsCommand extends Command {
         centroid: centroidAverage(ringPts),
       });
       const oldLots: Feature<Geometry>[] = [];
+      let carriedLabelConfig: LabelStyleConfig | undefined;
       ctx.drawSource.forEachFeature((f) => {
         if (f.get('lotGroupId') === String(id)) oldLots.push(f as Feature<Geometry>);
       });
@@ -163,6 +165,8 @@ export class GenerateLotsCommand extends Command {
             props,
           });
         }
+        if (!carriedLabelConfig)
+          carriedLabelConfig = f.get('labelConfig') as LabelStyleConfig | undefined;
         ctx.drawSource.removeFeature(f);
       }
 
@@ -176,6 +180,10 @@ export class GenerateLotsCommand extends Command {
           preferredLayerId: this.opts.layerId,
           autoCreateLayer: false,
         });
+        if (carriedLabelConfig) {
+          feature.set('labelConfig', carriedLabelConfig, true);
+          feature.set('labelText', feature.get('code') as string, true);
+        }
         ctx.drawSource.addFeature(feature);
         this.newLotIds.push(lotId);
       });

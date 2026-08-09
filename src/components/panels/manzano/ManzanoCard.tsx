@@ -4,6 +4,8 @@ import { useSelectionStore } from '../../../store/map/selectionStore';
 import { formatMetricArea } from '../../../geo/metrics';
 import { SUBDIVISION_METHOD_INFO } from '../../../geo/subdivision/subdivisionMethodLabels';
 import { useLayersStore } from '../../../store/entities/layersRegistryStore';
+import { useLabelConfigModalStore } from '../../../store/ui/labelConfigModalStore';
+import { defaultLabelStyleConfig, defaultColorForKind } from '../../../core/labelModel';
 import type { ManzanoRow } from '../../../geo/selectors/manzanoRows';
 
 const METHOD_BTNS = (['auto', 'exact', 'modo2'] as ManzanoLoteMethod[]).map((key) => ({
@@ -47,6 +49,11 @@ export default function ManzanoCard({
   const cancelRotateLots = useManzanoStore((s) => s.cancelRotateLots);
   const isSelected = useSelectionStore((s) => s.selectedIds.has(row.id));
   const selectOnMap = useSelectionStore((s) => s.setSelection);
+  const openLotsBatch = useLabelConfigModalStore((s) => s.openForLotsBatch);
+  const lastLotsConfig = useLabelConfigModalStore((s) => s.lastLotsConfig);
+  const handleLabelLots = () => {
+    openLotsBatch(row.id, lastLotsConfig ?? defaultLabelStyleConfig({ prefix: 'Lote', color: defaultColorForKind('lote') }));
+  };
 
   const [lotsOpen, setLotsOpen] = useState(false);
   const [manualAngleOpen, setManualAngleOpen] = useState(false);
@@ -152,6 +159,12 @@ export default function ManzanoCard({
                     )}
                   </div>
                 </div>
+              )}
+
+              {row.lots.length > 0 && (
+                <button onClick={handleLabelLots} className="cad-icon-btn" style={{ width: '100%', height: 24, marginTop: 6, fontSize: '0.62rem' }}>
+                  🏷 Etiquetar lotes de este manzano
+                </button>
               )}
 
               {geomChanged && (

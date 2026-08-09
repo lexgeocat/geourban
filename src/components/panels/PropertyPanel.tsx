@@ -215,56 +215,36 @@ export default function PropertyPanel() {
               Este es el perímetro del sitio (referencia intacta). Trazá calles para generar manzanos.
             </p>
           )}
+          {isPolygon && featureKind === 'manzana' && (
+            <button
+              onClick={() => focusManzanoInSidebar(primaryId)}
+              className="cad-icon-btn"
+              style={{
+                width: '100%', height: 'auto', padding: '6px 10px', fontSize: '0.7rem', fontWeight: 500,
+                background: 'var(--cad-bg-surface)', border: '1px solid var(--cad-border)',
+                color: 'var(--cad-text-dim)', borderRadius: 4, display: 'flex', alignItems: 'center',
+                justifyContent: 'center', gap: 4,
+              }}
+            >
+              Subdividir este polígono
+            </button>
+          )}
           {isPolygon && featureKind !== 'perimetro' && (
-            <>
-              <button
-                onClick={() => {
-                  focusManzanoInSidebar(primaryId);
-                }}
-                className="cad-icon-btn"
-                style={{
-                  width: '100%',
-                  height: 'auto',
-                  padding: '6px 10px',
-                  fontSize: '0.7rem',
-                  fontWeight: 500,
-                  background: 'var(--cad-bg-surface)',
-                  border: '1px solid var(--cad-border)',
-                  color: 'var(--cad-text-dim)',
-                  borderRadius: 4,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 4,
-                }}
-              >
-                Subdividir este polígono
-              </button>
-              <button
-                onClick={() => {
-                  const existing = feat.get('labelConfig');
-                  openLabelModal(primaryId, existing ?? defaultLabelStyleConfig({ color: defaultColorForKind(featureKind) }));
-                }}
-                className="cad-icon-btn"
-                style={{
-                  width: '100%',
-                  height: 'auto',
-                  padding: '6px 10px',
-                  fontSize: '0.7rem',
-                  fontWeight: 500,
-                  background: 'var(--cad-bg-surface)',
-                  border: '1px solid var(--cad-border)',
-                  color: 'var(--cad-text-dim)',
-                  borderRadius: 4,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 4,
-                }}
-              >
-                🏷 Generar etiqueta
-              </button>
-            </>
+            <button
+              onClick={() => {
+                const existing = feat.get('labelConfig');
+                openLabelModal(primaryId, existing ?? defaultLabelStyleConfig({ color: defaultColorForKind(featureKind) }));
+              }}
+              className="cad-icon-btn"
+              style={{
+                width: '100%', height: 'auto', padding: '6px 10px', fontSize: '0.7rem', fontWeight: 500,
+                background: 'var(--cad-bg-surface)', border: '1px solid var(--cad-border)',
+                color: 'var(--cad-text-dim)', borderRadius: 4, display: 'flex', alignItems: 'center',
+                justifyContent: 'center', gap: 4,
+              }}
+            >
+              🏷 Generar etiqueta
+            </button>
           )}
         </div>
       </div>

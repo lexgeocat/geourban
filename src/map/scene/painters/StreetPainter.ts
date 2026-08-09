@@ -5,22 +5,11 @@ import { type CornerMode } from '../../../geo/roads/ringFillet';
 import type { RoadNetworkNet } from '../../../geo/roads/types';
 import { computeRoadNetworkNetInWorker } from '../../../workers/geoWorkerClient';
 import { type Pt } from '../../../geo/math/polygonEngine';
-import { distToSegment } from '../../../geo/math/dist';
-import { measureCachedWidth } from '../../textMeasureCache';
 import { useLayersStore } from '../../../store/entities/layersRegistryStore';
 import { withAlpha } from '../DrawLayerRenderer';
 import type { Layer } from '../../../core/objectModel';
 import { roundaboutGeometry } from '../../../geo/roundabout/roundaboutEngine';
 import { getLayerByIdCached, resolveRoundaboutLayer } from './layersPainterHelpers';
-
-type StreetChain = Array<{ from: Pt; to: Pt; len: number }>;
-type CrossingsMap = globalThis.Map<string, Pt[]>;
-type StreetLabelSlot = { pos: Pt; segFrom: Pt; segTo: Pt };
-
-interface StreetLabelZone {
-  lo: number;
-  hi: number;
-}
 
 const FALLBACK_STREET_COLOR = '#f78166';
 const NO_LAYER_KEY = '__geourban_street_no_layer__';
@@ -42,43 +31,6 @@ function roundaboutsHash(roundabouts: Roundabout[]): string {
         `${r.id}:${r.center[0]},${r.center[1]}:${r.radiusM}:${r.sides}:${r.rotation}:${r.roadWidthM}:${r.sidewalkWidthM}`
     )
     .join('|');
-}
-
-function buildStreetChain(coords: Array<[number, number]>): StreetChain {
-  const chain: StreetChain = [];
-  for (let i = 1; i < coords.length; i++) {
-    const from = coords[i - 1];
-    const to = coords[i];
-    const len = Math.hypot(to[0] - from[0], to[1] - from[1]);
-    chain.push({ from, to, len });
-  }
-  return chain;
-}
-
-function segSegIntersection(a1: Pt, a2: Pt, b1: Pt, b2: Pt): Pt | null {
-  const dax = a2[0] - a1[0],
-    day = a2[1] - a1[1];
-  const dbx = b2[0] - b1[0],
-    dby = b2[1] - b1[1];
-  const den = dax * dby - day * dbx;
-  if (Math.abs(den) < 1e-12) return null;
-  const t = ((b1[0] - a1[0]) * dby - (b1[1] - a1[1]) * dbx) / den;
-  const u = ((b1[0] - a1[0]) * day - (b1[1] - a1[1]) * dax) / den;
-  if (t >= 0 && t <= 1 && u >= 0 && u <= 1) return [a1[0] + t * dax, a1[1] + t * day];
-  return null;
-}
-
-function computeStreetPairCrossings(si: Street, sj: Street): Pt[] {
-  const chainI = buildStreetChain([si.start, ...(si.waypoints ?? []), si.end]);
-  const chainJ = buildStreetChain([sj.start, ...(sj.waypoints ?? []), sj.end]);
-  const points: Pt[] = [];
-  for (const segI of chainI) {
-    for (const segJ of chainJ) {
-      const pt = segSegIntersection(segI.from, segI.to, segJ.from, segJ.to);
-      if (pt) points.push(pt);
-    }
-  }
-  return points;
 }
 
 function clipSegmentOutsideCircle(a: Pt, b: Pt, center: Pt, radius: number): Array<[Pt, Pt]> {
@@ -111,6 +63,13 @@ function clipSegmentOutsideCircle(a: Pt, b: Pt, center: Pt, radius: number): Arr
   return segs;
 }
 
+function streetAllCoords(s: Street): Array<[number, number]> {
+  const coords: Array<[number, number]> = [s.start];
+  if (s.waypoints) coords.push(...s.waypoints);
+  coords.push(s.end);
+  return coords;
+}
+
 function clipStreetAxisSegments(
   coords: Array<[number, number]>,
   roundabouts: Roundabout[]
@@ -131,143 +90,6 @@ function clipStreetAxisSegments(
     segs = next;
   }
   return segs;
-}
-
-function computeCrossingOffsets(chain: StreetChain, crossings: Pt[]): number[] {
-  const offsets: number[] = [];
-  let walk = 0;
-  for (const seg of chain) {
-    for (const c of crossings) {
-      const d = distToSegment(c, seg.from, seg.to);
-      if (d < 0.5) {
-        const t =
-          ((c[0] - seg.from[0]) * (seg.to[0] - seg.from[0]) +
-            (c[1] - seg.from[1]) * (seg.to[1] - seg.from[1])) /
-          (seg.len * seg.len);
-        offsets.push(walk + Math.max(0, Math.min(seg.len, t * seg.len)));
-      }
-    }
-    walk += seg.len;
-  }
-  return offsets;
-}
-
-function sampleChainAt(
-  chain: StreetChain,
-  dist: number
-): { pos: Pt; segFrom: Pt; segTo: Pt } | null {
-  let walk = 0;
-  for (const seg of chain) {
-    const isLast = seg === chain[chain.length - 1];
-    if (dist <= walk + seg.len || isLast) {
-      const t = seg.len > 1e-6 ? Math.max(0, Math.min(1, (dist - walk) / seg.len)) : 0;
-      const pos: Pt = [
-        seg.from[0] + t * (seg.to[0] - seg.from[0]),
-        seg.from[1] + t * (seg.to[1] - seg.from[1]),
-      ];
-      return { pos, segFrom: seg.from, segTo: seg.to };
-    }
-    walk += seg.len;
-  }
-  return null;
-}
-
-function pickStreetLabelSlots(
-  ctx: CanvasRenderingContext2D,
-  coords: Array<[number, number]>,
-  crossings: Pt[],
-  labelText: string,
-  fontPx: number,
-  roadHalfWidthM: number,
-  resolution: number,
-  repeatM = 140
-): StreetLabelSlot[] {
-  const chain = buildStreetChain(coords);
-  const totalLen = chain.reduce((s, c) => s + c.len, 0);
-  if (totalLen < 1) return [];
-
-  ctx.save();
-  ctx.font = `bold ${fontPx}px Courier New`;
-  const textHalfW = (measureCachedWidth(ctx, labelText) / 2 + 4) * resolution;
-  ctx.restore();
-
-  const marginM = textHalfW + roadHalfWidthM + 4;
-  const zones: StreetLabelZone[] = [
-    { lo: 0, hi: marginM },
-    { lo: totalLen - marginM, hi: totalLen },
-  ];
-  for (const off of computeCrossingOffsets(chain, crossings)) {
-    zones.push({ lo: off - marginM, hi: off + marginM });
-  }
-  zones.sort((a, b) => a.lo - b.lo);
-
-  const merged: StreetLabelZone[] = [];
-  for (const z of zones) {
-    const lo = Math.max(0, z.lo),
-      hi = Math.min(totalLen, z.hi);
-    if (hi <= lo) continue;
-    const last = merged[merged.length - 1];
-    if (last && lo <= last.hi) last.hi = Math.max(last.hi, hi);
-    else merged.push({ lo, hi });
-  }
-
-  const free: StreetLabelZone[] = [];
-  let cursor = 0;
-  for (const z of merged) {
-    if (z.lo > cursor) free.push({ lo: cursor, hi: z.lo });
-    cursor = Math.max(cursor, z.hi);
-  }
-  if (cursor < totalLen) free.push({ lo: cursor, hi: totalLen });
-
-  const slots: StreetLabelSlot[] = [];
-  for (const { lo, hi } of free) {
-    const usable = hi - lo;
-    if (usable <= 0) continue;
-    const count = Math.max(1, Math.floor(usable / repeatM));
-    const step = count === 1 ? 0 : usable / count;
-    const first = count === 1 ? (lo + hi) / 2 : lo + step / 2;
-    for (let k = 0; k < count; k++) {
-      const sample = sampleChainAt(chain, first + k * step);
-      if (sample) slots.push({ pos: sample.pos, segFrom: sample.segFrom, segTo: sample.segTo });
-    }
-  }
-  return slots;
-}
-
-function streetAllCoords(s: Street): Array<[number, number]> {
-  const coords: Array<[number, number]> = [s.start];
-  if (s.waypoints) coords.push(...s.waypoints);
-  coords.push(s.end);
-  return coords;
-}
-
-function computeAllStreetLabelSlots(
-  ctx: CanvasRenderingContext2D,
-  streets: Street[],
-  crossingsMap: CrossingsMap,
-  zoom: number,
-  resolution: number
-): globalThis.Map<string, StreetLabelSlot[]> {
-  const result = new globalThis.Map<string, StreetLabelSlot[]>();
-  if (zoom <= 12) return result;
-  for (const s of streets) {
-    const crossings = crossingsMap.get(s.id) ?? [];
-    const fs1 = Math.max(9, Math.min(13, (10 * zoom) / 18));
-    const labelText = `--- ${s.name} (Ancho de Vía ${s.widthM.toFixed(2)}m) ---`;
-    const roadHalfWidthM = s.widthM / 2 + Math.max(0, s.sideWidthM ?? 0);
-    const slots = pickStreetLabelSlots(
-      ctx,
-      streetAllCoords(s),
-      crossings,
-      labelText,
-      fs1,
-      roadHalfWidthM,
-      resolution,
-      140
-    );
-    result.set(s.id, slots);
-  }
-  return result;
 }
 
 function resolveStreetLayer(
@@ -294,7 +116,10 @@ const NETWORK_CONNECT_MARGIN_M = 1;
 function streetFootprintExtent(s: Street): [number, number, number, number] {
   const half = s.widthM / 2 + Math.max(0, s.sideWidthM ?? 0);
   const coords = streetAllCoords(s);
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  let minX = Infinity,
+    minY = Infinity,
+    maxX = -Infinity,
+    maxY = -Infinity;
   for (const [x, y] of coords) {
     if (x < minX) minX = x;
     if (x > maxX) maxX = x;
@@ -312,21 +137,24 @@ function roundaboutFootprintExtent(rb: Roundabout): [number, number, number, num
 function extentsOverlap(
   a: [number, number, number, number],
   b: [number, number, number, number],
-  margin: number,
+  margin: number
 ): boolean {
-  return !(a[2] + margin < b[0] || b[2] + margin < a[0] || a[3] + margin < b[1] || b[3] + margin < a[1]);
+  return !(
+    a[2] + margin < b[0] ||
+    b[2] + margin < a[0] ||
+    a[3] + margin < b[1] ||
+    b[3] + margin < a[1]
+  );
 }
 
 function findTouchingStreetGroupKey(
   rb: Roundabout,
-  groups: globalThis.Map<string, StreetLayerGroup>,
+  groups: globalThis.Map<string, StreetLayerGroup>
 ): string | null {
   const rbExtent = roundaboutFootprintExtent(rb);
   for (const [key, group] of groups) {
     for (const s of group.streets) {
-      if (extentsOverlap(rbExtent, streetFootprintExtent(s), NETWORK_CONNECT_MARGIN_M)) {
-        return key;
-      }
+      if (extentsOverlap(rbExtent, streetFootprintExtent(s), NETWORK_CONNECT_MARGIN_M)) return key;
     }
   }
   return null;
@@ -352,10 +180,6 @@ function groupStreetsByLayer(streets: Street[], roundabouts: Roundabout[]): Stre
     getOrCreate(layer?.id ?? NO_LAYER_KEY, layer).streets.push(s);
   }
 
-  // Las rotondas se agrupan con la(s) calle(s) que tocan geométricamente
-  // —aunque estén en otra capa ("Rotonda" vs "Vías")— para que el union
-  // booleano las funda en un solo polígono sin costura. Si no toca
-  // ninguna calle, cae a su propia capa como antes.
   for (const rb of roundabouts) {
     const touchedKey = findTouchingStreetGroupKey(rb, groups);
     if (touchedKey) {
@@ -373,20 +197,11 @@ interface StreetGroupCache {
   net: RoadNetworkNet;
   netHash: string;
   netCornerMode: CornerMode;
-  labelSlots: globalThis.Map<string, StreetLabelSlot[]>;
-  labelHash: string;
 }
 
 export class StreetPainter {
   private currentGroups: StreetLayerGroup[] = [];
   private groupCaches = new globalThis.Map<string, StreetGroupCache>();
-  private cachedCrossings: CrossingsMap = new globalThis.Map();
-  private lastStreetHash = '';
-  private lastLabelZoomBucket = -1;
-  private pairCrossingCache = new globalThis.Map<
-    string,
-    { points: Pt[]; hashA: string; hashB: string }
-  >();
   private readonly requestRender: () => void;
   private unsubscribeStreets: (() => void) | null = null;
   private unsubscribeRoundabouts: (() => void) | null = null;
@@ -465,13 +280,7 @@ export class StreetPainter {
       if (!r) continue;
       let cache = this.groupCaches.get(r.layerId);
       if (!cache) {
-        cache = {
-          net: r.net,
-          netHash: r.hash,
-          netCornerMode: r.cornerMode,
-          labelSlots: new globalThis.Map(),
-          labelHash: '',
-        };
+        cache = { net: r.net, netHash: r.hash, netCornerMode: r.cornerMode };
         this.groupCaches.set(r.layerId, cache);
       } else {
         cache.net = r.net;
@@ -483,61 +292,9 @@ export class StreetPainter {
     if (appliedAny) this.requestRender();
   }
 
-  private streetPairHash(s: Street): string {
-    return `${s.start[0]},${s.start[1]}|${s.end[0]},${s.end[1]}|${s.widthM}|${s.sideWidthM}|${(s.waypoints ?? []).map((w) => `${w[0]},${w[1]}`).join(';')}`;
-  }
-
-  private updateCrossingsCache(streets: Street[]): void {
-    const currentIds = new Set(streets.map((s) => s.id));
-    for (const key of this.pairCrossingCache.keys()) {
-      const [idA, idB] = key.split('::');
-      if (!currentIds.has(idA) || !currentIds.has(idB)) this.pairCrossingCache.delete(key);
-    }
-    const hashes = new globalThis.Map<string, string>();
-    for (const s of streets) hashes.set(s.id, this.streetPairHash(s));
-
-    const crossings: CrossingsMap = new globalThis.Map();
-    for (const s of streets) crossings.set(s.id, []);
-
-    for (let i = 0; i < streets.length; i++) {
-      for (let j = i + 1; j < streets.length; j++) {
-        const sA = streets[i],
-          sB = streets[j];
-        const key = sA.id < sB.id ? `${sA.id}::${sB.id}` : `${sB.id}::${sA.id}`;
-        const hA = hashes.get(sA.id)!,
-          hB = hashes.get(sB.id)!;
-        let entry = this.pairCrossingCache.get(key);
-        if (!entry || entry.hashA !== hA || entry.hashB !== hB) {
-          entry = { points: computeStreetPairCrossings(sA, sB), hashA: hA, hashB: hB };
-          this.pairCrossingCache.set(key, entry);
-        }
-        if (entry.points.length > 0) {
-          crossings.get(sA.id)!.push(...entry.points);
-          crossings.get(sB.id)!.push(...entry.points);
-        }
-      }
-    }
-    this.cachedCrossings = crossings;
-  }
-
-  update(
-    ctx: CanvasRenderingContext2D,
-    zoom: number,
-    _forceDirty: boolean,
-    resolution: number
-  ): void {
+  update(): void {
     const streets = useStreetStore.getState().streets;
     const roundabouts = useRoundaboutStore.getState().roundabouts;
-    const currentHash = streetsHash(streets);
-    const streetsChangedGlobal = currentHash !== this.lastStreetHash;
-    const zoomBucket = Math.round(zoom * 4);
-    const zoomBucketChanged = zoomBucket !== this.lastLabelZoomBucket;
-
-    if (streetsChangedGlobal) {
-      this.updateCrossingsCache(streets);
-      this.lastStreetHash = currentHash;
-    }
-
     const groups = groupStreetsByLayer(streets, roundabouts);
     this.currentGroups = groups;
 
@@ -545,40 +302,19 @@ export class StreetPainter {
     for (const key of this.groupCaches.keys()) {
       if (!seenGroupIds.has(key)) this.groupCaches.delete(key);
     }
-
     for (const group of groups) {
-      const hash = streetsHash(group.streets);
-      let cache = this.groupCaches.get(group.layerId);
-      if (!cache) {
-        cache = {
+      if (!this.groupCaches.has(group.layerId)) {
+        this.groupCaches.set(group.layerId, {
           net: { road: [], outer: [] },
           netHash: '',
           netCornerMode: useRoadCornerStore.getState().mode,
-          labelSlots: new globalThis.Map(),
-          labelHash: '',
-        };
-        this.groupCaches.set(group.layerId, cache);
-      }
-
-      const labelsStale = cache.labelHash !== hash || zoomBucketChanged;
-      if (labelsStale) {
-        cache.labelSlots = computeAllStreetLabelSlots(
-          ctx,
-          group.streets,
-          this.cachedCrossings,
-          zoom,
-          resolution
-        );
-        cache.labelHash = hash;
+        });
       }
     }
-
-    this.lastLabelZoomBucket = zoomBucket;
   }
 
   paint(
     ctx: CanvasRenderingContext2D,
-    zoom: number,
     resolution: number,
     toPx: (c: number[]) => [number, number],
     interacting: boolean
@@ -626,36 +362,6 @@ export class StreetPainter {
       }
       ctx.setLineDash([]);
       ctx.restore();
-
-      const labelOp = (layer.showLabel ? 1 : 0) * layerOp;
-      if (!interacting && zoom > 12 && labelOp > 0.002) {
-        const fs1 = Math.max(9, Math.min(13, (10 * zoom) / 18));
-        const fs2 = Math.max(8, Math.min(11, (9 * zoom) / 18));
-        for (const s of group.streets) {
-          const slots = cache.labelSlots.get(s.id) ?? [];
-          const labelText = `--- ${s.name} (Ancho de Vía ${s.widthM.toFixed(2)}m) ---`;
-          for (const slot of slots) {
-            const px = toPx(slot.pos);
-            const a = toPx(slot.segFrom),
-              b = toPx(slot.segTo);
-            let angle = Math.atan2(b[1] - a[1], b[0] - a[0]);
-            if (angle > Math.PI / 2 || angle < -Math.PI / 2) angle += Math.PI;
-            ctx.save();
-            ctx.globalAlpha *= labelOp;
-            ctx.translate(px[0], px[1]);
-            ctx.rotate(angle);
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.font = `bold ${fs1}px Courier New`;
-            ctx.fillStyle = strokeColor;
-            ctx.fillText(labelText, 0, -fs1 * 0.8);
-            ctx.font = `${fs2}px Courier New`;
-            ctx.fillStyle = withAlpha(strokeColor, 0.7);
-            ctx.fillText('E   J   E    D   E     V   Í   A', 0, fs2 * 0.8);
-            ctx.restore();
-          }
-        }
-      }
     }
   }
 

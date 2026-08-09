@@ -11,6 +11,7 @@ import {
 import { runCommand } from '../../commands/core/CommandStack';
 import { ApplyLabelConfigCommand } from '../../commands/labels/ApplyLabelConfigCommand';
 import { ApplyEntityLabelConfigCommand } from '../../commands/labels/ApplyEntityLabelConfigCommand';
+import { AssignLotsLabelConfigCommand } from '../../commands/labels/AssignLotsLabelConfigCommand';
 import { useDrawStore } from '../../store/map/drawStore';
 
 const ENTITY_COPY: Record<'street' | 'roundabout', { title: string; nameHint: string; metricLabel: string; secondaryLabel: string }> = {
@@ -36,6 +37,7 @@ export default function LabelConfigModal() {
   const numberingMode = useLabelConfigModalStore((s) => s.numberingMode);
   const setNumberingMode = useLabelConfigModalStore((s) => s.setNumberingMode);
   const setLastManzanoConfig = useLabelConfigModalStore((s) => s.setLastManzanoConfig);
+  const setLastLotsConfig = useLabelConfigModalStore((s) => s.setLastLotsConfig);
   const close = useLabelConfigModalStore((s) => s.close);
 
   const [cfg, setCfg] = useState<LabelStyleConfig>(defaultLabelStyleConfig());
@@ -49,6 +51,7 @@ export default function LabelConfigModal() {
 
   if (!target) return null;
   const isBatch = target.kind === 'batch-manzanos';
+  const isBatchLots = target.kind === 'batch-lots';
   const isEntity = target.kind === 'entity';
   const entityCopy = isEntity ? ENTITY_COPY[target.entityType] : null;
 
@@ -65,6 +68,12 @@ export default function LabelConfigModal() {
       close();
       return;
     }
+    if (target.kind === 'batch-lots') {
+      void runCommand(new AssignLotsLabelConfigCommand(cfg, { manzanoId: target.manzanoId }));
+      setLastLotsConfig(cfg);
+      close();
+      return;
+    }
     setLastManzanoConfig(cfg);
     close();
   };
@@ -75,7 +84,13 @@ export default function LabelConfigModal() {
     useDrawStore.getState().setMode('labelOrder');
   };
 
-  const title = isBatch ? 'Etiquetado de manzanos' : entityCopy ? entityCopy.title : 'Generar etiqueta';
+  const title = isBatch
+    ? 'Etiquetado de manzanos'
+    : isBatchLots
+      ? 'Etiquetado de lotes'
+      : entityCopy
+        ? entityCopy.title
+        : 'Generar etiqueta';
 
   return (
     <Modal
@@ -90,7 +105,7 @@ export default function LabelConfigModal() {
       </h2>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: '65vh', overflowY: 'auto', paddingRight: 4 }}>
-        {!isBatch && (
+        {!isBatch && !isBatchLots && (
           <label style={{ fontSize: '0.72rem', color: 'var(--cad-text-dim)', display: 'flex', flexDirection: 'column', gap: 4 }}>
             Nombre
             <input
@@ -187,7 +202,7 @@ export default function LabelConfigModal() {
           Cancelar
         </button>
         <button onClick={handleApplyOnly} className="cad-icon-btn" style={{ width: 'auto', height: 'auto', padding: '7px 14px', fontSize: '0.72rem', fontWeight: 600, color: 'var(--cad-accent)', border: '1px solid var(--cad-accent)', borderRadius: 6 }}>
-          {isBatch ? 'Guardar estilo' : 'Aplicar'}
+          {isBatch ? 'Guardar estilo' : isBatchLots ? 'Aplicar a lotes' : 'Aplicar'}
         </button>
         {isBatch && (
           <button onClick={handleTraceOrder} className="cad-icon-btn" style={{ width: 'auto', height: 'auto', padding: '7px 14px', fontSize: '0.72rem', fontWeight: 700, color: '#0d1117', background: 'var(--cad-accent)', border: '1px solid var(--cad-accent)', borderRadius: 6 }}>
