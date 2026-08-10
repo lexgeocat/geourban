@@ -10,3 +10,11 @@ export { useDraggablePanel } from './hooks/useDraggablePanel';
 export { useIncrementalRender } from './hooks/useIncrementalRender';
 export { useViewportWidth } from './hooks/useViewportWidth';
 export { useDrawSourceTick } from './hooks/useDrawSourceTick';
+
+export {
+  IconPerimeter,
+  IconSubdivide,
+  IconRoundabout,
+  SnapIcon,
+  type SnapKind,
+} from './icons/domainIcons';

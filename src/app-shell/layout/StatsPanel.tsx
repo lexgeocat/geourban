@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import { useMemo } from 'react';
 import { useMapStore } from '@map-core/store/mapStore';
 import { useStreetStore } from '@vias-engine/store/streetStore';
 import { useUiShellStore } from '../store/uiShellStore';

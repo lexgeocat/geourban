@@ -1,11 +1,12 @@
-import React from 'react';
 import { useToastStore, type Toast, type ToastVariant } from './store/toastStore';
+import { CAD_BG_DEEPEST_RGB } from '@kernel/theme/colors';
 
+const VARIANT_BG = `rgba(${CAD_BG_DEEPEST_RGB}, 0.95)`;
 const VARIANT_COLORS: Record<ToastVariant, { bg: string; border: string; fg: string }> = {
-  info:    { bg: 'rgba(13, 17, 23, 0.95)', border: 'var(--cad-accent)',     fg: 'var(--cad-text)' },
-  success: { bg: 'rgba(13, 17, 23, 0.95)', border: '#10b981',               fg: '#10b981' },
-  warning: { bg: 'rgba(13, 17, 23, 0.95)', border: '#e3b341',               fg: '#e3b341' },
-  error:   { bg: 'rgba(13, 17, 23, 0.95)', border: 'var(--cad-accent-red)', fg: 'var(--cad-accent-red)' },
+  info:    { bg: VARIANT_BG, border: 'var(--cad-accent)',     fg: 'var(--cad-text)' },
+  success: { bg: VARIANT_BG, border: '#10b981',               fg: '#10b981' },
+  warning: { bg: VARIANT_BG, border: '#e3b341',               fg: '#e3b341' },
+  error:   { bg: VARIANT_BG, border: 'var(--cad-accent-red)', fg: 'var(--cad-accent-red)' },
 };
 
 const VARIANT_ICONS: Record<ToastVariant, string> = {

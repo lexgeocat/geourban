@@ -1,31 +1,48 @@
+/**
+ * Info visible en el panel del usuario (botones + colores).
+ *
+ * NOTA: las descripciones largas de cada método (`description`) estaban
+ * declaradas previamente en este archivo como campo de la interface, pero
+ * no se consumían en ningún lado. Se movieron a los comentarios arriba de
+ * cada entrada de `SUBDIVISION_METHOD_INFO` por si se quieren usar en
+ * tooltips o ayuda contextual más adelante.
+ */
 export interface MethodLabelInfo {
   key: string;
-  label: string;
   shortLabel: string;
-  description: string;
   color: string;
 }
 
+/**
+ * Auto (Cabecera + Cuerpo) — genera 1 fila de lotes angostos en cada
+ * extremo (junto a las esquinas) y un cuerpo central a doble frente. Es
+ * el método recomendado para manzanos rectangulares o trapezoidales
+ * típicos.
+ */
 export const SUBDIVISION_METHOD_INFO: Record<string, MethodLabelInfo> = {
   auto: {
     key: 'auto',
-    label: 'Auto (Cabecera + Cuerpo)',
     shortLabel: '▣ Auto',
-    description: 'Genera 1 fila de lotes angostos en cada extremo (junto a las esquinas) y un cuerpo central a doble frente. Es el método recomendado para manzanos rectangulares o trapezoidales típicos.',
     color: 'var(--cad-accent)',
   },
+  /**
+   * Área exacta (cuadrícula ideal) — busca que cada lote tenga
+   * exactamente el área objetivo, con cortes alineados a un cuadrilátero
+   * ideal. Último lote puede ser remanente.
+   */
   exact: {
     key: 'exact',
-    label: 'Área exacta (cuadrícula ideal)',
     shortLabel: '◈ Área exacta',
-    description: 'Busca que cada lote tenga exactamente el área objetivo, con cortes alineados a un cuadrilátero ideal. Último lote puede ser remanente.',
     color: 'var(--cad-accent-green)',
   },
+  /**
+   * Eje principal (PCA) — subdivide usando el eje principal (PCA).
+   * Detecta polígonos angostos y adapta la dirección de corte
+   * automáticamente. Genera lotes con el área objetivo indicada.
+   */
   modo2: {
     key: 'modo2',
-    label: 'Eje principal (PCA)',
     shortLabel: '◆ Eje PCA',
-    description: 'Subdivide usando el eje principal (PCA). Detecta polígonos angostos y adapta la dirección de corte automáticamente. Genera lotes con el área objetivo indicada.',
     color: '#4dd0c4',
   },
 };

@@ -1,4 +1,3 @@
-import React from 'react';
 import { useManzanoStore } from '../store/manzanoLotConfigStore';
 import { useGenerateLotsProgressStore } from '../store/generateLotsProgressStore';
 

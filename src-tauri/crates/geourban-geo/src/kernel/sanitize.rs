@@ -1,6 +1,7 @@
 use serde_json::{Map, Value};
 
-use crate::kernel::math::poly_area;
+use crate::kernel::constants::EPSILON_SANITIZE;
+use crate::kernel::math::{close_ring, poly_area};
 use crate::kernel::types::Pt;
 
 const DEFAULT_DEDUPE_EPS: f64 = 1e-4;
@@ -22,21 +23,6 @@ impl Default for SanitizeRingOptions {
             collinear_angle_epsilon: DEFAULT_COLLINEAR_ANGLE_EPS,
             min_area: DEFAULT_MIN_AREA,
         }
-    }
-}
-
-fn close_ring(ring: Vec<Pt>) -> Vec<Pt> {
-    if ring.is_empty() {
-        return ring;
-    }
-    let first = ring[0];
-    let last = *ring.last().unwrap();
-    if (first.0 - last.0).abs() > 1e-12 || (first.1 - last.1).abs() > 1e-12 {
-        let mut out = ring;
-        out.push(first);
-        out
-    } else {
-        ring
     }
 }
 
@@ -242,7 +228,7 @@ pub fn sanitize_ring(
         );
     }
 
-    Some(close_ring(pts))
+    Some(close_ring(&pts, EPSILON_SANITIZE))
 }
 
 pub fn sanitize_rings(rings: &[Vec<Pt>], opts: SanitizeRingOptions, context: &str) -> Vec<Vec<Pt>> {

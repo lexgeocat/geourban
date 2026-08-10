@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Modal } from '@shared-ui/Modal';
 import { useMapStore } from '@map-core/store/mapStore';
 import { useLayersStore } from '@layers-engine/store/layersRegistryStore';
@@ -102,18 +102,13 @@ export default function LayerDeleteModal({ request, onClose }: LayerDeleteModalP
       )}
 
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
-        <button
-          onClick={onClose}
-          className="cad-icon-btn"
-          style={{ width: 'auto', height: 'auto', padding: '7px 12px', fontSize: '0.72rem', color: 'var(--cad-text-dim)', border: '1px solid var(--cad-border)', borderRadius: 6 }}
-        >
+        <button onClick={onClose} className="cad-btn-secondary">
           Cancelar
         </button>
         <button
           onClick={handleConfirm}
           disabled={affectedIds.length > 0 && action === 'move' && !effectiveTarget}
-          className="cad-icon-btn"
-          style={{ width: 'auto', height: 'auto', padding: '7px 14px', fontSize: '0.72rem', fontWeight: 600, color: '#fff', background: 'var(--cad-accent-red)', border: '1px solid var(--cad-accent-red)', borderRadius: 6 }}
+          className="cad-btn-danger"
         >
           Eliminar capa
         </button>

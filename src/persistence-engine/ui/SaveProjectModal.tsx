@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Modal } from '@shared-ui/Modal';
 import { saveProject } from '../projectFile';
 import { useProjectFileStore } from '../store/projectFileStore';
@@ -51,18 +51,13 @@ export default function SaveProjectModal() {
         />
       </label>
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, marginTop: 16 }}>
-        <button
-          onClick={() => setOpen(false)}
-          className="cad-icon-btn"
-          style={{ width: 'auto', height: 'auto', padding: '7px 12px', fontSize: '0.72rem', color: 'var(--cad-text-dim)', border: '1px solid var(--cad-border)', borderRadius: 6 }}
-        >
+        <button onClick={() => setOpen(false)} className="cad-btn-secondary">
           Cancelar
         </button>
         <button
           onClick={() => void handleSave()}
           disabled={busy || !name.trim()}
-          className="cad-icon-btn"
-          style={{ width: 'auto', height: 'auto', padding: '7px 14px', fontSize: '0.72rem', fontWeight: 600, color: '#0d1117', background: 'var(--cad-accent)', border: '1px solid var(--cad-accent)', borderRadius: 6, opacity: busy ? 0.6 : 1 }}
+          className="cad-btn-primary"
         >
           {busy ? <><span className="cad-spinner" /> Guardando…</> : 'Guardar'}
         </button>

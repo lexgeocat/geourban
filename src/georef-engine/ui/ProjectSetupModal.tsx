@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Modal } from '@shared-ui/Modal';
 import { useProjectCrsStore } from '../store/projectCrsStore';
 import { useMapStore } from '@map-core/store/mapStore';

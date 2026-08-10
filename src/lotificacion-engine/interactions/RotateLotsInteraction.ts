@@ -15,7 +15,6 @@ export class RotateLotsInteraction extends Interaction {
   private readonly hostMap: Map;
   private readonly onComplete: (id: string | number, dir: { ax: number; ay: number }) => void;
   private tempSource: VectorSource | null = null;
-  private tempLayer: VectorLayer<VectorSource> | null = null;
   private unsubscribe: (() => void) | null = null;
   private dragging = false;
 
@@ -63,7 +62,6 @@ export class RotateLotsInteraction extends Interaction {
         });
       },
     });
-    this.tempLayer = layer;
     this.hostMap.addLayer(layer);
     this.unsubscribe = useManzanoStore.subscribe((state, prevState) => {
       if (state.rotateAnchor !== prevState.rotateAnchor || state.rotateHandle !== prevState.rotateHandle) {
@@ -77,7 +75,6 @@ export class RotateLotsInteraction extends Interaction {
       this.unsubscribe = null;
       this.hostMap.removeLayer(layer);
       this.tempSource = null;
-      this.tempLayer = null;
     };
   }
 

@@ -1,4 +1,25 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
+import {
+  Layers,
+  ChevronRight,
+  Eye,
+  Lock,
+  LockOpen,
+  Plus,
+  Trash2,
+  Settings2,
+  ChevronUp,
+  ChevronDown,
+  Target,
+  Hexagon,
+  Slash,
+  Focus,
+  ZoomIn,
+  Copy,
+  ArrowRight,
+  Tag,
+  Ruler,
+} from 'lucide-react';
 import { useLayersStore } from '@layers-engine/store/layersRegistryStore';
 import type { LayerKind } from '@kernel/domain-model/featureModel';
 import { useLayerPanelUiStore } from '@layers-engine/store/layerPanelUiStore';
@@ -21,86 +42,53 @@ import { confirmAsync } from '@shared-ui/store/confirmDialogStore';
 import { toast } from '@shared-ui/store/toastStore';
 import { newId } from '@kernel/id/id';
 
-/* ----------- Icons (decorativos · aria-hidden en su punto de uso) ----------- */
-
-const IconLayers = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 14, height: 14 }} aria-hidden="true">
-    <path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z" />
-    <path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65" />
-    <path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65" />
-  </svg>
-);
+/* ----------- Icons (todos vienen de lucide-react; aria-hidden en su punto de uso) ----------- */
 
 const IconChevron = ({ open }: { open: boolean }) => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 11, height: 11, transition: 'transform 150ms ease', transform: open ? 'rotate(90deg)' : 'rotate(0deg)' }} aria-hidden="true">
-    <path d="m9 18 6-6-6-6" />
-  </svg>
+  <ChevronRight
+    size={11}
+    aria-hidden="true"
+    style={{ transition: 'transform 150ms ease', transform: open ? 'rotate(90deg)' : 'rotate(0deg)' }}
+  />
 );
 
 const IconEye = ({ visible }: { visible: boolean }) => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={visible ? '2' : '1.5'} strokeLinecap="round" strokeLinejoin="round" style={{ width: 13, height: 13, opacity: visible ? 1 : 0.4, transition: 'opacity 150ms ease' }} aria-hidden="true">
-    <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
-    <circle cx="12" cy="12" r="3" />
-  </svg>
+  <Eye
+    size={13}
+    strokeWidth={visible ? 2 : 1.5}
+    aria-hidden="true"
+    style={{ opacity: visible ? 1 : 0.4, transition: 'opacity 150ms ease' }}
+  />
 );
 
-const IconLock = ({ locked }: { locked: boolean }) => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: 12, height: 12, opacity: locked ? 1 : 0.3, transition: 'opacity 150ms ease' }} aria-hidden="true">
-    {locked ? (
-      <>
-        <rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
-        <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-      </>
-    ) : (
-      <>
-        <rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
-        <path d="M7 11V7a5 5 0 0 1 9.9-1" />
-      </>
-    )}
-  </svg>
-);
+const IconLock = ({ locked }: { locked: boolean }) =>
+  locked ? (
+    <Lock size={12} strokeWidth={1.5} aria-hidden="true" />
+  ) : (
+    <LockOpen size={12} strokeWidth={1.5} aria-hidden="true" />
+  );
 
-const IconPlus = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 13, height: 13 }} aria-hidden="true">
-    <path d="M12 5v14M5 12h14" />
-  </svg>
-);
-
-const IconTrash = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: 12, height: 12 }} aria-hidden="true">
-    <path d="M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
-  </svg>
-);
-
-const IconGear = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: 13, height: 13 }} aria-hidden="true">
-    <circle cx="12" cy="12" r="3" />
-    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-  </svg>
-);
-
-const IconChevronSmall = ({ dir }: { dir: 'up' | 'down' }) => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ width: 9, height: 9 }} aria-hidden="true">
-    {dir === 'up' ? <polyline points="18 15 12 9 6 15" /> : <polyline points="6 9 12 15 18 9" />}
-  </svg>
-);
+const IconPlus = () => <Plus size={13} aria-hidden="true" />;
+const IconTrash = () => <Trash2 size={12} strokeWidth={1.5} aria-hidden="true" />;
+const IconGear = () => <Settings2 size={13} strokeWidth={1.5} aria-hidden="true" />;
+const IconChevronSmall = ({ dir }: { dir: 'up' | 'down' }) =>
+  dir === 'up' ? <ChevronUp size={9} strokeWidth={3} aria-hidden="true" /> : <ChevronDown size={9} strokeWidth={3} aria-hidden="true" />;
 const IconTarget = ({ filled }: { filled: boolean }) => (
-  <svg viewBox="0 0 24 24" fill={filled ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.75" style={{ width: 12, height: 12 }} aria-hidden="true">
-    <circle cx="12" cy="12" r="8" />
-    <circle cx="12" cy="12" r="2.5" fill="currentColor" stroke="none" />
-  </svg>
+  <Target
+    size={12}
+    strokeWidth={1.75}
+    fill={filled ? 'currentColor' : 'none'}
+    aria-hidden="true"
+  />
 );
-
-const IconPolygonKind = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ width: 11, height: 11 }} aria-hidden="true">
-    <path d="M12 2 21 8.5 17.5 20H6.5L3 8.5Z" />
-  </svg>
-);
-const IconLineKind = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" style={{ width: 11, height: 11 }} aria-hidden="true">
-    <path d="M4 20 20 4" />
-  </svg>
-);
+const IconPolygonKind = () => <Hexagon size={11} strokeWidth={1.5} aria-hidden="true" />;
+const IconLineKind = () => <Slash size={11} strokeWidth={1.75} aria-hidden="true" />;
+const IconIsolate = () => <Focus size={12} strokeWidth={1.75} aria-hidden="true" />;
+const IconZoomTo = () => <ZoomIn size={12} strokeWidth={1.75} aria-hidden="true" />;
+const IconDuplicate = () => <Copy size={12} strokeWidth={1.75} aria-hidden="true" />;
+const IconMoveToLayer = () => <ArrowRight size={12} strokeWidth={1.75} aria-hidden="true" />;
+const IconLabelTag = () => <Tag size={12} strokeWidth={1.75} aria-hidden="true" />;
+const IconRuler = () => <Ruler size={12} strokeWidth={1.75} aria-hidden="true" />;
 
 function geometryIconForKind(kind: LayerKind) {
   if (kind === 'calle' || kind === 'linea' || kind === 'rotonda') return <IconLineKind />;
@@ -111,47 +99,6 @@ function geometryLabelForKind(kind: LayerKind): string {
   if (kind === 'calle' || kind === 'linea' || kind === 'rotonda') return 'línea';
   return 'polígono';
 }
-
-const IconIsolate = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" style={{ width: 12, height: 12 }} aria-hidden="true">
-    <circle cx="12" cy="12" r="3" />
-    <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z" />
-  </svg>
-);
-const IconZoomTo = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" style={{ width: 12, height: 12 }} aria-hidden="true">
-    <circle cx="11" cy="11" r="7" />
-    <path d="m21 21-4.35-4.35" />
-    <path d="M11 8v6M8 11h6" />
-  </svg>
-);
-const IconDuplicate = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" style={{ width: 12, height: 12 }} aria-hidden="true">
-    <rect x="8" y="8" width="12" height="12" rx="2" />
-    <path d="M4 16V4a2 2 0 0 1 2-2h10" />
-  </svg>
-);
-const IconMoveToLayer = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" style={{ width: 12, height: 12 }} aria-hidden="true">
-    <path d="M5 12h14M13 6l6 6-6 6" />
-  </svg>
-);
-
-/** Icono de etiquetas (nombre/número de la entidad). */
-const IconLabelTag = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" style={{ width: 12, height: 12 }} aria-hidden="true">
-    <path d="M12 2H4a2 2 0 0 0-2 2v6l10 10a2 2 0 0 0 2.83 0l6.17-6.17a2 2 0 0 0 0-2.83L12 2Z" />
-    <circle cx="7.5" cy="7.5" r="1.15" fill="currentColor" stroke="none" />
-  </svg>
-);
-
-/** Icono de acotaciones (cotas de segmentos/área). */
-const IconRuler = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" style={{ width: 12, height: 12 }} aria-hidden="true">
-    <rect x="3" y="8" width="18" height="8" rx="1.5" />
-    <path d="M7 8v3M11 8v3M15 8v3M19 8v3" />
-  </svg>
-);
 
 /* ----------- Color Picker (contorno de capa) ----------- */
 
@@ -740,7 +687,7 @@ export default function LayerPanel() {
           color: open ? 'var(--cad-accent)' : 'var(--cad-text-dim)',
         }}
       >
-        <IconLayers />
+        <Layers size={14} aria-hidden="true" />
       </button>
 
       {open && (

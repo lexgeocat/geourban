@@ -1,3 +1,33 @@
+// ─────────────────────────────────────────────────────────────────────────
+// NOTA ARQUITECTÓNICA — DOBLE ÍNDICE ESPACIAL (Fase 6.1 del plan)
+//
+// Este índice Rust (rstar) coexiste **deliberadamente** con el índice
+// JS en `kernel/spatial-index/spatialIndex.ts` (rbush). NO son la
+// misma estructura con dos implementaciones — son dos índices
+// distintos que sirven a consumidores distintos con requisitos de
+// latencia distintos:
+//
+//   1. `SpatialIndex` JS (rbush) — **síncrono**, latencia ~0.1ms por
+//      query. Lo usa `SnapEngine` (`snap-engine/geometry/
+//      advancedSnap.ts`) en el hot path de `pointermove`. Hacer una
+//      query async al Rust por frame introduciría lag perceptible.
+//
+//   2. `SpatialIndex` Rust (rstar, este archivo) — **asíncrono** vía
+//      `geoWorkerClient`. Mayor latencia pero más preciso y escalable.
+//      Se usa para hit-test de click/selección
+//      (`PostrenderPainter.getVisibleFeatures` para culling de
+//      renderizado) donde el await es aceptable.
+//
+// Ambos índices se mantienen **en paralelo**: cada `addfeature` /
+// `removefeature` / `changefeature` dispara la actualización del JS en
+// el store de mapa y la del Rust vía `geoWorkerClient`. Es trabajo
+// duplicado intencionalmente — fusionarlos perdería la propiedad de
+// respuesta síncrona de SnapEngine.
+//
+// Si en el futuro se quiere consolidar, ver `spatialIndex.ts` (TS) para
+// la lista de condiciones que hay que satisfacer primero.
+// ─────────────────────────────────────────────────────────────────────────
+
 use rstar::{RTree, RTreeObject, AABB};
 use serde_json::Value;
 use std::collections::HashMap;

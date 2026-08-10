@@ -2,7 +2,7 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import type { RoundaboutParams } from '../geometry/roundaboutEngine';
-import { autoName } from '@kernel/id/autoName';
+import { createIdCounter, nextEntityName, renumberEntityNames } from './roadEntityStore';
 
 export interface Roundabout extends RoundaboutParams {
   id: string;
@@ -28,11 +28,7 @@ interface RoundaboutState {
   setDefaultSidewalkWidth: (v: number) => void;
 }
 
-let nextId = 1;
-
-function resetNextId(): void {
-  nextId = 1;
-}
+const roundaboutIdCounter = createIdCounter();
 
 export const useRoundaboutStore = create<RoundaboutState>()(
   immer((set) => ({
@@ -46,9 +42,9 @@ export const useRoundaboutStore = create<RoundaboutState>()(
     addRoundabout: (r) => {
       let newId = '';
       set((state) => {
-        const id = `roundabout-${nextId++}`;
+        const id = roundaboutIdCounter.next('roundabout-');
         newId = id;
-        state.roundabouts.push({ ...r, id, name: autoName(state.roundabouts.length, 'Rotonda') });
+        state.roundabouts.push({ ...r, id, name: nextEntityName(state.roundabouts.length, 'Rotonda') });
       });
       return newId;
     },
@@ -56,7 +52,7 @@ export const useRoundaboutStore = create<RoundaboutState>()(
     addRoundaboutWithId: (id, r) =>
       set((state) => {
         if (state.roundabouts.some((x) => x.id === id)) return;
-        state.roundabouts.push({ ...r, id, name: autoName(state.roundabouts.length, 'Rotonda') });
+        state.roundabouts.push({ ...r, id, name: nextEntityName(state.roundabouts.length, 'Rotonda') });
       }),
 
     updateRoundabout: (id, patch) =>
@@ -68,15 +64,13 @@ export const useRoundaboutStore = create<RoundaboutState>()(
     removeRoundabout: (id) =>
       set((state) => {
         state.roundabouts = state.roundabouts.filter((r) => r.id !== id);
-        state.roundabouts.forEach((r, i) => {
-          r.name = autoName(i, 'Rotonda');
-        });
+        renumberEntityNames(state.roundabouts, 'Rotonda');
       }),
 
     clearRoundabouts: () =>
       set((state) => {
         state.roundabouts = [];
-        resetNextId();
+        roundaboutIdCounter.reset();
       }),
 
     setDefaultRadius: (v) =>

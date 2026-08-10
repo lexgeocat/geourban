@@ -23,7 +23,7 @@ export const EMPTY_STRUCTURAL_DIFF: Readonly<StructuralDiff> = Object.freeze({
   modified: [],
 });
 
-export function isEmptyStructuralDiff(diff: StructuralDiff): boolean {
+function isEmptyStructuralDiff(diff: StructuralDiff): boolean {
   return diff.added.length === 0 && diff.removed.length === 0 && diff.modified.length === 0;
 }
 

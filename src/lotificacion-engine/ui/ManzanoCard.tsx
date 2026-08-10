@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useManzanoStore, type ManzanoLoteMethod } from '../store/manzanoLotConfigStore';
 import { useSelectionStore } from '@selection-engine/store/selectionStore';
 import { formatMetricArea } from '@georef-engine/metrics';

@@ -31,6 +31,7 @@ import { toast } from '@shared-ui/store/toastStore';
 import { formatMetricLength, streetLengthMetricM } from '@georef-engine/metrics';
 import { roundaboutRoadAreaM2 } from '@vias-engine/geometry/roundaboutEngine';
 import { getFeatureKind } from '@kernel/domain-model/featureModel';
+import { CAD_BG_DEEPEST_RGB } from '@kernel/theme/colors';
 
 const ENTITY_COPY: Record<'street' | 'roundabout', { title: string; nameHint: string; metricLabel: string; secondaryLabel: string }> = {
   street: {
@@ -93,7 +94,7 @@ function LabelPreview({ cfg, lines }: { cfg: LabelStyleConfig; lines: string[] }
       {cfg.enabled && lines.length > 0 ? (
         <div
           style={{
-            background: 'rgba(13, 17, 23, 0.72)',
+            background: `rgba(${CAD_BG_DEEPEST_RGB}, 0.72)`,
             padding: '3px 7px',
             borderRadius: 3,
             textAlign: 'center',
@@ -450,24 +451,23 @@ export default function LabelConfigModal() {
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, marginTop: 12, flexWrap: 'wrap' }}>
-        <button onClick={close} className="cad-icon-btn" style={{ width: 'auto', height: 'auto', padding: '6px 10px', fontSize: '0.7rem', color: 'var(--cad-text-dim)', border: '1px solid var(--cad-border)', borderRadius: 6 }}>
+        <button onClick={close} className="cad-btn-secondary">
           Cancelar
         </button>
         {(isBatch || isBatchLots) && (
           <button
             onClick={handleRestyleOnly}
-            className="cad-icon-btn"
+            className="cad-btn-secondary"
             title="Actualiza color, tamaño, fuente, prefijo, cotas, etc. de lo YA etiquetado — sin renumerar ni volver a trazar."
-            style={{ width: 'auto', height: 'auto', padding: '6px 12px', fontSize: '0.7rem', fontWeight: 600, color: 'var(--cad-text-dim)', border: '1px solid var(--cad-border)', borderRadius: 6 }}
           >
             🎨 Solo actualizar estilo
           </button>
         )}
-        <button onClick={handleApplyOnly} className="cad-icon-btn" style={{ width: 'auto', height: 'auto', padding: '6px 12px', fontSize: '0.7rem', fontWeight: 600, color: 'var(--cad-accent)', border: '1px solid var(--cad-accent)', borderRadius: 6 }}>
+        <button onClick={handleApplyOnly} className="cad-btn-primary">
           {primaryLabel}
         </button>
         {(isBatch || isBatchLots) && (
-          <button onClick={handleTraceOrder} className="cad-icon-btn" style={{ width: 'auto', height: 'auto', padding: '6px 12px', fontSize: '0.7rem', fontWeight: 700, color: '#0d1117', background: 'var(--cad-accent)', border: '1px solid var(--cad-accent)', borderRadius: 6 }}>
+          <button onClick={handleTraceOrder} className="cad-btn-primary">
             ▶ Trazar orden…
           </button>
         )}

@@ -20,14 +20,14 @@ export interface Layer {
   showCota: boolean;
 }
 
-export interface LayerSuggestion {
+interface LayerSuggestion {
   kind: GeoUrbanFeatureKind;
   name: string;
   color: string;
   geometryHint: 'polygon' | 'line' | 'point';
 }
 
-export const LAYER_SUGGESTIONS: LayerSuggestion[] = [
+const LAYER_SUGGESTIONS: LayerSuggestion[] = [
   { kind: 'perimetro', name: 'Perímetro', color: '#f0f6fc', geometryHint: 'polygon' },
   { kind: 'manzana', name: 'Manzano', color: '#f59e0b', geometryHint: 'polygon' },
   { kind: 'lote', name: 'Lote', color: '#58a6ff', geometryHint: 'polygon' },
@@ -45,7 +45,7 @@ export function getLayerSuggestion(kind: GeoUrbanFeatureKind): LayerSuggestion |
   return LAYER_SUGGESTIONS.find((s) => s.kind === kind);
 }
 
-export interface BaseFeatureProps {
+interface BaseFeatureProps {
   kind: GeoUrbanFeatureKind;
   createdAt: string;
   label?: string;
@@ -54,7 +54,7 @@ export interface BaseFeatureProps {
   labelText?: string;
 }
 
-export interface LoteProps extends BaseFeatureProps {
+interface LoteProps extends BaseFeatureProps {
   kind: 'lote';
   areaM2: number;
   perimeterM: number;
@@ -68,7 +68,7 @@ export interface LoteProps extends BaseFeatureProps {
 
 export type LotStatus = 'none' | 'subdivided' | 'pending';
 
-export interface ManzanaProps extends BaseFeatureProps {
+interface ManzanaProps extends BaseFeatureProps {
   kind: 'manzana';
   areaM2: number;
   colorIdx: number;
@@ -77,21 +77,21 @@ export interface ManzanaProps extends BaseFeatureProps {
   lotStatus?: LotStatus;
 }
 
-export interface CalleProps extends BaseFeatureProps {
+interface CalleProps extends BaseFeatureProps {
   kind: 'calle';
   widthM: number;
 }
 
-export interface EquipamientoProps extends BaseFeatureProps {
+interface EquipamientoProps extends BaseFeatureProps {
   kind: 'equipamiento';
   areaM2: number;
 }
 
-export interface LineaProps extends BaseFeatureProps {
+interface LineaProps extends BaseFeatureProps {
   kind: 'linea';
 }
 
-export interface PerimetroProps extends BaseFeatureProps {
+interface PerimetroProps extends BaseFeatureProps {
   kind: 'perimetro';
   areaM2?: number;
   perimeterM?: number;
@@ -110,7 +110,7 @@ const KNOWN_KINDS: ReadonlySet<GeoUrbanFeatureKind> = new Set<GeoUrbanFeatureKin
   'perimetro',
 ]);
 
-export function isGeoUrbanFeatureKind(value: unknown): value is GeoUrbanFeatureKind {
+function isGeoUrbanFeatureKind(value: unknown): value is GeoUrbanFeatureKind {
   return typeof value === 'string' && (KNOWN_KINDS as Set<string>).has(value);
 }
 
@@ -124,7 +124,7 @@ const VALID_LOT_STATUSES: ReadonlySet<LotStatus> = new Set<LotStatus>([
   'pending',
 ]);
 
-export function isLotStatus(value: unknown): value is LotStatus {
+function isLotStatus(value: unknown): value is LotStatus {
   return typeof value === 'string' && (VALID_LOT_STATUSES as Set<string>).has(value);
 }
 

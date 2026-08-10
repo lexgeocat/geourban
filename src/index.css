@@ -213,6 +213,75 @@ body,
 }
 
 /* ============================================================
+   Botones de acción de modal (Fase 3 — antes: estilos inline
+   copy-pasteados con drift de padding/fontSize entre 4 modales).
+   Tamaño unificado: 7px 14px / 0.72rem. Tres variantes:
+   .cad-btn-secondary  → "Cancelar" (outline neutral)
+   .cad-btn-primary    → acción principal positiva (accent sólido)
+   .cad-btn-danger     → acción destructiva (rojo sólido)
+   ============================================================ */
+.cad-btn-secondary,
+.cad-btn-primary,
+.cad-btn-danger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: auto;
+  height: auto;
+  padding: 7px 14px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: opacity var(--cad-transition), transform var(--cad-transition);
+  outline: none;
+  white-space: nowrap;
+}
+.cad-btn-secondary {
+  background: transparent;
+  border: 1px solid var(--cad-border);
+  color: var(--cad-text-dim);
+}
+.cad-btn-secondary:hover:not(:disabled) {
+  border-color: var(--cad-accent);
+  color: var(--cad-accent);
+}
+.cad-btn-primary {
+  background: var(--cad-accent);
+  border: 1px solid var(--cad-accent);
+  color: #0d1117;
+}
+.cad-btn-primary:hover:not(:disabled) {
+  opacity: 0.88;
+}
+.cad-btn-danger {
+  background: var(--cad-accent-red);
+  border: 1px solid var(--cad-accent-red);
+  color: #fff;
+}
+.cad-btn-danger:hover:not(:disabled) {
+  opacity: 0.88;
+}
+.cad-btn-secondary:active,
+.cad-btn-primary:active,
+.cad-btn-danger:active {
+  transform: scale(0.98);
+}
+.cad-btn-secondary:focus-visible,
+.cad-btn-primary:focus-visible,
+.cad-btn-danger:focus-visible {
+  outline: 2px solid var(--cad-accent);
+  outline-offset: 2px;
+}
+.cad-btn-secondary:disabled,
+.cad-btn-primary:disabled,
+.cad-btn-danger:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ============================================================
    Fase 8 — Accesibilidad: reset + foco visible para controles
    "icon-only" fuera de .cad-icon-btn (filas densas de paneles,
    ej. LayerPanel) que antes eran <span onClick> sin foco de teclado.

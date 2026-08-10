@@ -1,4 +1,3 @@
-import React from 'react';
 import { ChevronUp } from 'lucide-react';
 import { useDrawStore } from '@map-core/store/drawStore';
 import { useUiShellStore, type RibbonTabId } from '../store/uiShellStore';

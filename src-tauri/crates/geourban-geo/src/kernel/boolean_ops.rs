@@ -3,7 +3,9 @@ use std::time::Instant;
 use geos::{ContextHandle, CoordDimensions, CoordSeq, Geom, Geometry, GeometryTypes};
 use std::cell::RefCell;
 
+use crate::kernel::constants::EPSILON_NORMAL;
 use crate::kernel::lifetime::{extend_context_lifetime, extend_geometry_lifetime};
+use crate::kernel::math::close_ring;
 use crate::kernel::sanitize::{sanitize_ring, sanitize_rings, SanitizeRingOptions};
 use crate::kernel::types::Pt;
 
@@ -22,21 +24,6 @@ fn round_ring_for_union(ring: &[Pt]) -> Vec<Pt> {
         .collect()
 }
 
-fn close_ring(ring: &[Pt]) -> Vec<Pt> {
-    if ring.is_empty() {
-        return ring.to_vec();
-    }
-    let f = ring[0];
-    let l = *ring.last().unwrap();
-    if (f.0 - l.0).abs() > 1e-9 || (f.1 - l.1).abs() > 1e-9 {
-        let mut out = ring.to_vec();
-        out.push(f);
-        out
-    } else {
-        ring.to_vec()
-    }
-}
-
 thread_local! {
     static GEOS_CTX: RefCell<Option<ContextHandle<'static>>> = const { RefCell::new(None) };
 }
@@ -52,7 +39,7 @@ pub(crate) fn ensure_geos_ctx() {
 }
 
 fn ring_to_linear_ring(ring: &[Pt]) -> Result<Geometry<'static>, geos::Error> {
-    let closed = close_ring(ring);
+    let closed = close_ring(ring, EPSILON_NORMAL);
     let n = closed.len();
     let mut cs = CoordSeq::new(n as u32, CoordDimensions::TwoD)?;
     for (i, &(x, y)) in closed.iter().enumerate() {
@@ -315,6 +302,38 @@ pub fn union_rings(rings: &[Vec<Pt>], context: &str) -> Vec<Vec<Vec<Pt>>> {
     match unioned.and_then(|g| geometry_to_polygons(&g).ok()) {
         Some(polys) if !polys.is_empty() => polys,
         _ => sanitized.into_iter().map(|r| vec![r]).collect(),
+    }
+}
+
+/// Une dos anillos abiertos en un único anillo abierto.
+///
+/// Devuelve `Some(Vec<Pt>)` si la unión resulta en exactamente un polígono
+/// de un solo anillo (después de remover el punto de cierre duplicado).
+/// Devuelve `None` si el resultado no satisface ese invariante.
+///
+/// Esta función NO aplica sanitización ni fallback — el caller decide qué
+/// hacer en caso de `None` (ej. caer a `convex_hull_merge` o propagar el
+/// fallo). Antes este patrón vivía en `subdivision::union_two_lot_rings`
+/// y `cabecera_cuerpo::hb_merge_polys` con pequeñas diferencias; ahora
+/// ambos usan la misma primitiva y difieren solo en su fallback (Fase 4.3
+/// del plan de limpieza).
+pub fn union_two_rings_open(a: &[Pt], b: &[Pt], context: &str) -> Option<Vec<Pt>> {
+    let merged = union_rings(&[a.to_vec(), b.to_vec()], context);
+    if merged.len() != 1 || merged[0].len() != 1 {
+        return None;
+    }
+    let mut ring = merged[0][0].clone();
+    if ring.len() > 1 {
+        let (fx, fy) = ring[0];
+        let (lxp, lyp) = ring[ring.len() - 1];
+        if (fx - lxp).abs() < EPSILON_NORMAL && (fy - lyp).abs() < EPSILON_NORMAL {
+            ring.pop();
+        }
+    }
+    if ring.len() >= 3 {
+        Some(ring)
+    } else {
+        None
     }
 }
 

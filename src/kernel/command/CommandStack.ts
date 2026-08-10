@@ -1,6 +1,6 @@
 ﻿import { create } from 'zustand';
 import { Command } from './Command';
-import { getCommandContext, type CommandContext } from './commandContext';
+import { getCommandContext } from './commandContext';
 import { useSelectionStore } from '@selection-engine/store/selectionStore';
 import { toast } from '@shared-ui/store/toastStore';
 
@@ -196,5 +196,3 @@ export async function undo(): Promise<boolean> {
 export async function redo(): Promise<boolean> {
   return useCommandStack.getState().redo();
 }
-
-export { type CommandContext };

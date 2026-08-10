@@ -1,4 +1,5 @@
 import type { GeoUrbanFeatureKind } from '@kernel/domain-model/featureModel';
+import type { LabelNumberingMode } from './labelNumbering';
 
 export type AreaUnit = 'm2' | 'ha' | 'km2';
 
@@ -149,7 +150,7 @@ export function defaultLabelStyleConfig(overrides?: Partial<LabelStyleConfig>): 
   };
 }
 
-export function formatAreaWithUnit(areaM2: number | undefined, unit: AreaUnit): string {
+function formatAreaWithUnit(areaM2: number | undefined, unit: AreaUnit): string {
   if (!Number.isFinite(areaM2)) return '';
   const v = areaM2 ?? 0;
   switch (unit) {
@@ -185,4 +186,24 @@ export function composeLabelLines(cfg: LabelStyleConfig, metrics: LabelLineMetri
     lines.push(`${metrics.secondaryLabel ?? 'Perím.'} ${metrics.secondaryValue.toFixed(2)} m`);
   }
   return lines;
+}
+
+/**
+ * Resuelve la configuración efectiva a aplicar a una feature para un
+ * `numbering` dado. Hoy el único efecto secundario del modo de numeración
+ * sobre `LabelStyleConfig` es `titleBadge`: los modos `circled` y
+ * `circled-alpha` dibujan los números dentro de una insignia circular.
+ *
+ * Usado por `AssignLabelOrderCommand` y `AssignLotsLabelConfigCommand` (Fase 3.7
+ * del plan de limpieza) — antes cada uno tenía esta misma lógica inline.
+ */
+export function resolveEffectiveLabelConfig(
+  config: LabelStyleConfig,
+  numbering: LabelNumberingMode
+): LabelStyleConfig {
+  const isCircledMode = numbering === 'circled' || numbering === 'circled-alpha';
+  return {
+    ...config,
+    titleBadge: isCircledMode ? 'circle' : 'none',
+  };
 }

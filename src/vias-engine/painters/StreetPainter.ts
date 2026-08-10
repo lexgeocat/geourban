@@ -10,7 +10,7 @@ import { withAlpha } from '@map-core/scene/DrawLayerRenderer';
 import { strokePolyline, traceRing } from '@map-core/scene/canvasPathUtils';
 import type { Layer } from '@kernel/domain-model/featureModel';
 import { roundaboutGeometry } from '../geometry/roundaboutEngine';
-import { getLayerByIdCached, resolveRoundaboutLayer } from '@layers-engine/selectors/layersPainterHelpers';
+import { getLayerByIdCached, resolveEntityLayer, resolveRoundaboutLayer } from '@layers-engine/selectors/layersPainterHelpers';
 
 const FALLBACK_STREET_COLOR = '#f78166';
 const NO_LAYER_KEY = '__geourban_street_no_layer__';
@@ -98,11 +98,7 @@ function resolveStreetLayer(
   registry: ReturnType<typeof useLayersStore.getState>,
   byId: globalThis.Map<string, Layer>
 ): Layer | undefined {
-  if (street.layerId) {
-    const layer = byId.get(street.layerId);
-    if (layer) return layer;
-  }
-  return registry.getLayerForKind('calle');
+  return resolveEntityLayer(street, 'calle', registry, byId);
 }
 
 interface StreetLayerGroup {
@@ -316,7 +312,6 @@ export class StreetPainter {
 
   paint(
     ctx: CanvasRenderingContext2D,
-    resolution: number,
     toPx: (c: number[]) => [number, number],
     interacting: boolean
   ): void {

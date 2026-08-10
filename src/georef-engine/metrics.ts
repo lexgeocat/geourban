@@ -197,7 +197,7 @@ function calculateLineMetrics(geometry: LineString): FeatureMetrics {
   };
 }
 
-export function calculateFeatureMetrics(feature: Feature<Geometry>): FeatureMetrics | null {
+function calculateFeatureMetrics(feature: Feature<Geometry>): FeatureMetrics | null {
   const geometry = feature.getGeometry();
   if (geometry instanceof Polygon) return calculatePolygonMetrics(geometry);
   if (geometry instanceof LineString) return calculateLineMetrics(geometry);

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
-import { autoName } from '@kernel/id/autoName';
+import { createIdCounter, nextEntityName, renumberEntityNames } from './roadEntityStore';
 
 export interface Street {
   id: string;
@@ -29,10 +29,12 @@ interface StreetState {
   setDefaultSideWidth: (w: number) => void;
 }
 
-let nextId = 1;
+const streetIdCounter = createIdCounter();
 
-function resetNextId(): void {
-  nextId = 1;
+function clampStreetParams<T extends Partial<Omit<Street, 'id' | 'name'>>>(p: T): T {
+  const next = { ...p };
+  if (next.widthM != null) next.widthM = Math.max(0.5, next.widthM);
+  return next;
 }
 
 export const useStreetStore = create<StreetState>()(
@@ -43,14 +45,12 @@ export const useStreetStore = create<StreetState>()(
 
     addStreet: (street) => {
       let newId = '';
-      const widthM = Math.max(0.5, street.widthM);
       set((state) => {
-        const id = `street-${nextId++}`;
+        const id = streetIdCounter.next('street-');
         newId = id;
-        const name = autoName(state.streets.length, 'Calle');
+        const name = nextEntityName(state.streets.length, 'Calle');
         state.streets.push({
-          ...street,
-          widthM,
+          ...clampStreetParams(street),
           sideWidthM: street.sideWidthM ?? state.defaultSideWidthM,
           id,
           name,
@@ -62,7 +62,7 @@ export const useStreetStore = create<StreetState>()(
     addStreetWithId: (id, street) =>
       set((state) => {
         if (state.streets.some((s) => s.id === id)) return;
-        const name = autoName(state.streets.length, 'Calle');
+        const name = nextEntityName(state.streets.length, 'Calle');
         state.streets.push({ ...street, id, name });
       }),
 
@@ -70,23 +70,19 @@ export const useStreetStore = create<StreetState>()(
       set((state) => {
         const street = state.streets.find((s) => s.id === id);
         if (!street) return;
-        const next = { ...patch };
-        if (next.widthM != null) next.widthM = Math.max(0.5, next.widthM);
-        Object.assign(street, next);
+        Object.assign(street, clampStreetParams(patch));
       }),
 
     removeStreet: (id) =>
       set((state) => {
         state.streets = state.streets.filter((s) => s.id !== id);
-        state.streets.forEach((s, i) => {
-          s.name = autoName(i, 'Calle');
-        });
+        renumberEntityNames(state.streets, 'Calle');
       }),
 
     clearStreets: () =>
       set((state) => {
         state.streets = [];
-        resetNextId();
+        streetIdCounter.reset();
       }),
 
     setDefaultWidth: (w) =>

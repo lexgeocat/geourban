@@ -1,4 +1,3 @@
-import React from 'react';
 import { Trash2 } from 'lucide-react';
 import { useDrawStore } from '@map-core/store/drawStore';
 import { useStreetStore } from '@vias-engine/store/streetStore';

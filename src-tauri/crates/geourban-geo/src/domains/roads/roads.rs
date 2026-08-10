@@ -1,3 +1,31 @@
+// ─────────────────────────────────────────────────────────────────────────
+// NOTA ARQUITECTÓNICA — PARIDAD TS↔RUST (Fase 6.2 del plan)
+//
+// Esta implementación Rust autoritativa de la red vial y el suavizado
+// de esquinas reflex coexiste con la versión TS preview en:
+//
+//   src/vias-engine/geometry/roadNetworkEngine.ts     (red vial + offset)
+//   src/vias-engine/geometry/ringFillet.ts           (ochave/chaflán)
+//   src/vias-engine/geometry/streetEngine.ts          (radio por ángulo)
+//
+// NO es código duplicado — son dos implementaciones deliberadamente
+// distintas:
+//   1. **TS** — preview sincrónica para render en tiempo real.
+//   2. **Rust (este archivo)** — versión autoritativa con GEOS para
+//      cómputo final confirmado, exportación y operaciones booleanas.
+//
+// La constante `FILLET_MAX_RADIUS_M` se importa de
+// `kernel::constants`. **Debe coincidir** con la constante
+// `FILLET_MAX_RADIUS_M` en `streetEngine.ts` (TS, valor 8).
+//
+// Si cambian las reglas (algoritmo de offset, fórmula del radio de
+// ochave, manejo de ángulos reflex), hay que actualizar **AMBOS**
+// lados. Ver los comentarios de cabecera en los archivos TS
+// correspondientes para la estrategia de verificación de paridad.
+// ─────────────────────────────────────────────────────────────────────────
+
+use crate::kernel::constants::{EPSILON_NORMAL, FILLET_MAX_RADIUS_M};
+use crate::kernel::math::close_ring;
 use crate::kernel::types::{CornerMode, Pt, RoundaboutParams, Street};
 
 fn normalize(dx: f64, dy: f64) -> Pt {
@@ -186,8 +214,6 @@ pub fn build_road_only_rings(streets: &[Street], roundabouts: &[RoundaboutParams
     rings
 }
 
-const FILLET_MAX_RADIUS_M: f64 = 8.0;
-
 pub fn get_fillet_radius_for_angle(angle_deg: f64, road_half_width_m: Option<f64>) -> f64 {
     let table_value = if angle_deg <= 35.0 {
         2.5
@@ -222,21 +248,6 @@ fn ring_signed_area(ring: &[Pt]) -> f64 {
         a += p.0 * q.1 - q.0 * p.1;
     }
     a / 2.0
-}
-
-fn close_ring(pts: Vec<Pt>) -> Vec<Pt> {
-    if pts.is_empty() {
-        return pts;
-    }
-    let f = pts[0];
-    let l = *pts.last().unwrap();
-    if (f.0 - l.0).abs() > 1e-9 || (f.1 - l.1).abs() > 1e-9 {
-        let mut out = pts;
-        out.push(f);
-        out
-    } else {
-        pts
-    }
 }
 
 struct CornerTangents {
@@ -361,10 +372,10 @@ pub fn round_ring_reflex(
     }
     let n = pts.len();
     if n < 3 {
-        return close_ring(pts);
+        return close_ring(&pts, EPSILON_NORMAL);
     }
     if matches!(mode, CornerMode::None) {
-        return close_ring(pts);
+        return close_ring(&pts, EPSILON_NORMAL);
     }
 
     let raw_ccw = ring_signed_area(&pts) >= 0.0;
@@ -411,5 +422,5 @@ pub fn round_ring_reflex(
         }
     }
 
-    close_ring(out)
+    close_ring(&out, EPSILON_NORMAL)
 }

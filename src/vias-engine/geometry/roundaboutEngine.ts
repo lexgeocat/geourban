@@ -1,4 +1,40 @@
-﻿import type { Pt } from '@kernel/geometry/polygonEngine';
+﻿// ─────────────────────────────────────────────────────────────────────────
+// NOTA ARQUITECTÓNICA — PARIDAD TS↔RUST (Fase 6.2 del plan)
+//
+// Esta implementación TypeScript de la geometría de rotonda coexiste
+// con la implementación autoritativa en Rust en:
+//
+//   src-tauri/crates/geourban-geo/src/domains/roads/roundabout.rs
+//
+// NO es código duplicado para "verificar con TS antes de mandar a
+// Rust" — son dos implementaciones deliberadamente distintas:
+//
+//   1. **TS (este archivo)** — implementación aproximada, sincrónica,
+//      rápida. Se usa para:
+//        - Pintar la rotonda en el render (preview durante el trazado,
+//          feedback inmediato mientras el usuario mueve el mouse).
+//        - Hit-test de cursor en `roadSnapSource.ts` para snapping.
+//      Si la implementación fuera async (vía `invoke` a Rust),
+//      introduciría lag perceptible al arrastrar.
+//
+//   2. **Rust (`roundabout.rs`)** — implementación autoritativa con GEOS.
+//      Se usa para:
+//        - Cómputo final cuando el usuario confirma el trazado
+//          (`AddRoundaboutCommand.execute`).
+//        - Export a archivos (KML/SHP/DXF/GPKG).
+//        - Operaciones booleanas con geometría existente.
+//
+// Si solo cambian las reglas geométricas (ej. fórmula de ochave),
+// hay que actualizar **AMBOS** lados. El par de tests de paridad que
+// se sugiere en la Fase 6 del plan original (snapshot tests con un
+// set fijo de parámetros) detectaría drift automáticamente. Mientras
+// esos tests no existan, la verificación es manual:
+//   - Dibujar una rotonda en la app.
+//   - Exportar a GPKG.
+//   - Reimportar y comparar geometría.
+// ─────────────────────────────────────────────────────────────────────────
+
+import type { Pt } from '@kernel/geometry/polygonEngine';
 import { polyArea } from '@kernel/geometry/polygonEngine';
 import { resolutionAwareSegments } from '@kernel/geometry/lod';
 

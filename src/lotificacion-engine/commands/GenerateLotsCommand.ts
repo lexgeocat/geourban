@@ -15,7 +15,6 @@ import {
 import { useGenerateLotsProgressStore } from '../store/generateLotsProgressStore';
 import { estimateGeometryBytes } from '@kernel/command/memoryEstimate';
 import { computeAreaCorrectionFactor, computeLinearCorrectionFactor } from '../geometry/areaCorrection';
-import type { LabelStyleConfig } from '@label-engine/model/labelModel';
 import {
   replaceLotsForManzano,
   type RemovedLotSnapshot,

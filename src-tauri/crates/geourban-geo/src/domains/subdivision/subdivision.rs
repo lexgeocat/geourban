@@ -1,4 +1,6 @@
-use crate::kernel::math::{clip_to_strip, poly_area, principal_axis, project_extents, Extent1D};
+use crate::kernel::math::{
+    bisect_with_best_fit, clip_to_strip, poly_area, principal_axis, project_extents, Extent1D,
+};
 use crate::kernel::sanitize::{sanitize_ring, SanitizeRingOptions};
 use crate::kernel::types::Pt;
 use crate::kernel::types::{CutResult, LotResult, ManzanoLoteMethod};
@@ -50,33 +52,24 @@ fn compute_cuts(
             break;
         }
 
-        let mut lo = front_min_m;
-        let mut hi = remaining * 0.999;
-        let mut best_f = nom_front_w;
-        let mut best_err = f64::INFINITY;
+        let lo = front_min_m;
+        let hi = remaining * 0.999;
 
-        for _ in 0..120 {
-            let mid = (lo + hi) / 2.0;
-            let test_poly = clip_to_strip(half_poly, lx, ly, t, t + mid);
-            if test_poly.len() < 3 {
-                lo = mid;
-                continue;
-            }
-            let area = poly_area(&test_poly);
-            let err = area - target_area_m2;
-            if err.abs() < best_err.abs() {
-                best_err = err;
-                best_f = mid;
-            }
-            if err.abs() <= 1e-6 {
-                break;
-            }
-            if err < 0.0 {
-                lo = mid;
-            } else {
-                hi = mid;
-            }
-        }
+        let tick_allows_all: fn() -> bool = || true;
+        let mut best_f = bisect_with_best_fit(
+            &|mid: f64| -> f64 {
+                let test_poly = clip_to_strip(half_poly, lx, ly, t, t + mid);
+                if test_poly.len() < 3 {
+                    return f64::NEG_INFINITY;
+                }
+                poly_area(&test_poly) - target_area_m2
+            },
+            lo,
+            hi,
+            0.0,
+            120,
+            &tick_allows_all,
+        );
 
         if best_f < front_min_m * 0.99 {
             best_f = front_min_m;
@@ -237,33 +230,24 @@ fn subdivide_half(
             break;
         }
 
-        let mut lo = front_min_m.max(1e-6);
-        let mut hi = (remaining * 0.9999).max(lo);
-        let mut best_f = nom_front_w.max(lo).min(hi);
-        let mut best_err = f64::INFINITY;
+        let lo = front_min_m.max(1e-6);
+        let hi = (remaining * 0.9999).max(lo);
 
-        for _ in 0..160 {
-            let mid = (lo + hi) / 2.0;
-            let test = clip_to_strip(poly, lx, ly, t, t + mid);
-            if test.len() < 3 {
-                lo = mid;
-                continue;
-            }
-            let area = poly_area(&test);
-            let err = area - target_area_m2;
-            if err.abs() < best_err.abs() {
-                best_err = err;
-                best_f = mid;
-            }
-            if err.abs() <= 1e-6 {
-                break;
-            }
-            if err < 0.0 {
-                lo = mid;
-            } else {
-                hi = mid;
-            }
-        }
+        let tick_allows_all: fn() -> bool = || true;
+        let mut best_f = bisect_with_best_fit(
+            &|mid: f64| -> f64 {
+                let test = clip_to_strip(poly, lx, ly, t, t + mid);
+                if test.len() < 3 {
+                    return f64::NEG_INFINITY;
+                }
+                poly_area(&test) - target_area_m2
+            },
+            lo,
+            hi,
+            0.0,
+            160,
+            &tick_allows_all,
+        );
         if best_f < front_min_m {
             best_f = front_min_m.min(remaining);
         }
@@ -739,28 +723,14 @@ fn shared_edge_length(a: &[Pt], b: &[Pt]) -> f64 {
 }
 
 fn union_two_lot_rings(a: &[Pt], b: &[Pt]) -> Option<Vec<Pt>> {
-    let merged = crate::boolean_ops::union_rings(
-        &[a.to_vec(), b.to_vec()],
-        "subdivisionAlgorithms.enforceMinFrontage",
-    );
-    if merged.len() != 1 || merged[0].len() != 1 {
-        return None;
-    }
-    let mut ring = merged[0][0].clone();
-    if ring.len() > 1 {
-        let (fx, fy) = ring[0];
-        let (lxp, lyp) = ring[ring.len() - 1];
-        if (fx - lxp).abs() < 1e-9 && (fy - lyp).abs() < 1e-9 {
-            ring.pop();
-        }
-    }
-    let mut cleaned = sanitize_ring(
+    let mut ring = crate::boolean_ops::union_two_rings_open(a, b, "subdivisionAlgorithms.unionTwoLotRings")?;
+    ring = sanitize_ring(
         Some(ring.as_slice()),
         SanitizeRingOptions::default(),
         "subdivisionAlgorithms.enforceMinFrontage.merged",
     )?;
-    cleaned.pop(); // volver a anillo abierto, como el resto del módulo
-    Some(cleaned)
+    ring.pop(); // volver a anillo abierto, como el resto del módulo
+    Some(ring)
 }
 
 fn enforce_min_frontage(lots: Vec<LotResult>, front_min_m: f64) -> Vec<LotResult> {

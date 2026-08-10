@@ -1,4 +1,3 @@
-import React from 'react';
 import { useRoundaboutStore } from '../store/roundaboutStore';
 import { useSelectionStore } from '@selection-engine/store/selectionStore';
 import { useDrawStore } from '@map-core/store/drawStore';

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { FilePlus, FolderOpen, Save, LogOut, Info } from 'lucide-react';
 
 export interface AppMenuActions {

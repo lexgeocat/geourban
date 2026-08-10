@@ -1,4 +1,3 @@
-import React from 'react';
 import { BarChart3 } from 'lucide-react';
 import { useUiShellStore } from '../../../store/uiShellStore';
 import { useLeftSidebarStore } from '../../../store/leftSidebarStore';

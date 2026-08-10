@@ -2,8 +2,10 @@ import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
 import { Command, type CommandContext } from '@kernel/command/Command';
 import type { LabelStyleConfig } from '../model/labelModel';
+import { resolveEffectiveLabelConfig } from '../model/labelModel';
 import { formatOrderLabel } from '../model/labelNumbering';
 import type { LabelNumberingMode } from '../store/labelConfigModalStore';
+import { restoreLabelFields, type LabelFieldsSnapshot } from './labelCommandUtils';
 
 export interface AssignLabelOrderOptions {
   orderedIds: Array<string | number>;
@@ -17,7 +19,7 @@ export class AssignLabelOrderCommand extends Command {
   private readonly orderedIds: Array<string | number>;
   private readonly config: LabelStyleConfig;
   private readonly numbering: LabelNumberingMode;
-  private before = new Map<string | number, { config?: LabelStyleConfig; text?: string }>();
+  private before = new Map<string | number, LabelFieldsSnapshot>();
 
   constructor(opts: AssignLabelOrderOptions) {
     super();
@@ -36,11 +38,7 @@ export class AssignLabelOrderCommand extends Command {
   execute(ctx: CommandContext): void {
     this.before.clear();
     const total = this.orderedIds.length;
-    const isCircledMode = this.numbering === 'circled' || this.numbering === 'circled-alpha';
-    const effectiveConfig: LabelStyleConfig = {
-      ...this.config,
-      titleBadge: isCircledMode ? 'circle' : 'none',
-    };
+    const effectiveConfig = resolveEffectiveLabelConfig(this.config, this.numbering);
     this.orderedIds.forEach((id, i) => {
       const f = ctx.drawSource.getFeatureById(id) as Feature<Geometry> | null;
       if (!f) return;
@@ -57,10 +55,7 @@ export class AssignLabelOrderCommand extends Command {
     for (const [id, prev] of this.before) {
       const f = ctx.drawSource.getFeatureById(id) as Feature<Geometry> | null;
       if (!f) continue;
-      if (prev.config) f.set('labelConfig', prev.config, true);
-      else f.unset('labelConfig', true);
-      if (prev.text !== undefined) f.set('labelText', prev.text, true);
-      else f.unset('labelText', true);
+      restoreLabelFields(f, prev);
     }
     ctx.drawSource.changed();
   }

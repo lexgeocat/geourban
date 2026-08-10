@@ -13,7 +13,7 @@ export type UtmHemisphere = 'N' | 'S';
 
 const registered = new Set<string>();
 
-export function utmEpsgCode(zone: number, hemisphere: UtmHemisphere): string {
+function utmEpsgCode(zone: number, hemisphere: UtmHemisphere): string {
   if (!Number.isInteger(zone) || zone < 1 || zone > 60) {
     throw new Error(`Zona UTM inválida: ${zone} (debe ser 1-60)`);
   }

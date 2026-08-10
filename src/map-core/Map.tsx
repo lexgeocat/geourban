@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import Map from 'ol/Map.js';
 import View from 'ol/View.js';
 import type BaseLayer from 'ol/layer/Base.js';

@@ -7,6 +7,10 @@ import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
 import { useLayersStore } from '@layers-engine/store/layersRegistryStore';
 import type { Layer } from '@kernel/domain-model/featureModel';
+import { createByIdCache } from '@kernel/utils/byIdCache';
+import { withAlpha } from '@kernel/color/withAlpha';
+
+export { withAlpha };
 
 export type WorkVisibility = {
   streets: boolean;
@@ -18,18 +22,6 @@ export interface DrawLayers {
   postrenderLayer: VectorLayer<VectorSource>;
   source: VectorSource;
   streetSource: VectorSource;
-}
-
-/** Hex `#rrggbb` o `#rgb` → `rgba(r,g,b,a)`. */
-export function withAlpha(color: string, alpha: number): string {
-  const m = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(color);
-  if (!m) return color;
-  let h = m[1];
-  if (h.length === 3) h = h.split('').map((c) => c + c).join('');
-  const r = parseInt(h.slice(0, 2), 16);
-  const g = parseInt(h.slice(2, 4), 16);
-  const b = parseInt(h.slice(4, 6), 16);
-  return `rgba(${r},${g},${b},${alpha})`;
 }
 
 function safeDisposeLayer(layer: { dispose: () => void }): void {
@@ -80,13 +72,14 @@ interface PoolSlot {
   lastSig: string;
 }
 
+const getLayerById = createByIdCache<Layer>();
+
 export class LayeredWebglRenderer {
   private readonly master: VectorSource;
   private readonly mirrors = new globalThis.Map<string, MirrorEntry>();
   private readonly fallback: MirrorEntry;
   private readonly placement = new WeakMap<Feature<Geometry>, string>();
   private knownLayerIds = new Set<string>();
-  private byIdCache: { layers: Layer[]; map: globalThis.Map<string, Layer> } | null = null;
 
   private map: Map | null = null;
   private unsubscribeStore: (() => void) | null = null;
@@ -123,11 +116,7 @@ export class LayeredWebglRenderer {
   }
 
   private getByIdMap(): globalThis.Map<string, Layer> {
-    const layers = useLayersStore.getState().layers;
-    if (this.byIdCache && this.byIdCache.layers === layers) return this.byIdCache.map;
-    const map = new globalThis.Map(layers.map((l) => [l.id, l] as const));
-    this.byIdCache = { layers, map };
-    return map;
+    return getLayerById(useLayersStore.getState().layers);
   }
 
   private resolveMirrorKey(feature: Feature<Geometry>, byId: globalThis.Map<string, Layer>): string {
@@ -247,7 +236,6 @@ export class LayeredWebglRenderer {
     }
 
     this.knownLayerIds = currentIds;
-    this.byIdCache = { layers, map: byId };
 
     if (membershipChanged) {
       for (const f of this.master.getFeatures()) {
@@ -344,7 +332,6 @@ private static buildPoolSlotStyle(colors: PoolLayerColor[]): Record<string, unkn
   private syncPooledLayers(layers: Layer[]): void {
     this.allocatePoolSlots(layers);
 
-    this.byIdCache = null; 
     const byId = this.getByIdMap();
     for (const f of this.master.getFeatures()) {
       this.place(f as Feature<Geometry>, byId);
@@ -372,7 +359,6 @@ private static buildPoolSlotStyle(colors: PoolLayerColor[]): Record<string, unkn
       this.map?.addLayer(this.poolFallbackLayer);
 
       this.allocatePoolSlots(layers);
-      this.byIdCache = null;
       const byId = this.getByIdMap();
       for (const f of this.master.getFeatures()) {
         this.place(f as Feature<Geometry>, byId);

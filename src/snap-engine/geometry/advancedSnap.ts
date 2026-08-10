@@ -42,7 +42,7 @@ export const SNAP_GROUPS: { label: string; types: SnapType[] }[] = [
   { label: 'Construcción', types: ['perpendicular', 'extension', 'nearest'] },
 ];
 
-export const SNAP_TYPE_PRIORITY: Record<SnapType, number> = {
+const SNAP_TYPE_PRIORITY: Record<SnapType, number> = {
   endpoint: 0,
   intersection: 1,
   extension: 3,

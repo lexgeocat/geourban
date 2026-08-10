@@ -3,7 +3,7 @@ import type Geometry from 'ol/geom/Geometry.js';
 import { Command, type CommandContext } from '@kernel/command/Command';
 import { GeoUrbanFeatureKind } from '@kernel/domain-model/featureModel';
 import { pickLayerId } from '@layers-engine/store/layerResolution';
-import { nextId } from '@kernel/id/id';
+import { newId } from '@kernel/id/id';
 
 function resolveLayerId(override?: string, kind?: GeoUrbanFeatureKind): string | undefined {
   if (!kind) return undefined;
@@ -29,7 +29,7 @@ export class AddFeatureCommand extends Command {
     this.layerId = layerId;
     this.label = label ?? (mode === 'claim' ? 'Dibujar feature' : 'Agregar feature');
     if (mode === 'register' && feature.getId() == null) {
-      feature.setId(nextId(prefix));
+      feature.setId(newId(prefix));
     }
   }
 
@@ -37,7 +37,7 @@ export class AddFeatureCommand extends Command {
     if (this.mode === 'claim') {
       const id = this.feature.getId();
       if (id == null) {
-        this.feature.setId(nextId('feat'));
+        this.feature.setId(newId('feat'));
       }
       if (ctx.drawSource.getFeatureById(this.feature.getId() as string | number) == null) {
         ctx.drawSource.addFeature(this.feature);

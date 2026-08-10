@@ -2,6 +2,41 @@ import Feature from 'ol/Feature';
 import Polygon from 'ol/geom/Polygon';
 import RBush from 'rbush';
 
+// ─────────────────────────────────────────────────────────────────────────
+// NOTA ARQUITECTÓNICA — DOBLE ÍNDICE ESPACIAL (Fase 6.1 del plan)
+//
+// Este índice JS (rbush) coexiste **deliberadamente** con el índice
+// nativo en Rust expuesto por `rustSpatialIndex.ts`. NO son la misma
+// estructura con dos implementaciones — son dos índices distintos que
+// sirven a consumidores distintos con requisitos de latencia distintos:
+//
+//   1. `SpatialIndex` (este archivo, rbush JS) — **síncrono**, latencia
+//      ~0.1ms por query. Es el único que usa `SnapEngine`
+//      (`snap-engine/geometry/advancedSnap.ts:258`) porque el handler de
+//      `pointermove` necesita respuesta inmediata en cada movimiento del
+//      cursor mientras el usuario dibuja. Hacer una query async a Rust
+//      por frame introduciría lag perceptible.
+//
+//   2. `queryRustSpatialIndex` (`rustSpatialIndex.ts`, rstar Rust) —
+//      **asíncrono**, mayor latencia pero más preciso/escalable. Se usa
+//      para hit-test de click/selección
+//      (`PostrenderPainter.getVisibleFeatures` para culling de
+//      renderizado) donde el await es aceptable.
+//
+// Ambos índices se mantienen **en paralelo**: cada `addfeature` /
+// `removefeature` / `changefeature` dispara la actualización del JS en
+// el store de mapa, y la del Rust vía `geoWorkerClient`. Es trabajo
+// duplicado intencionalmente — fusionarlos perdería la propiedad de
+// respuesta síncrona de SnapEngine y no hay forma de evitarlo sin
+// cambiar la arquitectura del motor de dibujo.
+//
+// NO fusionar sin antes:
+//   - Medir el lag real de una query async al Rust en el hot path.
+//   - Verificar que el render de OpenLayers tolere la latencia añadida.
+//   - Evaluar mover SnapEngine a Web Worker con su propio índice
+//     sincronizado por mensajes.
+// ─────────────────────────────────────────────────────────────────────────
+
 interface RBushItem {
   minX: number;
   minY: number;

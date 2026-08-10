@@ -252,3 +252,108 @@ pub fn resolution_aware_segments(radius_map_units: f64, resolution: f64, px_erro
     let needed = ((2.0 * std::f64::consts::PI) / max_angle).ceil() as u32;
     needed.clamp(LOD_MIN_SEGMENTS, LOD_MAX_SEGMENTS)
 }
+
+/// Cierra un anillo si el primer y último punto no coinciden dentro de una
+/// tolerancia `eps`. Versión canónica unificada — antes existían 3 copias
+/// privadas en `boolean_ops.rs` (`eps = 1e-9`), `sanitize.rs`
+/// (`eps = 1e-12`) y `roads.rs` (`eps = 1e-9`), con la salvedad de que
+/// `sanitize` usa una tolerancia mucho más estricta por motivos de
+/// sanitización (ver `kernel::constants::EPSILON_SANITIZE`).
+///
+/// **Convención de llamada:**
+///   - Para operaciones booleanas sobre geometría saneada → `EPSILON_NORMAL`.
+///   - Para sanitización antes de pasar a GEOS → `EPSILON_SANITIZE`.
+pub fn close_ring(ring: &[Pt], eps: f64) -> Vec<Pt> {
+    if ring.is_empty() {
+        return ring.to_vec();
+    }
+    let first = ring[0];
+    let last = *ring.last().unwrap();
+    if (first.0 - last.0).abs() > eps || (first.1 - last.1).abs() > eps {
+        let mut out = ring.to_vec();
+        out.push(first);
+        out
+    } else {
+        ring.to_vec()
+    }
+}
+
+/// Bisección binaria clásica: encuentra `x` en `[lo, hi]` tal que
+/// `f(x) >= target` (asumiendo `f(lo) < target <= f(hi)`, es decir
+/// monótona creciente y con cruce en el intervalo).
+///
+/// Versión canónica unificada — antes era una función privada de
+/// `cabecera_cuerpo.rs` con 60 iteraciones hardcoded. La parametrización
+/// por `max_iter` permite a callers que necesitan más precisión usar más
+/// iteraciones sin copiar el loop.
+///
+/// `tick` es un callback opcional que se llama una vez por iteración.
+/// Si devuelve `false`, la bisección termina antes (útil para budgets de
+/// operaciones globales que cortan cálculos largos para no bloquear).
+///
+/// **Nota:** esta es la variante *simple* de bisección. Si necesitás
+/// tracking del mejor ajuste (cuando `f` no es exactamente monótona o
+/// querés minimizar `|f(x) - target|` en vez de encontrar el cruce
+/// exacto), usá `bisect_with_best_fit`.
+pub fn bisect<F, T>(f: &F, lo: f64, hi: f64, target: f64, max_iter: usize, tick: &T) -> f64
+where
+    F: Fn(f64) -> f64 + ?Sized,
+    T: Fn() -> bool + ?Sized,
+{
+    let mut a = lo;
+    let mut b = hi;
+    for _ in 0..max_iter {
+        if !tick() {
+            break;
+        }
+        let m = (a + b) / 2.0;
+        if f(m) < target {
+            a = m;
+        } else {
+            b = m;
+        }
+    }
+    (a + b) / 2.0
+}
+
+/// Bisección con tracking del mejor ajuste: devuelve el `x` que minimiza
+/// `|f(x) - target|`, no el cruce exacto. Útil cuando `f` no es
+/// monótona, o cuando `target` puede no ser exactamente alcanzable
+/// (caso típico: encontrar la coordenada `t` a lo largo de un eje tal
+/// que el área del polígono recortado sea lo más cercana posible al
+/// `target_area`).
+///
+/// `max_iter` controla el número de iteraciones. El loop termina antes
+/// si el error cae por debajo de `1e-6` o si `tick()` devuelve `false`.
+pub fn bisect_with_best_fit<F, T>(f: &F, lo: f64, hi: f64, target: f64, max_iter: usize, tick: &T) -> f64
+where
+    F: Fn(f64) -> f64 + ?Sized,
+    T: Fn() -> bool + ?Sized,
+{
+    let mut a = lo;
+    let mut b = hi;
+    let mut best_x = (a + b) / 2.0;
+    let mut best_err = f64::INFINITY;
+    for _ in 0..max_iter {
+        if !tick() {
+            break;
+        }
+        let mid = (a + b) / 2.0;
+        let value = f(mid);
+        let err = value - target;
+        let abs_err = err.abs();
+        if abs_err < best_err {
+            best_err = abs_err;
+            best_x = mid;
+        }
+        if abs_err <= 1e-6 {
+            break;
+        }
+        if err < 0.0 {
+            a = mid;
+        } else {
+            b = mid;
+        }
+    }
+    best_x
+}

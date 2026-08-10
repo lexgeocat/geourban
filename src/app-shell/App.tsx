@@ -1,5 +1,4 @@
-﻿import React from 'react';
-import MapView from '@map-core/Map';
+﻿import MapView from '@map-core/Map';
 import TopBar from './layout/TopBar';
 import StatusBar from './layout/StatusBar';
 import LeftSidebar from './layout/leftbar/LeftSidebar';

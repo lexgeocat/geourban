@@ -35,8 +35,6 @@ export class PostrenderPainter {
   private readonly lassoOverlayPainter = new LassoOverlayPainter();
   private readonly selectionHighlightPainter = new SelectionHighlightPainter();
 
-  private dirty = true;
-  private lastFeatureCount = -1;
   private interacting = false;
 
   private cachedVisibleFeatures: Array<Feature<Geometry>> | null = null;
@@ -58,7 +56,6 @@ export class PostrenderPainter {
     this.selectionHighlightPainter.attach(this.map, () => this.drawSource.getFeatures().length);
 
     const onFeatureChange = () => {
-      this.dirty = true;
       this.visibleDataVersion++;
     };
     this.drawSource.on('addfeature', onFeatureChange);
@@ -71,7 +68,9 @@ export class PostrenderPainter {
   }
 
   invalidate(): void {
-    this.dirty = true;
+    // Antes marcaba un flag `dirty` interno para evitar repintar; la lógica
+    // de visibilidad se reescribió por cache + visibleDataVersion y este flag
+    // quedó inerte. Se conserva la firma pública porque `Map.tsx:94` la llama.
   }
 
   setInteracting(value: boolean): void {
@@ -110,7 +109,7 @@ export class PostrenderPainter {
     const zoom = getZoomFromResolution(resolution);
     const features = (this.drawSource.getFeatures() ?? []) as Array<Feature<Geometry>>;
 
-    this.updateCaches(ctx, features, zoom, resolution);
+    this.updateCaches(ctx, zoom, resolution);
 
     const toPx = (coord: number[]): [number, number] => {
       const px = this.map.getPixelFromCoordinate(coord as [number, number]);
@@ -120,7 +119,7 @@ export class PostrenderPainter {
     const visibleFeatures = this.getVisibleFeatures(features);
 
     this.labelPainter.paint(ctx, visibleFeatures, zoom, resolution, toPx, this.interacting);
-    this.streetPainter.paint(ctx, resolution, toPx, this.interacting);
+    this.streetPainter.paint(ctx, toPx, this.interacting);
     this.roundaboutPainter.paint(ctx, toPx, resolution);
     this.selectionHighlightPainter.paint(ctx, toPx, resolution, this.drawSource);
     this.snapGuidePainter.paint(ctx, resolution);
@@ -193,14 +192,11 @@ export class PostrenderPainter {
 
   private updateCaches(
     ctx: CanvasRenderingContext2D,
-    features: Array<Feature<Geometry>>,
     zoom: number,
     resolution: number
   ): void {
     this.streetPainter.update();
     this.labelPainter.update(ctx, zoom, resolution);
-    this.lastFeatureCount = features.length;
-    this.dirty = false;
   }
 
   dispose(): void {

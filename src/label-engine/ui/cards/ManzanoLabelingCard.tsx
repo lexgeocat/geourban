@@ -1,4 +1,3 @@
-import React from 'react';
 import { useLabelConfigModalStore } from '../../store/labelConfigModalStore';
 import { defaultLabelStyleConfig, defaultColorForKind } from '../../model/labelModel';
 import LabelingCard from './LabelingCard';

@@ -205,7 +205,7 @@ class TiledAffineCache {
   }
 }
 
-export const utmTileCache = new TiledAffineCache();
+const utmTileCache = new TiledAffineCache();
 
 export function projectPathThroughUtmTiles(
   epsg: string,

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Modal } from '@shared-ui/Modal';
 import { listProjects, loadProject, deleteProject, type ProjectSummary } from '../projectFile';
 import { useProjectFileStore } from '../store/projectFileStore';

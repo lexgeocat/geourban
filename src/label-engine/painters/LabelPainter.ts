@@ -18,6 +18,9 @@ import {
   pickStreetLabelSlots,
   type StreetLabelSlot,
 } from '../geometry/streetLabelSlots';
+import { CAD_BG_DEEPEST_RGB } from '@kernel/theme/colors';
+
+const LABEL_BG_HEAVY = `rgba(${CAD_BG_DEEPEST_RGB}, 0.72)`;
 
 interface PlacedBox {
   x: number;
@@ -210,7 +213,7 @@ function drawEdgeCotas(
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.lineWidth = 3;
-    ctx.strokeStyle = 'rgba(13, 17, 23, 0.85)';
+    ctx.strokeStyle = `rgba(${CAD_BG_DEEPEST_RGB}, 0.85)`;
     ctx.strokeText(text, 0, 0);
     ctx.fillStyle = cfg.color;
     ctx.fillText(text, 0, 0);
@@ -415,7 +418,7 @@ export class LabelPainter {
       ctx.arc(cx - halfW + r, cy, r, Math.PI / 2, (3 * Math.PI) / 2);
       ctx.closePath();
     }
-    ctx.fillStyle = 'rgba(13, 17, 23, 0.92)';
+    ctx.fillStyle = `rgba(${CAD_BG_DEEPEST_RGB}, 0.92)`;
     ctx.fill();
     ctx.lineWidth = Math.max(1.25, fontSizePx * 0.1);
     ctx.strokeStyle = cfg.color;
@@ -475,7 +478,7 @@ export class LabelPainter {
     }
 
     if (bodyLines.length > 0) {
-      ctx.fillStyle = 'rgba(13, 17, 23, 0.72)';
+      ctx.fillStyle = LABEL_BG_HEAVY;
       ctx.fillRect(box.x, cursorY, box.w, bodyH + 2);
       ctx.fillStyle = cfg.color;
       let y = cursorY + lineHeight / 2 + 1;
@@ -520,7 +523,7 @@ export class LabelPainter {
     ctx.rotate(angle);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillStyle = 'rgba(13, 17, 23, 0.72)';
+    ctx.fillStyle = LABEL_BG_HEAVY;
     ctx.fillRect(-w / 2, -h / 2, w, h);
     ctx.fillStyle = cfg.color;
     let y = -totalH / 2 + lineHeight / 2;

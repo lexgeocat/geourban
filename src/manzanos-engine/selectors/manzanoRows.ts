@@ -7,7 +7,7 @@ import { getFeatureKind, getLotStatus, type LotStatus } from '@kernel/domain-mod
 import { autoLetterCode } from '@kernel/id/autoName';
 import { composeLabelLines, type LabelStyleConfig } from '@label-engine/model/labelModel';
 
-export interface LotInfo {
+interface LotInfo {
   label: string;
   displayLabel: string;
   areaM2: number;

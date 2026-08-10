@@ -1,42 +1,14 @@
-﻿import React, { useEffect, useRef, useState } from 'react';
+﻿import { useEffect, useRef, useState } from 'react';
+import { Power, Magnet, ChevronDown } from 'lucide-react';
 import { useSnapSettingsStore } from '../store/snapSettingsStore';
 import { useSnapLiveStore } from '../store/snapLiveStore';
 import { SNAP_COLORS, SNAP_LABELS, SNAP_GROUPS, type SnapType } from '../geometry/advancedSnap';
+import { SnapIcon as DomainSnapIcon } from '@shared-ui/icons/domainIcons';
 
-const IconSnap = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: 13, height: 13 }}>
-    <path d="M15.7 3.7a2.5 2.5 0 0 1 3.5 0l4 4a2.5 2.5 0 0 1 0 3.5l-4 4a2.5 2.5 0 0 1-3.5 0l-4-4a2.5 2.5 0 0 1 0-3.5z" />
-    <path d="M8.3 11.3a2.5 2.5 0 0 0 0 3.5l4 4a2.5 2.5 0 0 0 3.5 0l4-4a2.5 2.5 0 0 0 0-3.5l-4-4a2.5 2.5 0 0 0-3.5 0z" />
-  </svg>
-);
+const IconSnap = () => <Magnet size={13} />;
+const IconPower = () => <Power size={12} />;
 
-const IconPower = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 12, height: 12 }}>
-    <path d="M12 2v10" />
-    <path d="M18.36 6.64a9 9 0 1 1-12.73 0" />
-  </svg>
-);
-
-const SnapIcon = ({ type, color, size = 12 }: { type: SnapType; color: string; size?: number }) => {
-  const s = size;
-  const props = { fill: 'none', stroke: color, strokeWidth: '1.5', strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, style: { width: s, height: s, flexShrink: 0 } as const };
-  switch (type) {
-    case 'endpoint':
-      return <svg viewBox="0 0 12 12" {...props}><rect x="2" y="2" width="8" height="8" /></svg>;
-    case 'midpoint':
-      return <svg viewBox="0 0 12 12" {...props}><polygon points="6,1.5 9.9,8.3 2.1,8.3" /></svg>;
-    case 'intersection':
-      return <svg viewBox="0 0 12 12" {...props}><line x1="2" y1="2" x2="10" y2="10" /><line x1="10" y1="2" x2="2" y2="10" /></svg>;
-    case 'extension':
-      return <svg viewBox="0 0 12 12" {...props}><line x1="6" y1="2" x2="6" y2="10" /><line x1="2" y1="6" x2="10" y2="6" /></svg>;
-    case 'perpendicular':
-      return <svg viewBox="0 0 12 12" {...props}><polygon points="6,1.5 10.3,4.6 8.6,9.6 3.4,9.6 1.7,4.6" /></svg>;
-    case 'nearest':
-      return <svg viewBox="0 0 12 12" {...props}><circle cx="6" cy="6" r="4.5" /></svg>;
-    default:
-      return <svg viewBox="0 0 12 12" {...props}><circle cx="6" cy="6" r="4.5" /></svg>;
-  }
-};
+const SnapIcon = DomainSnapIcon;
 
 export default function SnapPanel() {
   const [open, setOpen] = useState(false);
@@ -81,9 +53,7 @@ export default function SnapPanel() {
         <IconSnap />
         <span style={{ textTransform: 'uppercase', letterSpacing: '0.04em' }}>OSNAP</span>
         {active && <SnapIcon type={active.type} color={SNAP_COLORS[active.type]} size={10} />}
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 10, height: 10 }}>
-          <path d="m6 9 6 6 6-6" />
-        </svg>
+        <ChevronDown size={10} />
       </button>
 
       {open && (

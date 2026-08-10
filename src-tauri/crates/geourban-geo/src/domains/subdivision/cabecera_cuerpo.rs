@@ -1,4 +1,5 @@
-use crate::kernel::math::{centroid, convex_hull, poly_area};
+use crate::kernel::constants::FILLET_MAX_RADIUS_M;
+use crate::kernel::math::{bisect, centroid, convex_hull, poly_area};
 use crate::kernel::types::{LotResult, Pt};
 use std::cell::Cell;
 
@@ -67,23 +68,6 @@ fn lerp(a: Pt, b: Pt, t: f64) -> Pt {
 
 fn dist(a: Pt, b: Pt) -> f64 {
     (b.0 - a.0).hypot(b.1 - a.1)
-}
-
-fn bisect<F: Fn(f64) -> f64 + ?Sized>(f: &F, lo: f64, hi: f64, target: f64) -> f64 {
-    let mut a = lo;
-    let mut b = hi;
-    for _ in 0..60 {
-        if !tick_op_budget() {
-            break;
-        }
-        let m = (a + b) / 2.0;
-        if f(m) < target {
-            a = m;
-        } else {
-            b = m;
-        }
-    }
-    (a + b) / 2.0
 }
 
 fn min_area_bounding_quad(pts: &[Pt]) -> Vec<Pt> {
@@ -249,8 +233,7 @@ fn unfillet_manzano(ring_in: &[Pt]) -> Vec<Pt> {
         });
     }
 
-    const MAX_FILLET_R: f64 = 8.0;
-    let arc_chord = 2.0 * MAX_FILLET_R * (0.18_f64 / 2.0).sin();
+    let arc_chord = 2.0 * FILLET_MAX_RADIUS_M * (0.18_f64 / 2.0).sin();
     let l_min = (arc_chord * 1.6_f64).max(1.0);
     let major: Vec<&Run> = runs.iter().filter(|r| r.len >= l_min).collect();
     if major.len() < 3 {
@@ -755,6 +738,8 @@ fn hb_build_zone(
             0.0,
             1.0,
             (c + 1) as f64 * col_target,
+            60,
+            &tick_op_budget,
         ));
     }
     f_cuts.push(1.0);
@@ -804,6 +789,8 @@ fn hb_build_zone(
                 u_min_c,
                 u_max_c,
                 (r + 1) as f64 * cell_target,
+                60,
+                &tick_op_budget,
             ));
         }
         row_cuts.push(u_max_c);
@@ -867,7 +854,7 @@ fn hb_build_body_zone(
             break;
         }
         let a_target = area_at_a + (r + 1) as f64 * row_target;
-        let cut = bisect(area_up_to, u_a, u_b, a_target).max(u_a).min(u_b);
+        let cut = bisect(area_up_to, u_a, u_b, a_target, 60, &tick_op_budget).max(u_a).min(u_b);
         row_cuts.push(cut);
     }
     row_cuts.push(u_b);
@@ -987,7 +974,7 @@ fn hb_build_body_zone(
                     break;
                 }
                 let a_target = area_at_ra + (k + 1) as f64 * sub_target;
-                let cut = bisect(area_up_to, ra, rb, a_target).max(ra).min(rb);
+                let cut = bisect(area_up_to, ra, rb, a_target, 60, &tick_op_budget).max(ra).min(rb);
                 sub_cuts.push(cut);
             }
             sub_cuts.push(rb);
@@ -1031,7 +1018,7 @@ fn hb_build_body_zone(
             }
             let ci = c as usize;
             let prev = col_cuts[ci];
-            let cut = bisect(&cum_t, prev, 1.0, (c + 1) as f64 * col_target)
+            let cut = bisect(&cum_t, prev, 1.0, (c + 1) as f64 * col_target, 60, &tick_op_budget)
                 .max(prev)
                 .min(1.0);
             col_cuts.push(cut);
@@ -1163,8 +1150,8 @@ fn hb_lotize_with_baseline(mzn_pts: &[Pt], cfg: HbConfig, baseline: (Pt, Pt)) ->
     } else {
         let head_area1 = head_rows as f64 * head_cols1 as f64 * target_lot_area;
         let body_area = b_rows as f64 * body_cols as f64 * target_lot_area;
-        let uh1 = bisect(&area_up_to, u_min, u_max, head_area1);
-        let uh2 = bisect(&area_up_to, uh1, u_max, head_area1 + body_area)
+        let uh1 = bisect(&area_up_to, u_min, u_max, head_area1, 60, &tick_op_budget);
+        let uh2 = bisect(&area_up_to, uh1, u_max, head_area1 + body_area, 60, &tick_op_budget)
             .max(uh1)
             .min(u_max);
         (uh1, uh2)
@@ -1236,24 +1223,8 @@ fn hb_lotize_with_baseline(mzn_pts: &[Pt], cfg: HbConfig, baseline: (Pt, Pt)) ->
 }
 
 fn hb_merge_polys(a: &[Pt], b: &[Pt]) -> Vec<Pt> {
-    let merged = crate::boolean_ops::union_rings(
-        &[a.to_vec(), b.to_vec()],
-        "subdivisionCabeceraCuerpo.hbMergeHeadRemainders",
-    );
-    if merged.len() == 1 && merged[0].len() == 1 {
-        let mut ring = merged[0][0].clone();
-        if ring.len() > 1 {
-            let (fx, fy) = ring[0];
-            let (lxp, lyp) = ring[ring.len() - 1];
-            if (fx - lxp).abs() < 1e-9 && (fy - lyp).abs() < 1e-9 {
-                ring.pop();
-            }
-        }
-        if ring.len() >= 3 {
-            return ring;
-        }
-    }
-    hb_convex_hull_merge(a, b)
+    crate::boolean_ops::union_two_rings_open(a, b, "subdivisionCabeceraCuerpo.hbMergeHeadRemainders")
+        .unwrap_or_else(|| hb_convex_hull_merge(a, b))
 }
 
 fn hb_convex_hull_merge(a: &[Pt], b: &[Pt]) -> Vec<Pt> {

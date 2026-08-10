@@ -7,7 +7,7 @@ import type { FeatureCollection, Feature as GeoJSONFeature } from 'geojson';
 
 import { useMapStore } from '@map-core/store/mapStore';
 import { updateFeatureMetrics } from '@georef-engine/metrics';
-import { polyArea, ringPerimeter, polygonCentroid, closeRing, type Pt } from '@kernel/geometry/polygonEngine';
+import { polyArea, ringPerimeter, polygonCentroid, closeRing, polySignedArea, type Pt } from '@kernel/geometry/polygonEngine';
 import { useStreetStore, type Street } from '@vias-engine/store/streetStore';
 import { useRoundaboutStore, type Roundabout } from '@vias-engine/store/roundaboutStore';
 import { useManzanoStore } from '@lotificacion-engine/store/manzanoLotConfigStore';
@@ -117,13 +117,7 @@ function restoreMemberToParcel(
 }
 
 function orientRingCcw(ring: Pt[]): Pt[] {
-  let area = 0;
-  for (let i = 0; i < ring.length; i++) {
-    const [x1, y1] = ring[i];
-    const [x2, y2] = ring[(i + 1) % ring.length];
-    area += x1 * y2 - x2 * y1;
-  }
-  return area >= 0 ? ring : ring.slice().reverse();
+  return polySignedArea(ring) >= 0 ? ring : ring.slice().reverse();
 }
 
 function ringsExtent(rings: Pt[][]): Extent | null {

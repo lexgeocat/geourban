@@ -14,7 +14,7 @@ import { isEraseIntercepted } from '../extension-points';
 import { toast } from '@shared-ui/store/toastStore';
 import type { ModeContext } from '@kernel/modes/ModeContext';
 
-export const ERASE_STYLE = new Style({
+const ERASE_STYLE = new Style({
   fill: new Fill({ color: 'rgba(239, 68, 68, 0.25)' }),
   stroke: new Stroke({ color: '#ef4444', width: 2 }),
 });

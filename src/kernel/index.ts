@@ -25,9 +25,3 @@ export {
   type ExtensionPoint,
   type Provider,
 } from './registry/ExtensionPointRegistry';
-
-export {
-  requireNativeRuntime,
-  type NativeRuntime,
-  type NativeRuntimeEnv,
-} from './native/tauriRuntime';

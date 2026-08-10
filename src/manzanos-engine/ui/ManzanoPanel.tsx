@@ -1,4 +1,4 @@
-import React, { useMemo, useEffect, useRef } from 'react';
+import { useMemo, useEffect, useRef } from 'react';
 import { useMapStore } from '@map-core/store/mapStore';
 import { useDrawSourceTick } from '@shared-ui/hooks/useDrawSourceTick';
 import { useIncrementalRender } from '@shared-ui/hooks/useIncrementalRender';

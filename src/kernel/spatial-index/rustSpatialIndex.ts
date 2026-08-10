@@ -9,7 +9,7 @@ import {
 } from '@kernel/native/geoWorkerClient';
 import { rafThrottle } from '../utils/rafThrottle';
 
-export const DRAW_SOURCE_SPATIAL_SLOT = 'draw';
+const DRAW_SOURCE_SPATIAL_SLOT = 'draw';
 
 function toErrorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);

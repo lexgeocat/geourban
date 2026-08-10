@@ -3,6 +3,7 @@ import ImageCanvasSource from 'ol/source/ImageCanvas.js';
 import type Map from 'ol/Map.js';
 import type { Extent } from 'ol/extent.js';
 import type { Size } from 'ol/size.js';
+import { withAlpha } from '@kernel/color/withAlpha';
 
 const NICE_STEPS = [
   0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000,
@@ -17,13 +18,6 @@ interface CadColors {
   axis: string;
 }
 
-function hexToRgba(hex: string, alpha: number): string {
-  const m = /^#([0-9a-f]{6})$/i.exec(hex.trim());
-  if (!m) return `rgba(0, 212, 255, ${alpha})`;
-  const n = parseInt(m[1], 16);
-  return `rgba(${(n >> 16) & 0xff}, ${(n >> 8) & 0xff}, ${n & 0xff}, ${alpha})`;
-}
-
 function readCadColors(): CadColors {
   if (typeof window === 'undefined') {
     return { minor: 'rgba(36, 48, 68, 0.85)', major: 'rgba(0, 212, 255, 0.22)', axis: 'rgba(0, 212, 255, 0.45)' };
@@ -32,8 +26,8 @@ function readCadColors(): CadColors {
   const accent = style.getPropertyValue('--cad-accent').trim() || '#00d4ff';
   return {
     minor: 'rgba(36, 48, 68, 0.85)',
-    major: hexToRgba(accent, 0.22),
-    axis: hexToRgba(accent, 0.45),
+    major: withAlpha(accent, 0.22),
+    axis: withAlpha(accent, 0.45),
   };
 }
 
