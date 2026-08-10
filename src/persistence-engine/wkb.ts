@@ -1,7 +1,3 @@
-// WKB solo cubre las geometrías que efectivamente persistimos/levantamos
-// del drawSource (Polygon, LineString, MultiPolygon). Point no se usa
-// porque ninguna feature persistible del modelo es puntual — cualquier
-// 'Point' en un WKB externo se rechaza en decodeWkb con un error claro.
 export type WkbGeometry =
   | { type: 'LineString'; coordinates: [number, number][] }
   | { type: 'Polygon'; coordinates: [number, number][][] }
@@ -37,14 +33,19 @@ export function encodeWkb(geom: WkbGeometry): Uint8Array {
   let offset = 0;
 
   const writeHeader = (type: number) => {
-    view.setUint8(offset, 1); offset += 1;
-    view.setUint32(offset, type, true); offset += 4;
+    view.setUint8(offset, 1);
+    offset += 1;
+    view.setUint32(offset, type, true);
+    offset += 4;
   };
   const writeRing = (ring: [number, number][]) => {
-    view.setUint32(offset, ring.length, true); offset += 4;
+    view.setUint32(offset, ring.length, true);
+    offset += 4;
     for (const [x, y] of ring) {
-      view.setFloat64(offset, x, true); offset += 8;
-      view.setFloat64(offset, y, true); offset += 8;
+      view.setFloat64(offset, x, true);
+      offset += 8;
+      view.setFloat64(offset, y, true);
+      offset += 8;
     }
   };
 
@@ -55,15 +56,18 @@ export function encodeWkb(geom: WkbGeometry): Uint8Array {
       break;
     case 'Polygon':
       writeHeader(WKB_POLYGON);
-      view.setUint32(offset, geom.coordinates.length, true); offset += 4;
+      view.setUint32(offset, geom.coordinates.length, true);
+      offset += 4;
       for (const ring of geom.coordinates) writeRing(ring);
       break;
     case 'MultiPolygon':
       writeHeader(WKB_MULTIPOLYGON);
-      view.setUint32(offset, geom.coordinates.length, true); offset += 4;
+      view.setUint32(offset, geom.coordinates.length, true);
+      offset += 4;
       for (const poly of geom.coordinates) {
         writeHeader(WKB_POLYGON);
-        view.setUint32(offset, poly.length, true); offset += 4;
+        view.setUint32(offset, poly.length, true);
+        offset += 4;
         for (const ring of poly) writeRing(ring);
       }
       break;
@@ -82,11 +86,14 @@ export function decodeWkb(bytes: Uint8Array): WkbGeometry {
     return type;
   };
   const readRing = (): [number, number][] => {
-    const n = view.getUint32(offset, true); offset += 4;
+    const n = view.getUint32(offset, true);
+    offset += 4;
     const ring: [number, number][] = new Array(n);
     for (let i = 0; i < n; i++) {
-      const x = view.getFloat64(offset, true); offset += 8;
-      const y = view.getFloat64(offset, true); offset += 8;
+      const x = view.getFloat64(offset, true);
+      offset += 8;
+      const y = view.getFloat64(offset, true);
+      offset += 8;
       ring[i] = [x, y];
     }
     return ring;
@@ -97,17 +104,20 @@ export function decodeWkb(bytes: Uint8Array): WkbGeometry {
     return { type: 'LineString', coordinates: readRing() };
   }
   if (type === WKB_POLYGON) {
-    const n = view.getUint32(offset, true); offset += 4;
+    const n = view.getUint32(offset, true);
+    offset += 4;
     const rings: [number, number][][] = new Array(n);
     for (let i = 0; i < n; i++) rings[i] = readRing();
     return { type: 'Polygon', coordinates: rings };
   }
   if (type === WKB_MULTIPOLYGON) {
-    const n = view.getUint32(offset, true); offset += 4;
+    const n = view.getUint32(offset, true);
+    offset += 4;
     const polys: [number, number][][][] = new Array(n);
     for (let i = 0; i < n; i++) {
       readHeader();
-      const nRings = view.getUint32(offset, true); offset += 4;
+      const nRings = view.getUint32(offset, true);
+      offset += 4;
       const rings: [number, number][][] = new Array(nRings);
       for (let r = 0; r < nRings; r++) rings[r] = readRing();
       polys[i] = rings;

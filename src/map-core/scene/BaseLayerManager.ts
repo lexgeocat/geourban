@@ -31,7 +31,6 @@ export class BaseLayerManager {
     return layer;
   }
 
-  /** Libera la capa y los listeners. Llamar en unmount. */
   dispose(): void {
     this.cleanup?.();
     this.cleanup = null;

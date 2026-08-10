@@ -1,12 +1,12 @@
 ﻿import { invoke } from '@tauri-apps/api/core';
 import type { FeatureCollection, Polygon as GeoJsonPolygon } from 'geojson';
-import type { ManzanoLoteMethod } from '../geo/subdivision/types';
-import type { LotResult } from '../geo/math/polygonEngine';
-import type { Street } from '../store/entities/streetStore';
-import type { RoundaboutParams } from '../geo/roundabout/roundaboutEngine';
-import type { CornerMode } from '../geo/roads/ringFillet';
-import type { RoadNetworkNet } from '../geo/roads/types';
-import type { Pt } from '../geo/math/polygonEngine';
+import type { ManzanoLoteMethod } from '@lotificacion-engine/model/types';
+import type { LotResult } from '@kernel/geometry/polygonEngine';
+import type { Street } from '@vias-engine/store/streetStore';
+import type { RoundaboutParams } from '@vias-engine/geometry/roundaboutEngine';
+import type { CornerMode } from '@vias-engine/geometry/ringFillet';
+import type { RoadNetworkNet } from '@vias-engine/geometry/types';
+import type { Pt } from '@kernel/geometry/polygonEngine';
 
 // ─── Runtime nativo (obligatorio desde 2.7) ───────────────────────────
 

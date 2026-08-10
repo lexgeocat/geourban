@@ -1,4 +1,4 @@
-use crate::types::{CornerMode, Pt, RoundaboutParams, Street};
+use crate::kernel::types::{CornerMode, Pt, RoundaboutParams, Street};
 
 fn normalize(dx: f64, dy: f64) -> Pt {
     let len = dx.hypot(dy);

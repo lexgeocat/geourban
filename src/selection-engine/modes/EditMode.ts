@@ -2,13 +2,13 @@ import { Fill, Stroke, Style } from 'ol/style.js';
 import Modify from 'ol/interaction/Modify.js';
 import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
-import SafeTranslate, { type TranslateEvent } from '../../safeTranslate';
-import { useSelectionStore } from '../../../store/map/selectionStore';
-import { ModifyGeometryCommand } from '../../../commands/features/ModifyGeometryCommand';
-import { runCommand } from '../../../commands/core/CommandStack';
-import { updateFeatureMetrics } from '../../../geo/metrics';
-import type { HitTestSelect } from '../HitTestSelect';
-import type { ModeContext } from './ModeContext';
+import SafeTranslate, { type TranslateEvent } from '../interactions/safeTranslate';
+import { useSelectionStore } from '../store/selectionStore';
+import { ModifyGeometryCommand } from '@drawing-engine/commands/ModifyGeometryCommand';
+import { runCommand } from '@kernel/command/CommandStack';
+import { updateFeatureMetrics } from '@georef-engine/metrics';
+import type { HitTestSelect } from '../interactions/HitTestSelect';
+import type { ModeContext } from '@kernel/modes/ModeContext';
 
 export function activateEdit(ctx: ModeContext, select: HitTestSelect): void {
   const { map, drawSource: src } = ctx;

@@ -1,12 +1,10 @@
-// ⚠️ Espejo de crates/geourban-geo/src/math.rs::resolution_aware_segments —
-// heurística de LOD en cliente; motor autoritativo en Rust.
 const MIN_SEGMENTS = 8;
 const MAX_SEGMENTS = 160;
 
 export function resolutionAwareSegments(
   radiusMapUnits: number,
   resolution: number,
-  pxError = 1.5,
+  pxError = 1.5
 ): number {
   if (!(radiusMapUnits > 0) || !(resolution > 0)) return MIN_SEGMENTS;
   const errorMapUnits = pxError * resolution;

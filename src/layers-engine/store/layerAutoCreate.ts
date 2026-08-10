@@ -1,9 +1,9 @@
-import { runCommand } from '../../commands/core/CommandStack';
-import { AddLayerCommand } from '../../commands/layers/AddLayerCommand';
-import { getLayerSuggestion, type GeoUrbanFeatureKind } from '../../core/objectModel';
-import { useLayersStore } from './layersRegistryStore';
-import { pickLayerId } from './layerResolution';
-import { newId } from '../../lib/id';
+// src/store/entities/layerAutoCreate.ts
+import { runCommand } from '@kernel/command/CommandStack';
+import { AddLayerCommand } from '@layers-engine/commands/AddLayerCommand';
+import { getLayerSuggestion, type GeoUrbanFeatureKind } from '@kernel/domain-model/featureModel';
+import { useLayersStore } from '@layers-engine/store/layersRegistryStore';
+import { newId } from '@kernel/id/id';
 
 function uniqueAutoName(kind: GeoUrbanFeatureKind): string {
   const registry = useLayersStore.getState();
@@ -40,8 +40,4 @@ export function autoCreateLayerForKind(kind: GeoUrbanFeatureKind): string {
     ),
   );
   return id;
-}
-
-export function resolveOrCreateLayerForKind(kind: GeoUrbanFeatureKind): string {
-  return pickLayerId({ kind, requireKindMatch: true, autoCreate: true })!;
 }

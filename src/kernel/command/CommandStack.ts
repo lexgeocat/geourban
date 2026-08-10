@@ -1,8 +1,8 @@
 ﻿import { create } from 'zustand';
 import { Command } from './Command';
 import { getCommandContext, type CommandContext } from './commandContext';
-import { useSelectionStore } from '../../store/map/selectionStore';
-import { toast } from '../../store/ui/toastStore';
+import { useSelectionStore } from '@selection-engine/store/selectionStore';
+import { toast } from '@shared-ui/store/toastStore';
 
 type RunResult =
   | { ok: true; command: Command }

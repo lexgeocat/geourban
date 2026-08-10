@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { Modal } from '../ui/Modal';
-import { listProjects, loadProject, deleteProject, type ProjectSummary } from '../../persistence/projectFile';
-import { useProjectFileStore } from '../../store/ui/projectFileStore';
-import { toast } from '../../store/ui/toastStore';
-import { confirmAsync } from '../../store/ui/confirmDialogStore';
+import { Modal } from '@shared-ui/Modal';
+import { listProjects, loadProject, deleteProject, type ProjectSummary } from '../projectFile';
+import { useProjectFileStore } from '../store/projectFileStore';
+import { toast } from '@shared-ui/store/toastStore';
+import { confirmAsync } from '@shared-ui/store/confirmDialogStore';
 
 function formatDate(ms: number): string {
   if (!ms) return '—';

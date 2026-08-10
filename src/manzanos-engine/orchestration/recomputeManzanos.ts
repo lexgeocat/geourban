@@ -1,39 +1,39 @@
-﻿import { extend as extendExtent, intersects as extentIntersects, type Extent } from 'ol/extent.js';
+import { extend as extendExtent, intersects as extentIntersects, type Extent } from 'ol/extent.js';
 import Feature from 'ol/Feature.js';
 import PolygonGeom from 'ol/geom/Polygon.js';
 import type Geometry from 'ol/geom/Geometry.js';
 import type VectorSource from 'ol/source/Vector.js';
 import type { FeatureCollection, Feature as GeoJSONFeature } from 'geojson';
 
-import { useMapStore } from '../store/map/mapStore';
-import { updateFeatureMetrics } from './metrics';
-import { polyArea, ringPerimeter, polygonCentroid, closeRing, type Pt } from './math/polygonEngine';
-import { useStreetStore, type Street } from '../store/entities/streetStore';
-import { useRoundaboutStore, type Roundabout } from '../store/entities/roundaboutStore';
-import { useManzanoStore } from '../store/entities/manzanoStore';
-import { useLayersStore } from '../store/entities/layersRegistryStore';
-import { useRecomputeStatusStore } from '../store/ui/recomputeStatusStore';
-import { useRoadCornerStore } from '../store/map/roadCornerStore';
+import { useMapStore } from '@map-core/store/mapStore';
+import { updateFeatureMetrics } from '@georef-engine/metrics';
+import { polyArea, ringPerimeter, polygonCentroid, closeRing, type Pt } from '@kernel/geometry/polygonEngine';
+import { useStreetStore, type Street } from '@vias-engine/store/streetStore';
+import { useRoundaboutStore, type Roundabout } from '@vias-engine/store/roundaboutStore';
+import { useManzanoStore } from '@lotificacion-engine/store/manzanoLotConfigStore';
+import { useLayersStore } from '@layers-engine/store/layersRegistryStore';
+import { useRecomputeStatusStore } from '../store/recomputeStatusStore';
+import { useRoadCornerStore } from '@vias-engine/store/roadCornerStore';
 import {
   computeManzanosInWorker,
   subdivideManzanoInWorker,
   matchFragmentsBatchInWorker,
-} from '../workers/geoWorkerClient';
-import { confirmAsync } from '../store/ui/confirmDialogStore';
-import { useLeftSidebarStore } from '../store/ui/leftSidebarStore';
-import { ensureKind, getFeatureKind, getLotStatus, setLotStatus } from '../core/objectModel';
-import type { ManzanoLoteMethod } from './subdivision/types';
-import { buildRoadNetworkRings } from './roads/roadNetworkEngine';
-import { roundRingReflex, pointOnRing } from './roads/ringFillet';
-import { resolveOrCreateLayerForKind } from '../store/entities/layerAutoCreate';
-import { newId } from '../lib/id';
+} from '@kernel/native/geoWorkerClient';
+import { confirmAsync } from '@shared-ui/store/confirmDialogStore';
+import { useLeftSidebarStore } from '@app-shell/store/leftSidebarStore';
+import { ensureKind, getFeatureKind, getLotStatus, setLotStatus } from '@kernel/domain-model/featureModel';
+import type { ManzanoLoteMethod } from '@lotificacion-engine/model/types';
+import { buildRoadNetworkRings } from '@vias-engine/geometry/roadNetworkEngine';
+import { roundRingReflex, pointOnRing } from '@vias-engine/geometry/ringFillet';
+import { resolveOrCreateLayerForKind } from '@layers-engine/store/layerResolution';
+import { newId } from '@kernel/id/id';
 import {
   StructuralDiffRecorder,
   EMPTY_STRUCTURAL_DIFF,
   type StructuralDiff,
-} from '../commands/core/structuralDiff';
-import { createLotFeature } from '../commands/lots/createLotFeature';
-import { nextManzanoSeq, manzanoCodeFromSeq } from '../store/entities/manzanoNaming';
+} from '@kernel/command/structuralDiff';
+import { createLotFeature } from '@lotificacion-engine/model/createLotFeature';
+import { nextManzanoSeq, manzanoCodeFromSeq } from '../naming/manzanoNaming';
 
 const GEOMETRY_NOCHANGE_TOL = 1e-6;
 
@@ -513,7 +513,7 @@ async function applyRelotTasks(
       useManzanoStore.getState().setMethod(task.featureId, task.method);
       if (task.dirPref) useManzanoStore.getState().setRotateDir(task.featureId, task.dirPref);
     } catch (err) {
-      console.error('recomputeManzanos: fallo la re-lotizaciÃ³n automÃ¡tica', err);
+      console.error('recomputeManzanos: fallo la re-lotización automática', err);
       setLotStatus(fragFeat, 'pending');
       recorder.recordModifyAfter(fragFeat);
     }
@@ -658,7 +658,7 @@ async function recomputeManzanosImmediate(recorder: StructuralDiffRecorder): Pro
   try {
     result = await computeManzanosInWorker(parcelsFC, roadNetworkFC);
   } catch (err) {
-    console.error('recomputeManzanos: fallo la uniÃ³n/diferencia de la red vial', err);
+    console.error('recomputeManzanos: fallo la unión/diferencia de la red vial', err);
     return;
   }
 
@@ -735,7 +735,7 @@ async function recomputeManzanosImmediate(recorder: StructuralDiffRecorder): Pro
       );
     } catch (err) {
       console.error(
-        'recomputeManzanos: matchFragmentsBatch fallÃ³ en el motor nativo (sin fallback desde 2.7) â€” se aborta el recompute.',
+        'recomputeManzanos: matchFragmentsBatch falló en el motor nativo (sin fallback desde 2.7) — se aborta el recompute.',
         err
       );
       return;
@@ -781,11 +781,11 @@ async function recomputeManzanosImmediate(recorder: StructuralDiffRecorder): Pro
   if (relotCandidates.length > 0) {
     const plural = relotCandidates.length > 1;
     allowAutoRelot = await confirmAsync(
-      `El trazado nuevo modificÃ³ lo suficiente ${plural ? 'a estos manzanos ya lotizados' : 'a este manzano ya lotizado'} ` +
-        `como para necesitar regenerar sus lotes automÃ¡ticamente (el resto del proyecto no se ve afectado).\n\n` +
-        'Si cancelÃ¡s, el corte igual se aplica pero esos lotes quedan pendientes de regenerar a mano.',
+      `El trazado nuevo modificó lo suficiente ${plural ? 'a estos manzanos ya lotizados' : 'a este manzano ya lotizado'} ` +
+        `como para necesitar regenerar sus lotes automáticamente (el resto del proyecto no se ve afectado).\n\n` +
+        'Si cancelás, el corte igual se aplica pero esos lotes quedan pendientes de regenerar a mano.',
       {
-        title: 'Â¿Regenerar lotes automÃ¡ticamente?',
+        title: '¿Regenerar lotes automáticamente?',
         confirmLabel: 'Continuar',
         cancelLabel: 'Cancelar',
       }
@@ -893,7 +893,7 @@ async function recomputeManzanosImmediate(recorder: StructuralDiffRecorder): Pro
         const fallback = oriented.length >= 3 ? closeRing(oriented) : [];
         if (fallback.length < 4 || origAreaM2 < 0.5) {
           console.warn(
-            `recomputeManzanos: fragmento ${fi} del grupo ${group.origId} descartado por geometrÃ­a degenerada`
+            `recomputeManzanos: fragmento ${fi} del grupo ${group.origId} descartado por geometría degenerada`
           );
           continue;
         }
@@ -1165,7 +1165,7 @@ export async function reapplyRoadCornerMode(): Promise<void> {
     try {
       result = await computeManzanosInWorker(parcelsFC, roadNetworkFC);
     } catch (err) {
-      console.error('reapplyRoadCornerMode: fallo la uniÃ³n/diferencia de la red vial', err);
+      console.error('reapplyRoadCornerMode: fallo la unión/diferencia de la red vial', err);
       return;
     }
 
@@ -1225,7 +1225,7 @@ export async function reapplyRoadCornerMode(): Promise<void> {
         );
       } catch (err) {
         console.error(
-          'reapplyRoadCornerMode: matchFragmentsBatch fallÃ³ en el motor nativo (sin fallback desde 2.7) â€” se aborta la reaplicaciÃ³n.',
+          'reapplyRoadCornerMode: matchFragmentsBatch falló en el motor nativo (sin fallback desde 2.7) — se aborta la reaplicación.',
           err
         );
         return;

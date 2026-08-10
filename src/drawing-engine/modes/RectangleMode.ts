@@ -3,11 +3,11 @@ import { primaryAction } from 'ol/events/condition.js';
 import { Fill, Stroke, Style } from 'ol/style.js';
 import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
-import { runCommand } from '../../../commands/core/CommandStack';
-import { AddFeatureCommand } from '../../../commands/features/AddFeatureCommand';
-import { updateFeatureMetrics } from '../../../geo/metrics';
-import { resolveOrCreateLayerForKind } from '../../../store/entities/layerAutoCreate';
-import type { ModeContext } from './ModeContext';
+import { runCommand } from '@kernel/command/CommandStack';
+import { AddFeatureCommand } from '../commands/AddFeatureCommand';
+import { updateFeatureMetrics } from '@georef-engine/metrics';
+import { resolveOrCreateLayerForKind } from '@layers-engine/store/layerResolution';
+import type { ModeContext } from '@kernel/modes/ModeContext';
 
 export function activateRectangle(ctx: ModeContext): void {
   const { map, drawSource: src } = ctx;

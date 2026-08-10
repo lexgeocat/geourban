@@ -5,26 +5,26 @@ import Polygon from 'ol/geom/Polygon.js';
 import MultiPolygon from 'ol/geom/MultiPolygon.js';
 import type { Coordinate } from 'ol/coordinate.js';
 import { intersects as extentIntersects } from 'ol/extent.js';
-import { HitTestSelect, type HitTestSelectEvent } from '../HitTestSelect';
-import { LassoSelection, type LassoMode } from '../LassoSelection';
-import { useSelectionStore } from '../../../store/map/selectionStore';
-import { useDrawStore } from '../../../store/map/drawStore';
-import { hitTestCandidatesInExtentAsync } from '../../hitTest';
-import { pointInPoly, segmentIntersectsPoly, type Pt } from '../../../geo/math/polygonEngine';
-import { getOrCreateRoadSnapSource } from '../../roadSnapSource';
-import type { ModeContext } from './ModeContext';
+import { HitTestSelect, type HitTestSelectEvent } from '../interactions/HitTestSelect';
+import { LassoSelection, type LassoMode } from '../interactions/LassoSelection';
+import { useSelectionStore } from '../store/selectionStore';
+import { useDrawStore } from '@map-core/store/drawStore';
+import { hitTestCandidatesInExtentAsync } from '../geometry/hitTest';
+import { pointInPoly, segmentIntersectsPoly, type Pt } from '@kernel/geometry/polygonEngine';
+import { extraSnapSources } from '@snap-engine/extension-points';
+import type { ModeContext } from '@kernel/modes/ModeContext';
 
- export const SELECT_STYLE = new Style({
-   fill: new Fill({ color: 'rgba(0, 212, 255, 0.15)' }),
-   stroke: new Stroke({ color: '#00d4ff', width: 2.5 }),
- });
- 
- function seedFromStore(ctx: ModeContext, select: HitTestSelect) {
-   useSelectionStore.getState().selectedIds.forEach((id) => {
-     const f = ctx.drawSource.getFeatureById(id) as Feature<Geometry> | null;
-     if (f) select.getFeatures().push(f);
-   });
- }
+export const SELECT_STYLE = new Style({
+  fill: new Fill({ color: 'rgba(0, 212, 255, 0.15)' }),
+  stroke: new Stroke({ color: '#00d4ff', width: 2.5 }),
+});
+
+function seedFromStore(ctx: ModeContext, select: HitTestSelect) {
+  useSelectionStore.getState().selectedIds.forEach((id) => {
+    const f = ctx.drawSource.getFeatureById(id) as Feature<Geometry> | null;
+    if (f) select.getFeatures().push(f);
+  });
+}
 
 export function activateSelect(ctx: ModeContext): HitTestSelect {
   const select = new HitTestSelect({
@@ -35,7 +35,7 @@ export function activateSelect(ctx: ModeContext): HitTestSelect {
     filter: (feature) => !ctx.isLayerLocked(feature) && ctx.isLayerVisible(feature),
     getExtraFeatures: () => {
       if (useDrawStore.getState().mode === 'edit') return [];
-      return getOrCreateRoadSnapSource().getFeatures() as Feature<Geometry>[];
+      return extraSnapSources.collect().flat() as Feature<Geometry>[];
     },
   });
 
@@ -44,15 +44,14 @@ export function activateSelect(ctx: ModeContext): HitTestSelect {
   select.addEventListener('select', (evt) => {
     const e = evt as unknown as HitTestSelectEvent;
     const allSelected = select.getFeatures().getArray();
-    const ids = allSelected
-      .map((f) => f.getId())
-      .filter((id): id is string | number => id != null);
+    const ids = allSelected.map((f) => f.getId()).filter((id): id is string | number => id != null);
 
     if (ids.length === 0) {
       useSelectionStore.getState().clear();
     } else {
       const justClickedId = e.selected[0]?.getId();
-      const primary = (justClickedId != null ? justClickedId : ids[ids.length - 1]) as string | number;
+      const primary = (justClickedId != null ? justClickedId : ids[ids.length - 1]) as
+        string | number;
       useSelectionStore.getState().setSelection(ids, primary);
     }
     ctx.refreshLayers();
@@ -84,7 +83,10 @@ function activateLasso(ctx: ModeContext, select: HitTestSelect, lassoMode: Lasso
         result.kind === 'rect'
           ? result.extent
           : (() => {
-              let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+              let minX = Infinity,
+                minY = Infinity,
+                maxX = -Infinity,
+                maxY = -Infinity;
               for (const p of result.polygon) {
                 if (p[0] < minX) minX = p[0];
                 if (p[1] < minY) minY = p[1];
@@ -130,11 +132,17 @@ function activateLasso(ctx: ModeContext, select: HitTestSelect, lassoMode: Lasso
                 return;
               }
               if (Array.isArray(arr)) {
-                if (arr.length >= 2 && typeof arr[0] === 'object' && arr[0] !== null && typeof (arr[0] as number[])[0] === 'number') {
+                if (
+                  arr.length >= 2 &&
+                  typeof arr[0] === 'object' &&
+                  arr[0] !== null &&
+                  typeof (arr[0] as number[])[0] === 'number'
+                ) {
                   for (let k = 0; k < (arr as unknown[]).length - 1 && !inside; k++) {
                     const a = (arr as Pt[])[k];
                     const b = (arr as Pt[])[k + 1];
-                    if (a && b && segmentIntersectsPoly([a[0], a[1]], [b[0], b[1]], poly)) inside = true;
+                    if (a && b && segmentIntersectsPoly([a[0], a[1]], [b[0], b[1]], poly))
+                      inside = true;
                   }
                   return;
                 }

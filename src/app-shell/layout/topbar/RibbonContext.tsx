@@ -1,5 +1,5 @@
 import React from 'react';
-import type { DrawMode } from '../../../store/map/drawStore';
+import type { DrawMode } from '@map-core/store/drawStore';
 
 export const RibbonContext = React.createContext<{
   currentMode: DrawMode;

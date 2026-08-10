@@ -1,5 +1,5 @@
-use crate::math::resolution_aware_segments;
-use crate::types::{Pt, RoundaboutGeometry, RoundaboutParams};
+use crate::kernel::math::resolution_aware_segments;
+use crate::kernel::types::{Pt, RoundaboutGeometry, RoundaboutParams};
 
 pub fn ngon_ring(center: Pt, circum_r: f64, n: u32, rot: f64) -> Vec<Pt> {
     let mut pts = Vec::with_capacity(n as usize);

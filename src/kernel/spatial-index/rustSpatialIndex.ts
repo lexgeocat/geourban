@@ -6,7 +6,7 @@ import {
   spatialIndexUpsertBatchInWorker,
   spatialIndexRemoveBatchInWorker,
   type SpatialIndexItem,
-} from '../workers/geoWorkerClient';
+} from '@kernel/native/geoWorkerClient';
 import { rafThrottle } from '../utils/rafThrottle';
 
 export const DRAW_SOURCE_SPATIAL_SLOT = 'draw';

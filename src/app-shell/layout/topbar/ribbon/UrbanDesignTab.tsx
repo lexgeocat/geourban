@@ -1,21 +1,21 @@
 import React from 'react';
 import { Trash2 } from 'lucide-react';
-import { useDrawStore } from '../../../../store/map/drawStore';
-import { useStreetStore } from '../../../../store/entities/streetStore';
-import { useRoundaboutStore } from '../../../../store/entities/roundaboutStore';
-import { useEntityLabelStore } from '../../../../store/entities/entityLabelStore';
-import { useLayersStore } from '../../../../store/entities/layersRegistryStore';
-import { useGenerateLotsProgressStore } from '../../../../store/ui/generateLotsProgressStore';
-import { recomputeManzanos, resetIncrementalRoadTracking } from '../../../../geo/recomputeManzanos';
-import { useMapStore } from '../../../../store/map/mapStore';
-import { runCommand } from '../../../../commands/core/CommandStack';
-import { RemoveLayerCommand } from '../../../../commands/layers/RemoveLayerCommand';
-import { computeLayerFeatureCounts } from '../../../../geo/selectors/layerStats';
-import { RibbonGroup, RibbonTool, RibbonToolDropdown } from '../RibbonPrimitives';
+import { useDrawStore } from '@map-core/store/drawStore';
+import { useStreetStore } from '@vias-engine/store/streetStore';
+import { useRoundaboutStore } from '@vias-engine/store/roundaboutStore';
+import { useEntityLabelStore } from '@label-engine/store/entityLabelStore';
+import { useLayersStore } from '@layers-engine/store/layersRegistryStore';
+import { useGenerateLotsProgressStore } from '@lotificacion-engine/store/generateLotsProgressStore';
+import { recomputeManzanos, resetIncrementalRoadTracking } from '@manzanos-engine/orchestration/recomputeManzanos';
+import { useMapStore } from '@map-core/store/mapStore';
+import { runCommand } from '@kernel/command/CommandStack';
+import { RemoveLayerCommand } from '@layers-engine/commands/RemoveLayerCommand';
+import { computeLayerFeatureCounts } from '@layers-engine/selectors/layerStats';
+import { RibbonGroup, RibbonTool, RibbonToolDropdown } from '../../topbar/RibbonPrimitives';
 import {
   IconCursor, IconEraser, IconPolygon, IconLine, IconRect, IconPerimeter,
   IconSubdivide, IconLots, IconStreet, IconRoundabout,
-} from '../icons';
+} from '../../topbar/icons';
 
 export interface UrbanDesignTabProps {
   lotsBusy: boolean;

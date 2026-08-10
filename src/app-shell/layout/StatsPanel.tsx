@@ -1,18 +1,18 @@
-﻿import React, { useMemo } from 'react';
-import { useMapStore } from '../../store/map/mapStore';
-import { useStreetStore } from '../../store/entities/streetStore';
-import { useUiShellStore } from '../../store/ui/uiShellStore';
-import { useDrawSourceTick } from '../../hooks/useDrawSourceTick';
-import { useDraggablePanel } from '../../hooks/useDraggablePanel';
-import { polyArea, type Pt } from '../../geo/math/polygonEngine';
-import { formatMetricArea, streetLengthMetricM } from '../../geo/metrics';
+import React, { useMemo } from 'react';
+import { useMapStore } from '@map-core/store/mapStore';
+import { useStreetStore } from '@vias-engine/store/streetStore';
+import { useUiShellStore } from '../store/uiShellStore';
+import { useDrawSourceTick } from '@shared-ui/hooks/useDrawSourceTick';
+import { useDraggablePanel } from '@shared-ui/hooks/useDraggablePanel';
+import { polyArea, type Pt } from '@kernel/geometry/polygonEngine';
+import { formatMetricArea, streetLengthMetricM } from '@georef-engine/metrics';
 import Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
 import Polygon from 'ol/geom/Polygon.js';
 import type VectorSource from 'ol/source/Vector.js';
-import { getFeatureKind, getLotStatus } from '../../core/objectModel';
-import { useLayersStore } from '../../store/entities/layersRegistryStore';
-import type { Street } from '../../store/entities/streetStore';
+import { getFeatureKind, getLotStatus } from '@kernel/domain-model/featureModel';
+import { useLayersStore } from '@layers-engine/store/layersRegistryStore';
+import type { Street } from '@vias-engine/store/streetStore';
 
 interface ManzanoInfo {
   index: number;
@@ -48,13 +48,12 @@ function computeStats(drawSource: VectorSource<Feature<Geometry>> | null, street
 
   if (!drawSource) return result;
 
-  // Área total de todos los polígonos
   let mznIdx = 0;
   drawSource.forEachFeature((f: Feature<Geometry>) => {
     const geom = f.getGeometry();
     if (!geom || geom.getType() !== 'Polygon') return;
     const kind = getFeatureKind(f);
-    if (kind === 'perimetro') return; // referencia intacta — no forma parte de las métricas operativas
+    if (kind === 'perimetro') return;
 
     const isManzana = kind === 'manzana';
     if (isManzana && getLotStatus(f) === 'subdivided') return;
@@ -107,8 +106,12 @@ export default function StatsPanel() {
 
   const tick = useDrawSourceTick(drawSource);
 
-  const stats = useMemo(() => computeStats(drawSource, streets, manzanoColor),
-  [drawSource, streets, tick, manzanoColor]);
+  const stats = useMemo(
+    () => computeStats(drawSource, streets, manzanoColor),
+    // tick refleja cambios internos del drawSource (no de su referencia)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [drawSource, streets, tick, manzanoColor]
+  );
 
   if (!visible) return null;
   if (stats.totalAreaM2 === 0 && stats.streetCount === 0) return null;
@@ -150,7 +153,7 @@ export default function StatsPanel() {
           userSelect: 'none',
         }}
       >
-        <span>Estadísticas del proyecto</span>
+        <span>Estad�sticas del proyecto</span>
         <button
           onClick={() => setStatsPanelVisible(false)}
           style={{
@@ -164,13 +167,13 @@ export default function StatsPanel() {
           }}
           title="Cerrar"
         >
-          ✕
+          ?
         </button>
       </div>
 
-      {/* Tabla de estadísticas */}
+      {/* Tabla de estad�sticas */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: '3px 10px', marginBottom: 8 }}>
-        <span style={{ color: 'var(--cad-text-dim)' }}>Área total:</span>
+        <span style={{ color: 'var(--cad-text-dim)' }}>�rea total:</span>
         <span style={{ color: '#3fb950', fontFamily: 'JetBrains Mono, monospace', textAlign: 'right' }}>{formatMetricArea(stats.totalAreaM2)}</span>
         <span />
 
@@ -216,13 +219,13 @@ export default function StatsPanel() {
               <div style={{ width: `${pctMzn}%`, background: '#58a6ff' }} title={`Manzanos: ${pctMzn.toFixed(1)}%`} />
             )}
             {pctVia > 0 && (
-              <div style={{ width: `${Math.min(pctVia, 100)}%`, background: '#ffa657' }} title={`Vía: ${pctVia.toFixed(1)}%`} />
+              <div style={{ width: `${Math.min(pctVia, 100)}%`, background: '#ffa657' }} title={`V�a: ${pctVia.toFixed(1)}%`} />
             )}
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 2, fontSize: '0.6rem', color: 'var(--cad-text-muted)' }}>
             <span>Lotes {pctLots.toFixed(0)}%</span>
             <span>Mzn {pctMzn.toFixed(0)}%</span>
-            <span>Vía {pctVia.toFixed(0)}%</span>
+            <span>V�a {pctVia.toFixed(0)}%</span>
           </div>
         </div>
       )}
@@ -250,7 +253,7 @@ export default function StatsPanel() {
                 {formatMetricArea(m.areaM2)}
               </span>
               <span style={{ color: 'var(--cad-text-muted)', fontSize: '0.58rem' }}>
-                {m.vertexCount} vért.
+                {m.vertexCount} v�rt.
               </span>
             </div>
           ))}

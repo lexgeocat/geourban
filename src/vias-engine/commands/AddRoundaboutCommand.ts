@@ -1,8 +1,8 @@
 ﻿import { RoadEntityCommand } from './RoadEntityCommand';
-import { useRoundaboutStore } from '../../store/entities/roundaboutStore';
-import { useStreetTracingSessionStore } from '../../store/ui/streetTracingSessionStore';
-import type { Command } from '../core/Command';
-import type { RoundaboutParams } from '../../geo/roundabout/roundaboutEngine';
+import { useRoundaboutStore } from '../store/roundaboutStore';
+import { useStreetTracingSessionStore } from '../store/streetTracingSessionStore';
+import type { Command } from '@kernel/command/Command';
+import type { RoundaboutParams } from '../geometry/roundaboutEngine';
 
 export class AddRoundaboutCommand extends RoadEntityCommand<RoundaboutParams> {
   readonly label = 'Trazar rotonda';

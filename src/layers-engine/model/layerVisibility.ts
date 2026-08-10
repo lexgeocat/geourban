@@ -1,8 +1,7 @@
 import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
-import { useLayersStore } from '../store/entities/layersRegistryStore';
+import { useLayersStore } from '@layers-engine/store/layersRegistryStore';
 
-/** Único punto de verdad para "¿esta feature pertenece a una capa visible?". */
 export function isFeatureLayerVisible(feature: Feature<Geometry>): boolean {
   const layerId = feature.get('layerId') as string | undefined;
   if (!layerId) return true; // feature huérfana: no bloquear

@@ -1,7 +1,7 @@
 use serde_json::{Map, Value};
 
-use crate::math::poly_area;
-use crate::types::Pt;
+use crate::kernel::math::poly_area;
+use crate::kernel::types::Pt;
 
 const DEFAULT_DEDUPE_EPS: f64 = 1e-4;
 const DEFAULT_COLLINEAR_ANGLE_EPS: f64 = 1e-4; // ~0.0057° — solo colinealidad casi perfecta

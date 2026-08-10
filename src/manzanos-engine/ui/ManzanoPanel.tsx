@@ -1,23 +1,24 @@
-﻿import React, { useMemo, useEffect, useRef } from 'react';
-import { useMapStore } from '../../store/map/mapStore';
-import { useDrawSourceTick } from '../../hooks/useDrawSourceTick';
-import { useIncrementalRender } from '../../hooks/useIncrementalRender';
-import { useManzanoActions } from '../../hooks/useManzanoActions';
-import { MANZANO_FOCUS_EVENT, type ManzanoFocusEventDetail } from '../../hooks/useLotsWorkflow';
-import { readManzanoRows } from '../../geo/selectors/manzanoRows';
-import { useSubdivisionPreviewStore } from '../../store/ui/subdivisionPreviewStore';
-import { formatMetricArea } from '../../geo/metrics';
-import LotParamsCard from './manzano/LotParamsCard';
-import ManzanoCard from './manzano/ManzanoCard';
-import ManzanoLabelingCard from './manzano/ManzanoLabelingCard';
-import LoteLabelingCard from './manzano/LoteLabelingCard';
+import React, { useMemo, useEffect, useRef } from 'react';
+import { useMapStore } from '@map-core/store/mapStore';
+import { useDrawSourceTick } from '@shared-ui/hooks/useDrawSourceTick';
+import { useIncrementalRender } from '@shared-ui/hooks/useIncrementalRender';
+import { useManzanoActions } from '@lotificacion-engine/hooks/useManzanoActions';
+import { MANZANO_FOCUS_EVENT, type ManzanoFocusEventDetail } from '@lotificacion-engine/hooks/useLotsWorkflow';
+import { readManzanoRows } from '../selectors/manzanoRows';
+import { useSubdivisionPreviewStore } from '@lotificacion-engine/store/subdivisionPreviewStore';
+import { formatMetricArea } from '@georef-engine/metrics';
+import LotParamsCard from '@lotificacion-engine/ui/LotParamsCard';
+import ManzanoCard from '@lotificacion-engine/ui/ManzanoCard';
+import ManzanoLabelingCard from '@label-engine/ui/cards/ManzanoLabelingCard';
+import LoteLabelingCard from '@label-engine/ui/cards/LoteLabelingCard';
 
 export default function ManzanoPanel() {
   const drawSource = useMapStore((s) => s.drawSource);
   const tick = useDrawSourceTick(drawSource);
   const rows = useMemo(() => readManzanoRows(drawSource),
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  [drawSource, tick]);
+    // tick refleja cambios internos del drawSource
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [drawSource, tick]);
 
   const panelRef = useRef<HTMLDivElement>(null);
   const { visibleCount, sentinelRef } = useIncrementalRender(rows.length, 40, panelRef);
@@ -52,7 +53,7 @@ export default function ManzanoPanel() {
 
       {rows.length === 0 ? (
         <p style={{ fontSize: '0.68rem', color: 'var(--cad-text-muted)' }}>
-          Todavía no hay manzanos. Trazá vías que crucen la parcela para generarlos.
+          Todav�a no hay manzanos. Traz� v�as que crucen la parcela para generarlos.
         </p>
       ) : (
         <>
@@ -73,7 +74,7 @@ export default function ManzanoPanel() {
           {rows.length > visibleCount && <div ref={sentinelRef} style={{ height: 1 }} />}
 
           <div style={{ marginTop: 6, paddingTop: 6, borderTop: '1px solid var(--cad-border)', fontSize: '0.63rem', color: 'var(--cad-text-muted)' }}>
-            Manzanos: {formatMetricArea(totalMznArea)} · {totalLotes} lotes en total
+            Manzanos: {formatMetricArea(totalMznArea)} � {totalLotes} lotes en total
           </div>
         </>
       )}

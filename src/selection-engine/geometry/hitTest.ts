@@ -5,9 +5,9 @@ import MultiPolygon from 'ol/geom/MultiPolygon.js';
 import LineString from 'ol/geom/LineString.js';
 import Point from 'ol/geom/Point.js';
 import type VectorSource from 'ol/source/Vector.js';
-import { pointInPoly, polyArea } from '../geo/math/polygonEngine';
-import { queryRustSpatialIndex } from './rustSpatialIndex';
-import { distToSegmentXY } from '../geo/math/dist';
+import { pointInPoly, polyArea } from '@kernel/geometry/polygonEngine';
+import { queryRustSpatialIndex } from '@kernel/spatial-index/rustSpatialIndex';
+import { distToSegmentXY } from '@kernel/geometry/dist';
 
 export interface HitTestOptions {
   tolerance: number;
@@ -16,7 +16,11 @@ export interface HitTestOptions {
   extraFeatures?: Array<Feature<Geometry>>;
 }
 
-function polygonHit(coord: number[], geom: Polygon, tolerance: number): { hit: boolean; area: number } {
+function polygonHit(
+  coord: number[],
+  geom: Polygon,
+  tolerance: number
+): { hit: boolean; area: number } {
   const rings = geom.getCoordinates();
   const outer = rings[0];
   if (!outer || outer.length < 3) return { hit: false, area: Infinity };
@@ -31,18 +35,38 @@ function polygonHit(coord: number[], geom: Polygon, tolerance: number): { hit: b
   }
 
   for (let i = 0; i < outer.length - 1; i++) {
-    if (distToSegmentXY(coord[0], coord[1], outer[i][0], outer[i][1], outer[i + 1][0], outer[i + 1][1]) <= tolerance) {
+    if (
+      distToSegmentXY(
+        coord[0],
+        coord[1],
+        outer[i][0],
+        outer[i][1],
+        outer[i + 1][0],
+        outer[i + 1][1]
+      ) <= tolerance
+    ) {
       return { hit: true, area: polyArea(outer as [number, number][]) };
     }
   }
   return { hit: false, area: Infinity };
 }
 
-function lineHit(coord: number[], geom: LineString, tolerance: number): { hit: boolean; dist: number } {
+function lineHit(
+  coord: number[],
+  geom: LineString,
+  tolerance: number
+): { hit: boolean; dist: number } {
   const coords = geom.getCoordinates();
   let best = Infinity;
   for (let i = 0; i < coords.length - 1; i++) {
-    const d = distToSegmentXY(coord[0], coord[1], coords[i][0], coords[i][1], coords[i + 1][0], coords[i + 1][1]);
+    const d = distToSegmentXY(
+      coord[0],
+      coord[1],
+      coords[i][0],
+      coords[i][1],
+      coords[i + 1][0],
+      coords[i + 1][1]
+    );
     if (d < best) best = d;
   }
   return { hit: best <= tolerance, dist: best };
@@ -57,7 +81,7 @@ function pointHit(coord: number[], geom: Point, tolerance: number): { hit: boole
 function geometryHit(
   coord: number[],
   geom: Geometry,
-  tolerance: number,
+  tolerance: number
 ): { hit: boolean; area?: number; dist?: number } {
   if (geom instanceof Polygon) return polygonHit(coord, geom, tolerance);
   if (geom instanceof MultiPolygon) {
@@ -73,7 +97,11 @@ function geometryHit(
   return { hit: false };
 }
 
-export function hitTestFeature(coordinate: number[], feature: Feature<Geometry>, tolerance: number): boolean {
+export function hitTestFeature(
+  coordinate: number[],
+  feature: Feature<Geometry>,
+  tolerance: number
+): boolean {
   const geom = feature.getGeometry();
   if (!geom) return false;
   return geometryHit(coordinate, geom, tolerance).hit;
@@ -82,7 +110,7 @@ export function hitTestFeature(coordinate: number[], feature: Feature<Geometry>,
 export async function hitTestAtCoordinateAsync(
   coordinate: number[],
   source: VectorSource,
-  options: HitTestOptions,
+  options: HitTestOptions
 ): Promise<Feature<Geometry> | null> {
   const { tolerance, exclude, filter, extraFeatures } = options;
 
@@ -90,15 +118,19 @@ export async function hitTestAtCoordinateAsync(
     coordinate[0] - tolerance,
     coordinate[1] - tolerance,
     coordinate[0] + tolerance,
-    coordinate[1] + tolerance,
+    coordinate[1] + tolerance
   );
   const candidates: Array<Feature<Geometry>> = [];
   for (const id of ids) {
     const f = source.getFeatureById(id) as Feature<Geometry> | null;
     if (f) candidates.push(f);
   }
-  const basePool = candidates.length > 0 ? candidates : (source.getFeatures() as unknown as Array<Feature<Geometry>>);
-  const pool = extraFeatures && extraFeatures.length > 0 ? [...basePool, ...extraFeatures] : basePool;
+  const basePool =
+    candidates.length > 0
+      ? candidates
+      : (source.getFeatures() as unknown as Array<Feature<Geometry>>);
+  const pool =
+    extraFeatures && extraFeatures.length > 0 ? [...basePool, ...extraFeatures] : basePool;
 
   let bestPolygon: { feature: Feature<Geometry>; area: number } | null = null;
   let bestLinear: { feature: Feature<Geometry>; dist: number } | null = null;
@@ -125,10 +157,9 @@ export async function hitTestAtCoordinateAsync(
   return null;
 }
 
-/** Candidatos por bbox (lasso/rect select) respaldado por el índice nativo. */
 export async function hitTestCandidatesInExtentAsync(
   extent: [number, number, number, number],
-  source: VectorSource,
+  source: VectorSource
 ): Promise<Array<Feature<Geometry>>> {
   const ids = await queryRustSpatialIndex(extent[0], extent[1], extent[2], extent[3]);
   const out: Array<Feature<Geometry>> = [];

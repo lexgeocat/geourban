@@ -1,12 +1,12 @@
-import { useRoundaboutStore } from '../../../store/entities/roundaboutStore';
-import { runCommand } from '../../../commands/core/CommandStack';
-import { AddRoundaboutCommand } from '../../../commands/roads/AddRoundaboutCommand';
-import { validateRoundaboutParams } from '../../../geo/roundabout/roundaboutEngine';
-import { RoundaboutDrawInteraction } from '../RoundaboutDrawInteraction';
-import { requireLayerForKind } from '../../../store/ui/layerPickerStore';
-import { toast } from '../../../store/ui/toastStore';
-import { useStreetTracingSessionStore } from '../../../store/ui/streetTracingSessionStore';
-import type { ModeContext } from './ModeContext';
+import { useRoundaboutStore } from '../store/roundaboutStore';
+import { runCommand } from '@kernel/command/CommandStack';
+import { AddRoundaboutCommand } from '../commands/AddRoundaboutCommand';
+import { validateRoundaboutParams } from '../geometry/roundaboutEngine';
+import { RoundaboutDrawInteraction } from '../interactions/RoundaboutDrawInteraction';
+import { requireLayerForKind } from '@layers-engine/store/layerPickerStore';
+import { toast } from '@shared-ui/store/toastStore';
+import { useStreetTracingSessionStore } from '../store/streetTracingSessionStore';
+import type { ModeContext } from '@kernel/modes/ModeContext';
 
 export function activateRoundabout(ctx: ModeContext): void {
   const { map } = ctx;

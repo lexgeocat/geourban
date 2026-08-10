@@ -1,8 +1,8 @@
 import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
-import { Command, type CommandContext } from '../core/Command';
-import { getFeatureKind } from '../../core/objectModel';
-import type { LabelStyleConfig } from '../../core/labelModel';
+import { Command, type CommandContext } from '@kernel/command/Command';
+import { getFeatureKind } from '@kernel/domain-model/featureModel';
+import type { LabelStyleConfig } from '../model/labelModel';
 
 export interface RestyleBatchLabelsOptions {
   kind: 'manzana' | 'lote';

@@ -29,13 +29,11 @@ export const useLayerPanelUiStore = create<LayerPanelUiState>()(
       migrate: (state: unknown, _fromVersion: number): LayerPanelUiPersisted => {
         if (!state || typeof state !== 'object') return defaultPersisted();
         const s = state as Partial<LayerPanelUiPersisted> & { expandedRefs?: boolean };
-        // v1 → v2: descartamos `expandedRefs` (ya no se usa). El resto de campos
-        // se conserva tal cual, con fallback a los defaults si faltaban.
         return {
           open: typeof s.open === 'boolean' ? s.open : true,
           expandedData: typeof s.expandedData === 'boolean' ? s.expandedData : true,
         };
       },
-    },
-  ),
+    }
+  )
 );

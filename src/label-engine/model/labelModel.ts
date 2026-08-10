@@ -1,4 +1,4 @@
-import type { GeoUrbanFeatureKind } from './objectModel';
+import type { GeoUrbanFeatureKind } from '@kernel/domain-model/featureModel';
 
 export type AreaUnit = 'm2' | 'ha' | 'km2';
 

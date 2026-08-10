@@ -1,10 +1,10 @@
 import React from 'react';
 import { BarChart3 } from 'lucide-react';
-import { useUiShellStore } from '../../../../store/ui/uiShellStore';
-import { useLeftSidebarStore } from '../../../../store/ui/leftSidebarStore';
-import { BASE_MAP_DEFS } from '../../../../map/baseMaps';
-import { RibbonGroup, RibbonTool } from '../RibbonPrimitives';
-import { IconGrid, IconSat, IconRoad, IconStreet, IconLots, IconRoundabout, IconCursor } from '../icons';
+import { useUiShellStore } from '../../../store/uiShellStore';
+import { useLeftSidebarStore } from '../../../store/leftSidebarStore';
+import { BASE_MAP_DEFS } from '@map-core/baseMaps';
+import { RibbonGroup, RibbonTool } from '../../topbar/RibbonPrimitives';
+import { IconGrid, IconSat, IconRoad, IconStreet, IconLots, IconRoundabout, IconCursor } from '../../topbar/icons';
 
 export default function ViewTab() {
   const baseMap = useUiShellStore((s) => s.baseMap);

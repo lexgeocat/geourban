@@ -4,8 +4,8 @@ import type VectorLayer from 'ol/layer/Vector.js';
 import type Draw from 'ol/interaction/Draw.js';
 import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
-import type { PostrenderPainter } from '../PostrenderPainter';
-import type { HitTestSelect } from '../HitTestSelect';
+import type { PostrenderPainter } from '@map-core/scene/PostrenderPainter';
+import type { HitTestSelect } from '@selection-engine/interactions/HitTestSelect';
 
 export interface RefreshableDrawLayer {
   changed(): void;

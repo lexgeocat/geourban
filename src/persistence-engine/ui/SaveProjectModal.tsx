@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { Modal } from '../ui/Modal';
-import { saveProject } from '../../persistence/projectFile';
-import { useProjectFileStore } from '../../store/ui/projectFileStore';
-import { toast } from '../../store/ui/toastStore';
+import { Modal } from '@shared-ui/Modal';
+import { saveProject } from '../projectFile';
+import { useProjectFileStore } from '../store/projectFileStore';
+import { toast } from '@shared-ui/store/toastStore';
 
 export default function SaveProjectModal() {
   const open = useProjectFileStore((s) => s.saveModalOpen);

@@ -1,17 +1,17 @@
-﻿import type Feature from 'ol/Feature.js';
+import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
 import GeoJSON from 'ol/format/GeoJSON.js';
 import FeatureOL from 'ol/Feature.js';
-import { Command, type CommandContext } from '../core/Command';
-import type { ManzanoLoteMethod } from '../../geo/subdivision/types';
-import { getFeatureKind, getLotStatus, setLotStatus, type LotStatus } from '../../core/objectModel';
-import { subdivideManzanoInWorker } from '../../workers/geoWorkerClient';
-import { useManzanoStore } from '../../store/entities/manzanoStore';
-import { polyArea, ringPerimeter, polygonCentroid } from '../../geo/math/polygonEngine';
-import { estimateGeometryBytes } from '../core/memoryEstimate';
-import { computeAreaCorrectionFactor, computeLinearCorrectionFactor } from './areaCorrection';
-import { createLotFeature } from './createLotFeature';
-import type { LabelStyleConfig } from '../../core/labelModel';
+import { Command, type CommandContext } from '@kernel/command/Command';
+import type { ManzanoLoteMethod } from '../model/types';
+import { getFeatureKind, getLotStatus, setLotStatus, type LotStatus } from '@kernel/domain-model/featureModel';
+import { subdivideManzanoInWorker } from '@kernel/native/geoWorkerClient';
+import { useManzanoStore } from '../store/manzanoLotConfigStore';
+import { polyArea, ringPerimeter, polygonCentroid } from '@kernel/geometry/polygonEngine';
+import { estimateGeometryBytes } from '@kernel/command/memoryEstimate';
+import { computeAreaCorrectionFactor, computeLinearCorrectionFactor } from '../geometry/areaCorrection';
+import { createLotFeature } from '../model/createLotFeature';
+import type { LabelStyleConfig } from '@label-engine/model/labelModel';
 
 const geoJsonFormat = new GeoJSON();
 

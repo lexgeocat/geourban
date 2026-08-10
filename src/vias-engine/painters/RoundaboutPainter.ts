@@ -1,10 +1,10 @@
-import { useRoundaboutStore } from '../../../store/entities/roundaboutStore';
-import { useLayersStore } from '../../../store/entities/layersRegistryStore';
-import { roundaboutGeometry } from '../../../geo/roundabout/roundaboutEngine';
-import { formatMetricLength } from '../../../geo/metrics';
-import { withAlpha } from '../DrawLayerRenderer';
-import type { RoundaboutDrawPreview } from '../RoundaboutDrawInteraction';
-import { getLayerByIdCached, resolveRoundaboutLayer } from './layersPainterHelpers';
+import { useRoundaboutStore } from '../store/roundaboutStore';
+import { useLayersStore } from '@layers-engine/store/layersRegistryStore';
+import { roundaboutGeometry } from '../geometry/roundaboutEngine';
+import { formatMetricLength } from '@georef-engine/metrics';
+import { withAlpha } from '@map-core/scene/DrawLayerRenderer';
+import type { RoundaboutDrawPreview } from '../interactions/RoundaboutDrawInteraction';
+import { getLayerByIdCached, resolveRoundaboutLayer } from '@layers-engine/selectors/layersPainterHelpers';
 
 const FALLBACK_ROUNDABOUT_COLOR = '#f78166';
 

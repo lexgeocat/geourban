@@ -1,11 +1,11 @@
 import React from 'react';
-import { useLeftSidebarStore, type LeftSidebarTab } from '../../../store/ui/leftSidebarStore';
-import { useStreetStore } from '../../../store/entities/streetStore';
-import { useRoundaboutStore } from '../../../store/entities/roundaboutStore';
-import { IconLots, IconStreet, IconRoundabout } from '../topbar/icons';
-import ManzanoPanel from '../../panels/ManzanoPanel';
-import StreetPanel from '../../panels/StreetPanel';
-import RoundaboutPanel from '../../panels/RoundaboutPanel';
+import { useLeftSidebarStore, type LeftSidebarTab } from '../../store/leftSidebarStore';
+import { useStreetStore } from '@vias-engine/store/streetStore';
+import { useRoundaboutStore } from '@vias-engine/store/roundaboutStore';
+import { IconLots, IconStreet, IconRoundabout } from '../../layout/topbar/icons';
+import ManzanoPanel from '@manzanos-engine/ui/ManzanoPanel';
+import StreetPanel from '@vias-engine/ui/StreetPanel';
+import RoundaboutPanel from '@vias-engine/ui/RoundaboutPanel';
 
 const TABS: { id: LeftSidebarTab; label: string; icon: React.ReactNode }[] = [
   { id: 'manzanos', label: 'Manzanos', icon: <IconLots /> },

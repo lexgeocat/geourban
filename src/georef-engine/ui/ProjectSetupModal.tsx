@@ -1,10 +1,10 @@
-Ôªøimport React, { useState } from 'react';
-import { Modal } from '../ui/Modal';
-import { useProjectCrsStore } from '../../store/project/projectCrsStore';
-import { useMapStore } from '../../store/map/mapStore';
-import { useUiShellStore } from '../../store/ui/uiShellStore';
-import { refreshSourceMetrics } from '../../geo/metrics';
-import { utmZoneFromLonLat, type UtmHemisphere, type ProjectCrsMode } from '../../geo/crs/utmZones';
+import React, { useState } from 'react';
+import { Modal } from '@shared-ui/Modal';
+import { useProjectCrsStore } from '../store/projectCrsStore';
+import { useMapStore } from '@map-core/store/mapStore';
+import { useUiShellStore } from '@app-shell/store/uiShellStore';
+import { refreshSourceMetrics } from '../metrics';
+import { utmZoneFromLonLat, type UtmHemisphere, type ProjectCrsMode } from '../crs/utmZones';
 
 export default function ProjectSetupModal() {
   const confirmed = useProjectCrsStore((s) => s.confirmed);
@@ -52,9 +52,9 @@ export default function ProjectSetupModal() {
         Configurar sistema de coordenadas del proyecto
       </h2>
       <p style={{ fontSize: '0.75rem', color: 'var(--cad-text-dim)', marginBottom: 16, lineHeight: 1.5 }}>
-        Eleg√≠ esto antes de dibujar. Internamente el proyecto siempre guarda WGS84
+        ElegÌ esto antes de dibujar. Internamente el proyecto siempre guarda WGS84
         (para el mapa base y GeoJSON/KML). Fijar la zona UTM ahora evita que
-        la exportaci√≥n e importaci√≥n queden desincronizadas en un CRS real.
+        la exportaciÛn e importaciÛn queden desincronizadas en un CRS real.
       </p>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
@@ -96,7 +96,7 @@ export default function ProjectSetupModal() {
           <div style={{ fontWeight: 600, fontSize: '0.8rem' }}>Dibujo libre (sin georreferenciar)</div>
           <div style={{ fontSize: '0.68rem', opacity: 0.8, marginTop: 2 }}>
             Plano local en metros. No tiene anclaje a un CRS real; se
-            reposiciona a mano si despu√©s lo llev√°s a uno.
+            reposiciona a mano si despuÈs lo llev·s a uno.
           </div>
         </button>
       </div>

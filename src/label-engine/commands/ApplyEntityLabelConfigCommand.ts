@@ -1,7 +1,7 @@
-import { Command } from '../core/Command';
-import { useEntityLabelStore, type EntityLabelEntry } from '../../store/entities/entityLabelStore';
-import { useMapStore } from '../../store/map/mapStore';
-import type { LabelStyleConfig } from '../../core/labelModel';
+import { Command } from '@kernel/command/Command';
+import { useEntityLabelStore, type EntityLabelEntry } from '../store/entityLabelStore';
+import { useMapStore } from '@map-core/store/mapStore';
+import type { LabelStyleConfig } from '../model/labelModel';
 
 export class ApplyEntityLabelConfigCommand extends Command {
   readonly label = 'Configurar etiqueta';

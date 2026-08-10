@@ -5,17 +5,17 @@ import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
 import Polygon from 'ol/geom/Polygon.js';
 import LineString from 'ol/geom/LineString.js';
-import { getFeatureKind } from '../../../core/objectModel';
-import { runCommand } from '../../../commands/core/CommandStack';
-import { AssignLabelOrderCommand } from '../../../commands/labels/AssignLabelOrderCommand';
+import { getFeatureKind } from '@kernel/domain-model/featureModel';
+import { runCommand } from '@kernel/command/CommandStack';
+import { AssignLabelOrderCommand } from '../commands/AssignLabelOrderCommand';
 import {
   useLabelConfigModalStore,
   type LabelOrderKind,
-} from '../../../store/ui/labelConfigModalStore';
-import { useDrawStore } from '../../../store/map/drawStore';
-import { toast } from '../../../store/ui/toastStore';
-import { polygonCentroidLabelPoint } from '../../../geo/math/polygonEngine';
-import type { ModeContext } from './ModeContext';
+} from '../store/labelConfigModalStore';
+import { useDrawStore } from '@map-core/store/drawStore';
+import { toast } from '@shared-ui/store/toastStore';
+import { polygonCentroidLabelPoint } from '@kernel/geometry/polygonEngine';
+import type { ModeContext } from '@kernel/modes/ModeContext';
 
 function nearestArcLength(pt: [number, number], line: [number, number][]): number {
   let bestDist = Infinity;

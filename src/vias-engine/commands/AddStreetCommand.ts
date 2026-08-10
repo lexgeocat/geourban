@@ -1,7 +1,7 @@
 ﻿import { RoadEntityCommand } from './RoadEntityCommand';
-import { useStreetStore, type Street } from '../../store/entities/streetStore';
-import { useStreetTracingSessionStore } from '../../store/ui/streetTracingSessionStore';
-import type { Command } from '../core/Command';
+import { useStreetStore, type Street } from '../store/streetStore';
+import { useStreetTracingSessionStore } from '../store/streetTracingSessionStore';
+import type { Command } from '@kernel/command/Command';
 
 export class AddStreetCommand extends RoadEntityCommand<Omit<Street, 'id' | 'name'>> {
   readonly label = 'Trazar calle';

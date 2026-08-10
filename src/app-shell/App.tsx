@@ -1,18 +1,18 @@
 ﻿import React from 'react';
-import MapView from './map/Map';
-import TopBar from './components/layout/TopBar';
-import StatusBar from './components/layout/StatusBar';
-import LeftSidebar from './components/layout/leftbar/LeftSidebar';
-import LayerPanel from './components/panels/LayerPanel';
-import PropertyPanel from './components/panels/PropertyPanel';
-import StatsPanel from './components/panels/StatsPanel';
+import MapView from '@map-core/Map';
+import TopBar from './layout/TopBar';
+import StatusBar from './layout/StatusBar';
+import LeftSidebar from './layout/leftbar/LeftSidebar';
+import LayerPanel from '@layers-engine/ui/LayerPanel';
+import PropertyPanel from '@drawing-engine/ui/PropertyPanel';
+import StatsPanel from './layout/StatsPanel';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
-import ProjectSetupModal from './components/modals/ProjectSetupModal';
-import ConfirmDialog from './components/modals/ConfirmDialog';
-import ToastStack from './components/ui/ToastStack';
-import SaveProjectModal from './components/modals/SaveProjectModal';
-import OpenProjectModal from './components/modals/OpenProjectModal';
-import LabelConfigModal from './components/modals/LabelConfigModal';
+import ProjectSetupModal from '@georef-engine/ui/ProjectSetupModal';
+import ConfirmDialog from '@shared-ui/ConfirmDialog';
+import ToastStack from '@shared-ui/ToastStack';
+import SaveProjectModal from '@persistence-engine/ui/SaveProjectModal';
+import OpenProjectModal from '@persistence-engine/ui/OpenProjectModal';
+import LabelConfigModal from '@label-engine/ui/LabelConfigModal';
 
 function App() {
   useKeyboardShortcuts();

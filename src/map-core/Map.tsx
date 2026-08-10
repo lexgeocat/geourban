@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef } from 'react';
 import Map from 'ol/Map.js';
 import View from 'ol/View.js';
 import type BaseLayer from 'ol/layer/Base.js';
@@ -17,35 +17,35 @@ import Point from 'ol/geom/Point.js';
 import LineString from 'ol/geom/LineString.js';
 import Polygon from 'ol/geom/Polygon.js';
 import type Geometry from 'ol/geom/Geometry.js';
-import { useUiShellStore } from '../store/ui/uiShellStore';
-import { useLayersStore } from '../store/entities/layersRegistryStore';
-import { useMapStore } from '../store/map/mapStore';
-import { useDrawStore } from '../store/map/drawStore';
-import { useSelectionStore } from '../store/map/selectionStore';
-import { useProjectCrsStore } from '../store/project/projectCrsStore';
+import { useUiShellStore } from '@app-shell/store/uiShellStore';
+import { useLayersStore } from '@layers-engine/store/layersRegistryStore';
+import { useMapStore } from '@map-core/store/mapStore';
+import { useDrawStore } from '@map-core/store/drawStore';
+import { useSelectionStore } from '@selection-engine/store/selectionStore';
+import { useProjectCrsStore } from '@georef-engine/store/projectCrsStore';
 import { BaseLayerManager } from './scene/BaseLayerManager';
 import { buildDrawLayers, LayeredWebglRenderer, type WorkVisibility } from './scene/DrawLayerRenderer';
 import { PostrenderPainter } from './scene/PostrenderPainter';
 import { InteractionModeController } from './scene/InteractionModeController';
-import { SNAP_COLORS, type SnapGuideVisual } from './advancedSnap';
-import SnapEngine from './snapInteraction';
-import { RotateLotsInteraction } from './scene/RotateLotsInteraction';
-import { useRoundaboutStore } from '../store/entities/roundaboutStore';
-import { getOrCreateSpatialIndex } from './spatialIndex';
-import { getOrCreateRoadSnapSource, disposeRoadSnapSource } from './roadSnapSource';
-import { reloadRustSpatialIndex, queueRustSpatialUpsert, queueRustSpatialRemove } from './rustSpatialIndex';
-import { ensureUtmZoneRegistered } from '../geo/crs/utmZones';
-import { useManzanoStore } from '../store/entities/manzanoStore';
-import { runCommand } from '../commands/core/CommandStack';
-import { RecomputeManzanoLotsCommand } from '../commands/lots/RecomputeManzanoLotsCommand';
-import { polyArea, polygonCentroid, ringPerimeter } from '../geo/math/polygonEngine';
-import { rafThrottle } from '../utils/rafThrottle';
-import { useSubdivisionPreviewStore } from '../store/ui/subdivisionPreviewStore';
-import { useStreetStore } from '../store/entities/streetStore';
-import { useRoadCornerStore } from '../store/map/roadCornerStore';
-import { reapplyRoadCornerMode } from '../geo/recomputeManzanos';
-import { requireLayerForKind } from '../store/ui/layerPickerStore';
-import { isFeatureLayerVisible } from '../core/layerVisibility';
+import { SNAP_COLORS, type SnapGuideVisual } from '@snap-engine/geometry/advancedSnap';
+import SnapEngine from '@snap-engine/interactions/snapInteraction';
+import { RotateLotsInteraction } from '@lotificacion-engine/interactions/RotateLotsInteraction';
+import { useRoundaboutStore } from '@vias-engine/store/roundaboutStore';
+import { getOrCreateSpatialIndex } from '@kernel/spatial-index/spatialIndex';
+import { getOrCreateRoadSnapSource, disposeRoadSnapSource } from '@vias-engine/native/roadSnapSource';
+import { reloadRustSpatialIndex, queueRustSpatialUpsert, queueRustSpatialRemove } from '@kernel/spatial-index/rustSpatialIndex';
+import { ensureUtmZoneRegistered } from '@georef-engine/crs/utmZones';
+import { useManzanoStore } from '@lotificacion-engine/store/manzanoLotConfigStore';
+import { runCommand } from '@kernel/command/CommandStack';
+import { RecomputeManzanoLotsCommand } from '@lotificacion-engine/commands/RecomputeManzanoLotsCommand';
+import { polyArea, polygonCentroid, ringPerimeter } from '@kernel/geometry/polygonEngine';
+import { rafThrottle } from '@kernel/utils/rafThrottle';
+import { useSubdivisionPreviewStore } from '@lotificacion-engine/store/subdivisionPreviewStore';
+import { useStreetStore } from '@vias-engine/store/streetStore';
+import { useRoadCornerStore } from '@vias-engine/store/roadCornerStore';
+import { reapplyRoadCornerMode } from '@manzanos-engine/orchestration/recomputeManzanos';
+import { requireLayerForKind } from '@layers-engine/store/layerPickerStore';
+import { isFeatureLayerVisible } from '@layers-engine/model/layerVisibility';
 
 export default function MapView() {
   const mapDivRef = useRef<HTMLDivElement>(null);
@@ -205,13 +205,13 @@ export default function MapView() {
 
     const snapStyles = new globalThis.Map<string, Style>();
     const SNAP_SHAPES: Record<string, { points?: number; radius: number; radius2?: number; angle?: number }> = {
-      endpoint:             { radius: 7,  points: 4,               angle: Math.PI / 4 }, // Cuadrado □
-      midpoint:             { radius: 8,  points: 3,               angle: -Math.PI / 2 }, // Triángulo △
+      endpoint:             { radius: 7,  points: 4,               angle: Math.PI / 4 }, // Cuadrado ?
+      midpoint:             { radius: 8,  points: 3,               angle: -Math.PI / 2 }, // Tri�ngulo ?
       intersection:         { radius: 8,  points: 4, radius2: 2,  angle: Math.PI / 4 },  // Cruz (X)
       extension:            { radius: 7,  points: 4, radius2: 2,  angle: 0 },             // Cruz (+)
-      perpendicular:        { radius: 7,  points: 5,               angle: -Math.PI / 2 }, // Pentágono
-      nearest:              { radius: 5 },                                                // Círculo
-      center:               { radius: 7,  points: 4,               angle: Math.PI / 4 },  // Cuadrado pequeño (centro de círculo)
+      perpendicular:        { radius: 7,  points: 5,               angle: -Math.PI / 2 }, // Pent�gono
+      nearest:              { radius: 5 },                                                // C�rculo
+      center:               { radius: 7,  points: 4,               angle: Math.PI / 4 },  // Cuadrado peque�o (centro de c�rculo)
     };
     for (const [type, color] of Object.entries(SNAP_COLORS)) {
       const cfg = SNAP_SHAPES[type]!;
@@ -229,12 +229,10 @@ export default function MapView() {
 
     const spatialIndex = getOrCreateSpatialIndex();
     spatialIndex.load(drawSrc.getFeatures() as Feature<Polygon>[]);
-    // Índice nativo (Rust) — fuente real para click-select y lasso/rect-select.
     void reloadRustSpatialIndex(drawSrc.getFeatures() as Feature<Geometry>[]);
 
     getOrCreateRoadSnapSource();
 
-    // Mantener ambos índices sincronizados cuando cambian features.
     const onSpatialInsert = (evt: VectorSourceEvent<Feature<Geometry>>) => {
       if (!(evt.feature instanceof Feature)) return;
       spatialIndex.insert(evt.feature as Feature<Polygon>);
@@ -303,12 +301,10 @@ export default function MapView() {
 
     const shouldSnapCoordinate = (eventType: string): boolean => {
       const mode = useDrawStore.getState().mode;
-      // Modos de dibujo (Draw interaction): imantar SIEMPRE
       const drawModes = new Set([
         'polygon', 'line', 'rectangle', 'street',
       ]);
       if (drawModes.has(mode)) return true;
-      // Modo edición: imantar solo durante arrastre
       if (mode === 'edit' && eventType === 'pointerdrag') return true;
       return false;
     };
@@ -349,7 +345,7 @@ const rotateLotsInteraction = new RotateLotsInteraction(map, (id, dir) => {
       }
       void (async () => {
         const layerId = await requireLayerForKind('lote');
-        if (!layerId) return; // cancelado — no se regeneran lotes sin capa asignada
+        if (!layerId) return; 
         void runCommand(
           new RecomputeManzanoLotsCommand({ manzanoId: id, targetAreaM2, frontMinM, method: getMethod(id), dirPref: dir, layerId }),
         );
@@ -392,6 +388,8 @@ const rotateLotsInteraction = new RotateLotsInteraction(map, (id, dir) => {
       if (m) m.setTarget(undefined);
       mapInstanceRef.current = null;
     };
+    // setup único del map (refs y stores satisfacen la reactividad).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {

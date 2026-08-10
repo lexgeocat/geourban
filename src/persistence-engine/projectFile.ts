@@ -4,43 +4,69 @@ import type Geometry from 'ol/geom/Geometry.js';
 import Polygon from 'ol/geom/Polygon.js';
 import LineString from 'ol/geom/LineString.js';
 import MultiPolygon from 'ol/geom/MultiPolygon.js';
-import { useMapStore } from '../store/map/mapStore';
-import { useLayersStore } from '../store/entities/layersRegistryStore';
-import { useStreetStore } from '../store/entities/streetStore';
-import { useRoundaboutStore } from '../store/entities/roundaboutStore';
-import { useManzanoStore } from '../store/entities/manzanoStore';
-import { useProjectCrsStore, type ProjectCrsMode } from '../store/project/projectCrsStore';
-import type { UtmHemisphere } from '../geo/crs/utmZones';
-import { useUiShellStore } from '../store/ui/uiShellStore';
-import type { BaseMapId } from '../map/baseMaps';
-import { useSelectionStore } from '../store/map/selectionStore';
-import { useCommandStack } from '../commands/core/CommandStack';
-import { resetIncrementalRoadTracking } from '../geo/recomputeManzanos';
+import { useMapStore } from '@map-core/store/mapStore';
+import { useLayersStore } from '@layers-engine/store/layersRegistryStore';
+import { useStreetStore } from '@vias-engine/store/streetStore';
+import { useRoundaboutStore } from '@vias-engine/store/roundaboutStore';
+import { useManzanoStore } from '@lotificacion-engine/store/manzanoLotConfigStore';
+import { useProjectCrsStore, type ProjectCrsMode } from '@georef-engine/store/projectCrsStore';
+import type { UtmHemisphere } from '@georef-engine/crs/utmZones';
+import { useUiShellStore } from '@app-shell/store/uiShellStore';
+import type { BaseMapId } from '@map-core/baseMaps';
+import { useSelectionStore } from '@selection-engine/store/selectionStore';
+import { useCommandStack } from '@kernel/command/CommandStack';
+import { resetIncrementalRoadTracking } from '@manzanos-engine/orchestration/recomputeManzanos';
 import { encodeWkb, decodeWkb, uint8ToBase64, base64ToUint8, type WkbGeometry } from './wkb';
-import { getOrCreateSpatialIndex } from '../map/spatialIndex';
-import { reloadRustSpatialIndex } from '../map/rustSpatialIndex';
-import { refreshSourceMetrics } from '../geo/metrics';
-import { reseedManzanoSeqFromSource } from '../store/entities/manzanoNaming';
-import { useEntityLabelStore } from '../store/entities/entityLabelStore';
-import type { Layer } from '../core/objectModel';
-import type { LabelStyleConfig } from '../core/labelModel';
+import { getOrCreateSpatialIndex } from '@kernel/spatial-index/spatialIndex';
+import { reloadRustSpatialIndex } from '@kernel/spatial-index/rustSpatialIndex';
+import { refreshSourceMetrics } from '@georef-engine/metrics';
+import { reseedManzanoSeqFromSource } from '@manzanos-engine/naming/manzanoNaming';
+import { useEntityLabelStore } from '@label-engine/store/entityLabelStore';
+import type { Layer } from '@kernel/domain-model/featureModel';
+import type { LabelStyleConfig } from '@label-engine/model/labelModel';
 
 interface LayerDto {
-  id: string; name: string; kind: string; zIndex: number;
-  color: string; visible: boolean; locked: boolean;
-  opacity: number; showLabel: boolean; showCota: boolean;
+  id: string;
+  name: string;
+  kind: string;
+  zIndex: number;
+  color: string;
+  visible: boolean;
+  locked: boolean;
+  opacity: number;
+  showLabel: boolean;
+  showCota: boolean;
 }
 interface FeatureDto {
-  id: string; layerId: string | null; kind: string;
-  geometryWkbB64: string; propertiesJson: string;
+  id: string;
+  layerId: string | null;
+  kind: string;
+  geometryWkbB64: string;
+  propertiesJson: string;
 }
 interface StreetDto {
-  id: string; name: string; startX: number; startY: number; endX: number; endY: number;
-  widthM: number; sideWidthM: number; waypointsJson: string | null; layerId: string | null;
+  id: string;
+  name: string;
+  startX: number;
+  startY: number;
+  endX: number;
+  endY: number;
+  widthM: number;
+  sideWidthM: number;
+  waypointsJson: string | null;
+  layerId: string | null;
 }
 interface RoundaboutDto {
-  id: string; name: string; centerX: number; centerY: number; radiusM: number;
-  sides: number; rotation: number; roadWidthM: number; sidewalkWidthM: number; layerId: string | null;
+  id: string;
+  name: string;
+  centerX: number;
+  centerY: number;
+  radiusM: number;
+  sides: number;
+  rotation: number;
+  roadWidthM: number;
+  sidewalkWidthM: number;
+  layerId: string | null;
 }
 interface ProjectPayload {
   layers: LayerDto[];
@@ -65,9 +91,12 @@ export interface ProjectSummary {
 }
 
 function geometryToWkb(geom: Geometry): WkbGeometry | null {
-  if (geom instanceof Polygon) return { type: 'Polygon', coordinates: geom.getCoordinates() as [number, number][][] };
-  if (geom instanceof LineString) return { type: 'LineString', coordinates: geom.getCoordinates() as [number, number][] };
-  if (geom instanceof MultiPolygon) return { type: 'MultiPolygon', coordinates: geom.getCoordinates() as [number, number][][][] };
+  if (geom instanceof Polygon)
+    return { type: 'Polygon', coordinates: geom.getCoordinates() as [number, number][][] };
+  if (geom instanceof LineString)
+    return { type: 'LineString', coordinates: geom.getCoordinates() as [number, number][] };
+  if (geom instanceof MultiPolygon)
+    return { type: 'MultiPolygon', coordinates: geom.getCoordinates() as [number, number][][][] };
   return null;
 }
 
@@ -76,7 +105,9 @@ function wkbToGeometry(wkb: WkbGeometry): Geometry {
   if (wkb.type === 'LineString') return new LineString(wkb.coordinates);
   if (wkb.type === 'MultiPolygon') return new MultiPolygon(wkb.coordinates);
   const _exhaustive: never = wkb;
-  throw new Error(`projectFile: geometría no soportada en drawSource (${(_exhaustive as { type: string }).type})`);
+  throw new Error(
+    `projectFile: geometría no soportada en drawSource (${(_exhaustive as { type: string }).type})`
+  );
 }
 
 function buildPayload(): ProjectPayload {
@@ -90,9 +121,16 @@ function buildPayload(): ProjectPayload {
   const viewConfig = useMapStore.getState().viewConfig;
 
   const layers: LayerDto[] = layersState.layers.map((l: Layer) => ({
-    id: l.id, name: l.name, kind: l.kind, zIndex: l.zIndex,
-    color: l.color, visible: l.visible, locked: l.locked,
-    opacity: l.opacity, showLabel: l.showLabel, showCota: l.showCota,
+    id: l.id,
+    name: l.name,
+    kind: l.kind,
+    zIndex: l.zIndex,
+    color: l.color,
+    visible: l.visible,
+    locked: l.locked,
+    opacity: l.opacity,
+    showLabel: l.showLabel,
+    showCota: l.showCota,
   }));
 
   const features: FeatureDto[] = [];
@@ -117,16 +155,29 @@ function buildPayload(): ProjectPayload {
   }
 
   const streets: StreetDto[] = streetsState.streets.map((s) => ({
-    id: s.id, name: s.name, startX: s.start[0], startY: s.start[1],
-    endX: s.end[0], endY: s.end[1], widthM: s.widthM, sideWidthM: s.sideWidthM,
+    id: s.id,
+    name: s.name,
+    startX: s.start[0],
+    startY: s.start[1],
+    endX: s.end[0],
+    endY: s.end[1],
+    widthM: s.widthM,
+    sideWidthM: s.sideWidthM,
     waypointsJson: s.waypoints ? JSON.stringify(s.waypoints) : null,
     layerId: s.layerId ?? null,
   }));
 
   const roundabouts: RoundaboutDto[] = roundaboutsState.roundabouts.map((r) => ({
-    id: r.id, name: r.name, centerX: r.center[0], centerY: r.center[1],
-    radiusM: r.radiusM, sides: r.sides, rotation: r.rotation,
-    roadWidthM: r.roadWidthM, sidewalkWidthM: r.sidewalkWidthM, layerId: r.layerId ?? null,
+    id: r.id,
+    name: r.name,
+    centerX: r.center[0],
+    centerY: r.center[1],
+    radiusM: r.radiusM,
+    sides: r.sides,
+    rotation: r.rotation,
+    roadWidthM: r.roadWidthM,
+    sidewalkWidthM: r.sidewalkWidthM,
+    layerId: r.layerId ?? null,
   }));
 
   const meta: ProjectMeta = {
@@ -168,9 +219,16 @@ export async function loadProject(name: string): Promise<void> {
   drawSource.clear();
 
   const layers: Layer[] = payload.layers.map((l) => ({
-    id: l.id, name: l.name, kind: l.kind as Layer['kind'], zIndex: l.zIndex,
-    color: l.color, visible: l.visible, locked: l.locked,
-    opacity: l.opacity, showLabel: l.showLabel, showCota: l.showCota,
+    id: l.id,
+    name: l.name,
+    kind: l.kind as Layer['kind'],
+    zIndex: l.zIndex,
+    color: l.color,
+    visible: l.visible,
+    locked: l.locked,
+    opacity: l.opacity,
+    showLabel: l.showLabel,
+    showCota: l.showCota,
   }));
 
   const meta: ProjectMeta = JSON.parse(payload.metaJson || '{}');
@@ -192,16 +250,22 @@ export async function loadProject(name: string): Promise<void> {
 
   for (const s of payload.streets) {
     useStreetStore.getState().addStreetWithId(s.id, {
-      start: [s.startX, s.startY], end: [s.endX, s.endY],
-      widthM: s.widthM, sideWidthM: s.sideWidthM,
+      start: [s.startX, s.startY],
+      end: [s.endX, s.endY],
+      widthM: s.widthM,
+      sideWidthM: s.sideWidthM,
       waypoints: s.waypointsJson ? JSON.parse(s.waypointsJson) : undefined,
       layerId: s.layerId ?? undefined,
     });
   }
   for (const r of payload.roundabouts) {
     useRoundaboutStore.getState().addRoundaboutWithId(r.id, {
-      center: [r.centerX, r.centerY], radiusM: r.radiusM, sides: r.sides,
-      rotation: r.rotation, roadWidthM: r.roadWidthM, sidewalkWidthM: r.sidewalkWidthM,
+      center: [r.centerX, r.centerY],
+      radiusM: r.radiusM,
+      sides: r.sides,
+      rotation: r.rotation,
+      roadWidthM: r.roadWidthM,
+      sidewalkWidthM: r.sidewalkWidthM,
       layerId: r.layerId ?? undefined,
     });
   }
@@ -215,8 +279,5 @@ export async function loadProject(name: string): Promise<void> {
   if (meta.viewConfig) useMapStore.getState().setViewConfig(meta.viewConfig);
   useEntityLabelStore.getState().loadAll(meta.entityLabels ?? {});
 
-  refreshSourceMetrics(drawSource); // ← reemplaza el `drawSource.changed()` final:
-                                     //   recalcula áreas/perímetros/labelPoint con el
-                                     //   CRS ya cargado (más preciso) y "migra" en caliente
-                                     //   los proyectos viejos al nuevo algoritmo de centroide
+  refreshSourceMetrics(drawSource);
 }

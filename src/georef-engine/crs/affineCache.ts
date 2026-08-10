@@ -1,4 +1,3 @@
-// src/geo/crs/affineCache.ts
 import { containsExtent, buffer as bufferExtent, type Extent } from 'ol/extent.js';
 import {
   fitAffineForExtent,
@@ -9,7 +8,6 @@ import {
   type AffineFitResult,
 } from './affineApprox';
 
-/** Margen de error aceptado — alarma de diagnóstico, no bloquea el uso de la matriz. */
 const MAX_ACCEPTABLE_ERROR_M = 0.01;
 export const LOCAL_TANGENT_PLANE_KEY = '__local-tangent-plane__';
 
@@ -74,10 +72,10 @@ export function getMetricPlaneAffine(key: string, extentHint: Extent): AffineTra
   if (fit.maxErrorM > MAX_ACCEPTABLE_ERROR_M) {
     console.warn(
       `affineCache: error residual de la aproximación afín+cuadrática (${fit.maxErrorM.toFixed(3)}m) ` +
-      `sigue por encima del margen de seguridad (${MAX_ACCEPTABLE_ERROR_M}m) tras ${retries} reintento(s) de padding ` +
-      `para el extent actual (${(fitExtent[2] - fitExtent[0]).toFixed(0)}x${(fitExtent[3] - fitExtent[1]).toFixed(0)}m). ` +
-      'Se usa igual por ser la mejor aproximación disponible. Este modo (plano local) no debería degradar en uso ' +
-      'normal — si esto se repite, es indicio de un proyecto anormalmente disperso.',
+        `sigue por encima del margen de seguridad (${MAX_ACCEPTABLE_ERROR_M}m) tras ${retries} reintento(s) de padding ` +
+        `para el extent actual (${(fitExtent[2] - fitExtent[0]).toFixed(0)}x${(fitExtent[3] - fitExtent[1]).toFixed(0)}m). ` +
+        'Se usa igual por ser la mejor aproximación disponible. Este modo (plano local) no debería degradar en uso ' +
+        'normal — si esto se repite, es indicio de un proyecto anormalmente disperso.'
     );
   }
 
@@ -211,7 +209,7 @@ export const utmTileCache = new TiledAffineCache();
 
 export function projectPathThroughUtmTiles(
   epsg: string,
-  pts: ReadonlyArray<readonly [number, number]>,
+  pts: ReadonlyArray<readonly [number, number]>
 ): [number, number][] {
   return utmTileCache.applyPath(epsg, pts);
 }

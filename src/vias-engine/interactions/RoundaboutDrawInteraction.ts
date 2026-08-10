@@ -39,8 +39,6 @@ export class RoundaboutDrawInteraction extends Interaction {
   private handleEvent_(evt: MapBrowserEvent): boolean {
     const type = evt.type;
 
-    // Mientras hay un centro fijado (esperando el 2do clic), seguimos el
-    // mouse para el preview del radio.
     if (type === 'pointermove' || type === 'pointerdrag') {
       if (this.center) {
         this.current = evt.coordinate as number[];
@@ -54,14 +52,12 @@ export class RoundaboutDrawInteraction extends Interaction {
       if (!this.isPrimaryButton(evt)) return true;
 
       if (!this.center) {
-        // 1er clic: fija el centro.
         this.center = evt.coordinate as number[];
         this.current = this.center;
         this.hostMap.render();
         return false;
       }
 
-      // 2do clic: confirma el radio.
       const coord = evt.coordinate as number[];
       const center = this.center;
       const radius = Math.hypot(coord[0] - center[0], coord[1] - center[1]);

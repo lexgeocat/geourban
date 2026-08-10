@@ -1,11 +1,9 @@
 import { create } from 'zustand';
-import type { LabelStyleConfig } from '../../core/labelModel';
-import type { GeoUrbanFeatureKind } from '../../core/objectModel';
-import type { LabelNumberingMode } from '../../core/labelNumbering';
+import type { LabelStyleConfig } from '../model/labelModel';
+import type { GeoUrbanFeatureKind } from '@kernel/domain-model/featureModel';
+import type { LabelNumberingMode } from '../model/labelNumbering';
 
 export type { LabelNumberingMode };
-
-/** Subconjunto de kinds que soportan trazado de orden de etiquetado. */
 export type LabelOrderKind = Extract<GeoUrbanFeatureKind, 'manzana' | 'lote'>;
 
 interface FeatureTarget {
@@ -30,7 +28,6 @@ export type LabelConfigTarget = FeatureTarget | EntityTarget | BatchTarget | Bat
 /** Pedido de trazado de orden en curso — lo consume `LabelOrderMode` al terminar el trazo. */
 export interface LabelOrderRequest {
   kind: LabelOrderKind;
-  /** Si se da (solo aplica a 'lote'), restringe el trazado a los lotes de ese manzano. */
   scopeManzanoId?: string | number;
   config: LabelStyleConfig;
   numbering: LabelNumberingMode;
@@ -61,9 +58,7 @@ interface LabelConfigModalState {
   setNumberingMode: (m: LabelNumberingMode) => void;
   setLastManzanoConfig: (cfg: LabelStyleConfig) => void;
   setLastLotsConfig: (cfg: LabelStyleConfig) => void;
-  /** Activa el modo de trazado de orden con el estilo/numeración actuales del modal. */
   startOrderTrace: (req: LabelOrderRequest) => void;
-  /** Limpia el pedido de trazado (al completarlo, cancelarlo o abortar con Escape). */
   clearOrderTrace: () => void;
   close: () => void;
 }

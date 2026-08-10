@@ -5,7 +5,7 @@ import LineString from 'ol/geom/LineString.js';
 import MultiPolygon from 'ol/geom/MultiPolygon.js';
 import Circle from 'ol/geom/Circle.js';
 import { getUid } from 'ol/util.js';
-import { polygonCentroid } from '../geo/math/polygonEngine';
+import { polygonCentroid } from '@kernel/geometry/polygonEngine';
 
 export type SnapType =
   'endpoint' | 'midpoint' | 'nearest' | 'perpendicular' | 'extension' | 'intersection' | 'center';

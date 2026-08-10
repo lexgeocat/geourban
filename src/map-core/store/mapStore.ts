@@ -1,4 +1,3 @@
-﻿// src/store/map/mapStore.ts
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import Map from 'ol/Map.js';
@@ -9,14 +8,15 @@ import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
 import type Polygon from 'ol/geom/Polygon.js';
 import { extend as extendExtent, type Extent } from 'ol/extent.js';
-import { refreshSourceMetrics } from '../../geo/metrics';
-import { DISPLAY_PROJECTION } from '../../geo/crs/projections';
-import { getOrCreateSpatialIndex } from '../../map/spatialIndex';
-import { useSelectionStore } from './selectionStore';
-import { runCommand } from '../../commands/core/CommandStack';
-import { DeleteFeaturesCommand } from '../../commands/features/DeleteFeaturesCommand';
-import { toast } from '../ui/toastStore';
-import { reloadRustSpatialIndex } from '../../map/rustSpatialIndex';
+import { refreshSourceMetrics } from '@georef-engine/metrics';
+import { DISPLAY_PROJECTION } from '@georef-engine/crs/projections';
+import { getOrCreateSpatialIndex } from '@kernel/spatial-index/spatialIndex';
+import { useSelectionStore } from '@selection-engine/store/selectionStore';
+import { runCommand } from '@kernel/command/CommandStack';
+import { DeleteFeaturesCommand } from '@drawing-engine/commands/DeleteFeaturesCommand';
+import { toast } from '@shared-ui/store/toastStore';
+import { reloadRustSpatialIndex } from '@kernel/spatial-index/rustSpatialIndex';
+import { setDrawContext, clearDrawContext } from '@kernel/command/commandContext';
 
 const geoJsonFormat = new GeoJSON();
 
@@ -27,7 +27,7 @@ export type ViewConfig = {
   zoom: number;
 };
 
-  function isFiniteExtent(ext: Extent | null | undefined): ext is Extent {
+function isFiniteExtent(ext: Extent | null | undefined): ext is Extent {
   if (!ext || ext.length !== 4) return false;
   return ext.every((v) => Number.isFinite(v));
 }
@@ -60,7 +60,7 @@ export const useMapStore = create<MapState>()(
     viewConfig: { center: [-68.3, -16.65], zoom: 19 },
     setMap: (map) =>
       set((state) => {
-        // @ts-expect-error – immer draft vs OL class instance
+        // @ts-expect-error � immer draft vs OL class instance
         state.mapInstance = map;
       }),
     setDrawSource: (src) =>
@@ -86,7 +86,7 @@ export const useMapStore = create<MapState>()(
       }
       if (droppedCount > 0) {
         console.warn(
-          `restoreDrawFeatures: se descartaron ${droppedCount} feature(s) con geometría no-finita.`,
+          `restoreDrawFeatures: se descartaron ${droppedCount} feature(s) con geometr�a no-finita.`
         );
       }
 
@@ -161,7 +161,7 @@ export const useMapStore = create<MapState>()(
       const cmd = new DeleteFeaturesCommand([id]);
       void runCommand(cmd);
       if (cmd.skippedCount > 0) {
-        toast('El elemento no se borró: pertenece a una capa bloqueada.', {
+        toast('El elemento no se borr�: pertenece a una capa bloqueada.', {
           variant: 'warning',
           durationMs: 5000,
         });
@@ -170,3 +170,17 @@ export const useMapStore = create<MapState>()(
     },
   }))
 );
+
+useMapStore.subscribe((state, prev) => {
+  if (state.mapInstance === prev.mapInstance && state.drawSource === prev.drawSource) {
+    return;
+  }
+  if (state.drawSource) {
+    setDrawContext({
+      drawSource: state.drawSource,
+      getMap: () => useMapStore.getState().mapInstance,
+    });
+  } else {
+    clearDrawContext();
+  }
+});

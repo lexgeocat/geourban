@@ -1,22 +1,22 @@
-﻿import Feature from 'ol/Feature.js';
+import Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
 import GeoJSON from 'ol/format/GeoJSON.js';
-import { Command, type CommandContext } from '../core/Command';
-import { useManzanoStore } from '../../store/entities/manzanoStore';
-import { getFeatureKind, getLotStatus, setLotStatus, type LotStatus } from '../../core/objectModel';
-import { subdivideManzanoBatchInWorker } from '../../workers/geoWorkerClient';
-import type { ManzanoLoteMethod } from '../../geo/subdivision/types';
+import { Command, type CommandContext } from '@kernel/command/Command';
+import { useManzanoStore } from '../store/manzanoLotConfigStore';
+import { getFeatureKind, getLotStatus, setLotStatus, type LotStatus } from '@kernel/domain-model/featureModel';
+import { subdivideManzanoBatchInWorker } from '@kernel/native/geoWorkerClient';
+import type { ManzanoLoteMethod } from '../model/types';
 import {
   polyArea,
   ringPerimeter,
   polygonCentroid,
   type LotResult,
-} from '../../geo/math/polygonEngine';
-import { useGenerateLotsProgressStore } from '../../store/ui/generateLotsProgressStore';
-import { estimateGeometryBytes } from '../core/memoryEstimate';
-import { computeAreaCorrectionFactor, computeLinearCorrectionFactor } from './areaCorrection';
-import { createLotFeature } from './createLotFeature';
-import type { LabelStyleConfig } from '../../core/labelModel';
+} from '@kernel/geometry/polygonEngine';
+import { useGenerateLotsProgressStore } from '../store/generateLotsProgressStore';
+import { estimateGeometryBytes } from '@kernel/command/memoryEstimate';
+import { computeAreaCorrectionFactor, computeLinearCorrectionFactor } from '../geometry/areaCorrection';
+import { createLotFeature } from '../model/createLotFeature';
+import type { LabelStyleConfig } from '@label-engine/model/labelModel';
 
 const geoJsonFormat = new GeoJSON();
 

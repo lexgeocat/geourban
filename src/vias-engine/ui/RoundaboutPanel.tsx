@@ -1,21 +1,21 @@
-Ôªøimport React from 'react';
-import { useRoundaboutStore } from '../../store/entities/roundaboutStore';
-import { useSelectionStore } from '../../store/map/selectionStore';
-import { useDrawStore } from '../../store/map/drawStore';
-import { roundaboutRoadAreaM2 } from '../../geo/roundabout/roundaboutEngine';
-import { formatMetricArea } from '../../geo/metrics';
-import { useEntityLabelStore } from '../../store/entities/entityLabelStore';
-import { useLabelConfigModalStore } from '../../store/ui/labelConfigModalStore';
-import { defaultLabelStyleConfig, defaultColorForKind } from '../../core/labelModel';
+import React from 'react';
+import { useRoundaboutStore } from '../store/roundaboutStore';
+import { useSelectionStore } from '@selection-engine/store/selectionStore';
+import { useDrawStore } from '@map-core/store/drawStore';
+import { roundaboutRoadAreaM2 } from '../geometry/roundaboutEngine';
+import { formatMetricArea } from '@georef-engine/metrics';
+import { useEntityLabelStore } from '@label-engine/store/entityLabelStore';
+import { useLabelConfigModalStore } from '@label-engine/store/labelConfigModalStore';
+import { defaultLabelStyleConfig, defaultColorForKind } from '@label-engine/model/labelModel';
 
 const SIDES_OPTIONS: Array<{ value: number; label: string }> = [
-  { value: 0, label: 'C√≠rculo' },
-  { value: 3, label: 'Tri√°ngulo' },
+  { value: 0, label: 'CÌrculo' },
+  { value: 3, label: 'Tri·ngulo' },
   { value: 4, label: 'Cuadrado' },
-  { value: 5, label: 'Pent√°gono' },
-  { value: 6, label: 'Hex√°gono' },
-  { value: 7, label: 'Hept√°gono' },
-  { value: 8, label: 'Oct√≥gono' },
+  { value: 5, label: 'Pent·gono' },
+  { value: 6, label: 'Hex·gono' },
+  { value: 7, label: 'Hept·gono' },
+  { value: 8, label: 'OctÛgono' },
 ];
 
 export default function RoundaboutPanel() {
@@ -42,7 +42,7 @@ export default function RoundaboutPanel() {
     <div style={{ height: '100%', overflowY: 'auto', fontSize: '0.72rem' }}>
       <div style={{ background: 'var(--cad-bg-surface)', borderRadius: 6, padding: 8, marginBottom: 8 }}>
         <div style={{ fontSize: '0.62rem', color: 'var(--cad-accent)', fontWeight: 700, marginBottom: 6, letterSpacing: '0.05em' }}>
-          ‚óº PAR√ÅMETROS DE DISE√ëO
+          ? PAR¡METROS DE DISE—O
         </div>
 
         <label style={{ display: 'block', fontSize: '0.65rem', color: 'var(--cad-text-dim)' }}>Radio al eje (m)</label>
@@ -72,12 +72,12 @@ export default function RoundaboutPanel() {
           className="cad-icon-btn"
           style={{ width: '100%', marginTop: 8, height: 28, borderColor: mode === 'roundabout' ? 'var(--cad-accent)' : undefined, color: mode === 'roundabout' ? 'var(--cad-accent)' : undefined }}
         >
-          {mode === 'roundabout' ? '‚óè Clic para centro y radio‚Ä¶' : '‚óé Trazar rotonda'}
+          {mode === 'roundabout' ? '? Clic para centro y radioÖ' : '? Trazar rotonda'}
         </button>
       </div>
 
       {roundabouts.length === 0 ? (
-        <p style={{ fontSize: '0.68rem', color: 'var(--cad-text-muted)' }}>Todav√≠a no hay rotondas trazadas.</p>
+        <p style={{ fontSize: '0.68rem', color: 'var(--cad-text-muted)' }}>TodavÌa no hay rotondas trazadas.</p>
       ) : (
         roundabouts.map((rb) => (
           <div
@@ -112,14 +112,14 @@ export default function RoundaboutPanel() {
                   style={{ background: 'none', border: 'none', color: 'var(--cad-accent)', cursor: 'pointer', fontSize: '0.75rem' }}
                   title="Generar etiqueta"
                 >
-                  üè∑
+                  ??
                 </button>
                 <button
                   onClick={(e) => { e.stopPropagation(); removeRoundabout(rb.id); useEntityLabelStore.getState().remove(rb.id); }}
                   style={{ background: 'none', border: 'none', color: 'var(--cad-accent-red)', cursor: 'pointer', fontSize: '0.75rem' }}
                   title="Eliminar rotonda"
                 >
-                  ‚úï
+                  ?
                 </button>
               </div>
             </div>

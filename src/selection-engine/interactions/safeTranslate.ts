@@ -7,7 +7,7 @@ import type Map from 'ol/Map.js';
 import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
 import type Collection from 'ol/Collection.js';
-import { hitTestFeature } from './hitTest';
+import { hitTestFeature } from '../geometry/hitTest';
 
 export class TranslateEvent extends BaseEvent {
   features: Collection<Feature<Geometry>>;

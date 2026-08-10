@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
-import type { BaseMapId } from '../../map/baseMaps';
+import type { BaseMapId } from '@map-core/baseMaps';
 
 type PanelKey = 'properties';
 

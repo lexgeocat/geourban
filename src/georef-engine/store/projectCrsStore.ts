@@ -1,5 +1,4 @@
-﻿// src/store/project/projectCrsStore.ts
-import { create } from 'zustand';
+﻿import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import {
   ensureUtmZoneRegistered,
@@ -7,15 +6,13 @@ import {
   type UtmHemisphere,
   type ProjectCrsMode,
   type ProjectCrsConfig,
-} from '../../geo/crs/utmZones';
-import { invalidateAffineCache } from '../../geo/crs/affineCache';
+} from '../crs/utmZones';
+import { invalidateAffineCache } from '../crs/affineCache';
 
 export type { ProjectCrsMode };
 
 interface ProjectCrsState extends ProjectCrsConfig {
-  /** Gate de ProjectSetupModal: false hasta que el usuario elige CRS explícitamente. */
   confirmed: boolean;
-  /** null en modo 'none' — no hay EPSG real que anclar. */
   exportEpsg: string | null;
 
   setMode: (mode: ProjectCrsMode) => void;
@@ -26,7 +23,11 @@ interface ProjectCrsState extends ProjectCrsConfig {
   requestReconfigure: () => void;
 }
 
-function computeExportEpsg(mode: ProjectCrsMode, zone: number, hemisphere: UtmHemisphere): string | null {
+function computeExportEpsg(
+  mode: ProjectCrsMode,
+  zone: number,
+  hemisphere: UtmHemisphere
+): string | null {
   return mode === 'utm' ? ensureUtmZoneRegistered(zone, hemisphere) : null;
 }
 
@@ -42,10 +43,6 @@ export const useProjectCrsStore = create<ProjectCrsState>()(
       set((state) => {
         state.mode = mode;
         state.exportEpsg = computeExportEpsg(mode, state.utmZone, state.utmHemisphere);
-        // Al fijar/cambiar el modo de CRS, la matriz afín cacheada (ajustada
-        // para el EPSG/extent anteriores) deja de ser válida; se invalida
-        // explícitamente en vez de esperar a que el próximo cálculo la
-        // detecte stale por key mismatch.
         invalidateAffineCache();
       }),
 
@@ -66,7 +63,10 @@ export const useProjectCrsStore = create<ProjectCrsState>()(
         invalidateAffineCache();
       }),
 
-    confirm: () => set((state) => { state.confirmed = true; }),
+    confirm: () =>
+      set((state) => {
+        state.confirmed = true;
+      }),
 
     loadConfig: (config) =>
       set((state) => {
@@ -78,6 +78,9 @@ export const useProjectCrsStore = create<ProjectCrsState>()(
         invalidateAffineCache();
       }),
 
-    requestReconfigure: () => set((state) => { state.confirmed = false; }),
+    requestReconfigure: () =>
+      set((state) => {
+        state.confirmed = false;
+      }),
   }))
 );

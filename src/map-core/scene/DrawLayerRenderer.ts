@@ -5,8 +5,8 @@ import type BaseLayer from 'ol/layer/Base.js';
 import type Map from 'ol/Map.js';
 import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
-import { useLayersStore } from '../../store/entities/layersRegistryStore';
-import type { Layer } from '../../core/objectModel';
+import { useLayersStore } from '@layers-engine/store/layersRegistryStore';
+import type { Layer } from '@kernel/domain-model/featureModel';
 
 export type WorkVisibility = {
   streets: boolean;

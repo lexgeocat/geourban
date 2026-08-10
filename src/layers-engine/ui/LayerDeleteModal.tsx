@@ -1,9 +1,9 @@
 import React, { useMemo, useState } from 'react';
-import { Modal } from '../ui/Modal';
-import { useMapStore } from '../../store/map/mapStore';
-import { useLayersStore } from '../../store/entities/layersRegistryStore';
-import { runCommand } from '../../commands/core/CommandStack';
-import { RemoveLayerCommand } from '../../commands/layers/RemoveLayerCommand';
+import { Modal } from '@shared-ui/Modal';
+import { useMapStore } from '@map-core/store/mapStore';
+import { useLayersStore } from '@layers-engine/store/layersRegistryStore';
+import { runCommand } from '@kernel/command/CommandStack';
+import { RemoveLayerCommand } from '@layers-engine/commands/RemoveLayerCommand';
 
 export interface LayerDeleteRequest {
   id: string;

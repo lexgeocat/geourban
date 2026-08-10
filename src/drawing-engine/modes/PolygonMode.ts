@@ -6,12 +6,12 @@ import Polygon from 'ol/geom/Polygon.js';
 import MultiPoint from 'ol/geom/MultiPoint.js';
 import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
-import { runCommand } from '../../../commands/core/CommandStack';
-import { AddFeatureCommand } from '../../../commands/features/AddFeatureCommand';
-import { updateFeatureMetrics, projectPathToMetricPlane } from '../../../geo/metrics';
-import { createLiveDrawingLabelStyle } from '../../styleFactory';
-import { resolveOrCreateLayerForKind } from '../../../store/entities/layerAutoCreate';
-import type { ModeContext } from './ModeContext';
+import { runCommand } from '@kernel/command/CommandStack';
+import { AddFeatureCommand } from '../commands/AddFeatureCommand';
+import { updateFeatureMetrics, projectPathToMetricPlane } from '@georef-engine/metrics';
+import { createLiveDrawingLabelStyle } from '../styles/styleFactory';
+import { resolveOrCreateLayerForKind } from '@layers-engine/store/layerResolution';
+import type { ModeContext } from '@kernel/modes/ModeContext';
 
 export function activatePolygon(ctx: ModeContext): void {
   const { map, drawSource: src } = ctx;

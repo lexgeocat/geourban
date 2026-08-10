@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import { DEFAULT_SNAP_SETTINGS, type SnapSettings, type SnapType } from '../../map/advancedSnap';
+import { DEFAULT_SNAP_SETTINGS, type SnapSettings, type SnapType } from '../geometry/advancedSnap';
 
 type SnapSettingsState = {
   enabled: boolean;

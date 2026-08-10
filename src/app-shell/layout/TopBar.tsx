@@ -1,8 +1,8 @@
-ï»¿import React from 'react';
+import React from 'react';
 import { ChevronUp } from 'lucide-react';
-import { useDrawStore } from '../../store/map/drawStore';
-import { useUiShellStore, type RibbonTabId } from '../../store/ui/uiShellStore';
-import { useTopBarActions } from '../../hooks/useTopBarActions';
+import { useDrawStore } from '@map-core/store/drawStore';
+import { useUiShellStore, type RibbonTabId } from '../store/uiShellStore';
+import { useTopBarActions } from '../hooks/useTopBarActions';
 import AppMenu from './topbar/AppMenu';
 import { RibbonContext } from './topbar/RibbonContext';
 import UrbanDesignTab from './topbar/ribbon/UrbanDesignTab';
@@ -10,7 +10,7 @@ import EditTab from './topbar/ribbon/EditTab';
 import ViewTab from './topbar/ribbon/ViewTab';
 
 const RIBBON_TABS: { id: RibbonTabId; label: string }[] = [
-  { id: 'map', label: 'DiseÃ±o UrbanÃ­stico' },
+  { id: 'map', label: 'Diseño Urbanístico' },
   { id: 'edit', label: 'Editar' },
   { id: 'view', label: 'Vista' },
 ];

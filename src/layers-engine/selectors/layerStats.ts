@@ -2,9 +2,9 @@ import type VectorSource from 'ol/source/Vector.js';
 import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
 import { extend as extendExtent, type Extent } from 'ol/extent.js';
-import { useStreetStore } from '../../store/entities/streetStore';
-import { useRoundaboutStore } from '../../store/entities/roundaboutStore';
-import { useLayersStore } from '../../store/entities/layersRegistryStore';
+import { useStreetStore } from '@vias-engine/store/streetStore';
+import { useRoundaboutStore } from '@vias-engine/store/roundaboutStore';
+import { useLayersStore } from '@layers-engine/store/layersRegistryStore';
 
 function resolveEntityLayerId(
   entityLayerId: string | undefined,

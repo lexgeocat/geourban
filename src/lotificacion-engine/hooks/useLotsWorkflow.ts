@@ -1,13 +1,13 @@
-import { useManzanoStore } from '../store/entities/manzanoStore';
-import { useMapStore } from '../store/map/mapStore';
-import { useCommandStack } from '../commands/core/CommandStack';
-import { GenerateLotsCommand } from '../commands/lots/GenerateLotsCommand';
-import { useGenerateLotsProgressStore } from '../store/ui/generateLotsProgressStore';
-import { useSubdivisionPreviewStore } from '../store/ui/subdivisionPreviewStore';
-import { useLeftSidebarStore } from '../store/ui/leftSidebarStore';
-import { getFeatureKind } from '../core/objectModel';
-import { requireLayerForKind } from '../store/ui/layerPickerStore';
-import { toast } from '../store/ui/toastStore';
+import { useManzanoStore } from '../store/manzanoLotConfigStore';
+import { useMapStore } from '@map-core/store/mapStore';
+import { useCommandStack } from '@kernel/command/CommandStack';
+import { GenerateLotsCommand } from '../commands/GenerateLotsCommand';
+import { useGenerateLotsProgressStore } from '../store/generateLotsProgressStore';
+import { useSubdivisionPreviewStore } from '../store/subdivisionPreviewStore';
+import { useLeftSidebarStore } from '@app-shell/store/leftSidebarStore';
+import { getFeatureKind } from '@kernel/domain-model/featureModel';
+import { requireLayerForKind } from '@layers-engine/store/layerPickerStore';
+import { toast } from '@shared-ui/store/toastStore';
 
 export const MANZANO_FOCUS_EVENT = 'geourban:focus-manzano';
 

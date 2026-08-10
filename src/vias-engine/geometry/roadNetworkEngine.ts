@@ -1,15 +1,12 @@
-﻿// ⚠️ Espejo de crates/geourban-geo/src/roads.rs::build_road_network_rings —
-// anillo de red vial en cliente; motor autoritativo en Rust.
-import type { Pt } from '../math/polygonEngine';
-import type { Street } from '../../store/entities/streetStore';
-import { roundaboutGeometry, type RoundaboutParams } from '../roundabout/roundaboutEngine';
+﻿import type { Pt } from '@kernel/geometry/polygonEngine';
+import type { Street } from '../store/streetStore';
+import { roundaboutGeometry, type RoundaboutParams } from './roundaboutEngine';
 
 function normalize(dx: number, dy: number): Pt {
   const len = Math.hypot(dx, dy) || 1;
   return [dx / len, dy / len];
 }
 
-/** Polilínea completa de una calle: start + waypoints + end. */
 function streetPolyline(street: Street): Pt[] {
   const pts: Pt[] = [street.start];
   if (street.waypoints) pts.push(...street.waypoints);
@@ -37,8 +34,10 @@ function offsetPolylineMiter(pts: Pt[], d: number): Pt[] {
   const absD = Math.abs(d) || 1e-9;
 
   for (let i = 0; i < n - 2; i++) {
-    const n0 = normals[i], n1 = normals[i + 1];
-    const d0 = dirs[i], d1 = dirs[i + 1];
+    const n0 = normals[i],
+      n1 = normals[i + 1];
+    const d0 = dirs[i],
+      d1 = dirs[i + 1];
     const p0: Pt = [pts[i + 1][0] + n0[0] * d, pts[i + 1][1] + n0[1] * d];
     const p1: Pt = [pts[i + 1][0] + n1[0] * d, pts[i + 1][1] + n1[1] * d];
     const det = d0[0] * d1[1] - d0[1] * d1[0];
@@ -68,12 +67,6 @@ function buildRing(pts: Pt[], half: number): Pt[] {
   return [...left, ...right.reverse()];
 }
 
-// ─── Fusión calle↔rotonda ──────────────────────────────────────────
-// Si la calle termina justo en el borde de la rotonda, los offsets solo
-// se TOCAN sin superponer área → GEOS no las funde y queda costura.
-// Empujamos el extremo un poco más allá del borde (misma dirección de
-// la calle) para forzar overlap real. Solo afecta el ring de unión, no
-// los datos de la calle.
 const ROUNDABOUT_CONNECT_TOLERANCE_M = 3;
 const ROUNDABOUT_OVERLAP_MARGIN_M = 0.5;
 
@@ -82,7 +75,7 @@ function nudgeEndpointIntoRoundabouts(
   idx: number,
   refIdx: number,
   roundabouts: RoundaboutParams[],
-  outerRadiusFor: (rb: RoundaboutParams) => number,
+  outerRadiusFor: (rb: RoundaboutParams) => number
 ): void {
   const p = out[idx];
   const ref = out[refIdx];
@@ -104,7 +97,7 @@ function nudgeEndpointIntoRoundabouts(
 function nudgePolylineIntoRoundabouts(
   ptsIn: Pt[],
   roundabouts: RoundaboutParams[],
-  outerRadiusFor: (rb: RoundaboutParams) => number,
+  outerRadiusFor: (rb: RoundaboutParams) => number
 ): Pt[] {
   if (roundabouts.length === 0 || ptsIn.length < 2) return ptsIn;
   const out = ptsIn.map((p) => [p[0], p[1]] as Pt);
@@ -118,7 +111,11 @@ function sidewalkOuterRadius(rb: RoundaboutParams): number {
 }
 function buildStreetOuterRing(street: Street, roundabouts: RoundaboutParams[]): Pt[] {
   const half = street.widthM / 2 + Math.max(0, street.sideWidthM ?? 0);
-  const pts = nudgePolylineIntoRoundabouts(streetPolyline(street), roundabouts, sidewalkOuterRadius);
+  const pts = nudgePolylineIntoRoundabouts(
+    streetPolyline(street),
+    roundabouts,
+    sidewalkOuterRadius
+  );
   return buildRing(pts, half);
 }
 
@@ -128,7 +125,7 @@ function buildRoundaboutOuterRing(rb: RoundaboutParams): Pt[] {
 
 export function buildRoadNetworkRings(
   streets: Street[],
-  roundabouts: RoundaboutParams[] = [],
+  roundabouts: RoundaboutParams[] = []
 ): Pt[][] {
   const rings: Pt[][] = [];
   for (const s of streets) {

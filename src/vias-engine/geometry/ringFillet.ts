@@ -1,9 +1,6 @@
-﻿// ⚠️ Espejo de crates/geourban-geo/src/roads.rs::round_ring_reflex —
-// preview en cliente; el motor autoritativo vive en Rust. Mantener
-// sincronizado (radio por ángulo, algoritmo de barrido).
-import type { Pt } from '../math/polygonEngine';
-import { polySignedArea, closeRing } from '../math/polygonEngine';
-import { distToSegment } from '../math/dist';
+﻿import type { Pt } from '@kernel/geometry/polygonEngine';
+import { polySignedArea, closeRing } from '@kernel/geometry/polygonEngine';
+import { distToSegment } from '@kernel/geometry/dist';
 import { getFilletRadiusForAngle } from './streetEngine';
 
 export type CornerMode = 'fillet' | 'chamfer' | 'none';
@@ -87,11 +84,12 @@ export function roundRingReflex(
   extraM: number | ((pt: Pt) => number) = 0,
   isHole = false,
   mode: CornerMode = 'fillet',
-  forceTreat: boolean | ((pt: Pt) => boolean) = false,
+  forceTreat: boolean | ((pt: Pt) => boolean) = false
 ): Pt[] {
   const pts = ringIn.slice();
   if (pts.length > 1) {
-    const f = pts[0], l = pts[pts.length - 1];
+    const f = pts[0],
+      l = pts[pts.length - 1];
     if (Math.abs(f[0] - l[0]) < 1e-9 && Math.abs(f[1] - l[1]) < 1e-9) pts.pop();
   }
   const n = pts.length;
@@ -106,15 +104,24 @@ export function roundRingReflex(
     const prev = pts[(i - 1 + n) % n];
     const cur = pts[i];
     const next = pts[(i + 1) % n];
-    const d1x = cur[0] - prev[0], d1y = cur[1] - prev[1];
-    const d2x = next[0] - cur[0], d2y = next[1] - cur[1];
-    const l1 = Math.hypot(d1x, d1y), l2 = Math.hypot(d2x, d2y);
-    if (l1 < 1e-9 || l2 < 1e-9) { out.push(cur); continue; }
+    const d1x = cur[0] - prev[0],
+      d1y = cur[1] - prev[1];
+    const d2x = next[0] - cur[0],
+      d2y = next[1] - cur[1];
+    const l1 = Math.hypot(d1x, d1y),
+      l2 = Math.hypot(d2x, d2y);
+    if (l1 < 1e-9 || l2 < 1e-9) {
+      out.push(cur);
+      continue;
+    }
 
     const cross = (d1x / l1) * (d2y / l2) - (d1y / l1) * (d2x / l2);
     const reflex = ccw ? cross < -1e-6 : cross > 1e-6;
     const forced = typeof forceTreat === 'function' ? forceTreat(cur) : forceTreat;
-    if (!reflex && !forced) { out.push(cur); continue; }
+    if (!reflex && !forced) {
+      out.push(cur);
+      continue;
+    }
 
     const a = normalize(prev[0] - cur[0], prev[1] - cur[1]);
     const b = normalize(next[0] - cur[0], next[1] - cur[1]);
@@ -123,10 +130,14 @@ export function roundRingReflex(
     const extra = typeof extraM === 'function' ? extraM(cur) : extraM;
     const r = getFilletRadiusForAngle(angleDeg) + extra;
 
-    const corner = mode === 'chamfer'
-      ? cornerChamferCut(prev, cur, next, r)
-      : cornerFilletArc(prev, cur, next, r);
-    if (!corner) { out.push(cur); continue; }
+    const corner =
+      mode === 'chamfer'
+        ? cornerChamferCut(prev, cur, next, r)
+        : cornerFilletArc(prev, cur, next, r);
+    if (!corner) {
+      out.push(cur);
+      continue;
+    }
     out.push(...corner);
   }
 

@@ -1,6 +1,6 @@
 import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
-import type { LabelStyleConfig } from './labelModel';
+import type { LabelStyleConfig } from '@label-engine/model/labelModel';
 
 export type GeoUrbanFeatureKind =
   'lote' | 'manzana' | 'calle' | 'equipamiento' | 'linea' | 'rotonda' | 'perimetro';

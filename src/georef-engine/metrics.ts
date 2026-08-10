@@ -3,7 +3,7 @@ import LineString from 'ol/geom/LineString.js';
 import Polygon from 'ol/geom/Polygon.js';
 import type Geometry from 'ol/geom/Geometry.js';
 import VectorSource from 'ol/source/Vector.js';
-import { useProjectCrsStore } from '../store/project/projectCrsStore';
+import { useProjectCrsStore } from './store/projectCrsStore';
 import { ensureUtmZoneRegistered } from './crs/utmZones';
 import {
   getMetricPlaneAffine,
@@ -11,7 +11,7 @@ import {
   projectPathThroughUtmTiles,
 } from './crs/affineCache';
 import { applyAffineBatch, extentOfPoints } from './crs/affineApprox';
-import { pathLength, polygonCentroidLabelPoint } from './math/polygonEngine';
+import { pathLength, polygonCentroidLabelPoint } from '@kernel/geometry/polygonEngine';
 
 export type SegmentMetric = {
   p0: [number, number];

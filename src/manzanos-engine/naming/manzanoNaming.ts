@@ -1,8 +1,8 @@
 import type VectorSource from 'ol/source/Vector.js';
 import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
-import { getFeatureKind } from '../../core/objectModel';
-import { autoLetterCode } from '../../lib/autoName';
+import { getFeatureKind } from '@kernel/domain-model/featureModel';
+import { autoLetterCode } from '@kernel/id/autoName';
 
 let nextSeq = 0;
 

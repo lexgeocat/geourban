@@ -1,4 +1,4 @@
-import { autoLetterCode } from '../lib/autoName';
+import { autoLetterCode } from '@kernel/id/autoName';
 
 export type LabelNumberingMode =
   | 'numeric'
@@ -16,7 +16,6 @@ export interface NumberingModeInfo {
   key: LabelNumberingMode;
   label: string;
   example: string;
-  /** Necesita un "código padre" (p.ej. el código del manzano) para dar su formato real. */
   needsParent?: boolean;
 }
 

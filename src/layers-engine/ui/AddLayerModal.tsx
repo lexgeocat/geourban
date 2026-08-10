@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { Modal } from '../ui/Modal';
-import type { LayerKind } from '../../core/objectModel';
-import { runCommand } from '../../commands/core/CommandStack';
-import { AddLayerCommand } from '../../commands/layers/AddLayerCommand';
-import { newId } from '../../lib/id';
+import { Modal } from '@shared-ui/Modal';
+import type { LayerKind } from '@kernel/domain-model/featureModel';
+import { runCommand } from '@kernel/command/CommandStack';
+import { AddLayerCommand } from '@layers-engine/commands/AddLayerCommand';
+import { newId } from '@kernel/id/id';
 
 const KIND_OPTIONS: { value: LayerKind; label: string }[] = [
   { value: 'lote', label: 'Polígono' },

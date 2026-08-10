@@ -1,27 +1,27 @@
-﻿import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { useLayersStore } from '../../store/entities/layersRegistryStore';
-import type { LayerKind } from '../../core/objectModel';
-import { useLayerPanelUiStore } from '../../store/ui/layerPanelUiStore';
-import { useIncrementalRender } from '../../hooks/useIncrementalRender';
-import { useViewportWidth } from '../../hooks/useViewportWidth';
-import { useDrawSourceTick } from '../../hooks/useDrawSourceTick';
-import { computeLayerFeatureCounts, computeLayerExtent } from '../../geo/selectors/layerStats';
-import { useMapStore } from '../../store/map/mapStore';
-import { useSelectionStore } from '../../store/map/selectionStore';
-import LayerDeleteModal, { type LayerDeleteRequest } from '../modals/LayerDeleteModal';
-import AddLayerModal from '../modals/AddLayerModal';
-import { runCommand } from '../../commands/core/CommandStack';
-import { UpdateLayerCommand } from '../../commands/layers/UpdateLayerCommand';
-import { ReorderLayersCommand } from '../../commands/layers/ReorderLayersCommand';
-import { DuplicateLayerCommand } from '../../commands/layers/DuplicateLayerCommand';
-import { MoveFeaturesToLayerCommand } from '../../commands/layers/MoveFeaturesToLayerCommand';
-import { useStreetStore } from '../../store/entities/streetStore';
-import { useRoundaboutStore } from '../../store/entities/roundaboutStore';
-import { confirmAsync } from '../../store/ui/confirmDialogStore';
-import { toast } from '../../store/ui/toastStore';
-import { newId } from '../../lib/id';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { useLayersStore } from '@layers-engine/store/layersRegistryStore';
+import type { LayerKind } from '@kernel/domain-model/featureModel';
+import { useLayerPanelUiStore } from '@layers-engine/store/layerPanelUiStore';
+import { useIncrementalRender } from '@shared-ui/hooks/useIncrementalRender';
+import { useViewportWidth } from '@shared-ui/hooks/useViewportWidth';
+import { useDrawSourceTick } from '@shared-ui/hooks/useDrawSourceTick';
+import { computeLayerFeatureCounts, computeLayerExtent } from '@layers-engine/selectors/layerStats';
+import { useMapStore } from '@map-core/store/mapStore';
+import { useSelectionStore } from '@selection-engine/store/selectionStore';
+import LayerDeleteModal, { type LayerDeleteRequest } from './LayerDeleteModal';
+import AddLayerModal from './AddLayerModal';
+import { runCommand } from '@kernel/command/CommandStack';
+import { UpdateLayerCommand } from '@layers-engine/commands/UpdateLayerCommand';
+import { ReorderLayersCommand } from '@layers-engine/commands/ReorderLayersCommand';
+import { DuplicateLayerCommand } from '@layers-engine/commands/DuplicateLayerCommand';
+import { MoveFeaturesToLayerCommand } from '@layers-engine/commands/MoveFeaturesToLayerCommand';
+import { useStreetStore } from '@vias-engine/store/streetStore';
+import { useRoundaboutStore } from '@vias-engine/store/roundaboutStore';
+import { confirmAsync } from '@shared-ui/store/confirmDialogStore';
+import { toast } from '@shared-ui/store/toastStore';
+import { newId } from '@kernel/id/id';
 
-/* ─────────── Icons (decorativos — aria-hidden en su punto de uso) ─────────── */
+/* ----------- Icons (decorativos � aria-hidden en su punto de uso) ----------- */
 
 const IconLayers = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 14, height: 14 }} aria-hidden="true">
@@ -108,8 +108,8 @@ function geometryIconForKind(kind: LayerKind) {
 }
 
 function geometryLabelForKind(kind: LayerKind): string {
-  if (kind === 'calle' || kind === 'linea' || kind === 'rotonda') return 'línea';
-  return 'polígono';
+  if (kind === 'calle' || kind === 'linea' || kind === 'rotonda') return 'l�nea';
+  return 'pol�gono';
 }
 
 const IconIsolate = () => (
@@ -137,7 +137,7 @@ const IconMoveToLayer = () => (
   </svg>
 );
 
-/** Icono de etiquetas (nombre/número de la entidad). */
+/** Icono de etiquetas (nombre/n�mero de la entidad). */
 const IconLabelTag = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" style={{ width: 12, height: 12 }} aria-hidden="true">
     <path d="M12 2H4a2 2 0 0 0-2 2v6l10 10a2 2 0 0 0 2.83 0l6.17-6.17a2 2 0 0 0 0-2.83L12 2Z" />
@@ -145,7 +145,7 @@ const IconLabelTag = () => (
   </svg>
 );
 
-/** Icono de acotaciones (cotas de segmentos/área). */
+/** Icono de acotaciones (cotas de segmentos/�rea). */
 const IconRuler = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" style={{ width: 12, height: 12 }} aria-hidden="true">
     <rect x="3" y="8" width="18" height="8" rx="1.5" />
@@ -153,7 +153,7 @@ const IconRuler = () => (
   </svg>
 );
 
-/* ─────────── Color Picker (contorno de capa) ─────────── */
+/* ----------- Color Picker (contorno de capa) ----------- */
 
 function ColorDot({ color, onChange, title, warn }: { color: string; onChange: (c: string) => void; title?: string; warn?: boolean }) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -165,7 +165,7 @@ function ColorDot({ color, onChange, title, warn }: { color: string; onChange: (
     if (!draggingRef.current) setLocalColor(color);
   }, [color]);
 
-  const label = `${title ?? 'Color de capa'}: ${localColor}${warn ? ' — atención: similar al de otra capa' : ''}`;
+  const label = `${title ?? 'Color de capa'}: ${localColor}${warn ? ' � atenci�n: similar al de otra capa' : ''}`;
 
   const scheduleCommit = (c: string) => {
     if (commitTimer.current) clearTimeout(commitTimer.current);
@@ -254,7 +254,7 @@ function OpacitySlider({ value, onChange, layerName, full }: { value: number; on
   );
 }
 
-/* ─────────── Fila genérica de capa ─────────── */
+/* ----------- Fila gen�rica de capa ----------- */
 
 interface LayerRowData {
   id: string;
@@ -323,7 +323,7 @@ function LayerRow({
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '4px 6px', borderRadius: 4, flexWrap: 'wrap' }}>
       {data.reorderable && (
-        <div style={{ display: 'flex', flexDirection: 'column' }} title="Usá las flechas para reordenar la capa">
+        <div style={{ display: 'flex', flexDirection: 'column' }} title="Us� las flechas para reordenar la capa">
           <button
             type="button"
             className="cad-a11y-btn"
@@ -359,7 +359,7 @@ function LayerRow({
         <IconEye visible={data.visible} />
       </button>
 
-      <span title={`Geometría: ${geometryLabelForKind(data.kind)}`} aria-hidden="true" style={{ display: 'flex', color: 'var(--cad-text-muted)', flexShrink: 0 }}>
+      <span title={`Geometr�a: ${geometryLabelForKind(data.kind)}`} aria-hidden="true" style={{ display: 'flex', color: 'var(--cad-text-muted)', flexShrink: 0 }}>
         {geometryIconForKind(data.kind)}
       </span>
 
@@ -454,8 +454,8 @@ function LayerRow({
           type="button"
           className="cad-a11y-btn"
           onClick={(e) => { e.stopPropagation(); data.onMoveSelectionHere?.(); }}
-          aria-label={`Mover la selección actual a la capa ${data.name}`}
-          title="Mover la selección actual a esta capa"
+          aria-label={`Mover la selecci�n actual a la capa ${data.name}`}
+          title="Mover la selecci�n actual a esta capa"
           style={{ color: 'var(--cad-accent-green)' }}
         >
           <IconMoveToLayer />
@@ -495,7 +495,7 @@ function LayerRow({
 
             {data.isDataLayer && data.onZoomToExtent && (data.featureCount ?? 0) > 0 && (
               <button type="button" className="cad-a11y-btn" onClick={() => data.onZoomToExtent?.()} style={gearActionStyle}>
-                <IconZoomTo /> Zoom a extensión
+                <IconZoomTo /> Zoom a extensi�n
               </button>
             )}
             {data.isDataLayer && data.onDuplicate && (
@@ -520,7 +520,7 @@ function LayerRow({
   );
 }
 
-/* ─────────── Adaptadores de cada store ─────────── */
+/* ----------- Adaptadores de cada store ----------- */
 
 function computeDuplicatedColorIds(layers: Array<{ id: string; color: string }>): Set<string> {
   const byColor = new globalThis.Map<string, string[]>();
@@ -557,8 +557,8 @@ function useRegistryRows(
     const newName = `${layer.name} (copia)`;
     void (async () => {
       const duplicateFeatures = await confirmAsync(
-        `¿Duplicar también los elementos de "${layer.name}" a la capa nueva?\n\nAceptar = copiar elementos · Cancelar = capa vacía`,
-        { title: 'Duplicar capa', confirmLabel: 'Copiar elementos', cancelLabel: 'Capa vacía' },
+        `�Duplicar tambi�n los elementos de "${layer.name}" a la capa nueva?\n\nAceptar = copiar elementos � Cancelar = capa vac�a`,
+        { title: 'Duplicar capa', confirmLabel: 'Copiar elementos', cancelLabel: 'Capa vac�a' },
       );
       const newLayerId = newId('layer-dup');
       await runCommand(new DuplicateLayerCommand({ sourceLayerId: layer.id, newLayerId, newName, duplicateFeatures }));
@@ -595,7 +595,7 @@ function useRegistryRows(
     onOpacity: (v) => void runCommand(new UpdateLayerCommand(l.id, { opacity: v }, 'Opacidad de capa')),
     onColor: (c) => void runCommand(new UpdateLayerCommand(l.id, { color: c }, 'Color de capa')),
     onToggleLabel: () => void runCommand(new UpdateLayerCommand(l.id, { showLabel: !l.showLabel }, 'Mostrar etiqueta de capa')),
-    onToggleCota: () => void runCommand(new UpdateLayerCommand(l.id, { showCota: !l.showCota }, 'Mostrar acotación de capa')),
+    onToggleCota: () => void runCommand(new UpdateLayerCommand(l.id, { showCota: !l.showCota }, 'Mostrar acotaci�n de capa')),
     onRename: (name) => void runCommand(new UpdateLayerCommand(l.id, { name }, 'Renombrar capa')),
     onToggleLock: () => void runCommand(new UpdateLayerCommand(l.id, { locked: !l.locked }, 'Bloqueo de capa')),
     onRemove: () => onRequestRemove({ id: l.id, name: l.name }),
@@ -606,7 +606,7 @@ function useRegistryRows(
   }));
 }
 
-/* ─────────── Header de sección ─────────── */
+/* ----------- Header de secci�n ----------- */
 
 function SectionHeader({ label, count, expanded, onToggle, panelId }: { label: string; count: number; expanded: boolean; onToggle: () => void; panelId: string }) {
   return (
@@ -625,7 +625,7 @@ function SectionHeader({ label, count, expanded, onToggle, panelId }: { label: s
   );
 }
 
-/* ─────────── Panel principal ─────────── */
+/* ----------- Panel principal ----------- */
 
 export default function LayerPanel() {
   const open = useLayerPanelUiStore((s) => s.open);
@@ -642,8 +642,12 @@ export default function LayerPanel() {
   const tick = useDrawSourceTick(drawSource);
   const streets = useStreetStore((s) => s.streets);
   const roundabouts = useRoundaboutStore((s) => s.roundabouts);
-  const featureCounts = useMemo(() => computeLayerFeatureCounts(drawSource),
-  [drawSource, tick, streets, roundabouts]);
+  const featureCounts = useMemo(
+    () => computeLayerFeatureCounts(drawSource),
+    // tick refleja cambios internos del drawSource
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [drawSource, tick, streets, roundabouts]
+  );
   const selectedCount = useSelectionStore((s) => s.selectedIds.size);
 
   const registryRows = useRegistryRows(setDeleteRequest, featureCounts, isolatedLayerId);
@@ -777,9 +781,6 @@ export default function LayerPanel() {
               </button>
             </div>
           )}
-
-          {/* Readout informativo — la asignación real de capa activa se hace
-              desde Vista → Capa activa; acá solo se muestra cuál es. */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 8px', marginBottom: 8, borderRadius: 6, background: 'var(--cad-bg-surface)', border: '1px solid var(--cad-border)', fontSize: '0.65rem' }}>
             <IconTarget filled={activeLayerId != null} />
             <span style={{ color: 'var(--cad-text-dim)', flexShrink: 0 }}>Capa activa:</span>
@@ -789,7 +790,7 @@ export default function LayerPanel() {
               </span>
             ) : (
               <span style={{ color: 'var(--cad-text-dim)', fontStyle: 'italic', flex: 1 }}>
-                Ninguna — elegí una en Vista → Capa activa
+                Ninguna � eleg� una en Vista ? Capa activa
               </span>
             )}
           </div>
@@ -800,7 +801,7 @@ export default function LayerPanel() {
               <div id="layerpanel-data-section" style={{ marginTop: 2 }}>
                 {registryRowsDisplay.length === 0 ? (
                   <p style={{ fontSize: '0.65rem', color: 'var(--cad-text-muted)', padding: '6px 2px', fontStyle: 'italic' }}>
-                    Todavía no hay capas. Se crean automáticamente al dibujar o generar tu primera entidad — o con el botón "+" de arriba.
+                    Todav�a no hay capas. Se crean autom�ticamente al dibujar o generar tu primera entidad � o con el bot�n "+" de arriba.
                  </p>
                 ) : (
                   registryRowsDisplay.map((row) => {
@@ -820,7 +821,7 @@ export default function LayerPanel() {
               <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 2 }}>
                 <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 2, border: '1.5px solid ' + r.color, flexShrink: 0 }} />
                 <span style={{ whiteSpace: 'normal', overflowWrap: 'anywhere' }}>{r.name}</span>
-                {r.locked && <span aria-hidden="true" style={{ fontSize: '0.55rem', opacity: 0.5, marginLeft: 'auto' }}>🔒</span>}
+                {r.locked && <span aria-hidden="true" style={{ fontSize: '0.55rem', opacity: 0.5, marginLeft: 'auto' }}>??</span>}
               </div>
             ))}
           </div>

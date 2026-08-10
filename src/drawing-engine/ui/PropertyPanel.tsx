@@ -1,19 +1,19 @@
-﻿import React from 'react';
+import React from 'react';
 import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
-import { useSelectionStore } from '../../store/map/selectionStore';
-import { useMapStore } from '../../store/map/mapStore';
-import { useDrawStore } from '../../store/map/drawStore';
-import { useUiShellStore } from '../../store/ui/uiShellStore';
-import { formatMetricArea, formatMetricLength, type SegmentMetric } from '../../geo/metrics';
-import { getFeatureKind } from '../../core/objectModel';
-import { useStreetStore } from '../../store/entities/streetStore';
-import { useRoundaboutStore } from '../../store/entities/roundaboutStore';
-import { useDraggablePanel } from '../../hooks/useDraggablePanel';
-import { useLotsWorkflow } from '../../hooks/useLotsWorkflow';
-import { useLabelConfigModalStore } from '../../store/ui/labelConfigModalStore';
-import { useEntityLabelStore } from '../../store/entities/entityLabelStore';
-import { defaultLabelStyleConfig, defaultColorForKind } from '../../core/labelModel';
+import { useSelectionStore } from '@selection-engine/store/selectionStore';
+import { useMapStore } from '@map-core/store/mapStore';
+import { useDrawStore } from '@map-core/store/drawStore';
+import { useUiShellStore } from '@app-shell/store/uiShellStore';
+import { formatMetricArea, formatMetricLength, type SegmentMetric } from '@georef-engine/metrics';
+import { getFeatureKind } from '@kernel/domain-model/featureModel';
+import { useStreetStore } from '@vias-engine/store/streetStore';
+import { useRoundaboutStore } from '@vias-engine/store/roundaboutStore';
+import { useDraggablePanel } from '@shared-ui/hooks/useDraggablePanel';
+import { useLotsWorkflow } from '@lotificacion-engine/hooks/useLotsWorkflow';
+import { useLabelConfigModalStore } from '@label-engine/store/labelConfigModalStore';
+import { useEntityLabelStore } from '@label-engine/store/entityLabelStore';
+import { defaultLabelStyleConfig, defaultColorForKind } from '@label-engine/model/labelModel';
 
 const basePanelStyle: React.CSSProperties = {
   position: 'absolute',
@@ -49,8 +49,6 @@ export default function PropertyPanel() {
   const { position, onDragHandleMouseDown: handleMouseDown } = useDraggablePanel({
     initial: { top: 10, left: Math.max(8, window.innerWidth - 260) },
   });
-
-  // Solo mostrar en modo select o edit, y si el panel está habilitado
   if (drawMode !== 'select' && drawMode !== 'edit') return null;
   if (!propertiesVisible) return null;
 
@@ -64,7 +62,7 @@ export default function PropertyPanel() {
             <span className="cad-section-title">Propiedades</span>
           </div>
           <p style={{ fontSize: '0.7rem', color: 'var(--cad-text-muted)' }}>
-            Selecciona un polígono para ver sus propiedades.
+            Selecciona un pol�gono para ver sus propiedades.
           </p>
         </div>
       </div>
@@ -91,7 +89,7 @@ export default function PropertyPanel() {
                 existing?.config ?? defaultLabelStyleConfig({ prefix: 'Calle', color: defaultColorForKind('calle') }),
                 existing?.text ?? street.name);
             }} className="cad-icon-btn" style={{ width: '100%', height: 'auto', padding: '6px 10px', fontSize: '0.7rem', marginTop: 8, background: 'var(--cad-bg-surface)', border: '1px solid var(--cad-border)', color: 'var(--cad-text-dim)', borderRadius: 4 }}>
-              🏷 Generar etiqueta
+              ?? Generar etiqueta
             </button>
           </div>
         </div>
@@ -114,7 +112,7 @@ export default function PropertyPanel() {
                 existing?.config ?? defaultLabelStyleConfig({ prefix: 'Rotonda', color: defaultColorForKind('rotonda') }),
                 existing?.text ?? roundabout.name);
             }} className="cad-icon-btn" style={{ width: '100%', height: 'auto', padding: '6px 10px', fontSize: '0.7rem', marginTop: 8, background: 'var(--cad-bg-surface)', border: '1px solid var(--cad-border)', color: 'var(--cad-text-dim)', borderRadius: 4 }}>
-              🏷 Generar etiqueta
+              ?? Generar etiqueta
             </button>
           </div>
         </div>
@@ -146,7 +144,7 @@ export default function PropertyPanel() {
               fontFamily: 'JetBrains Mono, monospace',
             }}
           >
-            {selectedCount > 1 ? `+${selectedCount - 1} más` : ''}
+            {selectedCount > 1 ? `+${selectedCount - 1} m�s` : ''}
           </span>
         </div>
 
@@ -159,11 +157,11 @@ export default function PropertyPanel() {
         {isPolygon ? (
           <>
             <div className="cad-row">
-              <span>Área</span>
+              <span>�rea</span>
               <span className="cad-row-value">{formatMetricArea(areaM2)}</span>
             </div>
             <div className="cad-row">
-              <span>Perímetro</span>
+              <span>Per�metro</span>
               <span className="cad-row-value">{formatMetricLength(perimeterM)}</span>
             </div>
           </>
@@ -212,7 +210,7 @@ export default function PropertyPanel() {
         <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 4 }}>
           {isPolygon && featureKind === 'perimetro' && (
             <p style={{ fontSize: '0.65rem', color: 'var(--cad-text-muted)', fontStyle: 'italic' }}>
-              Este es el perímetro del sitio (referencia intacta). Trazá calles para generar manzanos.
+              Este es el per�metro del sitio (referencia intacta). Traz� calles para generar manzanos.
             </p>
           )}
           {isPolygon && featureKind === 'manzana' && (
@@ -226,7 +224,7 @@ export default function PropertyPanel() {
                 justifyContent: 'center', gap: 4,
               }}
             >
-              Subdividir este polígono
+              Subdividir este pol�gono
             </button>
           )}
           {isPolygon && featureKind !== 'perimetro' && (
@@ -243,7 +241,7 @@ export default function PropertyPanel() {
                 justifyContent: 'center', gap: 4,
               }}
             >
-              🏷 Generar etiqueta
+              ?? Generar etiqueta
             </button>
           )}
         </div>

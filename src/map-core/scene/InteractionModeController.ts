@@ -1,21 +1,21 @@
-﻿import type Map from 'ol/Map.js';
+import type Map from 'ol/Map.js';
 import VectorSource from 'ol/source/Vector.js';
 import VectorLayer from 'ol/layer/Vector.js';
 import type Draw from 'ol/interaction/Draw.js';
-import type { DrawMode } from '../../store/map/drawStore';
-import { isFeatureLayerLocked, isFeatureLayerVisible } from '../../core/layerVisibility';
+import type { DrawMode } from '@map-core/store/drawStore';
+import { isFeatureLayerLocked, isFeatureLayerVisible } from '@layers-engine/model/layerVisibility';
 import type { PostrenderPainter } from './PostrenderPainter';
-import type { HitTestSelect } from './HitTestSelect';
-import type { ModeContext, RefreshableDrawLayer } from './modes/ModeContext';
-import { activateSelect } from './modes/SelectEditMode';
-import { activateEdit } from './modes/EditMode';
-import { activatePolygon } from './modes/PolygonMode';
-import { activateLine } from './modes/LineMode';
-import { activateRectangle } from './modes/RectangleMode';
-import { activateStreet } from './modes/StreetMode';
-import { activateRoundabout } from './modes/RoundaboutMode';
-import { activateErase } from './modes/EraseMode';
-import { activateLabelOrder } from './modes/LabelOrderMode';
+import type { HitTestSelect } from '@selection-engine/interactions/HitTestSelect';
+import type { ModeContext, RefreshableDrawLayer } from '@kernel/modes/ModeContext';
+import { activateSelect } from '@selection-engine/modes/SelectEditMode';
+import { activateEdit } from '@selection-engine/modes/EditMode';
+import { activatePolygon } from '@drawing-engine/modes/PolygonMode';
+import { activateLine } from '@drawing-engine/modes/LineMode';
+import { activateRectangle } from '@drawing-engine/modes/RectangleMode';
+import { activateStreet } from '@vias-engine/modes/StreetMode';
+import { activateRoundabout } from '@vias-engine/modes/RoundaboutMode';
+import { activateErase } from '@drawing-engine/modes/EraseMode';
+import { activateLabelOrder } from '@label-engine/modes/LabelOrderMode';
 
 export interface InteractionContext {
   map: Map;

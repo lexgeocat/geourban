@@ -1,13 +1,13 @@
 ﻿import React, { useState } from 'react';
-import { useStreetStore } from '../../store/entities/streetStore';
-import { useSelectionStore } from '../../store/map/selectionStore';
-import { useRoadCornerStore } from '../../store/map/roadCornerStore';
-import { type CornerMode } from '../../geo/roads/ringFillet';
-import { recomputeManzanos } from '../../geo/recomputeManzanos';
-import { formatMetricLength, formatMetricArea, streetLengthMetricM } from '../../geo/metrics';
-import { useEntityLabelStore } from '../../store/entities/entityLabelStore';
-import { useLabelConfigModalStore } from '../../store/ui/labelConfigModalStore';
-import { defaultLabelStyleConfig, defaultColorForKind } from '../../core/labelModel';
+import { useStreetStore } from '../store/streetStore';
+import { useSelectionStore } from '@selection-engine/store/selectionStore';
+import { useRoadCornerStore } from '../store/roadCornerStore';
+import { type CornerMode } from '../geometry/ringFillet';
+import { recomputeManzanos } from '@manzanos-engine/orchestration/recomputeManzanos';
+import { formatMetricLength, formatMetricArea, streetLengthMetricM } from '@georef-engine/metrics';
+import { useEntityLabelStore } from '@label-engine/store/entityLabelStore';
+import { useLabelConfigModalStore } from '@label-engine/store/labelConfigModalStore';
+import { defaultLabelStyleConfig, defaultColorForKind } from '@label-engine/model/labelModel';
 
 const CORNER_MODE_OPTIONS: { value: CornerMode; label: string }[] = [
   { value: 'fillet', label: 'Ochave' },

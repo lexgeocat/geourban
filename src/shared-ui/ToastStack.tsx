@@ -1,5 +1,5 @@
 import React from 'react';
-import { useToastStore, type Toast, type ToastVariant } from '../../store/ui/toastStore';
+import { useToastStore, type Toast, type ToastVariant } from './store/toastStore';
 
 const VARIANT_COLORS: Record<ToastVariant, { bg: string; border: string; fg: string }> = {
   info:    { bg: 'rgba(13, 17, 23, 0.95)', border: 'var(--cad-accent)',     fg: 'var(--cad-text)' },

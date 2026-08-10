@@ -2,10 +2,8 @@ import type VectorSource from 'ol/source/Vector.js';
 import type Map from 'ol/Map.js';
 import Polygon from 'ol/geom/Polygon.js';
 import LineString from 'ol/geom/LineString.js';
-import { useStreetStore, type Street } from '../../../store/entities/streetStore';
-import { useRoundaboutStore } from '../../../store/entities/roundaboutStore';
-import { useSelectionStore } from '../../../store/map/selectionStore';
-import { roundaboutGeometry } from '../../../geo/roundabout/roundaboutEngine';
+import { useSelectionStore } from '../store/selectionStore';
+import { entityGeometryProviders } from '../entityGeometryProviders';
 
 const GLOW_HUE = '255, 196, 0';
 
@@ -18,13 +16,6 @@ const PULSE_RENDER_INTERVAL_MS = 1000 / PULSE_RENDER_FPS;
 const PULSE_RENDER_INTERVAL_MS_HEAVY = 1000 / PULSE_RENDER_FPS_HEAVY;
 const HEAVY_DATASET_THRESHOLD = 20_000;
 const STATIC_HIGHLIGHT_THRESHOLD = 150_000;
-
-function streetCoords(s: Street): Array<[number, number]> {
-  const c: Array<[number, number]> = [s.start];
-  if (s.waypoints) c.push(...s.waypoints);
-  c.push(s.end);
-  return c;
-}
 
 export class SelectionHighlightPainter {
   private map: Map | null = null;
@@ -138,16 +129,21 @@ export class SelectionHighlightPainter {
         continue;
       }
 
-      const street = useStreetStore.getState().streets.find((s) => s.id === id);
-      if (street) {
-        this.strokePath(ctx, streetCoords(street), toPx, outerColor, innerColor, outerWidth);
-        continue;
+      const streetProvider = entityGeometryProviders.get('street');
+      if (streetProvider) {
+        const coords = streetProvider(id, resolution);
+        if (coords && coords.length >= 2) {
+          this.strokePath(ctx, coords, toPx, outerColor, innerColor, outerWidth);
+          continue;
+        }
       }
 
-      const rb = useRoundaboutStore.getState().roundabouts.find((r) => r.id === id);
-      if (rb) {
-        const geomRb = roundaboutGeometry(rb, resolution);
-        this.strokeRing(ctx, geomRb.sideOuter as number[][], toPx, outerColor, innerColor, outerWidth);
+      const rbProvider = entityGeometryProviders.get('roundabout');
+      if (rbProvider) {
+        const ring = rbProvider(id, resolution);
+        if (ring && ring.length >= 3) {
+          this.strokeRing(ctx, ring, toPx, outerColor, innerColor, outerWidth);
+        }
       }
     }
   }

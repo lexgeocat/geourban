@@ -1,9 +1,9 @@
-// Base genérica para los comandos que agregan entidades viales (calles y
-// rotondas). Ambos comparten: coalesce por sesión, diff estructural tras el
-// recálculo de manzanos, undo/redo simétrico.
-import { Command, type CommandContext } from '../core/Command';
-import { recomputeManzanos, waitForPendingRecompute } from '../../geo/recomputeManzanos';
-import { refreshSourceMetrics } from '../../geo/metrics';
+import { Command, type CommandContext } from '@kernel/command/Command';
+import {
+  recomputeManzanos,
+  waitForPendingRecompute,
+} from '@manzanos-engine/orchestration/recomputeManzanos';
+import { refreshSourceMetrics } from '@georef-engine/metrics';
 import {
   composeStructuralDiffs,
   applyStructuralDiffForward,
@@ -11,7 +11,7 @@ import {
   approxStructuralDiffBytes,
   EMPTY_STRUCTURAL_DIFF,
   type StructuralDiff,
-} from '../core/structuralDiff';
+} from '@kernel/command/structuralDiff';
 
 interface RoadEntityEntry<TParams> {
   id: string | null;
@@ -31,16 +31,9 @@ export abstract class RoadEntityCommand<TParams> extends Command {
     this.entries = [{ id: null, params }];
   }
 
-  /** Agrega una nueva entidad al store; devuelve el id asignado. */
   protected abstract addToStore(params: TParams): string;
-
-  /** Re-construye una entidad con id existente (para redo). */
   protected abstract addWithId(id: string, params: TParams): void;
-
-  /** Elimina la entidad del store por id. */
   protected abstract removeFromStore(id: string): void;
-
-  /** Tipo concreto del command (para evitar que coalesce mezcle calles con rotondas). */
   protected abstract sameKind(other: Command): boolean;
 
   override async execute(_ctx: CommandContext): Promise<void> {

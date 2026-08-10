@@ -1,4 +1,4 @@
-use crate::types::Pt;
+use crate::kernel::types::Pt;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Extent1D {

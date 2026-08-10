@@ -12,11 +12,8 @@ export interface FeatureSnapshot {
 }
 
 export interface StructuralDiff {
-  /** Features que no existían antes de la operación y sí existen después. */
   added: FeatureSnapshot[];
-  /** Features que existían antes y no existen después. */
   removed: FeatureSnapshot[];
-  /** Features que existían en ambos momentos pero cambiaron (geometría y/o props). */
   modified: Array<{ id: FeatureId; before: FeatureSnapshot; after: FeatureSnapshot }>;
 }
 
@@ -49,8 +46,6 @@ function snapshotToFeature(snap: FeatureSnapshot): Feature<Geometry> {
 function snapshotsEquivalent(a: FeatureSnapshot, b: FeatureSnapshot): boolean {
   const fa = (a.geometry as unknown as Partial<SimpleGeometry>).getFlatCoordinates?.();
   const fb = (b.geometry as unknown as Partial<SimpleGeometry>).getFlatCoordinates?.();
-  // Sin coordenadas planas no podemos probar igualdad: tratarlo como
-  // cambio real (nunca esconder un cambio por no poder compararlo).
   if (!fa || !fb) return false;
   if (fa.length !== fb.length) return false;
   for (let i = 0; i < fa.length; i++) {
@@ -70,7 +65,6 @@ export class StructuralDiffRecorder {
     if (id == null) return;
     const removedSnap = this.removedById.get(id);
     if (removedSnap) {
-
       this.removedById.delete(id);
       const newSnap = snapshotFeature(feature);
       if (newSnap && !snapshotsEquivalent(removedSnap, newSnap)) {
@@ -140,7 +134,8 @@ export class StructuralDiffRecorder {
 
 function approxFeatureSnapshotBytes(snap: FeatureSnapshot): number {
   const g = snap.geometry as unknown as { getFlatCoordinates?: () => number[] };
-  const coordBytes = typeof g.getFlatCoordinates === 'function' ? g.getFlatCoordinates().length * 8 : 256;
+  const coordBytes =
+    typeof g.getFlatCoordinates === 'function' ? g.getFlatCoordinates().length * 8 : 256;
   return coordBytes + 96;
 }
 
@@ -148,7 +143,8 @@ export function approxStructuralDiffBytes(diff: StructuralDiff): number {
   let total = 0;
   for (const s of diff.added) total += approxFeatureSnapshotBytes(s);
   for (const s of diff.removed) total += approxFeatureSnapshotBytes(s);
-  for (const m of diff.modified) total += approxFeatureSnapshotBytes(m.before) + approxFeatureSnapshotBytes(m.after);
+  for (const m of diff.modified)
+    total += approxFeatureSnapshotBytes(m.before) + approxFeatureSnapshotBytes(m.after);
   return total;
 }
 
@@ -159,7 +155,7 @@ export function composeStructuralDiffs(base: StructuralDiff, next: StructuralDif
   const addedById = new Map<FeatureId, FeatureSnapshot>(base.added.map((s) => [s.id, s]));
   const removedById = new Map<FeatureId, FeatureSnapshot>(base.removed.map((s) => [s.id, s]));
   const modifiedById = new Map<FeatureId, { before: FeatureSnapshot; after: FeatureSnapshot }>(
-    base.modified.map((m) => [m.id, { before: m.before, after: m.after }]),
+    base.modified.map((m) => [m.id, { before: m.before, after: m.after }])
   );
 
   for (const snap of next.added) {
@@ -203,7 +199,11 @@ export function composeStructuralDiffs(base: StructuralDiff, next: StructuralDif
   return {
     added: Array.from(addedById.values()),
     removed: Array.from(removedById.values()),
-    modified: Array.from(modifiedById.entries()).map(([id, { before, after }]) => ({ id, before, after })),
+    modified: Array.from(modifiedById.entries()).map(([id, { before, after }]) => ({
+      id,
+      before,
+      after,
+    })),
   };
 }
 

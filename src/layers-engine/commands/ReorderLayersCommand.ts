@@ -1,5 +1,5 @@
-import { Command } from '../core/Command';
-import { useLayersStore } from '../../store/entities/layersRegistryStore';
+import { Command } from '@kernel/command/Command';
+import { useLayersStore } from '@layers-engine/store/layersRegistryStore';
 
 export class ReorderLayersCommand extends Command {
   readonly label = 'Reordenar capas';

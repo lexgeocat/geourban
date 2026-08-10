@@ -1,6 +1,6 @@
 import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
-import { Command, type CommandContext } from '../core/Command';
+import { Command, type CommandContext } from '@kernel/command/Command';
 
 export class MoveFeaturesToLayerCommand extends Command {
   readonly label = 'Mover a otra capa';

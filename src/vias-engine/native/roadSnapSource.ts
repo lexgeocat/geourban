@@ -2,9 +2,9 @@ import VectorSource from 'ol/source/Vector.js';
 import Feature from 'ol/Feature.js';
 import LineString from 'ol/geom/LineString.js';
 import Polygon from 'ol/geom/Polygon.js';
-import { useStreetStore, type Street } from '../store/entities/streetStore';
-import { useRoundaboutStore, type Roundabout } from '../store/entities/roundaboutStore';
-import { roundaboutGeometry } from '../geo/roundabout/roundaboutEngine';
+import { useStreetStore, type Street } from '../store/streetStore';
+import { useRoundaboutStore, type Roundabout } from '../store/roundaboutStore';
+import { roundaboutGeometry } from '../geometry/roundaboutEngine';
 
 let source: VectorSource | null = null;
 let unsubscribeStreets: (() => void) | null = null;

@@ -4,13 +4,13 @@ import { Stroke, Style } from 'ol/style.js';
 import LineString from 'ol/geom/LineString.js';
 import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
-import { useStreetStore, type Street } from '../../../store/entities/streetStore';
-import { runCommand } from '../../../commands/core/CommandStack';
-import { AddStreetCommand } from '../../../commands/roads/AddStreetCommand';
-import { requireLayerForKind } from '../../../store/ui/layerPickerStore';
-import { confirmAsync } from '../../../store/ui/confirmDialogStore';
-import { useStreetTracingSessionStore } from '../../../store/ui/streetTracingSessionStore';
-import type { ModeContext } from './ModeContext';
+import { useStreetStore, type Street } from '../store/streetStore';
+import { runCommand } from '@kernel/command/CommandStack';
+import { AddStreetCommand } from '../commands/AddStreetCommand';
+import { requireLayerForKind } from '@layers-engine/store/layerPickerStore';
+import { confirmAsync } from '@shared-ui/store/confirmDialogStore';
+import { useStreetTracingSessionStore } from '../store/streetTracingSessionStore';
+import type { ModeContext } from '@kernel/modes/ModeContext';
 
 function findNearbyStreetEndpointWarning(
   point: [number, number],

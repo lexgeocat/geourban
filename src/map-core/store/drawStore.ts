@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
-import { useLeftSidebarStore } from '../ui/leftSidebarStore';
+import { useLeftSidebarStore } from '@app-shell/store/leftSidebarStore';
 
 export type DrawMode =
   | 'select'

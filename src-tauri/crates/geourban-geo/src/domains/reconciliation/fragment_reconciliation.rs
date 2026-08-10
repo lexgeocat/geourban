@@ -1,9 +1,9 @@
 use serde::{Deserialize, Serialize};
 
-use crate::boolean_ops::ring_intersection_area;
-use crate::math::poly_area;
-use crate::sanitize::{sanitize_ring, SanitizeRingOptions};
-use crate::types::Pt;
+use crate::kernel::boolean_ops::ring_intersection_area;
+use crate::kernel::math::poly_area;
+use crate::kernel::sanitize::{sanitize_ring, SanitizeRingOptions};
+use crate::kernel::types::Pt;
 pub const MATCH_MIN_RATIO: f64 = 0.35;
 const MATCH_COMPLEXITY_WARNING: usize = 20_000;
 #[derive(Debug, Clone, Serialize, Deserialize)]

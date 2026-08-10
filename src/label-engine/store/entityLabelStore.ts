@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { LabelStyleConfig } from '../../core/labelModel';
+import type { LabelStyleConfig } from '../model/labelModel';
 
 export interface EntityLabelEntry {
   config: LabelStyleConfig;

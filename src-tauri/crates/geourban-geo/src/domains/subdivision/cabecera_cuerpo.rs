@@ -1,5 +1,5 @@
-use crate::math::{centroid, convex_hull, poly_area};
-use crate::types::{LotResult, Pt};
+use crate::kernel::math::{centroid, convex_hull, poly_area};
+use crate::kernel::types::{LotResult, Pt};
 use std::cell::Cell;
 
 const OP_BUDGET_MAX: i64 = 2_000_000;

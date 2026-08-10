@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import type { CornerMode } from '../../geo/roads/ringFillet';
+import type { CornerMode } from '../geometry/ringFillet';
 
 type RoadCornerState = {
   mode: CornerMode;

@@ -1,7 +1,6 @@
 import proj4 from 'proj4';
 import { register } from 'ol/proj/proj4.js';
 
-
 export type ProjectCrsMode = 'utm' | 'none';
 
 export interface ProjectCrsConfig {
@@ -22,7 +21,6 @@ export function utmEpsgCode(zone: number, hemisphere: UtmHemisphere): string {
   return `EPSG:${base + zone}`;
 }
 
-/** Registra (lazy, una sola vez) la zona UTM pedida en proj4 + OpenLayers. */
 export function ensureUtmZoneRegistered(zone: number, hemisphere: UtmHemisphere): string {
   const code = utmEpsgCode(zone, hemisphere);
   if (!registered.has(code)) {
@@ -34,8 +32,10 @@ export function ensureUtmZoneRegistered(zone: number, hemisphere: UtmHemisphere)
   return code;
 }
 
-/** Zona/hemisferio UTM estándar (WGS84) para una coordenada lon/lat. */
-export function utmZoneFromLonLat(lon: number, lat: number): { zone: number; hemisphere: UtmHemisphere } {
+export function utmZoneFromLonLat(
+  lon: number,
+  lat: number
+): { zone: number; hemisphere: UtmHemisphere } {
   const zone = Math.min(60, Math.max(1, Math.floor((lon + 180) / 6) + 1));
   const hemisphere: UtmHemisphere = lat >= 0 ? 'N' : 'S';
   return { zone, hemisphere };

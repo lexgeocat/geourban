@@ -1,4 +1,4 @@
-import type { Pt } from '../math/polygonEngine';
+import type { Pt } from '@kernel/geometry/polygonEngine';
 
 export interface RoadNetworkNet {
   road: Pt[][][];

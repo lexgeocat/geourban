@@ -3,12 +3,12 @@ import { primaryAction } from 'ol/events/condition.js';
 import { Stroke, Style } from 'ol/style.js';
 import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
-import { useDrawStore } from '../../../store/map/drawStore';
-import { runCommand } from '../../../commands/core/CommandStack';
-import { AddFeatureCommand } from '../../../commands/features/AddFeatureCommand';
-import { updateFeatureMetrics } from '../../../geo/metrics';
-import { requireLayerForKind } from '../../../store/ui/layerPickerStore';
-import type { ModeContext } from './ModeContext';
+import { useDrawStore } from '@map-core/store/drawStore';
+import { runCommand } from '@kernel/command/CommandStack';
+import { AddFeatureCommand } from '../commands/AddFeatureCommand';
+import { updateFeatureMetrics } from '@georef-engine/metrics';
+import { requireLayerForKind } from '@layers-engine/store/layerPickerStore';
+import type { ModeContext } from '@kernel/modes/ModeContext';
 
 export function activateLine(ctx: ModeContext): void {
   const { map, drawSource: src } = ctx;

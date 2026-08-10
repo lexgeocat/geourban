@@ -1,20 +1,20 @@
-﻿import { useEffect } from 'react';
-import { useDrawStore, type DrawMode } from '../store/map/drawStore';
-import { undo, redo, useCommandStack } from '../commands/core/CommandStack';
-import { useMapStore } from '../store/map/mapStore';
-import { useSelectionStore } from '../store/map/selectionStore';
-import { useSnapSettingsStore } from '../store/map/snapSettingsStore';
-import { useLayersStore } from '../store/entities/layersRegistryStore';
-import { useStreetStore } from '../store/entities/streetStore';
-import { useRoundaboutStore } from '../store/entities/roundaboutStore';
-import { useEntityLabelStore } from '../store/entities/entityLabelStore';
-import { recomputeManzanos } from '../geo/recomputeManzanos';
-import { DeleteFeaturesCommand } from '../commands/features/DeleteFeaturesCommand';
-import { runCommand } from '../commands/core/CommandStack';
-import { toast } from '../store/ui/toastStore';
-import { useProjectFileStore } from '../store/ui/projectFileStore';
-import { useManzanoStore } from '../store/entities/manzanoStore';
-import { useLabelConfigModalStore } from '../store/ui/labelConfigModalStore';
+import { useEffect } from 'react';
+import { useDrawStore, type DrawMode } from '@map-core/store/drawStore';
+import { undo, redo, useCommandStack } from '@kernel/command/CommandStack';
+import { useMapStore } from '@map-core/store/mapStore';
+import { useSelectionStore } from '@selection-engine/store/selectionStore';
+import { useSnapSettingsStore } from '@snap-engine/store/snapSettingsStore';
+import { useLayersStore } from '@layers-engine/store/layersRegistryStore';
+import { useStreetStore } from '@vias-engine/store/streetStore';
+import { useRoundaboutStore } from '@vias-engine/store/roundaboutStore';
+import { useEntityLabelStore } from '@label-engine/store/entityLabelStore';
+import { recomputeManzanos } from '@manzanos-engine/orchestration/recomputeManzanos';
+import { DeleteFeaturesCommand } from '@drawing-engine/commands/DeleteFeaturesCommand';
+import { runCommand } from '@kernel/command/CommandStack';
+import { toast } from '@shared-ui/store/toastStore';
+import { useProjectFileStore } from '@persistence-engine/store/projectFileStore';
+import { useManzanoStore } from '@lotificacion-engine/store/manzanoLotConfigStore';
+import { useLabelConfigModalStore } from '@label-engine/store/labelConfigModalStore';
 
 function isTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -24,7 +24,7 @@ function isTypingTarget(target: EventTarget | null): boolean {
   return false;
 }
 
-/** Constante de módulo: antes se recreaba este objeto en cada keydown. */
+/** Constante de m�dulo: antes se recreaba este objeto en cada keydown. */
 const DRAW_MODE_SHORTCUTS: Record<string, DrawMode> = {
   v: 'select',
   p: 'polygon',

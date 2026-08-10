@@ -1,16 +1,18 @@
 import { Fill, Stroke, Style } from 'ol/style.js';
 import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
-import { HitTestSelect, type HitTestSelectEvent } from '../HitTestSelect';
-import { runCommand } from '../../../commands/core/CommandStack';
-import { DeleteFeaturesCommand } from '../../../commands/features/DeleteFeaturesCommand';
-import { useStreetStore } from '../../../store/entities/streetStore';
-import { useRoundaboutStore } from '../../../store/entities/roundaboutStore';
-import { useEntityLabelStore } from '../../../store/entities/entityLabelStore';
-import { recomputeManzanos } from '../../../geo/recomputeManzanos';
-import { getOrCreateRoadSnapSource } from '../../roadSnapSource';
-import { toast } from '../../../store/ui/toastStore';
-import type { ModeContext } from './ModeContext';
+import {
+  HitTestSelect,
+  type HitTestSelectEvent,
+} from '@selection-engine/interactions/HitTestSelect';
+import { runCommand } from '@kernel/command/CommandStack';
+import { DeleteFeaturesCommand } from '../commands/DeleteFeaturesCommand';
+import { useEntityLabelStore } from '@label-engine/store/entityLabelStore';
+import { recomputeManzanos } from '@manzanos-engine/orchestration/recomputeManzanos';
+import { extraSnapSources } from '@snap-engine/extension-points';
+import { isEraseIntercepted } from '../extension-points';
+import { toast } from '@shared-ui/store/toastStore';
+import type { ModeContext } from '@kernel/modes/ModeContext';
 
 export const ERASE_STYLE = new Style({
   fill: new Fill({ color: 'rgba(239, 68, 68, 0.25)' }),
@@ -24,7 +26,7 @@ export function activateErase(ctx: ModeContext): void {
     pixelTolerance: 6,
     multi: false,
     filter: (feature) => !ctx.isLayerLocked(feature) && ctx.isLayerVisible(feature),
-    getExtraFeatures: () => getOrCreateRoadSnapSource().getFeatures() as Feature<Geometry>[],
+    getExtraFeatures: () => extraSnapSources.collect().flat() as Feature<Geometry>[],
   });
   ctx.highlightLayer.setStyle(ERASE_STYLE);
   select.addEventListener('select', (evt) => {
@@ -37,17 +39,12 @@ export function activateErase(ctx: ModeContext): void {
       if (id === undefined || id === null) return;
       if (ctx.isLayerLocked(f)) return;
       const kind = f.get('kind') as string | undefined;
-      if (kind === 'calle') {
-        useStreetStore.getState().removeStreet(String(id));
-        useEntityLabelStore.getState().remove(String(id));
-        removedRoadEntity = true;
-        return;
-      }
-      if (kind === 'rotonda') {
-        useRoundaboutStore.getState().removeRoundabout(String(id));
-        useEntityLabelStore.getState().remove(String(id));
-        removedRoadEntity = true;
-        return;
+      if (kind === 'calle' || kind === 'rotonda') {
+        if (isEraseIntercepted(kind as 'calle' | 'rotonda', String(id))) {
+          useEntityLabelStore.getState().remove(String(id));
+          removedRoadEntity = true;
+          return;
+        }
       }
       ids.push(id as string | number);
     });

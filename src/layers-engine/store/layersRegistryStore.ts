@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
-import { isLayerKind, type Layer, type LayerKind } from '../../core/objectModel';
+import { isLayerKind, type Layer, type LayerKind } from '@kernel/domain-model/featureModel';
 
 export type LayerState = {
   layers: Layer[];

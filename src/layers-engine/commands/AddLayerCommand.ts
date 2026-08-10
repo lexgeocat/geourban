@@ -1,6 +1,6 @@
-import { Command } from '../core/Command';
-import { useLayersStore } from '../../store/entities/layersRegistryStore';
-import type { Layer } from '../../core/objectModel';
+import { Command } from '@kernel/command/Command';
+import { useLayersStore } from '@layers-engine/store/layersRegistryStore';
+import type { Layer } from '@kernel/domain-model/featureModel';
 
 export class AddLayerCommand extends Command {
   readonly label: string;

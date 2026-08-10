@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { SnapResult } from '../../map/advancedSnap';
+import type { SnapResult } from '../geometry/advancedSnap';
 
 type SnapLiveState = {
   active: SnapResult | null;

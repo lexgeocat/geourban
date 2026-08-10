@@ -1,15 +1,14 @@
 ﻿import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
-import { Command, type CommandContext } from '../core/Command';
-import { useSelectionStore } from '../../store/map/selectionStore';
-import { useLayersStore } from '../../store/entities/layersRegistryStore';
-import { estimateGeometryBytes } from '../core/memoryEstimate';
+import { Command, type CommandContext } from '@kernel/command/Command';
+import { useSelectionStore } from '@selection-engine/store/selectionStore';
+import { useLayersStore } from '@layers-engine/store/layersRegistryStore';
+import { estimateGeometryBytes } from '@kernel/command/memoryEstimate';
 
 export class DeleteFeaturesCommand extends Command {
   readonly label = 'Borrar features';
   private readonly ids: Array<string | number>;
   private removed: Array<{ id: string | number; feature: Feature<Geometry> }> = [];
-  /** Cantidad de ids que se omitieron por estar en una capa bloqueada. */
   skippedCount = 0;
 
   constructor(ids?: Array<string | number>) {

@@ -1,26 +1,23 @@
 import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
 import Polygon from 'ol/geom/Polygon.js';
-import { useLayersStore } from '../../../store/entities/layersRegistryStore';
-import { useStreetStore, type Street } from '../../../store/entities/streetStore';
-import { useRoundaboutStore, type Roundabout } from '../../../store/entities/roundaboutStore';
+import { useLayersStore } from '@layers-engine/store/layersRegistryStore';
+import { useStreetStore, type Street } from '@vias-engine/store/streetStore';
+import { useRoundaboutStore, type Roundabout } from '@vias-engine/store/roundaboutStore';
+import { useEntityLabelStore, type EntityLabelEntry } from '../store/entityLabelStore';
+import { roundaboutRoadAreaM2 } from '@vias-engine/geometry/roundaboutEngine';
+import { composeLabelLines, type LabelStyleConfig } from '../model/labelModel';
+import { measureCached } from '../util/textMeasureCache';
 import {
-  useEntityLabelStore,
-  type EntityLabelEntry,
-} from '../../../store/entities/entityLabelStore';
-import { roundaboutRoadAreaM2 } from '../../../geo/roundabout/roundaboutEngine';
-import {
-  formatAreaWithUnit,
-  composeLabelLines,
-  type LabelStyleConfig,
-} from '../../../core/labelModel';
-import { measureCached } from '../../textMeasureCache';
-import { formatMetricLength, streetLengthMetricM, type SegmentMetric } from '../../../geo/metrics';
+  formatMetricLength,
+  streetLengthMetricM,
+  type SegmentMetric,
+} from '@georef-engine/metrics';
 import {
   computeStreetCrossings,
   pickStreetLabelSlots,
   type StreetLabelSlot,
-} from '../../labels/streetLabelSlots';
+} from '../geometry/streetLabelSlots';
 
 interface PlacedBox {
   x: number;
@@ -157,7 +154,6 @@ function drawEdgeCotas(
   const offsetPx = 13;
   const fs = cfg.cotaFontSizePx;
   const cenPx = centroidWorld ? toPx(centroidWorld) : null;
-  // Defensivo: proyectos viejos pueden no tener estos campos en el labelConfig persistido.
   const showLines = cfg.cotaStyle !== 'text';
   const internal = cfg.cotaPosition === 'internal';
 
@@ -180,8 +176,6 @@ function drawEdgeCotas(
     if (cenPx) {
       const midPx: [number, number] = [(aPx[0] + bPx[0]) / 2, (aPx[1] + bPx[1]) / 2];
       const pointsAway = (midPx[0] - cenPx[0]) * nx + (midPx[1] - cenPx[1]) * ny >= 0;
-      // 'external' (default): la normal debe apuntar afuera del centroide.
-      // 'internal': se invierte para que apunte hacia el centroide.
       const shouldPointAway = !internal;
       if (pointsAway !== shouldPointAway) {
         nx = -nx;

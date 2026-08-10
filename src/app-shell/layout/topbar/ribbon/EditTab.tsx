@@ -1,9 +1,9 @@
 import React from 'react';
 import { Trash2 } from 'lucide-react';
-import { useDrawStore } from '../../../../store/map/drawStore';
-import { useSelectionStore } from '../../../../store/map/selectionStore';
-import { RibbonGroup, RibbonTool } from '../RibbonPrimitives';
-import { IconRectDashed, IconLasso } from '../icons';
+import { useDrawStore } from '@map-core/store/drawStore';
+import { useSelectionStore } from '@selection-engine/store/selectionStore';
+import { RibbonGroup, RibbonTool } from '../../topbar/RibbonPrimitives';
+import { IconRectDashed, IconLasso } from '../../topbar/icons';
 
 export interface EditTabProps {
   onDeleteSelected: () => void;

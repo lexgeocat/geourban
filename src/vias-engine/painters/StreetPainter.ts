@@ -1,15 +1,15 @@
-import { useStreetStore, type Street } from '../../../store/entities/streetStore';
-import { useRoundaboutStore, type Roundabout } from '../../../store/entities/roundaboutStore';
-import { useRoadCornerStore } from '../../../store/map/roadCornerStore';
-import { type CornerMode } from '../../../geo/roads/ringFillet';
-import type { RoadNetworkNet } from '../../../geo/roads/types';
-import { computeRoadNetworkNetInWorker } from '../../../workers/geoWorkerClient';
-import { type Pt } from '../../../geo/math/polygonEngine';
-import { useLayersStore } from '../../../store/entities/layersRegistryStore';
-import { withAlpha } from '../DrawLayerRenderer';
-import type { Layer } from '../../../core/objectModel';
-import { roundaboutGeometry } from '../../../geo/roundabout/roundaboutEngine';
-import { getLayerByIdCached, resolveRoundaboutLayer } from './layersPainterHelpers';
+import { useStreetStore, type Street } from '../store/streetStore';
+import { useRoundaboutStore, type Roundabout } from '../store/roundaboutStore';
+import { useRoadCornerStore } from '../store/roadCornerStore';
+import { type CornerMode } from '../geometry/ringFillet';
+import type { RoadNetworkNet } from '../geometry/types';
+import { computeRoadNetworkNetInWorker } from '@kernel/native/geoWorkerClient';
+import { type Pt } from '@kernel/geometry/polygonEngine';
+import { useLayersStore } from '@layers-engine/store/layersRegistryStore';
+import { withAlpha } from '@map-core/scene/DrawLayerRenderer';
+import type { Layer } from '@kernel/domain-model/featureModel';
+import { roundaboutGeometry } from '../geometry/roundaboutEngine';
+import { getLayerByIdCached, resolveRoundaboutLayer } from '@layers-engine/selectors/layersPainterHelpers';
 
 const FALLBACK_STREET_COLOR = '#f78166';
 const NO_LAYER_KEY = '__geourban_street_no_layer__';

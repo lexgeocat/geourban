@@ -2,10 +2,10 @@ import Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
 import Polygon from 'ol/geom/Polygon.js';
 import type VectorSource from 'ol/source/Vector.js';
-import { polyArea, polygonCentroid, ringPerimeter, type Pt } from '../math/polygonEngine';
-import { getFeatureKind, getLotStatus, type LotStatus } from '../../core/objectModel';
-import { autoLetterCode } from '../../lib/autoName';
-import { composeLabelLines, type LabelStyleConfig } from '../../core/labelModel';
+import { polyArea, polygonCentroid, ringPerimeter, type Pt } from '@kernel/geometry/polygonEngine';
+import { getFeatureKind, getLotStatus, type LotStatus } from '@kernel/domain-model/featureModel';
+import { autoLetterCode } from '@kernel/id/autoName';
+import { composeLabelLines, type LabelStyleConfig } from '@label-engine/model/labelModel';
 
 export interface LotInfo {
   label: string;
@@ -26,8 +26,6 @@ export interface ManzanoRow {
   lotStatus: LotStatus;
 }
 
-/** Título compuesto (prefijo + texto) según el labelConfig/labelText ya aplicados a la feature,
- *  igual que lo que se pinta en el mapa. Si todavía no se etiquetó, cae al nombre por defecto. */
 function resolveDisplayLabel(f: Feature<Geometry>, fallback: string): string {
   const cfg = f.get('labelConfig') as LabelStyleConfig | undefined;
   if (cfg?.enabled) {

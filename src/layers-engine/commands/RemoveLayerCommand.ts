@@ -1,9 +1,9 @@
 import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
-import { Command, type CommandContext } from '../core/Command';
-import { useLayersStore } from '../../store/entities/layersRegistryStore';
-import type { Layer } from '../../core/objectModel';
-import { estimateGeometryBytes } from '../core/memoryEstimate';
+import { Command, type CommandContext } from '@kernel/command/Command';
+import { useLayersStore } from '@layers-engine/store/layersRegistryStore';
+import type { Layer } from '@kernel/domain-model/featureModel';
+import { estimateGeometryBytes } from '@kernel/command/memoryEstimate';
 
 export interface RemoveLayerOptions {
   layerId: string;

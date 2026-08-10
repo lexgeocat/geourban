@@ -1,6 +1,6 @@
 import React from 'react';
-import { useLabelConfigModalStore } from '../../../store/ui/labelConfigModalStore';
-import { defaultLabelStyleConfig, defaultColorForKind } from '../../../core/labelModel';
+import { useLabelConfigModalStore } from '../../store/labelConfigModalStore';
+import { defaultLabelStyleConfig, defaultColorForKind } from '../../model/labelModel';
 import LabelingCard from './LabelingCard';
 
 export default function ManzanoLabelingCard() {

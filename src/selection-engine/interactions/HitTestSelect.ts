@@ -7,7 +7,7 @@ import type Geometry from 'ol/geom/Geometry.js';
 import Collection from 'ol/Collection.js';
 import BaseEvent from 'ol/events/Event.js';
 import { click as clickCondition, pointerMove } from 'ol/events/condition.js';
-import { hitTestAtCoordinateAsync } from '../hitTest';
+import { hitTestAtCoordinateAsync } from '../geometry/hitTest';
 
 export class HitTestSelectEvent extends BaseEvent {
   selected: Feature<Geometry>[];

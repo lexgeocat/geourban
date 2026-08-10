@@ -1,7 +1,7 @@
-use crate::math::{clip_to_strip, poly_area, principal_axis, project_extents, Extent1D};
-use crate::sanitize::{sanitize_ring, SanitizeRingOptions};
-use crate::types::Pt;
-use crate::types::{CutResult, LotResult, ManzanoLoteMethod};
+use crate::kernel::math::{clip_to_strip, poly_area, principal_axis, project_extents, Extent1D};
+use crate::kernel::sanitize::{sanitize_ring, SanitizeRingOptions};
+use crate::kernel::types::Pt;
+use crate::kernel::types::{CutResult, LotResult, ManzanoLoteMethod};
 
 const NARROW_RATIO: f64 = 1.6;
 
@@ -849,7 +849,7 @@ fn enforce_min_frontage(lots: Vec<LotResult>, front_min_m: f64) -> Vec<LotResult
 fn fill_lot_coverage_gaps(outer_ring: &[Pt], lots: &[LotResult]) -> Vec<LotResult> {
     const MIN_GAP_AREA_M2: f64 = 0.5;
     let covering: Vec<Vec<Pt>> = lots.iter().map(|l| l.pts.clone()).collect();
-    let gaps = crate::boolean_ops::fill_polygon_gaps(outer_ring, &covering);
+    let gaps = crate::kernel::boolean_ops::fill_polygon_gaps(outer_ring, &covering);
     gaps.into_iter()
         .filter_map(|ring| {
             let area_m2 = poly_area(&ring);

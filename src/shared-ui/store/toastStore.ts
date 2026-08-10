@@ -6,7 +6,6 @@ export interface Toast {
   id: number;
   message: string;
   variant: ToastVariant;
-  /** ms hasta auto-dismiss. 0 = persistente hasta click. Default 4000. */
   durationMs: number;
   createdAt: number;
 }
@@ -45,7 +44,9 @@ export const useToastStore = create<ToastState>()((set, get) => ({
   dismiss: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
 }));
 
-/** Helper para llamar desde código no-React. */
-export function toast(message: string, opts?: { variant?: ToastVariant; durationMs?: number }): number {
+export function toast(
+  message: string,
+  opts?: { variant?: ToastVariant; durationMs?: number }
+): number {
   return useToastStore.getState().push(message, opts);
 }

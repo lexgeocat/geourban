@@ -1,9 +1,9 @@
 ﻿import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
-import { Command, type CommandContext } from '../core/Command';
-import { GeoUrbanFeatureKind } from '../../core/objectModel';
-import { pickLayerId } from '../../store/entities/layerResolution';
-import { nextId } from '../../lib/id';
+import { Command, type CommandContext } from '@kernel/command/Command';
+import { GeoUrbanFeatureKind } from '@kernel/domain-model/featureModel';
+import { pickLayerId } from '@layers-engine/store/layerResolution';
+import { nextId } from '@kernel/id/id';
 
 function resolveLayerId(override?: string, kind?: GeoUrbanFeatureKind): string | undefined {
   if (!kind) return undefined;

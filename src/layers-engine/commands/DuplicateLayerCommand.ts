@@ -1,9 +1,9 @@
 import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
-import { Command, type CommandContext } from '../core/Command';
-import { useLayersStore } from '../../store/entities/layersRegistryStore';
-import { newId } from '../../lib/id';
-import type { Layer } from '../../core/objectModel';
+import { Command, type CommandContext } from '@kernel/command/Command';
+import { useLayersStore } from '@layers-engine/store/layersRegistryStore';
+import { newId } from '@kernel/id/id';
+import type { Layer } from '@kernel/domain-model/featureModel';
 
 export interface DuplicateLayerOptions {
   sourceLayerId: string;

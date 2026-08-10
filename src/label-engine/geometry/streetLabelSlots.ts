@@ -1,6 +1,6 @@
-import type { Pt } from '../../geo/math/polygonEngine';
-import { distToSegment } from '../../geo/math/dist';
-import type { Street } from '../../store/entities/streetStore';
+import type { Pt } from '@kernel/geometry/polygonEngine';
+import { distToSegment } from '@kernel/geometry/dist';
+import type { Street } from '@vias-engine/store/streetStore';
 
 export interface StreetLabelSlot {
   pos: Pt;

@@ -1,11 +1,10 @@
 ﻿import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
 import type { Geometry as OlGeometry } from 'ol/geom';
-import { Command, type CommandContext } from '../core/Command';
-import { updateFeatureMetrics } from '../../geo/metrics';
-import { estimateGeometryBytes } from '../core/memoryEstimate';
+import { Command, type CommandContext } from '@kernel/command/Command';
+import { updateFeatureMetrics } from '@georef-engine/metrics';
+import { estimateGeometryBytes } from '@kernel/command/memoryEstimate';
 
-/** Captura el estado "antes" de un cambio de geometría para deshacer. */
 function captureGeom(f: Feature<Geometry>): unknown {
   const g = f.getGeometry();
   if (!g) return null;

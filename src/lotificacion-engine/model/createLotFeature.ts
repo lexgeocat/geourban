@@ -1,15 +1,12 @@
-// Helper compartido por GenerateLotsCommand, RecomputeManzanoLotsCommand
-// y recomputeManzanos.ts para construir un Feature<Polygon> "lote" a
-// partir de un LotResult, manteniendo ids / props / métricas consistentes.
 import Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
 import PolygonGeom from 'ol/geom/Polygon.js';
-import { closeRing, type LotResult } from '../../geo/math/polygonEngine';
-import { ensureKind } from '../../core/objectModel';
-import { updateFeatureMetrics } from '../../geo/metrics';
-import { newId } from '../../lib/id';
-import { pickLayerId } from '../../store/entities/layerResolution';
-import type { ManzanoLoteMethod } from '../../geo/subdivision/types';
+import { closeRing, type LotResult } from '@kernel/geometry/polygonEngine';
+import { ensureKind } from '@kernel/domain-model/featureModel';
+import { updateFeatureMetrics } from '@georef-engine/metrics';
+import { newId } from '@kernel/id/id';
+import { pickLayerId } from '@layers-engine/store/layerResolution';
+import type { ManzanoLoteMethod } from './types';
 
 export interface CreateLotFeatureOpts {
   manzanoId: string | number;

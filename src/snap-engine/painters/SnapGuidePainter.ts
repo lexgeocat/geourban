@@ -1,5 +1,5 @@
 import type Map from 'ol/Map.js';
-import type { SnapGuideVisual } from '../../advancedSnap';
+import type { SnapGuideVisual } from '../geometry/advancedSnap';
 
 export class SnapGuidePainter {
   private currentGuide: SnapGuideVisual | null = null;

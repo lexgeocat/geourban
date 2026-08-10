@@ -1,4 +1,4 @@
-﻿import { getOrCreateSpatialIndex } from '../spatialIndex';
+﻿import { getOrCreateSpatialIndex } from '@kernel/spatial-index/spatialIndex';
 import type Map from 'ol/Map.js';
 import type VectorSource from 'ol/source/Vector.js';
 import type VectorLayer from 'ol/layer/Vector.js';
@@ -6,16 +6,17 @@ import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
 import type Polygon from 'ol/geom/Polygon.js';
 import type RenderEvent from 'ol/render/Event.js';
-import type { SnapGuideVisual } from '../advancedSnap';
-import type { RoundaboutDrawPreview } from './RoundaboutDrawInteraction';
-import type { LassoPreview } from './LassoSelection';
-import type { Pt } from '../../geo/math/polygonEngine';
-import { StreetPainter } from './painters/StreetPainter';
-import { RoundaboutPainter } from './painters/RoundaboutPainter';
-import { LabelPainter } from './painters/LabelPainter';
-import { SnapGuidePainter } from './painters/SnapGuidePainter';
-import { OverlayPainter } from './painters/OverlayPainter';
-import { SelectionHighlightPainter } from './painters/SelectionHighlightPainter';
+import type { SnapGuideVisual } from '@snap-engine/geometry/advancedSnap';
+import type { RoundaboutDrawPreview } from '@vias-engine/interactions/RoundaboutDrawInteraction';
+import type { LassoPreview } from '@selection-engine/interactions/LassoSelection';
+import type { Pt } from '@kernel/geometry/polygonEngine';
+import { StreetPainter } from '@vias-engine/painters/StreetPainter';
+import { RoundaboutPainter } from '@vias-engine/painters/RoundaboutPainter';
+import { LabelPainter } from '@label-engine/painters/LabelPainter';
+import { SnapGuidePainter } from '@snap-engine/painters/SnapGuidePainter';
+import { SelectionHighlightPainter } from '@selection-engine/painters/SelectionHighlightPainter';
+import { LassoOverlayPainter } from '@selection-engine/painters/LassoOverlayPainter';
+import { SubdivisionPreviewPainter } from '@lotificacion-engine/painters/SubdivisionPreviewPainter';
 
 function getZoomFromResolution(resolution: number): number {
   return Math.log2(156543.03392804097 / resolution);
@@ -31,7 +32,8 @@ export class PostrenderPainter {
   private readonly roundaboutPainter = new RoundaboutPainter();
   private readonly labelPainter = new LabelPainter();
   private readonly snapGuidePainter: SnapGuidePainter;
-  private readonly overlayPainter = new OverlayPainter();
+  private readonly subdivisionPreviewPainter = new SubdivisionPreviewPainter();
+  private readonly lassoOverlayPainter = new LassoOverlayPainter();
   private readonly selectionHighlightPainter = new SelectionHighlightPainter();
 
   private dirty = true;
@@ -90,13 +92,13 @@ export class PostrenderPainter {
   }
 
   setLassoPreview(preview: LassoPreview): void {
-    if (this.overlayPainter.setLassoPreview(preview)) {
+    if (this.lassoOverlayPainter.setLassoPreview(preview)) {
       this.postrenderLayer.changed();
     }
   }
 
   setSubdivisionPreview(rings: Pt[][] | null): void {
-    this.overlayPainter.setSubdivisionPreview(rings);
+    this.subdivisionPreviewPainter.setSubdivisionPreview(rings);
     this.postrenderLayer.changed();
   }
 
@@ -122,7 +124,8 @@ export class PostrenderPainter {
     this.roundaboutPainter.paint(ctx, toPx, resolution);
     this.selectionHighlightPainter.paint(ctx, toPx, resolution, this.drawSource);
     this.snapGuidePainter.paint(ctx, resolution);
-    this.overlayPainter.paint(ctx, toPx);
+    this.subdivisionPreviewPainter.paint(ctx, toPx);
+    this.lassoOverlayPainter.paint(ctx, toPx);
   }
 
   private getVisibleFeatures(all: Array<Feature<Geometry>>): Array<Feature<Geometry>> {

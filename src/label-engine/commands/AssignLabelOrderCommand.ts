@@ -1,9 +1,9 @@
 import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
-import { Command, type CommandContext } from '../core/Command';
-import type { LabelStyleConfig } from '../../core/labelModel';
-import { formatOrderLabel } from '../../core/labelNumbering';
-import type { LabelNumberingMode } from '../../store/ui/labelConfigModalStore';
+import { Command, type CommandContext } from '@kernel/command/Command';
+import type { LabelStyleConfig } from '../model/labelModel';
+import { formatOrderLabel } from '../model/labelNumbering';
+import type { LabelNumberingMode } from '../store/labelConfigModalStore';
 
 export interface AssignLabelOrderOptions {
   orderedIds: Array<string | number>;

@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
-import { useManzanoStore, type ManzanoLoteMethod } from '../../../store/entities/manzanoStore';
-import { useSelectionStore } from '../../../store/map/selectionStore';
-import { formatMetricArea } from '../../../geo/metrics';
-import { SUBDIVISION_METHOD_INFO } from '../../../geo/subdivision/subdivisionMethodLabels';
-import { useLayersStore } from '../../../store/entities/layersRegistryStore';
-import { useLabelConfigModalStore } from '../../../store/ui/labelConfigModalStore';
-import { defaultLabelStyleConfig, defaultColorForKind } from '../../../core/labelModel';
-import type { ManzanoRow } from '../../../geo/selectors/manzanoRows';
+import { useManzanoStore, type ManzanoLoteMethod } from '../store/manzanoLotConfigStore';
+import { useSelectionStore } from '@selection-engine/store/selectionStore';
+import { formatMetricArea } from '@georef-engine/metrics';
+import { SUBDIVISION_METHOD_INFO } from '../model/subdivisionMethodLabels';
+import { useLayersStore } from '@layers-engine/store/layersRegistryStore';
+import { useLabelConfigModalStore } from '@label-engine/store/labelConfigModalStore';
+import { defaultLabelStyleConfig, defaultColorForKind } from '@label-engine/model/labelModel';
+import type { ManzanoRow } from '@manzanos-engine/selectors/manzanoRows';
 
 const METHOD_BTNS = (['auto', 'exact', 'modo2'] as ManzanoLoteMethod[]).map((key) => ({
   key,

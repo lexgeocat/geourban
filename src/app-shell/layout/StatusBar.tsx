@@ -1,16 +1,16 @@
-ï»¿import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { ZoomIn, ZoomOut, Maximize2, Undo2, Redo2 } from 'lucide-react';
-import { useMapStore } from '../../store/map/mapStore';
-import { useUiShellStore } from '../../store/ui/uiShellStore';
-import { undo, redo, useCommandStack } from '../../commands/core/CommandStack';
+import { useMapStore } from '@map-core/store/mapStore';
+import { useUiShellStore } from '../store/uiShellStore';
+import { undo, redo, useCommandStack } from '@kernel/command/CommandStack';
 
-import { useProjectCrsStore, type ProjectCrsMode } from '../../store/project/projectCrsStore';
-import { BASE_MAP_DEFS, type BaseMapId } from '../../map/baseMaps';
-import { refreshSourceMetrics } from '../../geo/metrics';
-import SnapPanel from '../panels/SnapPanel';
-import { useRecomputeStatusStore } from '../../store/ui/recomputeStatusStore';
+import { useProjectCrsStore, type ProjectCrsMode } from '@georef-engine/store/projectCrsStore';
+import { BASE_MAP_DEFS, type BaseMapId } from '@map-core/baseMaps';
+import { refreshSourceMetrics } from '@georef-engine/metrics';
+import SnapPanel from '@snap-engine/ui/SnapPanel';
+import { useRecomputeStatusStore } from '@manzanos-engine/store/recomputeStatusStore';
 
-/* â”€â”€â”€ Icons â”€â”€â”€ */
+/* --- Icons --- */
 
 const IconCad = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: 13, height: 13 }}>
@@ -71,7 +71,7 @@ const BASE_MAP_ICONS: Record<BaseMapId, React.ReactNode> = {
 };
 
 const BASE_MAP_LABELS: Record<BaseMapId, string> = {
-  cad: 'CAD â€” Grilla',
+  cad: 'CAD — Grilla',
   osm: 'OpenStreetMap',
   googleSatellite: 'Google Satelital',
   googleRoadmap: 'Google Maps',
@@ -206,7 +206,7 @@ export default function StatusBar() {
           </button>
         </div>
 
-        <span style={{ opacity: 0.2 }}>â”‚</span>
+        <span style={{ opacity: 0.2 }}>¦</span>
 
         <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 11, height: 11 }}>
@@ -220,13 +220,13 @@ export default function StatusBar() {
             <span>
               <span style={{ color: 'var(--cad-accent)' }}>X</span>{' '}
               {coords.isProjected ? coords.x.toFixed(2) : coords.x.toFixed(4)}
-              <span style={{ margin: '0 6px', opacity: 0.3 }}>â”‚</span>
+              <span style={{ margin: '0 6px', opacity: 0.3 }}>¦</span>
               <span style={{ color: 'var(--cad-accent)' }}>Y</span>{' '}
               {coords.isProjected ? coords.y.toFixed(2) : coords.y.toFixed(4)}
               {coords.isProjected && <span style={{ marginLeft: 6, opacity: 0.5 }}>m</span>}
             </span>
           ) : (
-            <span style={{ opacity: 0.5 }}>â€” sin posiciÃ³n â€”</span>
+            <span style={{ opacity: 0.5 }}>— sin posición —</span>
           )}
         </span>
       </div>
@@ -321,7 +321,7 @@ export default function StatusBar() {
               )}
 
               <div style={{ fontSize: '0.62rem', color: 'var(--cad-text-muted)' }}>
-                El CRS se aplica a la exportaciÃ³n/importaciÃ³n de archivos. Sistema actual:{' '}
+                El CRS se aplica a la exportación/importación de archivos. Sistema actual:{' '}
                 <strong style={{ color: 'var(--cad-text-dim)' }}>
                   {crsMode === 'utm' ? exportEpsg : 'Plano local (centrado en la vista actual)'}
                 </strong>
@@ -337,7 +337,7 @@ export default function StatusBar() {
           )}
         </div>
 
-        <span style={{ opacity: 0.2, margin: '0 4px' }}>â”‚</span>
+        <span style={{ opacity: 0.2, margin: '0 4px' }}>¦</span>
 
         {/* Base Map Selector */}
         <div ref={baseMapRef} style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
@@ -401,12 +401,12 @@ export default function StatusBar() {
           )}
         </div>
 
-        <span style={{ opacity: 0.2, margin: '0 4px' }}>â”‚</span>
+        <span style={{ opacity: 0.2, margin: '0 4px' }}>¦</span>
 
-        {/* OSNAP â€” panel unificado: tipos de snap + grilla + master switch (F3) */}
+        {/* OSNAP — panel unificado: tipos de snap + grilla + master switch (F3) */}
         <SnapPanel />
 
-        <span style={{ opacity: 0.2, margin: '0 4px' }}>â”‚</span>
+        <span style={{ opacity: 0.2, margin: '0 4px' }}>¦</span>
 
         {/* Properties Panel */}
         <label
@@ -437,9 +437,9 @@ export default function StatusBar() {
         </label>
         {recomputingRoads && (
           <>
-            <span style={{ opacity: 0.2, margin: '0 4px' }}>â”‚</span>
+            <span style={{ opacity: 0.2, margin: '0 4px' }}>¦</span>
             <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.65rem', color: 'var(--cad-text-dim)' }}>
-              <span className="cad-spinner" /> recalculando red vialâ€¦
+              <span className="cad-spinner" /> recalculando red vial…
             </span>
           </>
         )}
@@ -482,7 +482,7 @@ export default function StatusBar() {
           </button>
         </div>
 
-        <span style={{ opacity: 0.2, margin: '0 2px' }}>â”‚</span>
+        <span style={{ opacity: 0.2, margin: '0 2px' }}>¦</span>
 
         <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 11, height: 11 }}>

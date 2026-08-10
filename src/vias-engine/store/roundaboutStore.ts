@@ -1,8 +1,8 @@
-﻿// src/store/roundaboutStore.ts
+﻿// src/vias-engine/store/roundaboutStore.ts
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
-import type { RoundaboutParams } from '../../geo/roundabout/roundaboutEngine';
-import { autoName } from '../../lib/autoName';
+import type { RoundaboutParams } from '../geometry/roundaboutEngine';
+import { autoName } from '@kernel/id/autoName';
 
 export interface Roundabout extends RoundaboutParams {
   id: string;

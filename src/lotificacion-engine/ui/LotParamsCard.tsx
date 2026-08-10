@@ -1,6 +1,6 @@
 import React from 'react';
-import { useManzanoStore } from '../../../store/entities/manzanoStore';
-import { useGenerateLotsProgressStore } from '../../../store/ui/generateLotsProgressStore';
+import { useManzanoStore } from '../store/manzanoLotConfigStore';
+import { useGenerateLotsProgressStore } from '../store/generateLotsProgressStore';
 
 export interface LotParamsCardProps {
   lotsBusy: boolean;

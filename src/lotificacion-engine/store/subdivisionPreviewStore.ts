@@ -1,5 +1,5 @@
 ﻿import { create } from 'zustand';
-import type { Pt } from '../../geo/math/polygonEngine';
+import type { Pt } from '@kernel/geometry/polygonEngine';
 
 type SubdivisionPreviewState = {
   rings: Pt[][] | null;

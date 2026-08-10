@@ -1,6 +1,6 @@
 import React from 'react';
-import { Modal } from '../ui/Modal';
-import { useConfirmDialogStore } from '../../store/ui/confirmDialogStore';
+import { Modal } from '@shared-ui/Modal';
+import { useConfirmDialogStore } from './store/confirmDialogStore';
 
 export default function ConfirmDialog() {
   const pending = useConfirmDialogStore((s) => s.pending);

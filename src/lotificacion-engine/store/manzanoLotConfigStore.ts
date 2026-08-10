@@ -1,6 +1,6 @@
 ﻿import { create } from 'zustand';
-export type { ManzanoLoteMethod } from '../../geo/subdivision/types';
-import type { ManzanoLoteMethod } from '../../geo/subdivision/types';
+export type { ManzanoLoteMethod } from '../model/types';
+import type { ManzanoLoteMethod } from '../model/types';
 
 export interface RotateDir {
   ax: number;
@@ -38,9 +38,6 @@ interface ManzanoState {
   finishRotateLots: () => { id: string | number; dir: RotateDir } | null;
   cancelRotateLots: () => void;
   toggleCardOpen: (id: string | number) => void;
-  /** Abre/cierra explícitamente, a diferencia de toggleCardOpen — usado
-   *  por useLotsWorkflow.focusManzanoInSidebar para GARANTIZAR que la
-   *  card quede abierta (un toggle podría cerrarla si ya estaba abierta). */
   setCardOpen: (id: string | number, open: boolean) => void;
   setTargetAreaM2: (v: number) => void;
   setFrontMinM: (v: number) => void;

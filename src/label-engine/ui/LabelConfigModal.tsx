@@ -1,12 +1,12 @@
 import React, { useMemo, useState } from 'react';
 import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
-import { Modal } from '../ui/Modal';
+import { Modal } from '@shared-ui/Modal';
 import {
   useLabelConfigModalStore,
   type LabelNumberingMode,
   type LabelConfigTarget,
-} from '../../store/ui/labelConfigModalStore';
+} from '../store/labelConfigModalStore';
 import {
   AREA_UNIT_OPTIONS,
   LABEL_FONT_OPTIONS,
@@ -16,21 +16,21 @@ import {
   type LabelStyleConfig,
   type AreaUnit,
   type LabelLineMetrics,
-} from '../../core/labelModel';
-import { formatOrderLabel, LABEL_NUMBERING_MODES } from '../../core/labelNumbering';
-import { runCommand } from '../../commands/core/CommandStack';
-import { ApplyLabelConfigCommand } from '../../commands/labels/ApplyLabelConfigCommand';
-import { ApplyEntityLabelConfigCommand } from '../../commands/labels/ApplyEntityLabelConfigCommand';
-import { AssignLotsLabelConfigCommand } from '../../commands/labels/AssignLotsLabelConfigCommand';
-import { RestyleBatchLabelsCommand } from '../../commands/labels/RestyleBatchLabelsCommand';
-import { useDrawStore } from '../../store/map/drawStore';
-import { useMapStore } from '../../store/map/mapStore';
-import { useStreetStore } from '../../store/entities/streetStore';
-import { useRoundaboutStore } from '../../store/entities/roundaboutStore';
-import { toast } from '../../store/ui/toastStore';
-import { formatMetricLength, streetLengthMetricM } from '../../geo/metrics';
-import { roundaboutRoadAreaM2 } from '../../geo/roundabout/roundaboutEngine';
-import { getFeatureKind } from '../../core/objectModel';
+} from '../model/labelModel';
+import { formatOrderLabel, LABEL_NUMBERING_MODES } from '../model/labelNumbering';
+import { runCommand } from '@kernel/command/CommandStack';
+import { ApplyLabelConfigCommand } from '../commands/ApplyLabelConfigCommand';
+import { ApplyEntityLabelConfigCommand } from '../commands/ApplyEntityLabelConfigCommand';
+import { AssignLotsLabelConfigCommand } from '../commands/AssignLotsLabelConfigCommand';
+import { RestyleBatchLabelsCommand } from '../commands/RestyleBatchLabelsCommand';
+import { useDrawStore } from '@map-core/store/drawStore';
+import { useMapStore } from '@map-core/store/mapStore';
+import { useStreetStore } from '@vias-engine/store/streetStore';
+import { useRoundaboutStore } from '@vias-engine/store/roundaboutStore';
+import { toast } from '@shared-ui/store/toastStore';
+import { formatMetricLength, streetLengthMetricM } from '@georef-engine/metrics';
+import { roundaboutRoadAreaM2 } from '@vias-engine/geometry/roundaboutEngine';
+import { getFeatureKind } from '@kernel/domain-model/featureModel';
 
 const ENTITY_COPY: Record<'street' | 'roundabout', { title: string; nameHint: string; metricLabel: string; secondaryLabel: string }> = {
   street: {

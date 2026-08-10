@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
-import { autoName } from '../../lib/autoName';
+import { autoName } from '@kernel/id/autoName';
 
 export interface Street {
   id: string;

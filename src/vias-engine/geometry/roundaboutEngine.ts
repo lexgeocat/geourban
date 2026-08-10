@@ -1,9 +1,6 @@
-﻿// ⚠️ Espejo de crates/geourban-geo/src/roundabout.rs — preview/hit-testing
-// en el cliente; el motor autoritativo vive en Rust. Mantener fórmulas
-// (radio, islas, side_outer) sincronizadas con la versión Rust.
-import type { Pt } from '../math/polygonEngine';
-import { polyArea } from '../math/polygonEngine';
-import { resolutionAwareSegments } from '../math/lod';
+﻿import type { Pt } from '@kernel/geometry/polygonEngine';
+import { polyArea } from '@kernel/geometry/polygonEngine';
+import { resolutionAwareSegments } from '@kernel/geometry/lod';
 
 export interface RoundaboutParams {
   center: Pt;
@@ -77,7 +74,8 @@ export function roundaboutRoadAreaM2(rb: RoundaboutParams): number {
 
 export function validateRoundaboutParams(rb: RoundaboutParams): string | null {
   if (!(rb.radiusM > 0)) return 'El radio debe ser mayor a 0.';
-  if (rb.sides !== 0 && rb.sides < 3) return 'Un polígono necesita al menos 3 lados (o 0 para círculo).';
+  if (rb.sides !== 0 && rb.sides < 3)
+    return 'Un polígono necesita al menos 3 lados (o 0 para círculo).';
 
   const half = rb.roadWidthM / 2 + Math.max(0, rb.sidewalkWidthM);
   if (rb.sides && rb.sides >= 3) {

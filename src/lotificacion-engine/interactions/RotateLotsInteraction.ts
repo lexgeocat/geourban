@@ -7,7 +7,7 @@ import Feature from 'ol/Feature.js';
 import Point from 'ol/geom/Point.js';
 import LineString from 'ol/geom/LineString.js';
 import { Style, Stroke, Fill, Circle as CircleStyle, Text } from 'ol/style.js';
-import { useManzanoStore } from '../../store/entities/manzanoStore';
+import { useManzanoStore } from '../store/manzanoLotConfigStore';
 
 const HIT_TOLERANCE_PX = 14;
 

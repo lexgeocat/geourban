@@ -3,14 +3,14 @@ import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
 import Polygon from 'ol/geom/Polygon.js';
 import type VectorSource from 'ol/source/Vector.js';
-import { useManzanoStore, type ManzanoLoteMethod } from '../store/entities/manzanoStore';
-import { useCommandStack } from '../commands/core/CommandStack';
-import { RecomputeManzanoLotsCommand } from '../commands/lots/RecomputeManzanoLotsCommand';
-import { polygonCentroid, type Pt } from '../geo/math/polygonEngine';
-import { useSubdivisionPreviewStore } from '../store/ui/subdivisionPreviewStore';
-import { subdivideManzanoInWorker } from '../workers/geoWorkerClient';
-import type { ManzanoRow } from '../geo/selectors/manzanoRows';
-import { requireLayerForKind } from '../store/ui/layerPickerStore';
+import { useManzanoStore, type ManzanoLoteMethod } from '../store/manzanoLotConfigStore';
+import { useCommandStack } from '@kernel/command/CommandStack';
+import { RecomputeManzanoLotsCommand } from '../commands/RecomputeManzanoLotsCommand';
+import { polygonCentroid, type Pt } from '@kernel/geometry/polygonEngine';
+import { useSubdivisionPreviewStore } from '../store/subdivisionPreviewStore';
+import { subdivideManzanoInWorker } from '@kernel/native/geoWorkerClient';
+import type { ManzanoRow } from '@manzanos-engine/selectors/manzanoRows';
+import { requireLayerForKind } from '@layers-engine/store/layerPickerStore';
 import { useLotsWorkflow } from './useLotsWorkflow';
 
 export function useManzanoActions(drawSource: VectorSource | null) {
@@ -21,8 +21,6 @@ export function useManzanoActions(drawSource: VectorSource | null) {
   const getRotateDir = useManzanoStore((s) => s.getRotateDir);
   const setRotateDir = useManzanoStore((s) => s.setRotateDir);
   const startRotateLots = useManzanoStore((s) => s.startRotateLots);
-
-  // Fuente única para "generar todos los lotes" — compartida con el TopBar.
   const { lotsBusy, runGenerateAllLots, cancelGenerateAllLots } = useLotsWorkflow();
   const [recomputingIds, setRecomputingIds] = useState<Set<string>>(new Set());
 
