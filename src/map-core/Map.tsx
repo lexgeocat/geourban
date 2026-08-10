@@ -69,6 +69,7 @@ export default function MapView() {
   const drawMode = useDrawStore((s) => s.mode);
   useEffect(() => {
     if (!mapDivRef.current) return;
+    let cancelled = false;
 
     const initialWorkVisibility: WorkVisibility = {
       streets: useLayersStore.getState().hasKindVisible('calle'),
@@ -84,6 +85,14 @@ export default function MapView() {
     const streetLayer = drawLayers.streetLayer;
     streetLayerRef.current = streetLayer;
     const postrenderLayer = drawLayers.postrenderLayer;
+
+    void (async () => {
+      await reloadRustSpatialIndex(drawSrc.getFeatures() as Feature<Geometry>[]);
+      if (cancelled) return;
+      // Después de cargar el Rust spatial index, el PostrenderPainter ya puede
+      // hacer queries correctas desde su primer paint.
+      postrenderPainterRef.current?.invalidate();
+    })();
 
     const baseLayerMgr = new BaseLayerManager();
 
@@ -229,7 +238,6 @@ export default function MapView() {
 
     const spatialIndex = getOrCreateSpatialIndex();
     spatialIndex.load(drawSrc.getFeatures() as Feature<Polygon>[]);
-    void reloadRustSpatialIndex(drawSrc.getFeatures() as Feature<Geometry>[]);
 
     getOrCreateRoadSnapSource();
 
@@ -360,6 +368,7 @@ const rotateLotsInteraction = new RotateLotsInteraction(map, (id, dir) => {
     baseLayerMgrRef.current = baseLayerMgr;
 
     return () => {
+      cancelled = true;
       baseLayerMgrRef.current?.dispose();
       baseLayerMgrRef.current = null;
       interactionCtrlRef.current?.dispose();

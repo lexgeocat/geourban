@@ -2,7 +2,6 @@ import Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
 import type { CommandContext } from '@kernel/command/Command';
 import { createLotFeature, type CreateLotFeatureOpts } from '../model/createLotFeature';
-import { setLotStatus } from '@kernel/domain-model/featureModel';
 import type { LabelStyleConfig } from '@label-engine/model/labelModel';
 import type { LotResult } from '@kernel/geometry/polygonEngine';
 
@@ -84,15 +83,4 @@ export function replaceLotsForManzano(
   });
 
   return { newLotIds, removedLotSnapshots };
-}
-
-/**
- * Setea `lotStatus` según si hubo lotes nuevos. Helper para que ambos comandos
- * compartan la misma regla: 'subdivided' si hay lotes, 'none' si no.
- */
-export function applyLotStatus(
-  manzanoFeature: Feature<Geometry>,
-  hadLots: boolean
-): void {
-  setLotStatus(manzanoFeature, hadLots ? 'subdivided' : 'none');
 }

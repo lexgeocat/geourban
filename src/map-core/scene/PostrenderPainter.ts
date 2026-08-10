@@ -1,10 +1,9 @@
-﻿import { getOrCreateSpatialIndex } from '@kernel/spatial-index/spatialIndex';
+﻿import { queryRustSpatialIndex } from '@kernel/spatial-index/rustSpatialIndex';
 import type Map from 'ol/Map.js';
 import type VectorSource from 'ol/source/Vector.js';
 import type VectorLayer from 'ol/layer/Vector.js';
 import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
-import type Polygon from 'ol/geom/Polygon.js';
 import type RenderEvent from 'ol/render/Event.js';
 import type { SnapGuideVisual } from '@snap-engine/geometry/advancedSnap';
 import type { RoundaboutDrawPreview } from '@vias-engine/interactions/RoundaboutDrawInteraction';
@@ -42,6 +41,7 @@ export class PostrenderPainter {
 
   private cachedVisibleFeatures: Array<Feature<Geometry>> | null = null;
   private cachedVisibleKey: string | null = null;
+  private inFlightKey: string | null = null;
 
   private visibleDataVersion = 0;
 
@@ -128,6 +128,13 @@ export class PostrenderPainter {
     this.lassoOverlayPainter.paint(ctx, toPx);
   }
 
+  /**
+   * Devuelve el conjunto cacheado de features visibles para el extent actual.
+   * Si no hay cache, devuelve el último cache (o `all` como último fallback) y
+   * dispara una query async al Rust; cuando llega, actualiza el cache y fuerza
+   * un nuevo paint. Resultado: el primer frame con un extent nuevo puede mostrar
+   * overdraw, el segundo ya está filtrado.
+   */
   private getVisibleFeatures(all: Array<Feature<Geometry>>): Array<Feature<Geometry>> {
     const size = this.map.getSize();
     if (!size) return all;
@@ -140,33 +147,48 @@ export class PostrenderPainter {
     const key =
       `${Math.round(minX / px)},${Math.round(minY / py)},${Math.round(maxX / px)},${Math.round(maxY / py)}` +
       `|${all.length}|${this.visibleDataVersion}`;
+
     if (this.cachedVisibleKey === key && this.cachedVisibleFeatures) {
       return this.cachedVisibleFeatures;
     }
-    const index = getOrCreateSpatialIndex();
-    if (index.size === 0 && all.length > 0) {
-      if (import.meta.env.DEV) {
-        console.warn(
-          `PostrenderPainter: índice espacial vacío con ${all.length} feature(s) presentes — reconstruyendo. ` +
-            'Esto no debería pasar en uso normal; si se repite, revisar la sincronización addfeature/removefeature/changefeature en Map.tsx.'
-        );
-      }
-      index.load(all as unknown as Feature<Polygon>[]);
-    }
-    if (index.size === 0) {
-      this.cachedVisibleKey = null;
-      this.cachedVisibleFeatures = null;
-      return all;
-    }
-    const visible = index.search(
+
+    this.refreshVisibleCacheAsync(
+      key,
       minX - marginX,
       minY - marginY,
       maxX + marginX,
-      maxY + marginY
-    ) as unknown as Array<Feature<Geometry>>;
-    this.cachedVisibleKey = key;
-    this.cachedVisibleFeatures = visible;
-    return visible;
+      maxY + marginY,
+    );
+
+    return this.cachedVisibleFeatures ?? all;
+  }
+
+  private refreshVisibleCacheAsync(
+    key: string,
+    minX: number,
+    minY: number,
+    maxX: number,
+    maxY: number,
+  ): void {
+    if (this.inFlightKey === key) return;
+    this.inFlightKey = key;
+    void queryRustSpatialIndex(minX, minY, maxX, maxY)
+      .then((ids) => {
+        if (this.inFlightKey !== key) return;
+        const out: Array<Feature<Geometry>> = [];
+        for (const id of ids) {
+          const f = this.drawSource.getFeatureById(id) as Feature<Geometry> | null;
+          if (f) out.push(f);
+        }
+        this.cachedVisibleKey = key;
+        this.cachedVisibleFeatures = out;
+        this.inFlightKey = null;
+        this.postrenderLayer.changed();
+      })
+      .catch((err: unknown) => {
+        console.error('PostrenderPainter: query Rust falló', err);
+        this.inFlightKey = null;
+      });
   }
 
   private updateCaches(
@@ -184,6 +206,6 @@ export class PostrenderPainter {
   dispose(): void {
     this.postrenderLayer.un('postrender', this.listener);
     this.streetPainter.dispose();
-    this.selectionHighlightPainter.dispose(); // ← agregar
+    this.selectionHighlightPainter.dispose();
   }
 }
