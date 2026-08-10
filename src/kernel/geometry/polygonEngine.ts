@@ -23,7 +23,7 @@ export function polyArea(pts: Pt[]): number {
   return Math.abs(polySignedArea(pts));
 }
 
-export function centroidAverage(pts: Pt[]): Pt {
+function centroidAverage(pts: Pt[]): Pt {
   let cx = 0,
     cy = 0;
   for (const p of pts) {
@@ -468,7 +468,7 @@ function minRequiredClearance(ring: Pt[], scale = 1): number {
   return Math.min(maxClearanceInputUnits, sizeRef * 0.04);
 }
 
-export function polygonLabelPoint(ringIn: Pt[], scale = 1): Pt {
+function polygonLabelPoint(ringIn: Pt[], scale = 1): Pt {
   if (ringIn.length < 3) return ringIn[0] ?? [0, 0];
   const first = ringIn[0],
     last = ringIn[ringIn.length - 1];

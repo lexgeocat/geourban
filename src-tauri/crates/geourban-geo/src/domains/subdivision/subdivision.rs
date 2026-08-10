@@ -297,7 +297,7 @@ fn subdivide_half(
     }
 }
 
-pub fn subdivide_manzano_auto(
+pub fn subdivide_manzano_pca(
     mzn_pts: &[Pt],
     target_area_m2: f64,
     front_min_m: f64,
@@ -902,7 +902,7 @@ pub fn subdivide_manzano(
             subdivide_manzano_exact(&pts, target_area_m2, front_min_m, dir_pref)
         }
         ManzanoLoteMethod::Modo2 => {
-            subdivide_manzano_auto(&pts, target_area_m2, front_min_m, dir_pref)
+            subdivide_manzano_pca(&pts, target_area_m2, front_min_m, dir_pref)
         }
         ManzanoLoteMethod::Auto => {
             crate::subdivision_cabecera_cuerpo::subdivide_manzano_cabecera_cuerpo(

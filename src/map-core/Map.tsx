@@ -206,12 +206,12 @@ export default function MapView() {
     const snapStyles = new globalThis.Map<string, Style>();
     const SNAP_SHAPES: Record<string, { points?: number; radius: number; radius2?: number; angle?: number }> = {
       endpoint:             { radius: 7,  points: 4,               angle: Math.PI / 4 }, // Cuadrado ?
-      midpoint:             { radius: 8,  points: 3,               angle: -Math.PI / 2 }, // Tri�ngulo ?
+      midpoint:             { radius: 8,  points: 3,               angle: -Math.PI / 2 }, // Triángulo →
       intersection:         { radius: 8,  points: 4, radius2: 2,  angle: Math.PI / 4 },  // Cruz (X)
       extension:            { radius: 7,  points: 4, radius2: 2,  angle: 0 },             // Cruz (+)
-      perpendicular:        { radius: 7,  points: 5,               angle: -Math.PI / 2 }, // Pent�gono
-      nearest:              { radius: 5 },                                                // C�rculo
-      center:               { radius: 7,  points: 4,               angle: Math.PI / 4 },  // Cuadrado peque�o (centro de c�rculo)
+      perpendicular:        { radius: 7,  points: 5,               angle: -Math.PI / 2 }, // Pentágono
+      nearest:              { radius: 5 },                                                // Círculo
+      center:               { radius: 7,  points: 4,               angle: Math.PI / 4 },  // Cuadrado pequeño (centro de círculo)
     };
     for (const [type, color] of Object.entries(SNAP_COLORS)) {
       const cfg = SNAP_SHAPES[type]!;

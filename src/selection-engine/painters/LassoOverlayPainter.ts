@@ -1,4 +1,5 @@
 import type { LassoPreview } from '../interactions/LassoSelection';
+import { traceRing } from '@map-core/scene/canvasPathUtils';
 
 function lassoPreviewEqual(a: LassoPreview, b: LassoPreview): boolean {
   if (a === b) return true;
@@ -44,20 +45,11 @@ export class LassoOverlayPainter {
     } else if (preview.mode === 'lasso') {
       const pts = preview.points;
       if (pts.length > 0) {
-        ctx.beginPath();
-        const first = toPx(pts[0]);
-        ctx.moveTo(first[0], first[1]);
-        for (let i = 1; i < pts.length; i++) {
-          const p = toPx(pts[i]);
-          ctx.lineTo(p[0], p[1]);
-        }
-        if (preview.current) {
-          const cur = toPx(preview.current);
-          ctx.lineTo(cur[0], cur[1]);
-        } else {
-          ctx.lineTo(first[0], first[1]);
-        }
-        ctx.closePath();
+        const ring: Array<[number, number]> = pts as Array<[number, number]>;
+        const closing: Array<[number, number]> = preview.current
+          ? [preview.current as [number, number]]
+          : [ring[0]];
+        traceRing(ctx, [...ring, ...closing], toPx, true);
         ctx.fill();
         ctx.stroke();
       }

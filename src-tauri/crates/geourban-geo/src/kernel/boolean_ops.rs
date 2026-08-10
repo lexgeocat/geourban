@@ -3,6 +3,7 @@ use std::time::Instant;
 use geos::{ContextHandle, CoordDimensions, CoordSeq, Geom, Geometry, GeometryTypes};
 use std::cell::RefCell;
 
+use crate::kernel::lifetime::{extend_context_lifetime, extend_geometry_lifetime};
 use crate::kernel::sanitize::{sanitize_ring, sanitize_rings, SanitizeRingOptions};
 use crate::kernel::types::Pt;
 
@@ -45,9 +46,7 @@ pub(crate) fn ensure_geos_ctx() {
         let mut borrow = cell.borrow_mut();
         if borrow.is_none() {
             let ctx = ContextHandle::init().expect("GEOS_init_r no debería fallar");
-            let ctx: ContextHandle<'static> =
-                unsafe { std::mem::transmute::<ContextHandle<'_>, ContextHandle<'static>>(ctx) };
-            *borrow = Some(ctx);
+            *borrow = Some(extend_context_lifetime(ctx));
         }
     });
 }
@@ -61,13 +60,13 @@ fn ring_to_linear_ring(ring: &[Pt]) -> Result<Geometry<'static>, geos::Error> {
         cs.set_y(i, y)?;
     }
     let geom = Geometry::create_linear_ring(cs)?;
-    Ok(unsafe { std::mem::transmute::<Geometry<'_>, Geometry<'static>>(geom) })
+    Ok(extend_geometry_lifetime(geom))
 }
 
 pub(crate) fn ring_to_polygon(ring: &[Pt]) -> Result<Geometry<'static>, geos::Error> {
     let shell = ring_to_linear_ring(ring)?;
     let poly = Geometry::create_polygon(shell, vec![])?;
-    Ok(unsafe { std::mem::transmute::<Geometry<'_>, Geometry<'static>>(poly) })
+    Ok(extend_geometry_lifetime(poly))
 }
 
 pub fn ring_intersection_area(a: &[Pt], b: &[Pt]) -> f64 {
@@ -117,7 +116,7 @@ pub(crate) fn rings_to_polygon(rings: &[Vec<Pt>]) -> Result<Geometry<'static>, g
         holes.push(ring_to_linear_ring(hole)?);
     }
     let poly = Geometry::create_polygon(shell, holes)?;
-    Ok(unsafe { std::mem::transmute::<Geometry<'_>, Geometry<'static>>(poly) })
+    Ok(extend_geometry_lifetime(poly))
 }
 
 fn coord_seq_to_ring(cs: &CoordSeq) -> Result<Vec<Pt>, geos::Error> {
@@ -260,14 +259,14 @@ fn unary_union_of_geoms(polys: Vec<Geometry<'static>>) -> Result<Geometry<'stati
     match it.next() {
         None => {
             let result: Geometry<'static> = first.unary_union()?;
-            Ok(unsafe { std::mem::transmute::<Geometry<'_>, Geometry<'static>>(result) })
+            Ok(extend_geometry_lifetime(result))
         }
         Some(second) => {
             let mut rest = vec![first, second];
             rest.extend(it);
             let collection = Geometry::create_geometry_collection(rest)?;
             let result: Geometry<'static> = collection.unary_union()?;
-            Ok(unsafe { std::mem::transmute::<Geometry<'_>, Geometry<'static>>(result) })
+            Ok(extend_geometry_lifetime(result))
         }
     }
 }
@@ -419,7 +418,7 @@ pub fn fill_polygon_gaps(outer_ring: &[Pt], covering_rings: &[Vec<Pt>]) -> Vec<V
         };
 
     let diff: Geometry<'static> = match poly_outer.difference(&union_cover) {
-        Ok(d) => unsafe { std::mem::transmute::<Geometry<'_>, Geometry<'static>>(d) },
+        Ok(d) => extend_geometry_lifetime(d),
         Err(err) => {
             log::warn!("subdivision.fillPolygonGaps: difference() falló buscando huecos: {err:?}");
             return Vec::new();

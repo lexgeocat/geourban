@@ -10,8 +10,7 @@ import { useManzanoStore } from '../store/manzanoLotConfigStore';
 import { polyArea, ringPerimeter, polygonCentroid } from '@kernel/geometry/polygonEngine';
 import { estimateGeometryBytes } from '@kernel/command/memoryEstimate';
 import { computeAreaCorrectionFactor, computeLinearCorrectionFactor } from '../geometry/areaCorrection';
-import { createLotFeature } from '../model/createLotFeature';
-import type { LabelStyleConfig } from '@label-engine/model/labelModel';
+import { replaceLotsForManzano, type RemovedLotSnapshot } from './replaceLotsForManzano';
 
 const geoJsonFormat = new GeoJSON();
 
@@ -28,11 +27,7 @@ export class RecomputeManzanoLotsCommand extends Command {
   readonly label = 'Recalcular lotes del manzano';
   private readonly opts: RecomputeManzanoLotsOpts;
   private newLotIds: Array<string | number> = [];
-  private removedLotSnapshots: Array<{
-    id: string | number;
-    geometry: Geometry;
-    props: Record<string, unknown>;
-  }> = [];
+  private removedLotSnapshots: RemovedLotSnapshot[] = [];
   private prevLotStatus: LotStatus | null = null;
 
   constructor(opts: RecomputeManzanoLotsOpts) {
@@ -78,48 +73,15 @@ export class RecomputeManzanoLotsCommand extends Command {
       this.opts.dirPref
     );
 
-    const toRemove: Feature<Geometry>[] = [];
-    let carriedLabelConfig: LabelStyleConfig | undefined;
-    ctx.drawSource.forEachFeature((f) => {
-      if (f.get('lotGroupId') === String(this.opts.manzanoId)) {
-        const feat = f as Feature<Geometry>;
-        toRemove.push(feat);
-        if (!carriedLabelConfig)
-          carriedLabelConfig = feat.get('labelConfig') as LabelStyleConfig | undefined;
-      }
+    const { newLotIds, removedLotSnapshots } = replaceLotsForManzano(ctx, {
+      manzanoId: this.opts.manzanoId,
+      manzanoFeature: mznFeat,
+      lots,
+      method: this.opts.method,
+      preferredLayerId: this.opts.layerId,
     });
-    for (const f of toRemove) {
-      const g = f.getGeometry();
-      if (!g) continue;
-      this.removedLotSnapshots.push({
-        id: f.getId() as string | number,
-        geometry: g.clone(),
-        props: (() => {
-          const p = { ...f.getProperties() };
-          delete p.geometry;
-          return p;
-        })(),
-      });
-      ctx.drawSource.removeFeature(f);
-    }
-
-    lots.forEach((lot, i) => {
-      if (lot.pts.length < 3) return;
-      const { feature, id: lotId } = createLotFeature(lot, {
-        manzanoId: this.opts.manzanoId,
-        manzanoCode: mznFeat.get('code') as string | undefined,
-        index: i + 1,
-        method: this.opts.method,
-        preferredLayerId: this.opts.layerId,
-        autoCreateLayer: false,
-      });
-      if (carriedLabelConfig) {
-        feature.set('labelConfig', carriedLabelConfig, true);
-        feature.set('labelText', feature.get('code') as string, true);
-      }
-      ctx.drawSource.addFeature(feature);
-      this.newLotIds.push(lotId);
-    });
+    this.newLotIds = newLotIds;
+    this.removedLotSnapshots = removedLotSnapshots;
 
     setLotStatus(mznFeat, this.newLotIds.length > 0 ? 'subdivided' : 'none');
     useManzanoStore.getState().setGeomSnapshot(this.opts.manzanoId, {

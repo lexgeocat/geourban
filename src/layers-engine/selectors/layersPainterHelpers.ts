@@ -13,10 +13,6 @@ export function getLayerByIdCached(layers: Layer[]): Map<string, Layer> {
   return byId;
 }
 
-export function invalidateLayerByIdCache(): void {
-  layersByIdCache = null;
-}
-
 export function resolveRoundaboutLayer(
   rb: Roundabout,
   registry: LayersRegistryState,

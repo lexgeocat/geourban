@@ -4,6 +4,7 @@ import Polygon from 'ol/geom/Polygon.js';
 import LineString from 'ol/geom/LineString.js';
 import { useSelectionStore } from '../store/selectionStore';
 import { entityGeometryProviders } from '../entityGeometryProviders';
+import { strokeRingDouble } from '@map-core/scene/canvasPathUtils';
 
 const GLOW_HUE = '255, 196, 0';
 
@@ -181,29 +182,19 @@ export class SelectionHighlightPainter {
     innerColor: string,
     outerWidth: number,
   ): void {
-    const trace = () => {
-      const first = toPx(coords[0]);
-      ctx.beginPath();
-      ctx.moveTo(first[0], first[1]);
-      for (let i = 1; i < coords.length; i++) {
-        const p = toPx(coords[i]);
-        ctx.lineTo(p[0], p[1]);
-      }
-      if (closed) ctx.closePath();
-    };
-
     ctx.save();
     ctx.lineJoin = 'round';
     ctx.lineCap = 'round';
-    ctx.strokeStyle = outerColor;
-    ctx.lineWidth = outerWidth;
-    trace();
-    ctx.stroke();
-
-    ctx.strokeStyle = innerColor;
-    ctx.lineWidth = 2.5;
-    trace();
-    ctx.stroke();
+    strokeRingDouble(
+      ctx,
+      coords as Array<[number, number]>,
+      toPx,
+      outerColor,
+      outerWidth,
+      innerColor,
+      2.5,
+      closed,
+    );
     ctx.restore();
   }
 }

@@ -52,9 +52,9 @@ export default function ProjectSetupModal() {
         Configurar sistema de coordenadas del proyecto
       </h2>
       <p style={{ fontSize: '0.75rem', color: 'var(--cad-text-dim)', marginBottom: 16, lineHeight: 1.5 }}>
-        ElegÌ esto antes de dibujar. Internamente el proyecto siempre guarda WGS84
+        Eleg√≠ esto antes de dibujar. Internamente el proyecto siempre guarda WGS84
         (para el mapa base y GeoJSON/KML). Fijar la zona UTM ahora evita que
-        la exportaciÛn e importaciÛn queden desincronizadas en un CRS real.
+        la exportaci√≥n e importaci√≥n queden desincronizadas en un CRS real.
       </p>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
@@ -96,7 +96,7 @@ export default function ProjectSetupModal() {
           <div style={{ fontWeight: 600, fontSize: '0.8rem' }}>Dibujo libre (sin georreferenciar)</div>
           <div style={{ fontSize: '0.68rem', opacity: 0.8, marginTop: 2 }}>
             Plano local en metros. No tiene anclaje a un CRS real; se
-            reposiciona a mano si despuÈs lo llev·s a uno.
+            reposiciona a mano si despu√©s lo llev√°s a uno.
           </div>
         </button>
       </div>

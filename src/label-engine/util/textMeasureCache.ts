@@ -31,7 +31,3 @@ export function measureCached(ctx: CanvasRenderingContext2D, text: string): Cach
   evictIfNeeded();
   return entry;
 }
-
-export function measureCachedWidth(ctx: CanvasRenderingContext2D, text: string): number {
-  return measureCached(ctx, text).width;
-}

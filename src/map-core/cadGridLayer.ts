@@ -10,9 +10,44 @@ const NICE_STEPS = [
 ];
 
 const CAD_BG = '#0a0e14';
-const CAD_MINOR = 'rgba(36, 48, 68, 0.85)';
-const CAD_MAJOR = 'rgba(0, 212, 255, 0.22)';
-const CAD_AXIS = 'rgba(0, 212, 255, 0.45)';
+
+interface CadColors {
+  minor: string;
+  major: string;
+  axis: string;
+}
+
+function hexToRgba(hex: string, alpha: number): string {
+  const m = /^#([0-9a-f]{6})$/i.exec(hex.trim());
+  if (!m) return `rgba(0, 212, 255, ${alpha})`;
+  const n = parseInt(m[1], 16);
+  return `rgba(${(n >> 16) & 0xff}, ${(n >> 8) & 0xff}, ${n & 0xff}, ${alpha})`;
+}
+
+function readCadColors(): CadColors {
+  if (typeof window === 'undefined') {
+    return { minor: 'rgba(36, 48, 68, 0.85)', major: 'rgba(0, 212, 255, 0.22)', axis: 'rgba(0, 212, 255, 0.45)' };
+  }
+  const style = getComputedStyle(document.documentElement);
+  const accent = style.getPropertyValue('--cad-accent').trim() || '#00d4ff';
+  return {
+    minor: 'rgba(36, 48, 68, 0.85)',
+    major: hexToRgba(accent, 0.22),
+    axis: hexToRgba(accent, 0.45),
+  };
+}
+
+let cachedColors: CadColors | null = null;
+
+function getCadColors(): CadColors {
+  if (cachedColors) return cachedColors;
+  cachedColors = readCadColors();
+  return cachedColors;
+}
+
+export function refreshCadGridColors(): void {
+  cachedColors = null;
+}
 
 function snapSpacing(meters: number) {
   for (const step of NICE_STEPS) {
@@ -42,6 +77,8 @@ function drawCadGrid(
 
   ctx.fillStyle = CAD_BG;
   ctx.fillRect(0, 0, width, height);
+
+  const colors = getCadColors();
 
   const minorSpacing = snapSpacing(resolution * 52);
   const majorSpacing = minorSpacing * 5;
@@ -102,12 +139,12 @@ function drawCadGrid(
     ctx.stroke();
   };
 
-  strokeV(vMinor, CAD_MINOR, pixelRatio);
-  strokeH(hMinor, CAD_MINOR, pixelRatio);
-  strokeV(vMajor, CAD_MAJOR, 1.25 * pixelRatio);
-  strokeH(hMajor, CAD_MAJOR, 1.25 * pixelRatio);
-  strokeV(vAxis, CAD_AXIS, 1.5 * pixelRatio);
-  strokeH(hAxis, CAD_AXIS, 1.5 * pixelRatio);
+  strokeV(vMinor, colors.minor, pixelRatio);
+  strokeH(hMinor, colors.minor, pixelRatio);
+  strokeV(vMajor, colors.major, 1.25 * pixelRatio);
+  strokeH(hMajor, colors.major, 1.25 * pixelRatio);
+  strokeV(vAxis, colors.axis, 1.5 * pixelRatio);
+  strokeH(hAxis, colors.axis, 1.5 * pixelRatio);
 }
 
 export type CadBaseMapBundle = {

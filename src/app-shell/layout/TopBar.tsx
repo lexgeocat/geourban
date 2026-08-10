@@ -10,7 +10,7 @@ import EditTab from './topbar/ribbon/EditTab';
 import ViewTab from './topbar/ribbon/ViewTab';
 
 const RIBBON_TABS: { id: RibbonTabId; label: string }[] = [
-  { id: 'map', label: 'Diseño Urbanístico' },
+  { id: 'map', label: 'DiseÃ±o UrbanÃ­stico' },
   { id: 'edit', label: 'Editar' },
   { id: 'view', label: 'Vista' },
 ];

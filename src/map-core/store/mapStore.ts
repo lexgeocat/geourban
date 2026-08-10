@@ -60,7 +60,7 @@ export const useMapStore = create<MapState>()(
     viewConfig: { center: [-68.3, -16.65], zoom: 19 },
     setMap: (map) =>
       set((state) => {
-        // @ts-expect-error � immer draft vs OL class instance
+        // @ts-expect-error — immer draft vs OL class instance
         state.mapInstance = map;
       }),
     setDrawSource: (src) =>
@@ -86,7 +86,7 @@ export const useMapStore = create<MapState>()(
       }
       if (droppedCount > 0) {
         console.warn(
-          `restoreDrawFeatures: se descartaron ${droppedCount} feature(s) con geometr�a no-finita.`
+          `restoreDrawFeatures: se descartaron ${droppedCount} feature(s) con geometría no-finita.`
         );
       }
 
@@ -161,7 +161,7 @@ export const useMapStore = create<MapState>()(
       const cmd = new DeleteFeaturesCommand([id]);
       void runCommand(cmd);
       if (cmd.skippedCount > 0) {
-        toast('El elemento no se borr�: pertenece a una capa bloqueada.', {
+        toast('El elemento no se borró: pertenece a una capa bloqueada.', {
           variant: 'warning',
           durationMs: 5000,
         });

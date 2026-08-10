@@ -1,4 +1,3 @@
-import { Fill, Stroke, Style } from 'ol/style.js';
 import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
 import Polygon from 'ol/geom/Polygon.js';
@@ -13,11 +12,6 @@ import { hitTestCandidatesInExtentAsync } from '../geometry/hitTest';
 import { pointInPoly, segmentIntersectsPoly, type Pt } from '@kernel/geometry/polygonEngine';
 import { extraSnapSources } from '@snap-engine/extension-points';
 import type { ModeContext } from '@kernel/modes/ModeContext';
-
-export const SELECT_STYLE = new Style({
-  fill: new Fill({ color: 'rgba(0, 212, 255, 0.15)' }),
-  stroke: new Stroke({ color: '#00d4ff', width: 2.5 }),
-});
 
 function seedFromStore(ctx: ModeContext, select: HitTestSelect) {
   useSelectionStore.getState().selectedIds.forEach((id) => {

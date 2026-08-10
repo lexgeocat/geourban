@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
 import { useSelectionStore } from '@selection-engine/store/selectionStore';
@@ -62,7 +62,7 @@ export default function PropertyPanel() {
             <span className="cad-section-title">Propiedades</span>
           </div>
           <p style={{ fontSize: '0.7rem', color: 'var(--cad-text-muted)' }}>
-            Selecciona un pol�gono para ver sus propiedades.
+            Selecciona un polígono para ver sus propiedades.
           </p>
         </div>
       </div>
@@ -83,13 +83,21 @@ export default function PropertyPanel() {
             <p style={{ fontSize: '0.75rem', color: 'var(--cad-text)', marginBottom: 8 }}>{street.name}</p>
             <div className="cad-row"><span>Calzada</span><span className="cad-row-value">{formatMetricLength(street.widthM)}</span></div>
             <div className="cad-row"><span>Vereda</span><span className="cad-row-value">{formatMetricLength(street.sideWidthM)}</span></div>
-            <button onClick={() => {
-              const existing = entityLabels[street.id];
-              openEntityLabel('street', street.id,
-                existing?.config ?? defaultLabelStyleConfig({ prefix: 'Calle', color: defaultColorForKind('calle') }),
-                existing?.text ?? street.name);
-            }} className="cad-icon-btn" style={{ width: '100%', height: 'auto', padding: '6px 10px', fontSize: '0.7rem', marginTop: 8, background: 'var(--cad-bg-surface)', border: '1px solid var(--cad-border)', color: 'var(--cad-text-dim)', borderRadius: 4 }}>
-              ?? Generar etiqueta
+            <button
+              onClick={() => {
+                const existing = entityLabels[street.id];
+                openEntityLabel(
+                  'street',
+                  street.id,
+                  existing?.config ??
+                    defaultLabelStyleConfig({ prefix: 'Calle', color: defaultColorForKind('calle') }),
+                  existing?.text ?? street.name
+                );
+              }}
+              className="cad-btn-outline"
+              style={{ marginTop: 8 }}
+            >
+              🏷 Generar etiqueta
             </button>
           </div>
         </div>
@@ -106,13 +114,21 @@ export default function PropertyPanel() {
             <p style={{ fontSize: '0.75rem', color: 'var(--cad-text)', marginBottom: 8 }}>{roundabout.name}</p>
             <div className="cad-row"><span>Radio</span><span className="cad-row-value">{formatMetricLength(roundabout.radiusM)}</span></div>
             <div className="cad-row"><span>Calzada</span><span className="cad-row-value">{formatMetricLength(roundabout.roadWidthM)}</span></div>
-            <button onClick={() => {
-              const existing = entityLabels[roundabout.id];
-              openEntityLabel('roundabout', roundabout.id,
-                existing?.config ?? defaultLabelStyleConfig({ prefix: 'Rotonda', color: defaultColorForKind('rotonda') }),
-                existing?.text ?? roundabout.name);
-            }} className="cad-icon-btn" style={{ width: '100%', height: 'auto', padding: '6px 10px', fontSize: '0.7rem', marginTop: 8, background: 'var(--cad-bg-surface)', border: '1px solid var(--cad-border)', color: 'var(--cad-text-dim)', borderRadius: 4 }}>
-              ?? Generar etiqueta
+            <button
+              onClick={() => {
+                const existing = entityLabels[roundabout.id];
+                openEntityLabel(
+                  'roundabout',
+                  roundabout.id,
+                  existing?.config ??
+                    defaultLabelStyleConfig({ prefix: 'Rotonda', color: defaultColorForKind('rotonda') }),
+                  existing?.text ?? roundabout.name
+                );
+              }}
+              className="cad-btn-outline"
+              style={{ marginTop: 8 }}
+            >
+              🏷 Generar etiqueta
             </button>
           </div>
         </div>
@@ -144,7 +160,7 @@ export default function PropertyPanel() {
               fontFamily: 'JetBrains Mono, monospace',
             }}
           >
-            {selectedCount > 1 ? `+${selectedCount - 1} m�s` : ''}
+            {selectedCount > 1 ? `+${selectedCount - 1} más` : ''}
           </span>
         </div>
 
@@ -157,11 +173,11 @@ export default function PropertyPanel() {
         {isPolygon ? (
           <>
             <div className="cad-row">
-              <span>�rea</span>
+              <span>Área</span>
               <span className="cad-row-value">{formatMetricArea(areaM2)}</span>
             </div>
             <div className="cad-row">
-              <span>Per�metro</span>
+              <span>Perímetro</span>
               <span className="cad-row-value">{formatMetricLength(perimeterM)}</span>
             </div>
           </>
@@ -210,38 +226,29 @@ export default function PropertyPanel() {
         <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 4 }}>
           {isPolygon && featureKind === 'perimetro' && (
             <p style={{ fontSize: '0.65rem', color: 'var(--cad-text-muted)', fontStyle: 'italic' }}>
-              Este es el per�metro del sitio (referencia intacta). Traz� calles para generar manzanos.
+              Este es el perímetro del sitio (referencia intacta). Trazá calles para generar manzanos.
             </p>
           )}
           {isPolygon && featureKind === 'manzana' && (
             <button
               onClick={() => focusManzanoInSidebar(primaryId)}
-              className="cad-icon-btn"
-              style={{
-                width: '100%', height: 'auto', padding: '6px 10px', fontSize: '0.7rem', fontWeight: 500,
-                background: 'var(--cad-bg-surface)', border: '1px solid var(--cad-border)',
-                color: 'var(--cad-text-dim)', borderRadius: 4, display: 'flex', alignItems: 'center',
-                justifyContent: 'center', gap: 4,
-              }}
+              className="cad-btn-outline"
             >
-              Subdividir este pol�gono
+              Subdividir este polígono
             </button>
           )}
           {isPolygon && featureKind !== 'perimetro' && (
             <button
               onClick={() => {
                 const existing = feat.get('labelConfig');
-                openLabelModal(primaryId, existing ?? defaultLabelStyleConfig({ color: defaultColorForKind(featureKind) }));
+                openLabelModal(
+                  primaryId,
+                  existing ?? defaultLabelStyleConfig({ color: defaultColorForKind(featureKind) })
+                );
               }}
-              className="cad-icon-btn"
-              style={{
-                width: '100%', height: 'auto', padding: '6px 10px', fontSize: '0.7rem', fontWeight: 500,
-                background: 'var(--cad-bg-surface)', border: '1px solid var(--cad-border)',
-                color: 'var(--cad-text-dim)', borderRadius: 4, display: 'flex', alignItems: 'center',
-                justifyContent: 'center', gap: 4,
-              }}
+              className="cad-btn-outline"
             >
-              ?? Generar etiqueta
+              🏷 Generar etiqueta
             </button>
           )}
         </div>

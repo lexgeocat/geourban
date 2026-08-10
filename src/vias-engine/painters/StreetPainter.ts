@@ -7,6 +7,7 @@ import { computeRoadNetworkNetInWorker } from '@kernel/native/geoWorkerClient';
 import { type Pt } from '@kernel/geometry/polygonEngine';
 import { useLayersStore } from '@layers-engine/store/layersRegistryStore';
 import { withAlpha } from '@map-core/scene/DrawLayerRenderer';
+import { strokePolyline, traceRing } from '@map-core/scene/canvasPathUtils';
 import type { Layer } from '@kernel/domain-model/featureModel';
 import { roundaboutGeometry } from '../geometry/roundaboutEngine';
 import { getLayerByIdCached, resolveRoundaboutLayer } from '@layers-engine/selectors/layersPainterHelpers';
@@ -352,12 +353,7 @@ export class StreetPainter {
       for (const s of group.streets) {
         const segs = clipStreetAxisSegments(streetAllCoords(s), allRoundabouts);
         for (const [a, b] of segs) {
-          const pa = toPx(a),
-            pb = toPx(b);
-          ctx.beginPath();
-          ctx.moveTo(pa[0], pa[1]);
-          ctx.lineTo(pb[0], pb[1]);
-          ctx.stroke();
+          strokePolyline(ctx, [a, b] as Pt[], toPx, ctx.strokeStyle, 1);
         }
       }
       ctx.setLineDash([]);
@@ -383,13 +379,7 @@ export class StreetPainter {
         ctx.beginPath();
         for (const ring of rings) {
           if (ring.length < 3) continue;
-          const first = toPx(ring[0]);
-          ctx.moveTo(first[0], first[1]);
-          for (let i = 1; i < ring.length; i++) {
-            const p = toPx(ring[i]);
-            ctx.lineTo(p[0], p[1]);
-          }
-          ctx.closePath();
+          traceRing(ctx, ring, toPx, true);
         }
         ctx.fillStyle = style.fill;
         ctx.fill('evenodd');
@@ -397,14 +387,7 @@ export class StreetPainter {
 
       for (const ring of rings) {
         if (ring.length < 3) continue;
-        ctx.beginPath();
-        const first = toPx(ring[0]);
-        ctx.moveTo(first[0], first[1]);
-        for (let i = 1; i < ring.length; i++) {
-          const p = toPx(ring[i]);
-          ctx.lineTo(p[0], p[1]);
-        }
-        ctx.closePath();
+        traceRing(ctx, ring, toPx, true);
         ctx.stroke();
       }
     }

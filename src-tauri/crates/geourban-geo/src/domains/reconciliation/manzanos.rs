@@ -4,6 +4,7 @@ use crate::kernel::boolean_ops::{
     ensure_geos_ctx, polygon_to_rings, robust_union_road_network, rings_to_polygon,
     split_into_polygon_geoms,
 };
+use crate::kernel::lifetime::extend_geometry_lifetime;
 use crate::kernel::sanitize::{sanitize_ring, SanitizeRingOptions};
 use crate::kernel::types::Pt;
 
@@ -44,9 +45,7 @@ pub fn compute_manzanos(
 
         let diff_geom: Geometry<'static> = match &road_union {
             Some(ru) => match parcel_geom.difference(ru) {
-                Ok(d) => unsafe {
-                    std::mem::transmute::<Geometry<'_>, Geometry<'static>>(d)
-                },
+                Ok(d) => extend_geometry_lifetime(d),
                 Err(err) => {
                     log::warn!(
                         "computeManzanos: difference() falló para la parcela {index}: {err:?}"

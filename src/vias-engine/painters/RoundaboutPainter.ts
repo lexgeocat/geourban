@@ -3,6 +3,7 @@ import { useLayersStore } from '@layers-engine/store/layersRegistryStore';
 import { roundaboutGeometry } from '../geometry/roundaboutEngine';
 import { formatMetricLength } from '@georef-engine/metrics';
 import { withAlpha } from '@map-core/scene/DrawLayerRenderer';
+import { strokeRing } from '@map-core/scene/canvasPathUtils';
 import type { RoundaboutDrawPreview } from '../interactions/RoundaboutDrawInteraction';
 import { getLayerByIdCached, resolveRoundaboutLayer } from '@layers-engine/selectors/layersPainterHelpers';
 
@@ -40,11 +41,13 @@ export class RoundaboutPainter {
 
       const geom = roundaboutGeometry(rb, resolution);
       if (geom.island) {
-        this.strokeRing(ctx, geom.island, toPx, 'rgba(63, 185, 80, 0.6)', 1.25);
+        ctx.save();
+        strokeRing(ctx, geom.island, toPx, 'rgba(63, 185, 80, 0.6)', 1.25);
+        ctx.restore();
       }
       ctx.save();
       ctx.setLineDash([6, 5]);
-      this.strokeRing(ctx, geom.centerAxis, toPx, withAlpha(color, 0.45 * op), 1);
+      strokeRing(ctx, geom.centerAxis, toPx, withAlpha(color, 0.45 * op), 1);
       ctx.restore();
 
       const labelOp = (layer.showLabel ? 1 : 0) * op;
@@ -79,7 +82,7 @@ export class RoundaboutPainter {
         );
         ctx.save();
         ctx.setLineDash([6, 4]);
-        this.strokeRing(ctx, previewGeom.sideOuter, toPx, 'rgba(0, 212, 255, 0.85)', 1.5);
+        strokeRing(ctx, previewGeom.sideOuter, toPx, 'rgba(0, 212, 255, 0.85)', 1.5);
         ctx.restore();
 
         const curPx = toPx(current);
@@ -99,28 +102,5 @@ export class RoundaboutPainter {
       ctx.fill();
       ctx.restore();
     }
-  }
-
-  private strokeRing(
-    ctx: CanvasRenderingContext2D,
-    ring: Array<[number, number]>,
-    toPx: (c: number[]) => [number, number],
-    color: string,
-    width: number
-  ): void {
-    if (ring.length < 2) return;
-    ctx.save();
-    ctx.strokeStyle = color;
-    ctx.lineWidth = width;
-    ctx.beginPath();
-    const first = toPx(ring[0]);
-    ctx.moveTo(first[0], first[1]);
-    for (let i = 1; i < ring.length; i++) {
-      const p = toPx(ring[i]);
-      ctx.lineTo(p[0], p[1]);
-    }
-    ctx.closePath();
-    ctx.stroke();
-    ctx.restore();
   }
 }

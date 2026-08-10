@@ -178,6 +178,41 @@ body,
 }
 
 /* ============================================================
+   CAD Outline Button (variante "tag" / "ghost" — usada por
+   botones "Generar etiqueta" en paneles. Mantiene el
+   background-surface pero con borde sutil y hover con accent).
+   ============================================================ */
+.cad-btn-outline {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: 100%;
+  height: auto;
+  padding: 6px 10px;
+  font-size: 0.7rem;
+  font-weight: 500;
+  background: var(--cad-bg-surface);
+  border: 1px solid var(--cad-border);
+  color: var(--cad-text-dim);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all var(--cad-transition);
+  outline: none;
+}
+.cad-btn-outline:hover {
+  border-color: var(--cad-accent);
+  color: var(--cad-accent);
+}
+.cad-btn-outline:active {
+  transform: scale(0.98);
+}
+.cad-btn-outline:focus-visible {
+  outline: 2px solid var(--cad-accent);
+  outline-offset: 2px;
+}
+
+/* ============================================================
    Fase 8 — Accesibilidad: reset + foco visible para controles
    "icon-only" fuera de .cad-icon-btn (filas densas de paneles,
    ej. LayerPanel) que antes eran <span onClick> sin foco de teclado.

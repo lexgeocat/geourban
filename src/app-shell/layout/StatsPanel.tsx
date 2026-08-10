@@ -153,7 +153,7 @@ export default function StatsPanel() {
           userSelect: 'none',
         }}
       >
-        <span>Estad�sticas del proyecto</span>
+        <span>Estadísticas del proyecto</span>
         <button
           onClick={() => setStatsPanelVisible(false)}
           style={{
@@ -171,16 +171,16 @@ export default function StatsPanel() {
         </button>
       </div>
 
-      {/* Tabla de estad�sticas */}
+      {/* Tabla de estadísticas */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: '3px 10px', marginBottom: 8 }}>
-        <span style={{ color: 'var(--cad-text-dim)' }}>�rea total:</span>
-        <span style={{ color: '#3fb950', fontFamily: 'JetBrains Mono, monospace', textAlign: 'right' }}>{formatMetricArea(stats.totalAreaM2)}</span>
+        <span style={{ color: 'var(--cad-text-dim)' }}>Área total:</span>
+        <span className="font-mono-cad" style={{ color: '#3fb950', textAlign: 'right' }}>{formatMetricArea(stats.totalAreaM2)}</span>
         <span />
 
         {stats.manzanoCount > 0 && (
           <>
             <span style={{ color: 'var(--cad-text-dim)' }}>Manzanos:</span>
-            <span style={{ color: '#58a6ff', fontFamily: 'JetBrains Mono, monospace', textAlign: 'right' }}>{stats.manzanoCount}</span>
+            <span className="font-mono-cad" style={{ color: '#58a6ff', textAlign: 'right' }}>{stats.manzanoCount}</span>
             <span style={{ color: 'var(--cad-text-muted)', fontSize: '0.65rem' }}>{formatMetricArea(stats.manzanoAreaM2)}</span>
           </>
         )}
@@ -188,7 +188,7 @@ export default function StatsPanel() {
         {stats.lotCount > 0 && (
           <>
             <span style={{ color: 'var(--cad-text-dim)' }}>Lotes:</span>
-            <span style={{ color: '#10b981', fontFamily: 'JetBrains Mono, monospace', textAlign: 'right' }}>{stats.lotCount}</span>
+            <span className="font-mono-cad" style={{ color: '#10b981', textAlign: 'right' }}>{stats.lotCount}</span>
             <span style={{ color: 'var(--cad-text-muted)', fontSize: '0.65rem' }}>{formatMetricArea(stats.lotAreaM2)}</span>
           </>
         )}
@@ -196,7 +196,7 @@ export default function StatsPanel() {
         {stats.streetCount > 0 && (
           <>
             <span style={{ color: 'var(--cad-text-dim)' }}>Calles:</span>
-            <span style={{ color: '#ffa657', fontFamily: 'JetBrains Mono, monospace', textAlign: 'right' }}>{stats.streetCount}</span>
+            <span className="font-mono-cad" style={{ color: '#ffa657', textAlign: 'right' }}>{stats.streetCount}</span>
             <span style={{ color: 'var(--cad-text-muted)', fontSize: '0.65rem' }}>{formatMetricArea(stats.streetAreaM2)}</span>
           </>
         )}
@@ -219,13 +219,13 @@ export default function StatsPanel() {
               <div style={{ width: `${pctMzn}%`, background: '#58a6ff' }} title={`Manzanos: ${pctMzn.toFixed(1)}%`} />
             )}
             {pctVia > 0 && (
-              <div style={{ width: `${Math.min(pctVia, 100)}%`, background: '#ffa657' }} title={`V�a: ${pctVia.toFixed(1)}%`} />
+              <div style={{ width: `${Math.min(pctVia, 100)}%`, background: '#ffa657' }} title={`Vía: ${pctVia.toFixed(1)}%`} />
             )}
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 2, fontSize: '0.6rem', color: 'var(--cad-text-muted)' }}>
             <span>Lotes {pctLots.toFixed(0)}%</span>
             <span>Mzn {pctMzn.toFixed(0)}%</span>
-            <span>V�a {pctVia.toFixed(0)}%</span>
+            <span>Vía {pctVia.toFixed(0)}%</span>
           </div>
         </div>
       )}
@@ -249,11 +249,11 @@ export default function StatsPanel() {
                 flexShrink: 0,
               }} />
               <span style={{ color: 'var(--cad-text-dim)' }}>Mzo. {m.code || m.index + 1}</span>
-              <span style={{ color: 'var(--cad-text-muted)', marginLeft: 'auto', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.62rem' }}>
+              <span className="font-mono-cad" style={{ color: 'var(--cad-text-muted)', marginLeft: 'auto', fontSize: '0.62rem' }}>
                 {formatMetricArea(m.areaM2)}
               </span>
               <span style={{ color: 'var(--cad-text-muted)', fontSize: '0.58rem' }}>
-                {m.vertexCount} v�rt.
+                {m.vertexCount} vért.
               </span>
             </div>
           ))}

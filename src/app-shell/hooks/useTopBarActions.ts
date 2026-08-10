@@ -43,8 +43,24 @@ export function useTopBarActions() {
     toast('Proyecto nuevo creado.', { variant: 'success' });
   };
 
-  const handleExit = () => {
-    toast('GeoUrban se ejecuta en el navegador. Para salir, cerrá la pestaña o la ventana.', {
+  const handleExit = async () => {
+    const isNative =
+      typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+    if (isNative) {
+      try {
+        const { exit } = await import('@tauri-apps/plugin-process');
+        await exit(0);
+        return;
+      } catch (err) {
+        console.error('handleExit: no se pudo cerrar la app nativa', err);
+        toast('No se pudo cerrar la app. Cerrá la ventana manualmente.', {
+          variant: 'warning',
+          durationMs: 6000,
+        });
+        return;
+      }
+    }
+    toast('GeoUrban no está corriendo en una app nativa — cerrá la ventana manualmente.', {
       variant: 'info',
       durationMs: 6000,
     });

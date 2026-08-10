@@ -53,7 +53,7 @@ export default function ManzanoPanel() {
 
       {rows.length === 0 ? (
         <p style={{ fontSize: '0.68rem', color: 'var(--cad-text-muted)' }}>
-          Todav�a no hay manzanos. Traz� v�as que crucen la parcela para generarlos.
+          Todavía no hay manzanos. Trazá vías que crucen la parcela para generarlos.
         </p>
       ) : (
         <>
@@ -74,7 +74,7 @@ export default function ManzanoPanel() {
           {rows.length > visibleCount && <div ref={sentinelRef} style={{ height: 1 }} />}
 
           <div style={{ marginTop: 6, paddingTop: 6, borderTop: '1px solid var(--cad-border)', fontSize: '0.63rem', color: 'var(--cad-text-muted)' }}>
-            Manzanos: {formatMetricArea(totalMznArea)} � {totalLotes} lotes en total
+            Manzanos: {formatMetricArea(totalMznArea)} · {totalLotes} lotes en total
           </div>
         </>
       )}

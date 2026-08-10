@@ -9,13 +9,13 @@ import { useLabelConfigModalStore } from '@label-engine/store/labelConfigModalSt
 import { defaultLabelStyleConfig, defaultColorForKind } from '@label-engine/model/labelModel';
 
 const SIDES_OPTIONS: Array<{ value: number; label: string }> = [
-  { value: 0, label: 'CÌrculo' },
-  { value: 3, label: 'Tri·ngulo' },
+  { value: 0, label: 'C√≠rculo' },
+  { value: 3, label: 'Tri√°ngulo' },
   { value: 4, label: 'Cuadrado' },
-  { value: 5, label: 'Pent·gono' },
-  { value: 6, label: 'Hex·gono' },
-  { value: 7, label: 'Hept·gono' },
-  { value: 8, label: 'OctÛgono' },
+  { value: 5, label: 'Pent√°gono' },
+  { value: 6, label: 'Hex√°gono' },
+  { value: 7, label: 'Hept√°gono' },
+  { value: 8, label: 'Oct√°gono' },
 ];
 
 export default function RoundaboutPanel() {
@@ -42,7 +42,7 @@ export default function RoundaboutPanel() {
     <div style={{ height: '100%', overflowY: 'auto', fontSize: '0.72rem' }}>
       <div style={{ background: 'var(--cad-bg-surface)', borderRadius: 6, padding: 8, marginBottom: 8 }}>
         <div style={{ fontSize: '0.62rem', color: 'var(--cad-accent)', fontWeight: 700, marginBottom: 6, letterSpacing: '0.05em' }}>
-          ? PAR¡METROS DE DISE—O
+          ‚óÜ PAR√ÅMETROS DE DISE√ëO
         </div>
 
         <label style={{ display: 'block', fontSize: '0.65rem', color: 'var(--cad-text-dim)' }}>Radio al eje (m)</label>
@@ -72,12 +72,12 @@ export default function RoundaboutPanel() {
           className="cad-icon-btn"
           style={{ width: '100%', marginTop: 8, height: 28, borderColor: mode === 'roundabout' ? 'var(--cad-accent)' : undefined, color: mode === 'roundabout' ? 'var(--cad-accent)' : undefined }}
         >
-          {mode === 'roundabout' ? '? Clic para centro y radioÖ' : '? Trazar rotonda'}
+          {mode === 'roundabout' ? '‚äô Clic para centro y radio' : '‚äô Trazar rotonda'}
         </button>
       </div>
 
       {roundabouts.length === 0 ? (
-        <p style={{ fontSize: '0.68rem', color: 'var(--cad-text-muted)' }}>TodavÌa no hay rotondas trazadas.</p>
+        <p style={{ fontSize: '0.68rem', color: 'var(--cad-text-muted)' }}>Todav√≠a no hay rotondas trazadas.</p>
       ) : (
         roundabouts.map((rb) => (
           <div

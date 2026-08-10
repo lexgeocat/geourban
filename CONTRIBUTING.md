@@ -1,14 +1,17 @@
 # CONTRIBUTING — GeoUrban
 
-> **GeoUrban** — herramienta CAD-like para urbanismo en el navegador. React + TypeScript + OpenLayers + Tauri/Rust.
+> **GeoUrban** — editor CAD/GIS de escritorio para planificación urbana. React + TypeScript + OpenLayers + Tauri v2 + Rust (GEOS).
+>
+> **App de escritorio únicamente.** Toda la geometría corre en el crate Rust (`src-tauri/crates/geourban-geo/`); el frontend la invoca vía `invoke()`. Levantar Vite solo (`npm run dev`) hace que las operaciones geométricas exploten porque `requireNativeRuntime()` (`src/kernel/native/geoWorkerClient.ts`) detecta la ausencia de `window.__TAURI_INTERNALS__` y lanza error. El flujo soportado es siempre `npm run tauri:dev`.
 
 ## Setup
 
 ```bash
 npm install
-npm run dev          # PWA en http://localhost:5173
-npm run tauri:dev    # app de escritorio (Windows/macOS/Linux)
+npm run tauri:dev    # app de escritorio (Windows/macOS/Linux) — flujo único soportado
 ```
+
+`tauri:dev` levanta Vite para el frontend (`localhost:5173`) y compila/abre la app nativa que lo embebe vía WebView.
 
 ## Arquitectura: engines verticales
 

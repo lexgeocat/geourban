@@ -1,0 +1,37 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": [
+    "src/main.tsx",
+    "src/index.css",
+    "index.html",
+    "src/app-shell/**/*.{ts,tsx}",
+    "src/map-core/**/*.{ts,tsx}"
+  ],
+  "project": ["src/**/*.{ts,tsx}"],
+  "ignore": [
+    "src/**/index.ts",
+    "src/**/*.d.ts",
+    "src/main.tsx",
+    "src/index.css",
+    "index.html",
+    "src/**/*.test.{ts,tsx}",
+    "src/**/*.spec.{ts,tsx}"
+  ],
+  "paths": {
+    "@/*": ["src/*"],
+    "@kernel/*": ["src/kernel/*"],
+    "@georef-engine/*": ["src/georef-engine/*"],
+    "@layers-engine/*": ["src/layers-engine/*"],
+    "@selection-engine/*": ["src/selection-engine/*"],
+    "@snap-engine/*": ["src/snap-engine/*"],
+    "@drawing-engine/*": ["src/drawing-engine/*"],
+    "@vias-engine/*": ["src/vias-engine/*"],
+    "@lotificacion-engine/*": ["src/lotificacion-engine/*"],
+    "@manzanos-engine/*": ["src/manzanos-engine/*"],
+    "@label-engine/*": ["src/label-engine/*"],
+    "@map-core/*": ["src/map-core/*"],
+    "@persistence-engine/*": ["src/persistence-engine/*"],
+    "@shared-ui/*": ["src/shared-ui/*"],
+    "@app-shell/*": ["src/app-shell/*"]
+  }
+}

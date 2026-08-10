@@ -1,4 +1,5 @@
 import type { Pt } from '@kernel/geometry/polygonEngine';
+import { traceRing } from '@map-core/scene/canvasPathUtils';
 
 export class SubdivisionPreviewPainter {
   private currentSubdivisionPreview: Pt[][] | null = null;
@@ -8,31 +9,17 @@ export class SubdivisionPreviewPainter {
   }
 
   paint(ctx: CanvasRenderingContext2D, toPx: (c: number[]) => [number, number]): void {
-    this.paintSubdivisionPreview(ctx, toPx);
-  }
-
-  private paintSubdivisionPreview(
-    ctx: CanvasRenderingContext2D,
-    toPx: (c: number[]) => [number, number]
-  ): void {
     const rings = this.currentSubdivisionPreview;
     if (!rings || rings.length === 0) return;
     ctx.save();
     ctx.setLineDash([6, 4]);
+    ctx.fillStyle = 'rgba(16, 185, 129, 0.12)';
+    ctx.strokeStyle = 'rgba(16, 185, 129, 0.85)';
+    ctx.lineWidth = 1.5;
     for (const ring of rings) {
       if (ring.length < 3) continue;
-      ctx.beginPath();
-      const first = toPx(ring[0]);
-      ctx.moveTo(first[0], first[1]);
-      for (let i = 1; i < ring.length; i++) {
-        const p = toPx(ring[i]);
-        ctx.lineTo(p[0], p[1]);
-      }
-      ctx.closePath();
-      ctx.fillStyle = 'rgba(16, 185, 129, 0.12)';
+      traceRing(ctx, ring, toPx, true);
       ctx.fill();
-      ctx.strokeStyle = 'rgba(16, 185, 129, 0.85)';
-      ctx.lineWidth = 1.5;
       ctx.stroke();
     }
     ctx.setLineDash([]);

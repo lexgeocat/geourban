@@ -21,7 +21,7 @@ import { confirmAsync } from '@shared-ui/store/confirmDialogStore';
 import { toast } from '@shared-ui/store/toastStore';
 import { newId } from '@kernel/id/id';
 
-/* ----------- Icons (decorativos � aria-hidden en su punto de uso) ----------- */
+/* ----------- Icons (decorativos · aria-hidden en su punto de uso) ----------- */
 
 const IconLayers = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 14, height: 14 }} aria-hidden="true">
@@ -108,8 +108,8 @@ function geometryIconForKind(kind: LayerKind) {
 }
 
 function geometryLabelForKind(kind: LayerKind): string {
-  if (kind === 'calle' || kind === 'linea' || kind === 'rotonda') return 'l�nea';
-  return 'pol�gono';
+  if (kind === 'calle' || kind === 'linea' || kind === 'rotonda') return 'línea';
+  return 'polígono';
 }
 
 const IconIsolate = () => (
@@ -137,7 +137,7 @@ const IconMoveToLayer = () => (
   </svg>
 );
 
-/** Icono de etiquetas (nombre/n�mero de la entidad). */
+/** Icono de etiquetas (nombre/número de la entidad). */
 const IconLabelTag = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" style={{ width: 12, height: 12 }} aria-hidden="true">
     <path d="M12 2H4a2 2 0 0 0-2 2v6l10 10a2 2 0 0 0 2.83 0l6.17-6.17a2 2 0 0 0 0-2.83L12 2Z" />
@@ -145,7 +145,7 @@ const IconLabelTag = () => (
   </svg>
 );
 
-/** Icono de acotaciones (cotas de segmentos/�rea). */
+/** Icono de acotaciones (cotas de segmentos/área). */
 const IconRuler = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" style={{ width: 12, height: 12 }} aria-hidden="true">
     <rect x="3" y="8" width="18" height="8" rx="1.5" />
@@ -165,7 +165,7 @@ function ColorDot({ color, onChange, title, warn }: { color: string; onChange: (
     if (!draggingRef.current) setLocalColor(color);
   }, [color]);
 
-  const label = `${title ?? 'Color de capa'}: ${localColor}${warn ? ' � atenci�n: similar al de otra capa' : ''}`;
+  const label = `${title ?? 'Color de capa'}: ${localColor}${warn ? ' ⚠ atención: similar al de otra capa' : ''}`;
 
   const scheduleCommit = (c: string) => {
     if (commitTimer.current) clearTimeout(commitTimer.current);
@@ -254,7 +254,7 @@ function OpacitySlider({ value, onChange, layerName, full }: { value: number; on
   );
 }
 
-/* ----------- Fila gen�rica de capa ----------- */
+/* ----------- Fila genérica de capa ----------- */
 
 interface LayerRowData {
   id: string;
@@ -323,7 +323,7 @@ function LayerRow({
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '4px 6px', borderRadius: 4, flexWrap: 'wrap' }}>
       {data.reorderable && (
-        <div style={{ display: 'flex', flexDirection: 'column' }} title="Us� las flechas para reordenar la capa">
+        <div style={{ display: 'flex', flexDirection: 'column' }} title="Usá las flechas para reordenar la capa">
           <button
             type="button"
             className="cad-a11y-btn"
@@ -359,7 +359,7 @@ function LayerRow({
         <IconEye visible={data.visible} />
       </button>
 
-      <span title={`Geometr�a: ${geometryLabelForKind(data.kind)}`} aria-hidden="true" style={{ display: 'flex', color: 'var(--cad-text-muted)', flexShrink: 0 }}>
+      <span title={`Geometría: ${geometryLabelForKind(data.kind)}`} aria-hidden="true" style={{ display: 'flex', color: 'var(--cad-text-muted)', flexShrink: 0 }}>
         {geometryIconForKind(data.kind)}
       </span>
 
@@ -454,8 +454,8 @@ function LayerRow({
           type="button"
           className="cad-a11y-btn"
           onClick={(e) => { e.stopPropagation(); data.onMoveSelectionHere?.(); }}
-          aria-label={`Mover la selecci�n actual a la capa ${data.name}`}
-          title="Mover la selecci�n actual a esta capa"
+          aria-label={`Mover la selección actual a la capa ${data.name}`}
+          title="Mover la selección actual a esta capa"
           style={{ color: 'var(--cad-accent-green)' }}
         >
           <IconMoveToLayer />
@@ -495,7 +495,7 @@ function LayerRow({
 
             {data.isDataLayer && data.onZoomToExtent && (data.featureCount ?? 0) > 0 && (
               <button type="button" className="cad-a11y-btn" onClick={() => data.onZoomToExtent?.()} style={gearActionStyle}>
-                <IconZoomTo /> Zoom a extensi�n
+                <IconZoomTo /> Zoom a extensión
               </button>
             )}
             {data.isDataLayer && data.onDuplicate && (
@@ -557,8 +557,8 @@ function useRegistryRows(
     const newName = `${layer.name} (copia)`;
     void (async () => {
       const duplicateFeatures = await confirmAsync(
-        `�Duplicar tambi�n los elementos de "${layer.name}" a la capa nueva?\n\nAceptar = copiar elementos � Cancelar = capa vac�a`,
-        { title: 'Duplicar capa', confirmLabel: 'Copiar elementos', cancelLabel: 'Capa vac�a' },
+        `¿Duplicar también los elementos de "${layer.name}" a la capa nueva?\n\nAceptar = copiar elementos · Cancelar = capa vacía`,
+        { title: 'Duplicar capa', confirmLabel: 'Copiar elementos', cancelLabel: 'Capa vacía' },
       );
       const newLayerId = newId('layer-dup');
       await runCommand(new DuplicateLayerCommand({ sourceLayerId: layer.id, newLayerId, newName, duplicateFeatures }));
@@ -595,7 +595,7 @@ function useRegistryRows(
     onOpacity: (v) => void runCommand(new UpdateLayerCommand(l.id, { opacity: v }, 'Opacidad de capa')),
     onColor: (c) => void runCommand(new UpdateLayerCommand(l.id, { color: c }, 'Color de capa')),
     onToggleLabel: () => void runCommand(new UpdateLayerCommand(l.id, { showLabel: !l.showLabel }, 'Mostrar etiqueta de capa')),
-    onToggleCota: () => void runCommand(new UpdateLayerCommand(l.id, { showCota: !l.showCota }, 'Mostrar acotaci�n de capa')),
+    onToggleCota: () => void runCommand(new UpdateLayerCommand(l.id, { showCota: !l.showCota }, 'Mostrar acotación de capa')),
     onRename: (name) => void runCommand(new UpdateLayerCommand(l.id, { name }, 'Renombrar capa')),
     onToggleLock: () => void runCommand(new UpdateLayerCommand(l.id, { locked: !l.locked }, 'Bloqueo de capa')),
     onRemove: () => onRequestRemove({ id: l.id, name: l.name }),
@@ -606,7 +606,7 @@ function useRegistryRows(
   }));
 }
 
-/* ----------- Header de secci�n ----------- */
+/* ----------- Header de sección ----------- */
 
 function SectionHeader({ label, count, expanded, onToggle, panelId }: { label: string; count: number; expanded: boolean; onToggle: () => void; panelId: string }) {
   return (
@@ -790,7 +790,7 @@ export default function LayerPanel() {
               </span>
             ) : (
               <span style={{ color: 'var(--cad-text-dim)', fontStyle: 'italic', flex: 1 }}>
-                Ninguna � eleg� una en Vista ? Capa activa
+                Ninguna · elegí una en Vista ? Capa activa
               </span>
             )}
           </div>
@@ -801,7 +801,7 @@ export default function LayerPanel() {
               <div id="layerpanel-data-section" style={{ marginTop: 2 }}>
                 {registryRowsDisplay.length === 0 ? (
                   <p style={{ fontSize: '0.65rem', color: 'var(--cad-text-muted)', padding: '6px 2px', fontStyle: 'italic' }}>
-                    Todav�a no hay capas. Se crean autom�ticamente al dibujar o generar tu primera entidad � o con el bot�n "+" de arriba.
+                    Todavía no hay capas. Se crean automáticamente al dibujar o generar tu primera entidad · o con el botón "+" de arriba.
                  </p>
                 ) : (
                   registryRowsDisplay.map((row) => {

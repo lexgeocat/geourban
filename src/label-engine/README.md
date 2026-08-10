@@ -6,7 +6,7 @@ Etiquetado de entidades (manzanos, lotes, calles, rotondas): modelo de estilos, 
 
 ## API pública (`index.ts`)
 
-- Model: `labelModel`, `labelNumbering` (`toRomanNumeral`, `toCircledNumber`, `formatOrderLabel`, `LABEL_NUMBERING_MODES`).
+- Model: `labelModel`, `labelNumbering` (`toRomanNumeral`, `formatOrderLabel`, `LABEL_NUMBERING_MODES`).
 - Comandos: `ApplyEntityLabelConfigCommand`, `ApplyManzanoLabelsCommand`, `ApplyLotsLabelsCommand`, `RotateLabelCommand`.
 - Store: `useEntityLabelStore`.
 - Painter: `LabelPainter` (consumido por `map-core`).
