@@ -10,25 +10,22 @@ import { updateFeatureMetrics } from '@georef-engine/metrics';
 import type { HitTestSelect } from '../interactions/HitTestSelect';
 import type { ModeContext } from '@kernel/modes/ModeContext';
 
-/**
- * Commit de un command de edición capturado por `*start`, o fallback
- * (recapturar antes de commitear) si no hubo `*start` previo. Usado por
- * los handlers `modifyend` y `translateend` de EditMode (Fase 3.9 del plan
- * de limpieza — antes cada uno tenía este mismo bloque copy-pasteado).
- */
 function commitPendingOrFallback(
   pending: ModifyGeometryCommand | null,
   select: HitTestSelect,
   ctx: ModeContext,
   label: string,
-  warnMessage: string,
+  warnMessage: string
 ): void {
   if (pending) {
     void runCommand(pending);
     return;
   }
   console.warn(warnMessage);
-  const fallbackTargets = select.getFeatures().getArray().filter((f) => f.getId() != null) as Feature<Geometry>[];
+  const fallbackTargets = select
+    .getFeatures()
+    .getArray()
+    .filter((f) => f.getId() != null) as Feature<Geometry>[];
   if (fallbackTargets.length > 0) {
     const fallbackCmd = new ModifyGeometryCommand(fallbackTargets, label);
     fallbackCmd.captureBefore();
@@ -68,7 +65,7 @@ export function activateEdit(ctx: ModeContext, select: HitTestSelect): void {
       select,
       ctx,
       'Editar vértices',
-      'Modify: modifyend sin modifystart previo — undo no será exacto para este cambio.',
+      'Modify: modifyend sin modifystart previo — undo no será exacto para este cambio.'
     );
     pendingModify = null;
   });
@@ -79,7 +76,9 @@ export function activateEdit(ctx: ModeContext, select: HitTestSelect): void {
   let pendingTranslate: ModifyGeometryCommand | null = null;
 
   translate.on('translatestart', (event) => {
-    const feats = ((event as unknown as TranslateEvent).features.getArray() as Array<Feature<Geometry>>) ?? select.getFeatures().getArray();
+    const feats =
+      ((event as unknown as TranslateEvent).features.getArray() as Array<Feature<Geometry>>) ??
+      select.getFeatures().getArray();
     pendingTranslate = new ModifyGeometryCommand(feats, 'Mover');
     pendingTranslate.captureBefore();
   });
@@ -89,7 +88,7 @@ export function activateEdit(ctx: ModeContext, select: HitTestSelect): void {
       select,
       ctx,
       'Mover',
-      'Translate: translateend sin translatestart previo — undo no será exacto para este cambio.',
+      'Translate: translateend sin translatestart previo — undo no será exacto para este cambio.'
     );
     pendingTranslate = null;
   });

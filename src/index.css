@@ -213,12 +213,7 @@ body,
 }
 
 /* ============================================================
-   Botones de acción de modal (Fase 3 — antes: estilos inline
-   copy-pasteados con drift de padding/fontSize entre 4 modales).
-   Tamaño unificado: 7px 14px / 0.72rem. Tres variantes:
-   .cad-btn-secondary  → "Cancelar" (outline neutral)
-   .cad-btn-primary    → acción principal positiva (accent sólido)
-   .cad-btn-danger     → acción destructiva (rojo sólido)
+   Botones de acción de modal 
    ============================================================ */
 .cad-btn-secondary,
 .cad-btn-primary,
@@ -234,7 +229,9 @@ body,
   font-weight: 600;
   border-radius: 6px;
   cursor: pointer;
-  transition: opacity var(--cad-transition), transform var(--cad-transition);
+  transition:
+    opacity var(--cad-transition),
+    transform var(--cad-transition);
   outline: none;
   white-space: nowrap;
 }
@@ -282,9 +279,7 @@ body,
 }
 
 /* ============================================================
-   Fase 8 — Accesibilidad: reset + foco visible para controles
-   "icon-only" fuera de .cad-icon-btn (filas densas de paneles,
-   ej. LayerPanel) que antes eran <span onClick> sin foco de teclado.
+   "icon-only"
    ============================================================ */
 .cad-a11y-btn {
   display: inline-flex;
@@ -397,9 +392,7 @@ body,
 }
 
 /* ============================================================
-   CAD Form Controls & Panel Header (Fase 2 — consolida estilos
-   inline duplicados en ManzanoPanel/StreetPanel/RoundaboutPanel/
-   PropertyPanel)
+   CAD Form Controls & Panel Header
    ============================================================ */
 .cad-input {
   width: 100%;
@@ -496,10 +489,6 @@ body,
 
 /* ============================================================
    Cursor crosshair (AutoCAD-like) en modos de dibujo
-   ============================================================
-   Se aplican en el viewport de OL segun la clase que pongamos en
-   el contenedor del mapa desde React (data-cursor="polygon" | "line").
-   El SVG inline es una cruz + de 24x24 con hotspot centrado.
    ============================================================ */
 .ol-viewport[data-cursor='polyline'] canvas,
 .ol-viewport[data-cursor='line'] canvas {

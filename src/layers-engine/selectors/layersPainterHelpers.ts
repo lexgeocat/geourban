@@ -12,14 +12,6 @@ export function getLayerByIdCached(layers: Layer[]): Map<string, Layer> {
   return getLayerById(layers);
 }
 
-/**
- * Resuelve la capa a usar para renderizar una entidad vial (calle o
- * rotonda). Si la entidad tiene `layerId` y existe en el registro, se usa
- * esa capa; si no, se cae al `fallbackKind` (típicamente `'calle'`).
- *
- * Usado por `StreetPainter` y `RoundaboutPainter` — antes cada uno tenía
- * su propia copia local (Fase 3.10 del plan de limpieza).
- */
 export function resolveEntityLayer(
   entity: { layerId?: string },
   fallbackKind: LayerKind,

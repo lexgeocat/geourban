@@ -97,7 +97,6 @@ export const LABEL_FONT_OPTIONS: LabelFontOption[] = [
     group: 'Técnicas / Ingeniería',
   },
   { value: 'Tahoma, Geneva, sans-serif', label: 'Tahoma', group: 'Técnicas / Ingeniería' },
-  // Sans profesionales — legibilidad general en mapas
   { value: 'Arial, Helvetica, sans-serif', label: 'Arial', group: 'Sans profesionales' },
   { value: 'Calibri, Candara, sans-serif', label: 'Calibri', group: 'Sans profesionales' },
   { value: 'Verdana, Geneva, sans-serif', label: 'Verdana', group: 'Sans profesionales' },
@@ -188,15 +187,6 @@ export function composeLabelLines(cfg: LabelStyleConfig, metrics: LabelLineMetri
   return lines;
 }
 
-/**
- * Resuelve la configuración efectiva a aplicar a una feature para un
- * `numbering` dado. Hoy el único efecto secundario del modo de numeración
- * sobre `LabelStyleConfig` es `titleBadge`: los modos `circled` y
- * `circled-alpha` dibujan los números dentro de una insignia circular.
- *
- * Usado por `AssignLabelOrderCommand` y `AssignLotsLabelConfigCommand` (Fase 3.7
- * del plan de limpieza) — antes cada uno tenía esta misma lógica inline.
- */
 export function resolveEffectiveLabelConfig(
   config: LabelStyleConfig,
   numbering: LabelNumberingMode

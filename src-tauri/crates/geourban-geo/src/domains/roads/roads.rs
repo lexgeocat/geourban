@@ -1,29 +1,3 @@
-// ─────────────────────────────────────────────────────────────────────────
-// NOTA ARQUITECTÓNICA — PARIDAD TS↔RUST (Fase 6.2 del plan)
-//
-// Esta implementación Rust autoritativa de la red vial y el suavizado
-// de esquinas reflex coexiste con la versión TS preview en:
-//
-//   src/vias-engine/geometry/roadNetworkEngine.ts     (red vial + offset)
-//   src/vias-engine/geometry/ringFillet.ts           (ochave/chaflán)
-//   src/vias-engine/geometry/streetEngine.ts          (radio por ángulo)
-//
-// NO es código duplicado — son dos implementaciones deliberadamente
-// distintas:
-//   1. **TS** — preview sincrónica para render en tiempo real.
-//   2. **Rust (este archivo)** — versión autoritativa con GEOS para
-//      cómputo final confirmado, exportación y operaciones booleanas.
-//
-// La constante `FILLET_MAX_RADIUS_M` se importa de
-// `kernel::constants`. **Debe coincidir** con la constante
-// `FILLET_MAX_RADIUS_M` en `streetEngine.ts` (TS, valor 8).
-//
-// Si cambian las reglas (algoritmo de offset, fórmula del radio de
-// ochave, manejo de ángulos reflex), hay que actualizar **AMBOS**
-// lados. Ver los comentarios de cabecera en los archivos TS
-// correspondientes para la estrategia de verificación de paridad.
-// ─────────────────────────────────────────────────────────────────────────
-
 use crate::kernel::constants::{EPSILON_NORMAL, FILLET_MAX_RADIUS_M};
 use crate::kernel::math::close_ring;
 use crate::kernel::types::{CornerMode, Pt, RoundaboutParams, Street};

@@ -108,8 +108,6 @@ export default function StatsPanel() {
 
   const stats = useMemo(
     () => computeStats(drawSource, streets, manzanoColor),
-    // tick refleja cambios internos del drawSource (no de su referencia)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [drawSource, streets, tick, manzanoColor]
   );
 

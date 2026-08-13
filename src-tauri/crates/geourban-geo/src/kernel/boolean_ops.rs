@@ -305,18 +305,6 @@ pub fn union_rings(rings: &[Vec<Pt>], context: &str) -> Vec<Vec<Vec<Pt>>> {
     }
 }
 
-/// Une dos anillos abiertos en un único anillo abierto.
-///
-/// Devuelve `Some(Vec<Pt>)` si la unión resulta en exactamente un polígono
-/// de un solo anillo (después de remover el punto de cierre duplicado).
-/// Devuelve `None` si el resultado no satisface ese invariante.
-///
-/// Esta función NO aplica sanitización ni fallback — el caller decide qué
-/// hacer en caso de `None` (ej. caer a `convex_hull_merge` o propagar el
-/// fallo). Antes este patrón vivía en `subdivision::union_two_lot_rings`
-/// y `cabecera_cuerpo::hb_merge_polys` con pequeñas diferencias; ahora
-/// ambos usan la misma primitiva y difieren solo en su fallback (Fase 4.3
-/// del plan de limpieza).
 pub fn union_two_rings_open(a: &[Pt], b: &[Pt], context: &str) -> Option<Vec<Pt>> {
     let merged = union_rings(&[a.to_vec(), b.to_vec()], context);
     if merged.len() != 1 || merged[0].len() != 1 {

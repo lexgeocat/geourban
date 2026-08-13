@@ -1,26 +1,3 @@
-// ─────────────────────────────────────────────────────────────────────────
-// NOTA ARQUITECTÓNICA — PARIDAD TS↔RUST (Fase 6.2 del plan)
-//
-// Esta implementación Rust autoritativa de la geometría de rotonda
-// coexiste con la versión TS preview en:
-//
-//   src/vias-engine/geometry/roundaboutEngine.ts
-//
-// NO es código duplicado — son dos implementaciones deliberadamente
-// distintas:
-//   1. **TS** — preview sincrónica para render en tiempo real
-//      (mientras el usuario dibuja, no puede esperar un roundtrip a
-//      Rust sin lag perceptible).
-//   2. **Rust (este archivo)** — versión autoritativa con GEOS. Se usa
-//      para cómputo final confirmado y exportación.
-//
-// Si cambian las reglas de geometría (radio de ochave, número de
-// lados, etc.), hay que actualizar **AMBOS** lados. Ver el comentario
-// de cabecera en `roundaboutEngine.ts` para la estrategia de
-// verificación de paridad sugerida (snapshot tests, roundtrip
-// export→reimport).
-// ─────────────────────────────────────────────────────────────────────────
-
 use crate::kernel::math::resolution_aware_segments;
 use crate::kernel::types::{Pt, RoundaboutGeometry, RoundaboutParams};
 

@@ -1,34 +1,4 @@
-﻿// ─────────────────────────────────────────────────────────────────────────
-// NOTA ARQUITECTÓNICA — PARIDAD TS↔RUST (Fase 6.2 del plan)
-//
-// Esta implementación TypeScript del suavizado de esquinas reflex
-// (ochave/chaflán) coexiste con la implementación autoritativa en Rust:
-//
-//   src-tauri/crates/geourban-geo/src/domains/roads/roads.rs::round_ring_reflex
-//
-// NO es código duplicado por descuido — son dos implementaciones
-// deliberadamente distintas:
-//
-//   1. **TS (este archivo)** — implementación aproximada, sincrónica,
-//      rápida. Se usa para:
-//        - Pintar la geometría vial suavizada durante el render.
-//        - Recalcular cuando el usuario edita vértices.
-//
-//   2. **Rust (`roads.rs::round_ring_reflex`)** — implementación
-//      autoritativa con GEOS. Se usa para el cómputo final.
-//
-// Reglas a mantener sincronizadas manualmente:
-//   - Fórmula del radio de ochave en función del ángulo
-//     (`getFilletRadiusForAngle`).
-//   - Detección de ángulos reflex vs convex.
-//   - Modo de ochave vs chaflán (`CornerMode`).
-//
-// Si cambia la fórmula del radio de ochave, hay que actualizar
-// `streetEngine.ts::getFilletRadiusForAngle` (TS) Y
-// `domains/roads/roads.rs::get_fillet_radius_for_angle` (Rust).
-// ─────────────────────────────────────────────────────────────────────────
-
-import type { Pt } from '@kernel/geometry/polygonEngine';
+﻿import type { Pt } from '@kernel/geometry/polygonEngine';
 import { polySignedArea, closeRing } from '@kernel/geometry/polygonEngine';
 import { distToSegment } from '@kernel/geometry/dist';
 import { getFilletRadiusForAngle } from './streetEngine';

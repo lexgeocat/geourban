@@ -2,7 +2,7 @@
 name = "geourban-geo"
 version = "0.1.0"
 edition = "2021"
-description = "Motor de geometria nativo para GeoUrban — Fase 2 de auditoria-para-mejora.md"
+description = "Motor de geometria nativo para GeoUrban"
 license = "MIT"
 publish = false
 

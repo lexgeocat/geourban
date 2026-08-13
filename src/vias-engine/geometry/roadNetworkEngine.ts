@@ -1,39 +1,4 @@
-﻿// ─────────────────────────────────────────────────────────────────────────
-// NOTA ARQUITECTÓNICA — PARIDAD TS↔RUST (Fase 6.2 del plan)
-//
-// Esta implementación TypeScript del offset de polilínea vial coexiste
-// con la implementación autoritativa en Rust en:
-//
-//   src-tauri/crates/geourban-geo/src/domains/roads/roads.rs
-//
-// NO es código duplicado por descuido — son dos implementaciones
-// deliberadamente distintas:
-//
-//   1. **TS (este archivo)** — implementación aproximada, sincrónica,
-//      rápida. Se usa para:
-//        - Pintar el eje vial con offset durante el render
-//          (`StreetPainter`, `RoundaboutPainter`).
-//        - Recalcular la geometría vial cuando se mueve/edita una calle
-//          en tiempo real.
-//
-//   2. **Rust (`roads.rs`)** — implementación autoritativa con GEOS.
-//      Se usa para:
-//        - Cómputo final cuando se confirma el trazado.
-//        - Recálculo del manzanado (cuando cambia la red vial, se
-//          dispara `recomputeManzanos()` que llama a Rust).
-//        - Export a archivos.
-//
-// Reglas a mantener sincronizadas manualmente entre ambos lados:
-//   - Algoritmo de offset de polilínea (radio de ochave, manejo de
-//     ángulos reflex).
-//   - Cálculo de cruces entre tramos.
-//
-// Si solo cambia la lógica de offset o de ochave, hay que actualizar
-// **AMBOS** lados. Ver el comentario de cabecera en `roundaboutEngine.ts`
-// para la estrategia de verificación de paridad sugerida.
-// ─────────────────────────────────────────────────────────────────────────
-
-import type { Pt } from '@kernel/geometry/polygonEngine';
+﻿import type { Pt } from '@kernel/geometry/polygonEngine';
 import type { Street } from '../store/streetStore';
 import { roundaboutGeometry, type RoundaboutParams } from './roundaboutEngine';
 import { normalize } from './vectorMath';
