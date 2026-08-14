@@ -17,10 +17,12 @@ interface EntityTarget {
 }
 interface BatchTarget {
   kind: 'batch-manzanos';
+  layerId?: string;
 }
 interface BatchLotsTarget {
   kind: 'batch-lots';
   manzanoId?: string | number;
+  layerId?: string;
 }
 
 export type LabelConfigTarget = FeatureTarget | EntityTarget | BatchTarget | BatchLotsTarget;
@@ -53,8 +55,8 @@ interface LabelConfigModalState {
     initial: LabelStyleConfig,
     initialText?: string
   ) => void;
-  openForManzanoBatch: (initial: LabelStyleConfig) => void;
-  openForLotsBatch: (manzanoId: string | number | undefined, initial: LabelStyleConfig) => void;
+  openForManzanoBatch: (initial: LabelStyleConfig, layerId?: string) => void;
+  openForLotsBatch: (manzanoId: string | number | undefined, initial: LabelStyleConfig, layerId?: string) => void;
   setNumberingMode: (m: LabelNumberingMode) => void;
   setLastManzanoConfig: (cfg: LabelStyleConfig) => void;
   setLastLotsConfig: (cfg: LabelStyleConfig) => void;
@@ -86,17 +88,17 @@ export const useLabelConfigModalStore = create<LabelConfigModalState>()((set) =>
       initialConfig: initial,
       initialText,
     }),
-  openForManzanoBatch: (initial) =>
+  openForManzanoBatch: (initial, layerId) =>
     set({
       open: true,
-      target: { kind: 'batch-manzanos' },
+      target: { kind: 'batch-manzanos', layerId },
       initialConfig: initial,
       initialText: '',
     }),
-  openForLotsBatch: (manzanoId, initial) =>
+  openForLotsBatch: (manzanoId, initial, layerId) =>
     set({
       open: true,
-      target: { kind: 'batch-lots', manzanoId },
+      target: { kind: 'batch-lots', manzanoId, layerId },
       initialConfig: initial,
       initialText: '',
     }),

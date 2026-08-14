@@ -6,7 +6,13 @@ import type { LabelStyleConfig } from '../model/labelModel';
 import { resolveEffectiveLabelConfig } from '../model/labelModel';
 import { formatOrderLabel } from '../model/labelNumbering';
 import type { LabelNumberingMode } from '../store/labelConfigModalStore';
-import { restoreLabelFields, type LabelFieldsSnapshot } from './labelCommandUtils';
+import {
+  ensureLayerLabelsVisible,
+  restoreLabelFields,
+  restoreLayerVisibility,
+  type LabelFieldsSnapshot,
+  type LayerVisibilitySnapshot,
+} from './labelCommandUtils';
 
 export interface AssignLotsLabelConfigOptions {
   manzanoId?: string | number;
@@ -26,6 +32,7 @@ export class AssignLotsLabelConfigCommand extends Command {
   private readonly config: LabelStyleConfig;
   private readonly opts: AssignLotsLabelConfigOptions;
   private before = new Map<string | number, LabelFieldsSnapshot>();
+  private layerSnapshots = new Map<string, LayerVisibilitySnapshot>();
 
   constructor(config: LabelStyleConfig, opts: AssignLotsLabelConfigOptions) {
     super();
@@ -51,6 +58,7 @@ export class AssignLotsLabelConfigCommand extends Command {
 
   execute(ctx: CommandContext): void {
     this.before.clear();
+    this.layerSnapshots.clear();
     const effectiveConfig = resolveEffectiveLabelConfig(this.config, this.opts.numbering);
 
     for (const [groupId, feats] of this.targetGroups(ctx)) {
@@ -64,6 +72,10 @@ export class AssignLotsLabelConfigCommand extends Command {
         const text = formatOrderLabel(this.opts.numbering, i, sorted.length, parentCode);
         f.set('labelConfig', effectiveConfig, true);
         f.set('labelText', text, true);
+        const layerId = f.get('layerId') as string | undefined;
+        if (layerId && !this.layerSnapshots.has(layerId)) {
+          this.layerSnapshots.set(layerId, ensureLayerLabelsVisible(layerId));
+        }
       });
     }
     ctx.drawSource.changed();
@@ -74,6 +86,9 @@ export class AssignLotsLabelConfigCommand extends Command {
       const f = ctx.drawSource.getFeatureById(id) as Feature<Geometry> | null;
       if (!f) continue;
       restoreLabelFields(f, prev);
+    }
+    for (const [layerId, snap] of this.layerSnapshots) {
+      restoreLayerVisibility(layerId, snap);
     }
     ctx.drawSource.changed();
   }

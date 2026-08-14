@@ -5,7 +5,13 @@ import type { LabelStyleConfig } from '../model/labelModel';
 import { resolveEffectiveLabelConfig } from '../model/labelModel';
 import { formatOrderLabel } from '../model/labelNumbering';
 import type { LabelNumberingMode } from '../store/labelConfigModalStore';
-import { restoreLabelFields, type LabelFieldsSnapshot } from './labelCommandUtils';
+import {
+  ensureLayerLabelsVisible,
+  restoreLabelFields,
+  restoreLayerVisibility,
+  type LabelFieldsSnapshot,
+  type LayerVisibilitySnapshot,
+} from './labelCommandUtils';
 
 export interface AssignLabelOrderOptions {
   orderedIds: Array<string | number>;
@@ -20,6 +26,7 @@ export class AssignLabelOrderCommand extends Command {
   private readonly config: LabelStyleConfig;
   private readonly numbering: LabelNumberingMode;
   private before = new Map<string | number, LabelFieldsSnapshot>();
+  private layerSnapshots = new Map<string, LayerVisibilitySnapshot>();
 
   constructor(opts: AssignLabelOrderOptions) {
     super();
@@ -37,6 +44,7 @@ export class AssignLabelOrderCommand extends Command {
 
   execute(ctx: CommandContext): void {
     this.before.clear();
+    this.layerSnapshots.clear();
     const total = this.orderedIds.length;
     const effectiveConfig = resolveEffectiveLabelConfig(this.config, this.numbering);
     this.orderedIds.forEach((id, i) => {
@@ -47,6 +55,10 @@ export class AssignLabelOrderCommand extends Command {
       const suffix = formatOrderLabel(this.numbering, i, total, parentCode);
       f.set('labelConfig', effectiveConfig, true);
       f.set('labelText', suffix, true);
+      const layerId = f.get('layerId') as string | undefined;
+      if (layerId && !this.layerSnapshots.has(layerId)) {
+        this.layerSnapshots.set(layerId, ensureLayerLabelsVisible(layerId));
+      }
     });
     ctx.drawSource.changed();
   }
@@ -56,6 +68,9 @@ export class AssignLabelOrderCommand extends Command {
       const f = ctx.drawSource.getFeatureById(id) as Feature<Geometry> | null;
       if (!f) continue;
       restoreLabelFields(f, prev);
+    }
+    for (const [layerId, snap] of this.layerSnapshots) {
+      restoreLayerVisibility(layerId, snap);
     }
     ctx.drawSource.changed();
   }

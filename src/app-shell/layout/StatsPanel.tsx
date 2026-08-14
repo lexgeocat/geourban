@@ -12,6 +12,7 @@ import Polygon from 'ol/geom/Polygon.js';
 import type VectorSource from 'ol/source/Vector.js';
 import { getFeatureKind, getLotStatus } from '@kernel/domain-model/featureModel';
 import { useLayersStore } from '@layers-engine/store/layersRegistryStore';
+import { useLabelEngineTelemetryStore } from '@label-engine/store/labelEngineTelemetryStore';
 import type { Street } from '@vias-engine/store/streetStore';
 
 interface ManzanoInfo {
@@ -105,6 +106,10 @@ export default function StatsPanel() {
   });
 
   const tick = useDrawSourceTick(drawSource);
+  const labelTelemetry = useLabelEngineTelemetryStore((s) => ({
+    hiddenCount: s.hiddenCount,
+    droppedByReason: s.droppedByReason,
+  }));
 
   const stats = useMemo(
     () => computeStats(drawSource, streets, manzanoColor),
@@ -199,6 +204,28 @@ export default function StatsPanel() {
           </>
         )}
       </div>
+
+      {labelTelemetry.hiddenCount > 0 && (
+        <div
+          title={`Por colisión: ${labelTelemetry.droppedByReason.collision} · por zoom: ${labelTelemetry.droppedByReason.zoom} · sin ancla: ${labelTelemetry.droppedByReason.noAnchor}`}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 6,
+            marginBottom: 8,
+            padding: '4px 8px',
+            background: 'rgba(247, 129, 102, 0.12)',
+            border: '1px solid rgba(247, 129, 102, 0.35)',
+            borderRadius: 4,
+            color: 'var(--cad-accent-amber, #f78166)',
+            fontSize: '0.66rem',
+          }}
+        >
+          <span>🏷 Etiquetas ocultas por colisión</span>
+          <span className="font-mono-cad" style={{ fontWeight: 700 }}>{labelTelemetry.hiddenCount}</span>
+        </div>
+      )}
 
       {/* Barra apilada (stacked bar) */}
       {stats.totalAreaM2 > 0 && (

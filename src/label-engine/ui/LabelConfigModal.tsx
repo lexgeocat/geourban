@@ -23,6 +23,7 @@ import { ApplyLabelConfigCommand } from '../commands/ApplyLabelConfigCommand';
 import { ApplyEntityLabelConfigCommand } from '../commands/ApplyEntityLabelConfigCommand';
 import { AssignLotsLabelConfigCommand } from '../commands/AssignLotsLabelConfigCommand';
 import { RestyleBatchLabelsCommand } from '../commands/RestyleBatchLabelsCommand';
+import { UpsertLabelClassCommand } from '../commands/UpsertLabelClassCommand';
 import { useDrawStore } from '@map-core/store/drawStore';
 import { useMapStore } from '@map-core/store/mapStore';
 import { useStreetStore } from '@vias-engine/store/streetStore';
@@ -251,9 +252,35 @@ export default function LabelConfigModal() {
     }
     if (target.kind === 'batch-lots') {
       void runCommand(new AssignLotsLabelConfigCommand(cfg, { manzanoId: target.manzanoId, numbering: numberingMode }));
+      if (target.layerId) {
+        void runCommand(
+          new UpsertLabelClassCommand({
+            layerId: target.layerId,
+            style: cfg,
+            numbering: { mode: numberingMode, restartPerParent: true },
+            enabled: cfg.enabled,
+            visibleMinZoom: cfg.visibleMinZoom,
+            visibleMaxZoom: cfg.visibleMaxZoom,
+            priority: cfg.priority,
+          })
+        );
+      }
       setLastLotsConfig(cfg);
       close();
       return;
+    }
+    if (target.layerId) {
+      void runCommand(
+        new UpsertLabelClassCommand({
+          layerId: target.layerId,
+          style: cfg,
+          numbering: { mode: numberingMode, restartPerParent: false },
+          enabled: cfg.enabled,
+          visibleMinZoom: cfg.visibleMinZoom,
+          visibleMaxZoom: cfg.visibleMaxZoom,
+          priority: cfg.priority,
+        })
+      );
     }
     setLastManzanoConfig(cfg);
     close();
@@ -263,7 +290,13 @@ export default function LabelConfigModal() {
   if (target.kind !== 'batch-manzanos' && target.kind !== 'batch-lots') return;
   const kind = target.kind === 'batch-manzanos' ? 'manzana' : 'lote';
   const manzanoId = target.kind === 'batch-lots' ? target.manzanoId : undefined;
-  const cmd = new RestyleBatchLabelsCommand({ kind, manzanoId, config: cfg });
+  const layerId = target.layerId;
+  const styleWithZoom: LabelStyleConfig = {
+    ...cfg,
+    visibleMinZoom: cfg.visibleMinZoom,
+    visibleMaxZoom: cfg.visibleMaxZoom,
+  };
+  const cmd = new RestyleBatchLabelsCommand({ kind, manzanoId, config: styleWithZoom, layerId });
   void runCommand(cmd).then((result) => {
     if (!result.ok) return;
     if (cmd.affectedCount === 0) {
@@ -364,6 +397,21 @@ export default function LabelConfigModal() {
           </Field>
         )}
 
+        {(isBatch || isBatchLots) && (
+          <Field label="Prioridad (mayor gana en colisión)">
+            <input
+              type="number"
+              step={1}
+              value={cfg.priority ?? 0}
+              onChange={(e) => {
+                const n = parseInt(e.target.value, 10);
+                if (Number.isFinite(n)) patch({ priority: n });
+              }}
+              className="cad-input"
+            />
+          </Field>
+        )}
+
         <div style={{ display: 'flex', gap: 8 }}>
           {(!isEntity || (target.kind === 'entity' && target.entityType === 'roundabout')) && (
           <Field label="Unidad" style={{ flex: 1 }}>
@@ -387,8 +435,8 @@ export default function LabelConfigModal() {
         <ToggleRow label="Negrita" checked={cfg.bold !== false} onChange={(v) => patch({ bold: v })} />
 
         <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
-          <ToggleRow label={entityCopy?.metricLabel ?? 'Área'} checked={cfg.showArea} onChange={(v) => patch({ showArea: v })} />
-          <ToggleRow label={entityCopy?.secondaryLabel ?? 'Perímetro'} checked={cfg.showPerimeter} onChange={(v) => patch({ showPerimeter: v })} />
+          <ToggleRow label={entityCopy?.metricLabel ?? 'Área'} checked={cfg.showPrimaryMetric ?? cfg.showArea ?? false} onChange={(v) => patch({ showPrimaryMetric: v, showArea: v })} />
+          <ToggleRow label={entityCopy?.secondaryLabel ?? 'Perímetro'} checked={cfg.showSecondaryMetric ?? cfg.showPerimeter ?? false} onChange={(v) => patch({ showSecondaryMetric: v, showPerimeter: v })} />
           {!isEntity && (
             <ToggleRow label="Cotas por lado" checked={cfg.showEdgeCotas} onChange={(v) => patch({ showEdgeCotas: v })} />
           )}
@@ -436,6 +484,49 @@ export default function LabelConfigModal() {
           </Field>
         </div>
 
+        {(isBatch || isBatchLots) && (
+          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+            <Field label="Zoom mín. (0-28)" style={{ flex: 1 }}>
+              <input
+                type="number"
+                min={0}
+                max={28}
+                step={0.5}
+                value={cfg.visibleMinZoom ?? ''}
+                placeholder="sin mín."
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  if (raw === '') patch({ visibleMinZoom: undefined });
+                  else {
+                    const n = Number(raw);
+                    if (Number.isFinite(n)) patch({ visibleMinZoom: Math.max(0, Math.min(28, n)) });
+                  }
+                }}
+                className="cad-input"
+              />
+            </Field>
+            <Field label="Zoom máx. (0-28)" style={{ flex: 1 }}>
+              <input
+                type="number"
+                min={0}
+                max={28}
+                step={0.5}
+                value={cfg.visibleMaxZoom ?? ''}
+                placeholder="sin máx."
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  if (raw === '') patch({ visibleMaxZoom: undefined });
+                  else {
+                    const n = Number(raw);
+                    if (Number.isFinite(n)) patch({ visibleMaxZoom: Math.max(0, Math.min(28, n)) });
+                  }
+                }}
+                className="cad-input"
+              />
+            </Field>
+          </div>
+        )}
+
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <Field label="Color" style={{ flexShrink: 0 }}>
             <input
@@ -445,6 +536,11 @@ export default function LabelConfigModal() {
               style={{ width: 46, height: 26, background: 'none', border: '1px solid var(--cad-border)', borderRadius: 4, cursor: 'pointer', padding: 0 }}
             />
           </Field>
+          <ToggleRow
+            label="Usar color de capa"
+            checked={cfg.useLayerColor === true}
+            onChange={(v) => patch({ useLayerColor: v })}
+          />
           <div style={{ flex: 1 }} />
           <ToggleRow label="Habilitada" checked={cfg.enabled} onChange={(v) => patch({ enabled: v })} />
         </div>

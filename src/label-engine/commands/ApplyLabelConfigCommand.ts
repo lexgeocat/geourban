@@ -2,6 +2,11 @@ import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
 import { Command, type CommandContext } from '@kernel/command/Command';
 import type { LabelStyleConfig } from '../model/labelModel';
+import {
+  ensureLayerLabelsVisible,
+  restoreLayerVisibility,
+  type LayerVisibilitySnapshot,
+} from './labelCommandUtils';
 
 export class ApplyLabelConfigCommand extends Command {
   readonly label = 'Configurar etiqueta';
@@ -10,6 +15,8 @@ export class ApplyLabelConfigCommand extends Command {
   private readonly nextLabelText: string;
   private prevConfig: LabelStyleConfig | undefined;
   private prevLabelText: string | undefined;
+  private prevLayerVisibility: LayerVisibilitySnapshot = {};
+  private prevLayerId: string | undefined;
 
   constructor(featureId: string | number, next: LabelStyleConfig, nextLabelText: string) {
     super();
@@ -23,8 +30,10 @@ export class ApplyLabelConfigCommand extends Command {
     if (!f) return;
     this.prevConfig = f.get('labelConfig') as LabelStyleConfig | undefined;
     this.prevLabelText = f.get('labelText') as string | undefined;
+    this.prevLayerId = f.get('layerId') as string | undefined;
     f.set('labelConfig', this.next, true);
     f.set('labelText', this.nextLabelText, true);
+    this.prevLayerVisibility = ensureLayerLabelsVisible(this.prevLayerId);
     ctx.drawSource.changed();
   }
 
@@ -35,6 +44,7 @@ export class ApplyLabelConfigCommand extends Command {
     else f.unset('labelConfig', true);
     if (this.prevLabelText !== undefined) f.set('labelText', this.prevLabelText, true);
     else f.unset('labelText', true);
+    restoreLayerVisibility(this.prevLayerId, this.prevLayerVisibility);
     ctx.drawSource.changed();
   }
 

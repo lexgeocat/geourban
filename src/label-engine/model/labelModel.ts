@@ -8,17 +8,74 @@ export interface LabelStyleConfig {
   prefix: string;
   showPrefix: boolean;
   unit: AreaUnit;
-  showArea: boolean;
-  showPerimeter: boolean;
+  showPrimaryMetric: boolean;
+  showSecondaryMetric: boolean;
+  showArea?: boolean;
+  showPerimeter?: boolean;
   showEdgeCotas: boolean;
   labelFontSizePx: number;
   cotaFontSizePx: number;
   color: string;
+  useLayerColor?: boolean;
   fontFamily: string;
   bold: boolean;
   cotaStyle: 'lines' | 'text';
   cotaPosition: 'external' | 'internal';
   titleBadge: 'none' | 'circle';
+  visibleMinZoom?: number;
+  visibleMaxZoom?: number;
+  priority?: number;
+  textExpression?: string;
+}
+
+export type LabelExpressionToken = 'code' | 'area' | 'perimeter' | 'name' | 'layer';
+
+export const LABEL_EXPRESSION_TOKENS: Array<{ token: LabelExpressionToken; description: string; example: string }> = [
+  { token: 'code', description: 'Código del feature (lote/manzano)', example: 'A-1' },
+  { token: 'area', description: 'Área en m²', example: '180.00 m²' },
+  { token: 'perimeter', description: 'Perímetro en m', example: '54.00 m' },
+  { token: 'name', description: 'Nombre de la entidad (calle/rotonda)', example: 'Av. Principal' },
+  { token: 'layer', description: 'Nombre de la capa', example: 'Lote' },
+];
+
+export interface LabelExpressionContext {
+  code?: string;
+  areaM2?: number;
+  perimeterM?: number;
+  name?: string;
+  layer?: string;
+}
+
+export function resolveLabelExpression(
+  expression: string | undefined,
+  fallbackText: string,
+  ctx: LabelExpressionContext,
+  areaFormatter: (v: number, unit: AreaUnit) => string
+): string {
+  if (!expression || !expression.trim()) return fallbackText;
+  return expression.replace(/\{(\w+)\}/g, (match, key: string) => {
+    switch (key) {
+      case 'code':
+        return ctx.code ?? fallbackText;
+      case 'area':
+        return ctx.areaM2 != null ? areaFormatter(ctx.areaM2, 'm2') : '';
+      case 'perimeter':
+        return ctx.perimeterM != null ? `${ctx.perimeterM.toFixed(2)} m` : '';
+      case 'name':
+        return ctx.name ?? '';
+      case 'layer':
+        return ctx.layer ?? '';
+      default:
+        return match;
+    }
+  });
+}
+
+export function normalizeLabelStyleConfig(cfg: LabelStyleConfig | undefined): LabelStyleConfig {
+  if (!cfg) return defaultLabelStyleConfig();
+  const showPrimary = cfg.showPrimaryMetric ?? cfg.showArea ?? false;
+  const showSecondary = cfg.showSecondaryMetric ?? cfg.showPerimeter ?? false;
+  return { ...cfg, showPrimaryMetric: showPrimary, showSecondaryMetric: showSecondary };
 }
 
 export interface LabelFontOption {
@@ -109,6 +166,13 @@ export const AREA_UNIT_OPTIONS: { value: AreaUnit; label: string }[] = [
   { value: 'km2', label: 'km²' },
 ];
 
+export const labelRenderCaps: Record<string, number> = {
+  lote: 10_000,
+  manzana: 3_000,
+  poligono: 20_000,
+};
+export const labelRenderCapDefault = 20_000;
+
 export function defaultColorForKind(kind: GeoUrbanFeatureKind | null): string {
   switch (kind) {
     case 'manzana':
@@ -129,13 +193,13 @@ export function defaultColorForKind(kind: GeoUrbanFeatureKind | null): string {
 }
 
 export function defaultLabelStyleConfig(overrides?: Partial<LabelStyleConfig>): LabelStyleConfig {
-  return {
+  const base: LabelStyleConfig = {
     enabled: true,
     prefix: '',
     showPrefix: true,
     unit: 'm2',
-    showArea: true,
-    showPerimeter: false,
+    showPrimaryMetric: true,
+    showSecondaryMetric: false,
     showEdgeCotas: false,
     labelFontSizePx: 11,
     cotaFontSizePx: 10,
@@ -145,11 +209,13 @@ export function defaultLabelStyleConfig(overrides?: Partial<LabelStyleConfig>): 
     cotaStyle: 'lines',
     cotaPosition: 'external',
     titleBadge: 'none',
-    ...overrides,
   };
+  if (!overrides) return base;
+  const normalized = normalizeLabelStyleConfig(overrides as LabelStyleConfig);
+  return { ...base, ...normalized };
 }
 
-function formatAreaWithUnit(areaM2: number | undefined, unit: AreaUnit): string {
+export function formatAreaWithUnit(areaM2: number | undefined, unit: AreaUnit): string {
   if (!Number.isFinite(areaM2)) return '';
   const v = areaM2 ?? 0;
   switch (unit) {
@@ -172,16 +238,18 @@ export interface LabelLineMetrics {
 
 export function composeLabelLines(cfg: LabelStyleConfig, metrics: LabelLineMetrics): string[] {
   const lines: string[] = [];
+  const showPrimary = cfg.showPrimaryMetric ?? cfg.showArea ?? false;
+  const showSecondary = cfg.showSecondaryMetric ?? cfg.showPerimeter ?? false;
   const prefixPart = cfg.showPrefix && cfg.prefix ? cfg.prefix : '';
   const title = [prefixPart, metrics.text ?? ''].filter(Boolean).join(' ').trim();
   if (title) lines.push(title);
 
-  if (cfg.showArea && metrics.primaryValue !== undefined) {
+  if (showPrimary && metrics.primaryValue !== undefined) {
     const format =
       metrics.primaryFormatter ?? ((v: number, unit: AreaUnit) => formatAreaWithUnit(v, unit));
     lines.push(format(metrics.primaryValue, cfg.unit));
   }
-  if (cfg.showPerimeter && metrics.secondaryValue !== undefined) {
+  if (showSecondary && metrics.secondaryValue !== undefined) {
     lines.push(`${metrics.secondaryLabel ?? 'Perím.'} ${metrics.secondaryValue.toFixed(2)} m`);
   }
   return lines;

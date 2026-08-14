@@ -129,10 +129,9 @@ export class PostrenderPainter {
 
   /**
    * Devuelve el conjunto cacheado de features visibles para el extent actual.
-   * Si no hay cache, devuelve el último cache (o `all` como último fallback) y
-   * dispara una query async al Rust; cuando llega, actualiza el cache y fuerza
-   * un nuevo paint. Resultado: el primer frame con un extent nuevo puede mostrar
-   * overdraw, el segundo ya está filtrado.
+   * Si no hay cache, filtra síncronamente por bbox (O(n) barato) en vez de
+   * devolver `all`, para no disparar caps innecesarios en el primer frame;
+   * cuando llega la query async al Rust, actualiza el cache y fuerza un paint.
    */
   private getVisibleFeatures(all: Array<Feature<Geometry>>): Array<Feature<Geometry>> {
     const size = this.map.getSize();
@@ -159,7 +158,17 @@ export class PostrenderPainter {
       maxY + marginY,
     );
 
-    return this.cachedVisibleFeatures ?? all;
+    if (this.cachedVisibleFeatures) return this.cachedVisibleFeatures;
+    return this.viewportFilterSync(all, extent);
+  }
+
+  private viewportFilterSync(all: Array<Feature<Geometry>>, extent: number[]): Array<Feature<Geometry>> {
+    const out: Array<Feature<Geometry>> = [];
+    for (const f of all) {
+      const geom = f.getGeometry();
+      if (geom && geom.intersectsExtent(extent)) out.push(f);
+    }
+    return out;
   }
 
   private refreshVisibleCacheAsync(

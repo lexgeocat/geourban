@@ -1,12 +1,20 @@
 import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
 import Polygon from 'ol/geom/Polygon.js';
+import type { Layer } from '@kernel/domain-model/featureModel';
 import { useLayersStore } from '@layers-engine/store/layersRegistryStore';
 import { useStreetStore, type Street } from '@vias-engine/store/streetStore';
 import { useRoundaboutStore, type Roundabout } from '@vias-engine/store/roundaboutStore';
 import { useEntityLabelStore, type EntityLabelEntry } from '../store/entityLabelStore';
 import { roundaboutRoadAreaM2 } from '@vias-engine/geometry/roundaboutEngine';
-import { composeLabelLines, type LabelStyleConfig } from '../model/labelModel';
+import {
+  composeLabelLines,
+  formatAreaWithUnit,
+  labelRenderCapDefault,
+  labelRenderCaps,
+  resolveLabelExpression,
+  type LabelStyleConfig,
+} from '../model/labelModel';
 import { measureCached } from '../util/textMeasureCache';
 import {
   formatMetricLength,
@@ -19,6 +27,19 @@ import {
   type StreetLabelSlot,
 } from '../geometry/streetLabelSlots';
 import { CAD_BG_DEEPEST_RGB } from '@kernel/theme/colors';
+import {
+  resolveEntityLayer,
+  resolveRoundaboutLayer,
+} from '@layers-engine/selectors/layersPainterHelpers';
+import { resolveFeatureLabel, resolveEntityLabelFromClass } from '../engine/resolveFeatureLabel';
+import { useLabelClassStore } from '../store/labelClassStore';
+import {
+  LabelCollisionGrid,
+  resolveVisibleLabels,
+  type LabelCandidate,
+  type PlacedLabel,
+} from '../engine/LabelEngineService';
+import { useLabelEngineTelemetryStore } from '../store/labelEngineTelemetryStore';
 
 const LABEL_BG_HEAVY = `rgba(${CAD_BG_DEEPEST_RGB}, 0.72)`;
 
@@ -30,7 +51,6 @@ interface PlacedBox {
 }
 
 const COLLISION_GRID_CELL_PX = 48;
-const HARD_VISIBLE_CAP = 20_000;
 const STREET_LABEL_MIN_ZOOM = 12;
 const STREET_LABEL_REPEAT_M = 140;
 
@@ -38,10 +58,10 @@ function labelFontWeight(cfg: LabelStyleConfig): number {
   return cfg.bold === false ? 400 : 700;
 }
 
-class LabelCollisionGrid {
+class PainterCollisionGrid {
   private cells = new Map<string, PlacedBox[]>();
   private key(cx: number, cy: number): string {
-    return cx + ',' + cy;
+    return `${cx},${cy}`;
   }
   private range(box: PlacedBox) {
     return {
@@ -90,13 +110,6 @@ class LabelCollisionGrid {
   }
 }
 
-function buildLabelLines(feature: Feature<Geometry>, cfg: LabelStyleConfig): string[] {
-  return composeLabelLines(cfg, {
-    text: (feature.get('labelText') as string | undefined) ?? '',
-    primaryValue: feature.get('areaM2') as number | undefined,
-    secondaryValue: feature.get('perimeterM') as number | undefined,
-  });
-}
 function streetAllCoords(s: Street): [number, number][] {
   return [s.start, ...(s.waypoints ?? []), s.end];
 }
@@ -145,83 +158,6 @@ function buildRoundaboutLabelLines(rb: Roundabout, cfg: LabelStyleConfig, text: 
   });
 }
 
-function drawEdgeCotas(
-  ctx: CanvasRenderingContext2D,
-  segmentLengths: SegmentMetric[] | undefined,
-  centroidWorld: [number, number] | undefined,
-  toPx: (c: number[]) => [number, number],
-  cfg: LabelStyleConfig
-): void {
-  if (!segmentLengths || segmentLengths.length === 0) return;
-  const MIN_SEGMENT_PX = 30;
-  const offsetPx = 13;
-  const fs = cfg.cotaFontSizePx;
-  const cenPx = centroidWorld ? toPx(centroidWorld) : null;
-  const showLines = cfg.cotaStyle !== 'text';
-  const internal = cfg.cotaPosition === 'internal';
-
-  ctx.save();
-  for (const meta of segmentLengths) {
-    if (!meta || !Number.isFinite(meta.lengthM) || meta.lengthM <= 0) continue;
-    if (!meta.p0 || !meta.p1) continue;
-    const aPx = toPx(meta.p0);
-    const bPx = toPx(meta.p1);
-    const dxPx = bPx[0] - aPx[0];
-    const dyPx = bPx[1] - aPx[1];
-    const lenPx = Math.hypot(dxPx, dyPx);
-    if (lenPx < MIN_SEGMENT_PX) continue;
-
-    let ang = Math.atan2(dyPx, dxPx);
-    if (ang > Math.PI / 2 || ang < -Math.PI / 2) ang += Math.PI;
-
-    let nx = -dyPx / lenPx;
-    let ny = dxPx / lenPx;
-    if (cenPx) {
-      const midPx: [number, number] = [(aPx[0] + bPx[0]) / 2, (aPx[1] + bPx[1]) / 2];
-      const pointsAway = (midPx[0] - cenPx[0]) * nx + (midPx[1] - cenPx[1]) * ny >= 0;
-      const shouldPointAway = !internal;
-      if (pointsAway !== shouldPointAway) {
-        nx = -nx;
-        ny = -ny;
-      }
-    }
-
-    const dimA: [number, number] = [aPx[0] + nx * offsetPx, aPx[1] + ny * offsetPx];
-    const dimB: [number, number] = [bPx[0] + nx * offsetPx, bPx[1] + ny * offsetPx];
-
-    if (showLines) {
-      ctx.strokeStyle = cfg.color;
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(aPx[0] + nx * 3, aPx[1] + ny * 3);
-      ctx.lineTo(dimA[0], dimA[1]);
-      ctx.moveTo(bPx[0] + nx * 3, bPx[1] + ny * 3);
-      ctx.lineTo(dimB[0], dimB[1]);
-      ctx.moveTo(dimA[0], dimA[1]);
-      ctx.lineTo(dimB[0], dimB[1]);
-      ctx.stroke();
-    }
-
-    const txC = (dimA[0] + dimB[0]) / 2;
-    const tyC = (dimA[1] + dimB[1]) / 2;
-    const text =
-      meta.lengthM >= 100 ? meta.lengthM.toFixed(1) + ' m' : meta.lengthM.toFixed(2) + ' m';
-    ctx.save();
-    ctx.translate(txC, tyC);
-    ctx.rotate(ang);
-    ctx.font = `500 ${fs}px ${cfg.fontFamily}`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = `rgba(${CAD_BG_DEEPEST_RGB}, 0.85)`;
-    ctx.strokeText(text, 0, 0);
-    ctx.fillStyle = cfg.color;
-    ctx.fillText(text, 0, 0);
-    ctx.restore();
-  }
-  ctx.restore();
-}
-
 function streetLabelSignature(
   streets: Street[],
   entries: Record<string, EntityLabelEntry>,
@@ -240,9 +176,10 @@ function streetLabelSignature(
 }
 
 export class LabelPainter {
-  private readonly collisionGrid = new LabelCollisionGrid();
+  private readonly collisionGrid = new PainterCollisionGrid();
   private readonly streetSlots = new globalThis.Map<string, StreetLabelSlot[]>();
   private streetSlotsSignature = '';
+  private lastZoom = 0;
 
   /** Recalcula los slots de etiqueta de calle (posición + evita cruces/extremos) cuando cambia algo relevante. */
   update(ctx: CanvasRenderingContext2D, zoom: number, resolution: number): void {
@@ -291,61 +228,343 @@ export class LabelPainter {
     interacting: boolean
   ): void {
     if (interacting) return;
-    if (features.length > HARD_VISIBLE_CAP) return;
 
     this.collisionGrid.clear();
+    this.lastZoom = zoom;
     const registry = useLayersStore.getState();
 
-    for (const feature of features) {
-      const cfg = feature.get('labelConfig') as LabelStyleConfig | undefined;
-      if (!cfg || !cfg.enabled) continue;
+    this.paintPolygonLabelsAndCotas(ctx, features, zoom, resolution, toPx, registry);
 
+    if (zoom > STREET_LABEL_MIN_ZOOM) this.paintStreetLabels(ctx, toPx, registry);
+    this.paintRoundaboutLabels(ctx, toPx, resolution, registry);
+  }
+
+  private paintPolygonLabelsAndCotas(
+    ctx: CanvasRenderingContext2D,
+    features: Array<Feature<Geometry>>,
+    zoom: number,
+    resolution: number,
+    toPx: (c: number[]) => [number, number],
+    registry: ReturnType<typeof useLayersStore.getState>
+  ): void {
+    const classByLayer = useLabelClassStore.getState().byLayerId;
+    const engineGrid = new LabelCollisionGrid();
+    const candidates: LabelCandidate[] = [];
+    const featureById = new Map<string, Feature<Geometry>>();
+    const resolvedStyleByFeatureId = new Map<string, { style: LabelStyleConfig; text: string }>();
+    const processedByKind = new Map<string, number>();
+    const cotaTargets: Array<{
+      feature: Feature<Geometry>;
+      labelPoint: [number, number];
+      layer: Layer | undefined;
+      style: LabelStyleConfig;
+    }> = [];
+
+    for (const feature of features) {
       const geometry = feature.getGeometry();
       if (!(geometry instanceof Polygon)) continue;
+
+      const kind = (feature.get('kind') as string) ?? 'poligono';
+      const cap = labelRenderCaps[kind] ?? labelRenderCapDefault;
+      const seen = processedByKind.get(kind) ?? 0;
+      if (seen >= cap) continue;
+      processedByKind.set(kind, seen + 1);
 
       const layerId = feature.get('layerId') as string | undefined;
       const layer = layerId ? registry.getById(layerId) : undefined;
       if (layer && !layer.visible) continue;
 
+      const classObj = layerId ? classByLayer[layerId] : undefined;
+      const resolved = resolveFeatureLabel(feature, classObj, { zoom });
+      if (resolved.source === 'none' || !resolved.style.enabled) continue;
+
       const labelPoint = feature.get('labelPoint') as [number, number] | undefined;
       if (!labelPoint) continue;
 
+      const cfg = resolved.style;
+      const text = resolved.text || ((feature.get('labelText') as string | undefined) ?? '');
+
+      const fid = String(feature.getId() ?? '');
+      if (fid) {
+        featureById.set(fid, feature);
+      }
+
       if (!layer || layer.showLabel !== false) {
-        const lines = buildLabelLines(feature, cfg);
-        if (lines.length > 0) this.drawLabelBlock(ctx, toPx(labelPoint), lines, cfg);
+        const isRemnant = feature.get('isRemnant') === true;
+        const effectiveStyle: LabelStyleConfig =
+          isRemnant && classObj?.remnantStyle
+            ? { ...classObj.remnantStyle, enabled: true, titleBadge: classObj.remnantStyle.titleBadge ?? cfg.titleBadge }
+            : cfg.useLayerColor && layer
+              ? { ...cfg, color: layer.color }
+              : cfg;
+        const resolvedText = effectiveStyle.textExpression
+          ? resolveLabelExpression(
+              effectiveStyle.textExpression,
+              text,
+              {
+                code: feature.get('code') as string | undefined,
+                areaM2: feature.get('areaM2') as number | undefined,
+                perimeterM: feature.get('perimeterM') as number | undefined,
+                name: feature.get('label') as string | undefined,
+                layer: layer?.name,
+              },
+              formatAreaWithUnit
+            )
+          : text;
+        resolvedStyleByFeatureId.set(fid, { style: effectiveStyle, text: resolvedText });
+        const lines = composeLabelLines(effectiveStyle, {
+          text: resolvedText,
+          primaryValue: feature.get('areaM2') as number | undefined,
+          secondaryValue: feature.get('perimeterM') as number | undefined,
+        });
+        if (lines.length > 0) {
+          const size = this.measureLabelBlockSize(ctx, lines, effectiveStyle);
+          if (size) {
+            const [ax, ay] = toPx(labelPoint);
+            candidates.push({
+              id: `feat:${fid}`,
+              kind: 'feature',
+              layerId,
+              layerZIndex: layer?.zIndex ?? 0,
+              classPriority: cfg.priority ?? classObj?.priority ?? 0,
+              anchorPx: [ax, ay],
+              widthPx: size.w,
+              heightPx: size.h,
+              style: effectiveStyle,
+              text,
+              category: 'polygon',
+              allowLeaderLine: classObj?.placement?.allowLeaderLine ?? false,
+              isRemnant,
+              placementOffsets: [
+                [0, 0],
+                [0, -size.h * 0.6],
+                [0, size.h * 0.6],
+                [size.w * 0.6, 0],
+                [-size.w * 0.6, 0],
+              ],
+            });
+          }
+        }
       }
 
       if (cfg.showEdgeCotas && (!layer || layer.showCota !== false)) {
-        drawEdgeCotas(
-          ctx,
-          feature.get('segmentLengths') as SegmentMetric[] | undefined,
-          labelPoint,
-          toPx,
-          cfg
-        );
+        cotaTargets.push({ feature, labelPoint, layer, style: cfg });
       }
     }
 
-    if (zoom > STREET_LABEL_MIN_ZOOM) this.paintStreetLabels(ctx, toPx);
-    this.paintRoundaboutLabels(ctx, toPx, resolution);
+    const result = resolveVisibleLabels(candidates, { zoom, resolution }, engineGrid);
+
+    useLabelEngineTelemetryStore.getState().setHidden(result.hiddenCount, {
+      collision: result.dropped.filter((d) => d.reason === 'collision').length,
+      zoom: result.dropped.filter((d) => d.reason === 'zoom').length,
+      noAnchor: result.dropped.filter((d) => d.reason === 'noAnchor').length,
+    });
+
+    const placedByFeatureId = new Map<string, PlacedLabel>();
+    for (const p of result.placed) {
+      const fid = p.candidate.id.startsWith('feat:') ? p.candidate.id.slice(5) : '';
+      if (fid) placedByFeatureId.set(fid, p);
+    }
+
+    for (const target of cotaTargets) {
+      const fid = String(target.feature.getId() ?? '');
+      const placed = placedByFeatureId.get(fid);
+      const labelCenterPx: [number, number] = placed
+        ? placed.positionPx
+        : toPx(target.labelPoint);
+      this.drawEdgeCotasWithCollision(
+        ctx,
+        target.feature.get('segmentLengths') as SegmentMetric[] | undefined,
+        labelCenterPx,
+        toPx,
+        target.style,
+        engineGrid
+      );
+    }
+
+    for (const p of result.placed) {
+      const fid = p.candidate.id.startsWith('feat:') ? p.candidate.id.slice(5) : '';
+      const feature = featureById.get(fid);
+      if (!feature) continue;
+      const resolved = resolvedStyleByFeatureId.get(fid);
+      if (!resolved) continue;
+      const lines = composeLabelLines(resolved.style, {
+        text: resolved.text,
+        primaryValue: feature.get('areaM2') as number | undefined,
+        secondaryValue: feature.get('perimeterM') as number | undefined,
+      });
+      if (lines.length === 0) continue;
+      if (p.leaderFromPx) this.drawLeaderLine(ctx, p.leaderFromPx, p.positionPx, resolved.style);
+      this.drawLabelBlock(ctx, p.positionPx, lines, resolved.style);
+    }
+  }
+
+  private measureLabelBlockSize(
+    ctx: CanvasRenderingContext2D,
+    lines: string[],
+    cfg: LabelStyleConfig
+  ): { w: number; h: number } | null {
+    if (lines.length === 0) return null;
+    const fs = cfg.labelFontSizePx;
+    const lineHeight = fs * 1.25;
+    ctx.save();
+    ctx.font = `${labelFontWeight(cfg)} ${fs}px ${cfg.fontFamily}`;
+    const useBadge = cfg.titleBadge === 'circle';
+    const bodyLines = useBadge ? lines.slice(1) : lines;
+    let maxW = 0;
+    for (const line of bodyLines) maxW = Math.max(maxW, measureCached(ctx, line).width);
+    const bodyH = bodyLines.length * lineHeight;
+    const badge = useBadge ? this.measureBadge(ctx, lines[0], fs) : null;
+    const gap = badge && bodyLines.length > 0 ? 4 : 0;
+    const totalH = (badge?.h ?? 0) + gap + bodyH;
+    const boxW = Math.max(maxW + 8, badge ? badge.w + 4 : 0);
+    ctx.restore();
+    return { w: boxW, h: totalH + 4 };
+  }
+
+  private drawEdgeCotasWithCollision(
+    ctx: CanvasRenderingContext2D,
+    segmentLengths: SegmentMetric[] | undefined,
+    centroidPx: [number, number] | undefined,
+    toPx: (c: number[]) => [number, number],
+    cfg: LabelStyleConfig,
+    grid: LabelCollisionGrid
+  ): void {
+    if (!segmentLengths || segmentLengths.length === 0) return;
+    const MIN_SEGMENT_PX = 30;
+    const offsetPx = 13;
+    const fs = cfg.cotaFontSizePx;
+    const cenPx: [number, number] | null = centroidPx ?? null;
+    const showLines = cfg.cotaStyle !== 'text';
+    const internal = cfg.cotaPosition === 'internal';
+
+    ctx.save();
+    for (const meta of segmentLengths) {
+      if (!meta || !Number.isFinite(meta.lengthM) || meta.lengthM <= 0) continue;
+      if (!meta.p0 || !meta.p1) continue;
+      const aPx = toPx(meta.p0);
+      const bPx = toPx(meta.p1);
+      const dxPx = bPx[0] - aPx[0];
+      const dyPx = bPx[1] - aPx[1];
+      const lenPx = Math.hypot(dxPx, dyPx);
+      if (lenPx < MIN_SEGMENT_PX) continue;
+
+      let ang = Math.atan2(dyPx, dxPx);
+      if (ang > Math.PI / 2 || ang < -Math.PI / 2) ang += Math.PI;
+
+      let nx = -dyPx / lenPx;
+      let ny = dxPx / lenPx;
+      if (cenPx) {
+        const midPx: [number, number] = [(aPx[0] + bPx[0]) / 2, (aPx[1] + bPx[1]) / 2];
+        const pointsAway = (midPx[0] - cenPx[0]) * nx + (midPx[1] - cenPx[1]) * ny >= 0;
+        const shouldPointAway = !internal;
+        if (pointsAway !== shouldPointAway) {
+          nx = -nx;
+          ny = -ny;
+        }
+      }
+
+      const dimA: [number, number] = [aPx[0] + nx * offsetPx, aPx[1] + ny * offsetPx];
+      const dimB: [number, number] = [bPx[0] + nx * offsetPx, bPx[1] + ny * offsetPx];
+
+      const text =
+        meta.lengthM >= 100 ? meta.lengthM.toFixed(1) + ' m' : meta.lengthM.toFixed(2) + ' m';
+      const textWidth = (() => {
+        ctx.save();
+        ctx.font = `500 ${fs}px ${cfg.fontFamily}`;
+        const w = measureCached(ctx, text).width;
+        ctx.restore();
+        return w;
+      })();
+      const textH = fs * 1.2;
+      const txC = (dimA[0] + dimB[0]) / 2;
+      const tyC = (dimA[1] + dimB[1]) / 2;
+      const cotaBox = {
+        x: txC - textWidth / 2 - 2,
+        y: tyC - textH / 2,
+        w: textWidth + 4,
+        h: textH,
+        source: 'cota' as const,
+      };
+      if (grid.intersects(cotaBox)) continue;
+
+      if (showLines) {
+        ctx.strokeStyle = cfg.color;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(aPx[0] + nx * 3, aPx[1] + ny * 3);
+        ctx.lineTo(dimA[0], dimA[1]);
+        ctx.moveTo(bPx[0] + nx * 3, bPx[1] + ny * 3);
+        ctx.lineTo(dimB[0], dimB[1]);
+        ctx.moveTo(dimA[0], dimA[1]);
+        ctx.lineTo(dimB[0], dimB[1]);
+        ctx.stroke();
+      }
+
+      grid.insert(cotaBox);
+
+      ctx.save();
+      ctx.translate(txC, tyC);
+      ctx.rotate(ang);
+      ctx.font = `500 ${fs}px ${cfg.fontFamily}`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = `rgba(${CAD_BG_DEEPEST_RGB}, 0.85)`;
+      ctx.strokeText(text, 0, 0);
+      ctx.fillStyle = cfg.color;
+      ctx.fillText(text, 0, 0);
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+
+  private drawLeaderLine(
+    ctx: CanvasRenderingContext2D,
+    fromPx: [number, number],
+    toPx: [number, number],
+    cfg: LabelStyleConfig
+  ): void {
+    ctx.save();
+    ctx.strokeStyle = cfg.color;
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath();
+    ctx.moveTo(fromPx[0], fromPx[1]);
+    ctx.lineTo(toPx[0], toPx[1]);
+    ctx.stroke();
+    ctx.restore();
   }
 
   private paintStreetLabels(
     ctx: CanvasRenderingContext2D,
-    toPx: (c: number[]) => [number, number]
+    toPx: (c: number[]) => [number, number],
+    registry: ReturnType<typeof useLayersStore.getState>
   ): void {
     const entries = useEntityLabelStore.getState().byId;
     const streets = useStreetStore.getState().streets;
+    const byId = new Map<string, Layer>();
+    for (const layer of registry.layers) byId.set(layer.id, layer);
+    const classByLayer = useLabelClassStore.getState().byLayerId;
     for (const s of streets) {
-      const entry = entries[s.id];
-      if (!entry || !entry.config.enabled) continue;
-      const lines = buildStreetLabelLines(s, entry.config, entry.text);
+      const layer = resolveEntityLayer(s, 'calle', registry, byId);
+      if (layer && (layer.showLabel === false || !layer.visible)) continue;
+      const classObj = layer ? classByLayer[layer.id] : undefined;
+      const override = entries[s.id];
+      const resolved = override
+        ? resolveEntityLabelFromClass(classObj, override.text, { zoom: this.lastZoom })
+        : resolveEntityLabelFromClass(classObj, s.name, { zoom: this.lastZoom });
+      const effectiveStyle = override && override.config.enabled ? override.config : resolved.style;
+      if (!effectiveStyle || !effectiveStyle.enabled) continue;
+      const effectiveText = override ? override.text : resolved.text;
+      if (!effectiveText) continue;
+      const lines = buildStreetLabelLines(s, effectiveStyle, effectiveText);
       if (lines.length === 0) continue;
 
       const slots = this.streetSlots.get(s.id);
       if (!slots || slots.length === 0) {
         const anchor = polylineMidpoint(streetAllCoords(s));
-        this.drawLabelBlock(ctx, toPx(anchor), lines, entry.config);
+        this.drawLabelBlock(ctx, toPx(anchor), lines, effectiveStyle);
         continue;
       }
       for (const slot of slots) {
@@ -353,7 +572,7 @@ export class LabelPainter {
         const b = toPx(slot.segTo);
         let angle = Math.atan2(b[1] - a[1], b[0] - a[0]);
         if (angle > Math.PI / 2 || angle < -Math.PI / 2) angle += Math.PI;
-        this.drawRotatedLabelBlock(ctx, toPx(slot.pos), angle, lines, entry.config);
+        this.drawRotatedLabelBlock(ctx, toPx(slot.pos), angle, lines, effectiveStyle);
       }
     }
   }
@@ -361,18 +580,31 @@ export class LabelPainter {
   private paintRoundaboutLabels(
     ctx: CanvasRenderingContext2D,
     toPx: (c: number[]) => [number, number],
-    resolution: number
+    resolution: number,
+    registry: ReturnType<typeof useLayersStore.getState>
   ): void {
     const entries = useEntityLabelStore.getState().byId;
     const roundabouts = useRoundaboutStore.getState().roundabouts;
+    const byId = new Map<string, Layer>();
+    for (const layer of registry.layers) byId.set(layer.id, layer);
+    const classByLayer = useLabelClassStore.getState().byLayerId;
     for (const rb of roundabouts) {
-      const entry = entries[rb.id];
-      if (!entry || !entry.config.enabled) continue;
-      const lines = buildRoundaboutLabelLines(rb, entry.config, entry.text);
+      const layer = resolveRoundaboutLayer(rb, registry, byId);
+      if (layer && (layer.showLabel === false || !layer.visible)) continue;
+      const classObj = layer ? classByLayer[layer.id] : undefined;
+      const override = entries[rb.id];
+      const resolved = override
+        ? resolveEntityLabelFromClass(classObj, override.text, { zoom: this.lastZoom })
+        : resolveEntityLabelFromClass(classObj, rb.name, { zoom: this.lastZoom });
+      const effectiveStyle = override && override.config.enabled ? override.config : resolved.style;
+      if (!effectiveStyle || !effectiveStyle.enabled) continue;
+      const effectiveText = override ? override.text : resolved.text;
+      if (!effectiveText) continue;
+      const lines = buildRoundaboutLabelLines(rb, effectiveStyle, effectiveText);
       if (lines.length === 0) continue;
       const px = toPx(rb.center);
       const offsetPx = rb.radiusM / resolution + 18;
-      this.drawLabelBlock(ctx, [px[0], px[1] + offsetPx], lines, entry.config);
+      this.drawLabelBlock(ctx, [px[0], px[1] + offsetPx], lines, effectiveStyle);
     }
   }
 

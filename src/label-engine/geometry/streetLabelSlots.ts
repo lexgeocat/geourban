@@ -42,9 +42,7 @@ function segSegIntersection(a1: Pt, a2: Pt, b1: Pt, b2: Pt): Pt | null {
   return null;
 }
 
-function streetPairCrossings(si: Street, sj: Street): Pt[] {
-  const chainI = buildChain(streetAllCoords(si));
-  const chainJ = buildChain(streetAllCoords(sj));
+function streetPairCrossings(chainI: StreetChain, chainJ: StreetChain): Pt[] {
   const points: Pt[] = [];
   for (const segI of chainI) {
     for (const segJ of chainJ) {
@@ -55,12 +53,40 @@ function streetPairCrossings(si: Street, sj: Street): Pt[] {
   return points;
 }
 
+type ChainBBox = [number, number, number, number];
+
+function chainBBox(chain: StreetChain): ChainBBox {
+  let minX = Infinity,
+    minY = Infinity,
+    maxX = -Infinity,
+    maxY = -Infinity;
+  for (const seg of chain) {
+    for (const p of [seg.from, seg.to]) {
+      if (p[0] < minX) minX = p[0];
+      if (p[1] < minY) minY = p[1];
+      if (p[0] > maxX) maxX = p[0];
+      if (p[1] > maxY) maxY = p[1];
+    }
+  }
+  return [minX, minY, maxX, maxY];
+}
+
+function bboxOverlap(a: ChainBBox, b: ChainBBox): boolean {
+  return a[0] <= b[2] && a[2] >= b[0] && a[1] <= b[3] && a[3] >= b[1];
+}
+
 export function computeStreetCrossings(streets: Street[]): Map<string, Pt[]> {
   const result = new Map<string, Pt[]>();
-  for (const s of streets) result.set(s.id, []);
+  const prepared: Array<{ chain: StreetChain; bbox: ChainBBox }> = [];
+  for (const s of streets) {
+    result.set(s.id, []);
+    const chain = buildChain(streetAllCoords(s));
+    prepared.push({ chain, bbox: chainBBox(chain) });
+  }
   for (let i = 0; i < streets.length; i++) {
     for (let j = i + 1; j < streets.length; j++) {
-      const pts = streetPairCrossings(streets[i], streets[j]);
+      if (!bboxOverlap(prepared[i].bbox, prepared[j].bbox)) continue;
+      const pts = streetPairCrossings(prepared[i].chain, prepared[j].chain);
       if (pts.length === 0) continue;
       result.get(streets[i].id)!.push(...pts);
       result.get(streets[j].id)!.push(...pts);
