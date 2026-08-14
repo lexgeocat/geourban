@@ -27,6 +27,8 @@ import { buildRoadNetworkRings } from '@vias-engine/geometry/roadNetworkEngine';
 import { roundRingReflex, pointOnRing } from '@vias-engine/geometry/ringFillet';
 import { resolveOrCreateLayerForKind } from '@layers-engine/store/layerResolution';
 import { newId } from '@kernel/id/id';
+import { formatOrderLabel, type LabelNumberingMode } from '@label-engine/model/labelNumbering';
+import { useLabelClassStore } from '@label-engine/store/labelClassStore';
 import {
   StructuralDiffRecorder,
   EMPTY_STRUCTURAL_DIFF,
@@ -988,6 +990,14 @@ async function recomputeManzanosImmediate(recorder: StructuralDiffRecorder): Pro
       );
       const lid = resolveManzanaLayerId();
       newFeat.set('layerId', lid);
+      const manzanaClass = useLabelClassStore.getState().getForLayer(lid);
+      if (manzanaClass && manzanaClass.enabled) {
+        newFeat.set('labelConfig', manzanaClass.style, true);
+        newFeat.set('labelText', mznCode, true);
+        if (manzanaClass.numbering?.mode) {
+          newFeat.set('labelNumberingMode', manzanaClass.numbering.mode, true);
+        }
+      }
       src.addFeature(newFeat);
       recorder.recordAdd(newFeat as Feature<Geometry>);
       updateFeatureMetrics(newFeat as Feature<Geometry>);
@@ -1078,22 +1088,31 @@ async function relotAfterCornerModeChange(
       const oldLots: Feature<Geometry>[] = [];
       let carriedLabelConfig: unknown;
       let carriedLayerId: string | undefined;
+      let carriedMode: LabelNumberingMode | undefined;
+      let firstOldCode: string | undefined;
       src.forEachFeature((f) => {
         if (f.get('lotGroupId') === String(id)) {
           const feat = f as Feature<Geometry>;
           oldLots.push(feat);
           if (!carriedLabelConfig) carriedLabelConfig = feat.get('labelConfig');
           if (!carriedLayerId) carriedLayerId = feat.get('layerId') as string | undefined;
+          if (!carriedMode) carriedMode = feat.get('labelNumberingMode') as LabelNumberingMode | undefined;
+          if (!firstOldCode) firstOldCode = feat.get('code') as string | undefined;
         }
       });
       for (const f of oldLots) src.removeFeature(f);
+
+      const classObj = carriedLayerId ? useLabelClassStore.getState().getForLayer(carriedLayerId) : undefined;
+      const numberingMode: LabelNumberingMode =
+        carriedMode ?? classObj?.numbering?.mode ?? 'numeric';
+      const manzanoCodeAttr = mznFeat.get('code') as string | undefined;
 
       let created = 0;
       lots.forEach((lot, i) => {
         if (lot.pts.length < 3) return;
         const { feature } = createLotFeature(lot, {
           manzanoId: id,
-          manzanoCode: mznFeat.get('code') as string | undefined,
+          manzanoCode: manzanoCodeAttr,
           index: i + 1,
           method,
           preferredLayerId: carriedLayerId,
@@ -1101,7 +1120,9 @@ async function relotAfterCornerModeChange(
         });
         if (carriedLabelConfig) {
           feature.set('labelConfig', carriedLabelConfig, true);
-          feature.set('labelText', feature.get('code') as string, true);
+          const text = formatOrderLabel(numberingMode, i, lots.length, manzanoCodeAttr);
+          feature.set('labelText', text, true);
+          feature.set('labelNumberingMode', numberingMode, true);
         }
         src.addFeature(feature);
         created++;

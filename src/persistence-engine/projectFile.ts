@@ -22,8 +22,11 @@ import { reloadRustSpatialIndex } from '@kernel/spatial-index/rustSpatialIndex';
 import { refreshSourceMetrics } from '@georef-engine/metrics';
 import { reseedManzanoSeqFromSource } from '@manzanos-engine/naming/manzanoNaming';
 import { useEntityLabelStore } from '@label-engine/store/entityLabelStore';
+import { useLabelClassStore } from '@label-engine/store/labelClassStore';
+import type { LabelClass } from '@label-engine/model/labelClass';
 import type { Layer } from '@kernel/domain-model/featureModel';
 import type { LabelStyleConfig } from '@label-engine/model/labelModel';
+import { normalizeLabelStyleConfig } from '@label-engine/model/labelModel';
 
 interface LayerDto {
   id: string;
@@ -76,13 +79,17 @@ interface ProjectPayload {
   metaJson: string;
 }
 interface ProjectMeta {
+  schemaVersion?: number;
   activeLayerId: string | null;
   baseMap: BaseMapId;
   crs: { mode: ProjectCrsMode; utmZone: number; utmHemisphere: UtmHemisphere };
   manzano: { targetAreaM2: number; frontMinM: number };
   viewConfig: { center: [number, number]; zoom: number };
   entityLabels?: Record<string, { config: LabelStyleConfig; text: string }>;
+  labelClasses?: Record<string, LabelClass>;
 }
+
+const CURRENT_SCHEMA_VERSION = 2;
 
 export interface ProjectSummary {
   name: string;
@@ -181,12 +188,14 @@ function buildPayload(): ProjectPayload {
   }));
 
   const meta: ProjectMeta = {
+    schemaVersion: CURRENT_SCHEMA_VERSION,
     activeLayerId: layersState.activeLayerId,
     baseMap: uiState.baseMap,
     crs: { mode: crsState.mode, utmZone: crsState.utmZone, utmHemisphere: crsState.utmHemisphere },
     manzano: { targetAreaM2: manzanoState.targetAreaM2, frontMinM: manzanoState.frontMinM },
     viewConfig,
     entityLabels: useEntityLabelStore.getState().byId,
+    labelClasses: useLabelClassStore.getState().byLayerId,
   };
 
   return { layers, features, streets, roundabouts, metaJson: JSON.stringify(meta) };
@@ -279,5 +288,68 @@ export async function loadProject(name: string): Promise<void> {
   if (meta.viewConfig) useMapStore.getState().setViewConfig(meta.viewConfig);
   useEntityLabelStore.getState().loadAll(meta.entityLabels ?? {});
 
+  useLabelClassStore.getState().loadAll(migrateLabelClasses(meta, layers));
+
   refreshSourceMetrics(drawSource);
+}
+
+function migrateLabelClasses(
+  meta: ProjectMeta,
+  layers: Layer[]
+): Record<string, LabelClass> {
+  const version = meta.schemaVersion ?? 1;
+  if (version >= 2 && meta.labelClasses) {
+    const out: Record<string, LabelClass> = {};
+    for (const [layerId, cls] of Object.entries(meta.labelClasses)) {
+      out[layerId] = { ...cls, style: normalizeLabelStyleConfig(cls.style) };
+    }
+    return out;
+  }
+  return synthesizeLabelClassesFromOverrides(layers);
+}
+
+function synthesizeLabelClassesFromOverrides(layers: Layer[]): Record<string, LabelClass> {
+  const drawSource = useMapStore.getState().drawSource;
+  if (!drawSource) return {};
+  const buckets = new Map<string, Map<string, number>>();
+  drawSource.forEachFeature((f) => {
+    const layerId = f.get('layerId') as string | undefined;
+    if (!layerId) return;
+    const cfg = f.get('labelConfig') as LabelStyleConfig | undefined;
+    if (!cfg) return;
+    let bucket = buckets.get(layerId);
+    if (!bucket) {
+      bucket = new Map();
+      buckets.set(layerId, bucket);
+    }
+    const key = JSON.stringify(cfg);
+    bucket.set(key, (bucket.get(key) ?? 0) + 1);
+  });
+  const now = new Date().toISOString();
+  const out: Record<string, LabelClass> = {};
+  for (const layer of layers) {
+    const bucket = buckets.get(layer.id);
+    if (!bucket || bucket.size === 0) continue;
+    let bestKey: string | null = null;
+    let bestCount = 0;
+    for (const [k, c] of bucket) {
+      if (c > bestCount) {
+        bestCount = c;
+        bestKey = k;
+      }
+    }
+    if (!bestKey) continue;
+    const style = normalizeLabelStyleConfig(JSON.parse(bestKey) as LabelStyleConfig);
+    out[layer.id] = {
+      id: `lblc-mig-${layer.id}`,
+      layerId: layer.id,
+      name: 'Migrada',
+      enabled: true,
+      priority: 0,
+      style,
+      placement: { strategy: 'poleOfInaccessibility', allowLeaderLine: false },
+      updatedAt: now,
+    };
+  }
+  return out;
 }

@@ -2,6 +2,7 @@ import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
 import { Command, type CommandContext } from '@kernel/command/Command';
 import { useLayersStore } from '@layers-engine/store/layersRegistryStore';
+import { layerEntityAdapters, type LayerEntitySnapshot } from '@layers-engine/extension-points';
 import { newId } from '@kernel/id/id';
 import type { Layer } from '@kernel/domain-model/featureModel';
 
@@ -12,11 +13,17 @@ export interface DuplicateLayerOptions {
   duplicateFeatures: boolean;
 }
 
+interface ClonedEntity {
+  newId: string;
+  source: LayerEntitySnapshot;
+}
+
 export class DuplicateLayerCommand extends Command {
   readonly label = 'Duplicar capa';
   private readonly opts: DuplicateLayerOptions;
   private clonedFeatureIds: Array<string | number> = [];
   private clonedFeatures: Array<{ id: string | number; feature: Feature<Geometry> }> = [];
+  private clonedEntities: ClonedEntity[] = [];
   private addedLayer: Layer | null = null;
 
   constructor(opts: DuplicateLayerOptions) {
@@ -42,6 +49,7 @@ export class DuplicateLayerCommand extends Command {
     if (this.opts.duplicateFeatures) {
       this.clonedFeatureIds = [];
       this.clonedFeatures = [];
+      this.clonedEntities = [];
       const toClone: Array<Feature<Geometry>> = [];
       ctx.drawSource.forEachFeature((f) => {
         if (f.get('layerId') === this.opts.sourceLayerId) toClone.push(f as Feature<Geometry>);
@@ -56,6 +64,24 @@ export class DuplicateLayerCommand extends Command {
         this.clonedFeatureIds.push(clonedFeatureId);
         this.clonedFeatures.push({ id: clonedFeatureId, feature: clone });
       }
+      for (const adapter of layerEntityAdapters.collect()) {
+        for (const snap of adapter.list(this.opts.sourceLayerId)) {
+          const clonedId = newId('dup');
+          const remapped: LayerEntitySnapshot = {
+            ...snap,
+            id: clonedId,
+            data: { ...(snap.data as Record<string, unknown>), layerId: this.opts.newLayerId },
+            layerId: this.opts.newLayerId,
+          };
+          this.clonedEntities.push({ newId: clonedId, source: remapped });
+        }
+      }
+      if (this.clonedEntities.length > 0) {
+        for (const adapter of layerEntityAdapters.collect()) {
+          const mySnaps = this.clonedEntities.map((c) => c.source);
+          if (mySnaps.length > 0) adapter.restore(mySnaps);
+        }
+      }
       ctx.drawSource.changed();
     }
   }
@@ -66,6 +92,13 @@ export class DuplicateLayerCommand extends Command {
       if (f) ctx.drawSource.removeFeature(f);
     }
     this.clonedFeatureIds = [];
+    if (this.clonedEntities.length > 0) {
+      const ids = this.clonedEntities.map((c) => c.newId);
+      for (const adapter of layerEntityAdapters.collect()) {
+        for (const id of ids) adapter.removeById(id);
+      }
+      this.clonedEntities = [];
+    }
     ctx.drawSource.changed();
     useLayersStore.getState().remove(this.opts.newLayerId);
   }
@@ -75,6 +108,12 @@ export class DuplicateLayerCommand extends Command {
     if (this.addedLayer && !store.getById(this.addedLayer.id)) store.add(this.addedLayer);
     for (const { id, feature } of this.clonedFeatures) {
       if (ctx.drawSource.getFeatureById(id) == null) ctx.drawSource.addFeature(feature);
+    }
+    if (this.clonedEntities.length > 0) {
+      for (const adapter of layerEntityAdapters.collect()) {
+        const mySnaps = this.clonedEntities.map((c) => c.source);
+        if (mySnaps.length > 0) adapter.restore(mySnaps);
+      }
     }
     ctx.drawSource.changed();
   }

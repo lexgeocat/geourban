@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { Modal } from '@shared-ui/Modal';
 import { useMapStore } from '@map-core/store/mapStore';
 import { useLayersStore } from '@layers-engine/store/layersRegistryStore';
+import { sumAdapterCounts } from '@layers-engine/extension-points';
 import { runCommand } from '@kernel/command/CommandStack';
 import { RemoveLayerCommand } from '@layers-engine/commands/RemoveLayerCommand';
 
@@ -30,6 +31,13 @@ export default function LayerDeleteModal({ request, onClose }: LayerDeleteModalP
     });
     return ids;
   }, [request, drawSource]);
+
+  const entityCount = useMemo(() => {
+    if (!request) return 0;
+    return sumAdapterCounts(request.id);
+  }, [request]);
+
+  const totalAffected = affectedIds.length + entityCount;
 
   const otherLayers = layers.filter((l) => l.id !== request?.id);
   const [action, setAction] = useState<'move' | 'delete'>('move');
@@ -60,15 +68,19 @@ export default function LayerDeleteModal({ request, onClose }: LayerDeleteModalP
         ¿Eliminar la capa "{request.name}"?
       </h2>
 
-      {affectedIds.length === 0 ? (
+      {totalAffected === 0 ? (
         <p style={{ fontSize: '0.72rem', color: 'var(--cad-text-muted)', marginBottom: 14 }}>
           Esta capa no tiene elementos asignados — se puede eliminar sin afectar el dibujo.
         </p>
       ) : (
         <>
           <p style={{ fontSize: '0.72rem', color: 'var(--cad-text-dim)', marginBottom: 12 }}>
-            <strong style={{ color: 'var(--cad-accent-amber)' }}>{affectedIds.length}</strong> elemento(s) están
-            asignados a esta capa. Elegí qué hacer con ellos antes de continuar:
+            <strong style={{ color: 'var(--cad-accent-amber)' }}>{totalAffected}</strong> elemento(s) están
+            asignados a esta capa
+            {entityCount > 0 && (
+              <span> ({affectedIds.length} polígonos + {entityCount} entidad/es vial/es)</span>
+            )}
+            . Elegí qué hacer con ellos antes de continuar:
           </p>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 }}>
@@ -94,7 +106,7 @@ export default function LayerDeleteModal({ request, onClose }: LayerDeleteModalP
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
               <input type="radio" className="cad-radio" checked={action === 'delete'} onChange={() => setAction('delete')} />
               <span style={{ fontSize: '0.75rem', color: 'var(--cad-accent-red)' }}>
-                Eliminar también estos {affectedIds.length} elemento(s)
+                Eliminar también estos {totalAffected} elemento(s)
               </span>
             </label>
           </div>
@@ -107,7 +119,7 @@ export default function LayerDeleteModal({ request, onClose }: LayerDeleteModalP
         </button>
         <button
           onClick={handleConfirm}
-          disabled={affectedIds.length > 0 && action === 'move' && !effectiveTarget}
+          disabled={totalAffected > 0 && action === 'move' && !effectiveTarget}
           className="cad-btn-danger"
         >
           Eliminar capa

@@ -4,6 +4,9 @@ import type { CommandContext } from '@kernel/command/Command';
 import { createLotFeature, type CreateLotFeatureOpts } from '../model/createLotFeature';
 import type { LabelStyleConfig } from '@label-engine/model/labelModel';
 import type { LotResult } from '@kernel/geometry/polygonEngine';
+import { formatOrderLabel, type LabelNumberingMode } from '@label-engine/model/labelNumbering';
+import { useLabelClassStore } from '@label-engine/store/labelClassStore';
+import { useLayersStore } from '@layers-engine/store/layersRegistryStore';
 
 export interface RemovedLotSnapshot {
   id: string | number;
@@ -16,14 +19,50 @@ export interface ReplaceLotsResult {
   removedLotSnapshots: RemovedLotSnapshot[];
 }
 
+function detectNumberingModeFromCode(code: string | undefined): LabelNumberingMode | undefined {
+  if (!code) return undefined;
+  const m = /-(\d+)R?$/.exec(code);
+  if (!m) return undefined;
+  if (code.endsWith(`${m[1]}R`)) return 'roman-lower';
+  return 'numeric';
+}
+
+function resolveNumberingMode(
+  carriedMode: LabelNumberingMode | undefined,
+  carriedConfig: LabelStyleConfig | undefined,
+  layerId: string | undefined,
+  firstOldCode: string | undefined
+): LabelNumberingMode {
+  if (carriedMode) return carriedMode;
+  if (layerId) {
+    const classObj = useLabelClassStore.getState().getForLayer(layerId);
+    if (classObj?.numbering?.mode) return classObj.numbering.mode;
+  }
+  if (carriedConfig && (carriedConfig as unknown as { labelNumberingMode?: LabelNumberingMode }).labelNumberingMode) {
+    return (carriedConfig as unknown as { labelNumberingMode: LabelNumberingMode })
+      .labelNumberingMode;
+  }
+  const detected = detectNumberingModeFromCode(firstOldCode);
+  return detected ?? 'numeric';
+}
+
+function resolveLotLayerId(firstOldLayerId: string | undefined, preferredLayerId?: string): string | undefined {
+  if (firstOldLayerId) return firstOldLayerId;
+  if (preferredLayerId) return preferredLayerId;
+  const registry = useLayersStore.getState();
+  return registry.getLayerForKind('lote')?.id;
+}
+
 /**
  * Quita los lotes viejos del `manzanoId` y agrega los `lots` nuevos al source.
  * Devuelve los IDs nuevos y los snapshots de los viejos (para soportar undo).
  *
  * Comportamiento:
- *  - Captura `labelConfig` del primer lote viejo y lo arrastra a los nuevos.
- *  - Setea `labelText = code` en cada lote nuevo (reflejando lo que ya hacía cada comando).
- *  - Deja `lotStatus` del manzano sin tocar: el caller decide (Generate siempre 'subdivided', Recompute condicional).
+ *  - Captura `labelConfig` y `labelNumberingMode` del primer lote viejo (o de la LabelClass
+ *    de la capa) y los arrastra a los nuevos.
+ *  - Setea `labelText` re-formateado con `formatOrderLabel` en lugar del `code` crudo,
+ *    para que regeneraciones conserven la numeración (B6).
+ *  - Deja `lotStatus` del manzano sin tocar: el caller decide.
  */
 export function replaceLotsForManzano(
   ctx: CommandContext,
@@ -40,8 +79,25 @@ export function replaceLotsForManzano(
 
   const oldLots: Feature<Geometry>[] = [];
   let carriedLabelConfig: LabelStyleConfig | undefined;
+  let carriedMode: LabelNumberingMode | undefined;
+  let firstOldLayerId: string | undefined;
+  let firstOldCode: string | undefined;
   ctx.drawSource.forEachFeature((f) => {
-    if (f.get('lotGroupId') === idStr) oldLots.push(f as Feature<Geometry>);
+    if (f.get('lotGroupId') !== idStr) return;
+    const feat = f as Feature<Geometry>;
+    oldLots.push(feat);
+    if (!carriedLabelConfig) {
+      carriedLabelConfig = f.get('labelConfig') as LabelStyleConfig | undefined;
+    }
+    if (!carriedMode) {
+      carriedMode = f.get('labelNumberingMode') as LabelNumberingMode | undefined;
+    }
+    if (!firstOldLayerId) {
+      firstOldLayerId = f.get('layerId') as string | undefined;
+    }
+    if (!firstOldCode) {
+      firstOldCode = f.get('code') as string | undefined;
+    }
   });
 
   const removedLotSnapshots: RemovedLotSnapshot[] = [];
@@ -56,11 +112,16 @@ export function replaceLotsForManzano(
         props,
       });
     }
-    if (!carriedLabelConfig) {
-      carriedLabelConfig = f.get('labelConfig') as LabelStyleConfig | undefined;
-    }
     ctx.drawSource.removeFeature(f);
   }
+
+  const targetLayerId = resolveLotLayerId(firstOldLayerId, preferredLayerId);
+  const numberingMode = resolveNumberingMode(
+    carriedMode,
+    carriedLabelConfig,
+    targetLayerId,
+    firstOldCode
+  );
 
   const newLotIds: Array<string | number> = [];
   const manzanoCode = manzanoFeature.get('code') as string | undefined;
@@ -76,7 +137,9 @@ export function replaceLotsForManzano(
     });
     if (carriedLabelConfig) {
       feature.set('labelConfig', carriedLabelConfig, true);
-      feature.set('labelText', feature.get('code') as string, true);
+      const text = formatOrderLabel(numberingMode, i, lots.length, manzanoCode);
+      feature.set('labelText', text, true);
+      feature.set('labelNumberingMode', numberingMode, true);
     }
     ctx.drawSource.addFeature(feature);
     newLotIds.push(lotId);
