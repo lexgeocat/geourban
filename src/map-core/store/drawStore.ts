@@ -4,17 +4,18 @@ import { useLeftSidebarStore } from '@app-shell/store/leftSidebarStore';
 
 export type DrawMode =
   | 'select'
-  | 'polygon'    // Previously 'polyline' - keep for backwards compatibility
-  | 'line'       // Open polyline (drag mouse to draw)
-  | 'rectangle'  // Rectangle via OL's built-in draw type
-  | 'street' // Street axis (segmented line)
-  | 'roundabout' // Rotonda: 2 clics (centro → radio)
-  | 'erase'      // Delete selected features
-  | 'edit'       // Enter vertex editing mode (modify selected geometry)
-  | 'labelOrder' // Trazado de línea para ordenar etiquetas de manzanos
-  | 'none';       // No tool selected (for UI state)
-
-/** Tipo de feature que se creará al dibujar un polígono */
+  | 'polygon' // Perímetro/Manzana/Lote — polígono libre
+  | 'rectangle' // Perímetro/Manzana/Lote — rectángulo (drag)
+  | 'line' // Línea normal (segmento simple, 2 puntos)
+  | 'polyline' // Polilínea normal (multi-vértice)
+  | 'circle' // Círculo normal (no vial)
+  | 'point' // Punto normal
+  | 'street' // Línea de vía (eje segmentado) — modo dominio
+  | 'roundabout' // Círculo de rotonda (2 clics: centro → radio) — modo dominio
+  | 'erase' // Borrar seleccionados
+  | 'edit' // Edición de vértices de la selección
+  | 'labelOrder' // Trazado de línea para ordenar etiquetas de manzanos/lotes/capa
+  | 'none'; // Sin herramienta activa (UI state)
 
 type DrawState = {
   mode: DrawMode;

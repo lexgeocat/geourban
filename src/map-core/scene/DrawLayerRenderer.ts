@@ -31,7 +31,7 @@ function safeDisposeLayer(layer: { dispose: () => void }): void {
     console.warn(
       'DrawLayerRenderer: layer.dispose() falló (probablemente el helper WebGL nunca se inicializó ' +
         'porque la capa nunca llegó a renderizar) — se ignora.',
-      err,
+      err
     );
   }
 }
@@ -41,12 +41,20 @@ function buildSingleLayerStyle(layer: Layer): Record<string, unknown> {
   return {
     'stroke-color': withAlpha(layer.color, op),
     'stroke-width': 2,
+    'circle-radius': 5,
+    'circle-fill-color': withAlpha(layer.color, op * 0.65),
+    'circle-stroke-color': withAlpha(layer.color, op),
+    'circle-stroke-width': 1.5,
   };
 }
 
 const FALLBACK_STYLE = {
   'stroke-color': '#10b981',
   'stroke-width': 2,
+  'circle-radius': 5,
+  'circle-fill-color': 'rgba(16, 185, 129, 0.65)',
+  'circle-stroke-color': '#10b981',
+  'circle-stroke-width': 1.5,
 };
 
 const FALLBACK_KEY = '__geourban_unassigned_mirror__';
@@ -100,7 +108,11 @@ export class LayeredWebglRenderer {
     this.syncLayerSet(useLayersStore.getState().layers);
   }
 
-  private createMirror(style: Record<string, unknown>, zIndex: number, visible: boolean): MirrorEntry {
+  private createMirror(
+    style: Record<string, unknown>,
+    zIndex: number,
+    visible: boolean
+  ): MirrorEntry {
     const source = new VectorSource();
     const layer = new WebGLVectorLayer({
       source,
@@ -119,7 +131,10 @@ export class LayeredWebglRenderer {
     return getLayerById(useLayersStore.getState().layers);
   }
 
-  private resolveMirrorKey(feature: Feature<Geometry>, byId: globalThis.Map<string, Layer>): string {
+  private resolveMirrorKey(
+    feature: Feature<Geometry>,
+    byId: globalThis.Map<string, Layer>
+  ): string {
     const layerId = feature.get('layerId') as string | undefined;
     if (layerId && byId.has(layerId)) return layerId;
     return FALLBACK_KEY;
@@ -200,7 +215,10 @@ export class LayeredWebglRenderer {
     let membershipChanged = currentIds.size !== this.knownLayerIds.size;
     if (!membershipChanged) {
       for (const id of currentIds) {
-        if (!this.knownLayerIds.has(id)) { membershipChanged = true; break; }
+        if (!this.knownLayerIds.has(id)) {
+          membershipChanged = true;
+          break;
+        }
       }
     }
 
@@ -245,22 +263,30 @@ export class LayeredWebglRenderer {
   }
 
   private static poolSlotSig(layers: PoolLayerColor[]): string {
-  return layers
-    .map((l) => `${l.color}|${l.opacity}`)
-    .join(',');
-}
-
-private static buildPoolSlotStyle(colors: PoolLayerColor[]): Record<string, unknown> {
-  const strokeMatch: unknown[] = ['match', ['get', 'webglSlotIdx']];
-
-  for (let i = 0; i < colors.length; i++) {
-    const c = colors[i];
-    strokeMatch.push(i, withAlpha(c.color, c.opacity));
+    return layers.map((l) => `${l.color}|${l.opacity}`).join(',');
   }
 
-  strokeMatch.push('rgba(0,0,0,0)');
-  return { 'stroke-color': strokeMatch, 'stroke-width': 2 };
-}
+  private static buildPoolSlotStyle(colors: PoolLayerColor[]): Record<string, unknown> {
+    const strokeMatch: unknown[] = ['match', ['get', 'webglSlotIdx']];
+    const fillMatch: unknown[] = ['match', ['get', 'webglSlotIdx']];
+
+    for (let i = 0; i < colors.length; i++) {
+      const c = colors[i];
+      strokeMatch.push(i, withAlpha(c.color, c.opacity));
+      fillMatch.push(i, withAlpha(c.color, c.opacity * 0.65));
+    }
+
+    strokeMatch.push('rgba(0,0,0,0)');
+    fillMatch.push('rgba(0,0,0,0)');
+    return {
+      'stroke-color': strokeMatch,
+      'stroke-width': 2,
+      'circle-radius': 5,
+      'circle-fill-color': fillMatch,
+      'circle-stroke-color': strokeMatch,
+      'circle-stroke-width': 1.5,
+    };
+  }
 
   private allocatePoolSlots(layers: Layer[]): void {
     this.layerSlotMap.clear();
@@ -287,15 +313,16 @@ private static buildPoolSlotStyle(colors: PoolLayerColor[]): Record<string, unkn
 
     for (let i = 0; i < nSlots; i++) {
       const colorTable: PoolLayerColor[] = slotLayers[i].map((entry) => ({
-  color: entry.layer.color,
-  opacity: entry.layer.opacity,
-}));
+        color: entry.layer.color,
+        opacity: entry.layer.opacity,
+      }));
       const sig = LayeredWebglRenderer.poolSlotSig(colorTable);
       const existing = oldSlots[i];
 
       if (existing) {
         if (existing.lastSig !== sig) {
-          if (this.map) existing.layer.setStyle(LayeredWebglRenderer.buildPoolSlotStyle(colorTable));
+          if (this.map)
+            existing.layer.setStyle(LayeredWebglRenderer.buildPoolSlotStyle(colorTable));
         }
         existing.colorTable = colorTable;
         existing.lastSig = sig;
@@ -380,9 +407,15 @@ private static buildPoolSlotStyle(colors: PoolLayerColor[]): Record<string, unkn
   attach(map: Map): () => void {
     this.map = map;
 
-    this.onAdd = (evt) => { if (evt.feature) this.place(evt.feature, this.getByIdMap()); };
-    this.onRemove = (evt) => { if (evt.feature) this.unplace(evt.feature); };
-    this.onChange = (evt) => { if (evt.feature) this.place(evt.feature, this.getByIdMap()); };
+    this.onAdd = (evt) => {
+      if (evt.feature) this.place(evt.feature, this.getByIdMap());
+    };
+    this.onRemove = (evt) => {
+      if (evt.feature) this.unplace(evt.feature);
+    };
+    this.onChange = (evt) => {
+      if (evt.feature) this.place(evt.feature, this.getByIdMap());
+    };
 
     this.master.on('addfeature', this.onAdd as never);
     this.master.on('removefeature', this.onRemove as never);
@@ -416,14 +449,14 @@ private static buildPoolSlotStyle(colors: PoolLayerColor[]): Record<string, unkn
   }
 
   getLayers(): BaseLayer[] {
-  if (this.poolMode) {
-    const layers: BaseLayer[] = [];
-    if (this.poolFallbackLayer) layers.push(this.poolFallbackLayer);
-    for (const slot of this.poolSlots) layers.push(slot.layer);
-    return layers;
+    if (this.poolMode) {
+      const layers: BaseLayer[] = [];
+      if (this.poolFallbackLayer) layers.push(this.poolFallbackLayer);
+      for (const slot of this.poolSlots) layers.push(slot.layer);
+      return layers;
+    }
+    return [this.fallback.layer, ...Array.from(this.mirrors.values(), (m) => m.layer)];
   }
-  return [this.fallback.layer, ...Array.from(this.mirrors.values(), (m) => m.layer)];
-}
 
   changed(): void {
     this.fallback.layer.changed();
@@ -432,9 +465,7 @@ private static buildPoolSlotStyle(colors: PoolLayerColor[]): Record<string, unkn
   }
 }
 
-export function buildDrawLayers(
-  visibility: WorkVisibility,
-): DrawLayers {
+export function buildDrawLayers(visibility: WorkVisibility): DrawLayers {
   const source = new VectorSource();
   const webglRenderer = new LayeredWebglRenderer(source);
 

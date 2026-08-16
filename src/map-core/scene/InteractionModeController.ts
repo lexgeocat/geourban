@@ -12,6 +12,9 @@ import { activateEdit } from '@selection-engine/modes/EditMode';
 import { activatePolygon } from '@drawing-engine/modes/PolygonMode';
 import { activateLine } from '@drawing-engine/modes/LineMode';
 import { activateRectangle } from '@drawing-engine/modes/RectangleMode';
+import { activatePoint } from '@drawing-engine/modes/PointMode';
+import { activateCircle } from '@drawing-engine/modes/CircleMode';
+import { activatePolyline } from '@drawing-engine/modes/PolylineMode';
 import { activateStreet } from '@vias-engine/modes/StreetMode';
 import { activateRoundabout } from '@vias-engine/modes/RoundaboutMode';
 import { activateErase } from '@drawing-engine/modes/EraseMode';
@@ -52,7 +55,16 @@ export class InteractionModeController {
 
     const viewport = map.getViewport();
     const previousCursor = viewport.getAttribute('data-cursor');
-    if (mode === 'polygon' || mode === 'line' || mode === 'rectangle' || mode === 'roundabout' || mode === 'labelOrder') {
+    if (
+      mode === 'polygon' ||
+      mode === 'line' ||
+      mode === 'rectangle' ||
+      mode === 'roundabout' ||
+      mode === 'labelOrder' ||
+      mode === 'point' ||
+      mode === 'circle' ||
+      mode === 'polyline'
+    ) {
       viewport.setAttribute('data-cursor', mode);
     } else {
       viewport.removeAttribute('data-cursor');
@@ -96,6 +108,15 @@ export class InteractionModeController {
         break;
       case 'rectangle':
         activateRectangle(modeCtx);
+        break;
+      case 'point':
+        activatePoint(modeCtx);
+        break;
+      case 'circle':
+        activateCircle(modeCtx);
+        break;
+      case 'polyline':
+        activatePolyline(modeCtx);
         break;
       case 'street':
         activateStreet(modeCtx);

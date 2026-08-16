@@ -3,7 +3,15 @@ import type Geometry from 'ol/geom/Geometry.js';
 import type { LabelStyleConfig } from '@label-engine/model/labelModel';
 
 export type GeoUrbanFeatureKind =
-  'lote' | 'manzana' | 'calle' | 'linea' | 'rotonda' | 'perimetro';
+  | 'lote'
+  | 'manzana'
+  | 'calle'
+  | 'linea'
+  | 'polilinea'
+  | 'circulo'
+  | 'punto'
+  | 'rotonda'
+  | 'perimetro';
 
 export type LayerKind = GeoUrbanFeatureKind;
 
@@ -33,6 +41,10 @@ const LAYER_SUGGESTIONS: LayerSuggestion[] = [
   { kind: 'lote', name: 'Lote', color: '#58a6ff', geometryHint: 'polygon' },
   { kind: 'calle', name: 'Vías', color: '#8b5cf6', geometryHint: 'line' },
   { kind: 'rotonda', name: 'Rotonda', color: '#f78166', geometryHint: 'line' },
+  { kind: 'linea', name: 'Línea', color: '#e2e8f0', geometryHint: 'line' },
+  { kind: 'polilinea', name: 'Polilínea', color: '#ffd60a', geometryHint: 'line' },
+  { kind: 'circulo', name: 'Círculo', color: '#a78bfa', geometryHint: 'polygon' },
+  { kind: 'punto', name: 'Punto', color: '#34d399', geometryHint: 'point' },
 ];
 
 export function getLayerSuggestion(kind: GeoUrbanFeatureKind): LayerSuggestion | undefined {
@@ -80,6 +92,20 @@ interface LineaProps extends BaseFeatureProps {
   kind: 'linea';
 }
 
+interface PolilineaProps extends BaseFeatureProps {
+  kind: 'polilinea';
+}
+
+interface CirculoProps extends BaseFeatureProps {
+  kind: 'circulo';
+  areaM2?: number;
+  perimeterM?: number;
+}
+
+interface PuntoProps extends BaseFeatureProps {
+  kind: 'punto';
+}
+
 interface PerimetroProps extends BaseFeatureProps {
   kind: 'perimetro';
   areaM2?: number;
@@ -87,13 +113,23 @@ interface PerimetroProps extends BaseFeatureProps {
 }
 
 export type GeoUrbanFeatureProps =
-  LoteProps | ManzanaProps | CalleProps | LineaProps | PerimetroProps;
+  | LoteProps
+  | ManzanaProps
+  | CalleProps
+  | LineaProps
+  | PolilineaProps
+  | CirculoProps
+  | PuntoProps
+  | PerimetroProps;
 
 const KNOWN_KINDS: ReadonlySet<GeoUrbanFeatureKind> = new Set<GeoUrbanFeatureKind>([
   'lote',
   'manzana',
   'calle',
   'linea',
+  'polilinea',
+  'circulo',
+  'punto',
   'rotonda',
   'perimetro',
 ]);

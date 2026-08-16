@@ -1,3 +1,4 @@
+// src/layers-engine/ui/LayerPanel.tsx
 import { useState, useRef, useEffect, useMemo } from 'react';
 import {
   Layers,
@@ -7,7 +8,6 @@ import {
   LockOpen,
   Plus,
   Trash2,
-  Settings2,
   ChevronUp,
   ChevronDown,
   Target,
@@ -19,6 +19,9 @@ import {
   ArrowRight,
   Tag,
   Ruler,
+  Pencil,
+  Circle,
+  MapPin,
 } from 'lucide-react';
 import { useLayersStore } from '@layers-engine/store/layersRegistryStore';
 import type { LayerKind } from '@kernel/domain-model/featureModel';
@@ -45,7 +48,7 @@ import { useLabelConfigModalStore } from '@label-engine/store/labelConfigModalSt
 import { useLabelClassStore } from '@label-engine/store/labelClassStore';
 import { defaultColorForKind, defaultLabelStyleConfig } from '@label-engine/model/labelModel';
 
-/* ----------- Icons (todos vienen de lucide-react; aria-hidden en su punto de uso) ----------- */
+/* ----------- Icons ----------- */
 
 const IconChevron = ({ open }: { open: boolean }) => (
   <ChevronRight
@@ -73,33 +76,27 @@ const IconLock = ({ locked }: { locked: boolean }) =>
 
 const IconPlus = () => <Plus size={13} aria-hidden="true" />;
 const IconTrash = () => <Trash2 size={12} strokeWidth={1.5} aria-hidden="true" />;
-const IconGear = () => <Settings2 size={13} strokeWidth={1.5} aria-hidden="true" />;
 const IconChevronSmall = ({ dir }: { dir: 'up' | 'down' }) =>
-  dir === 'up' ? <ChevronUp size={9} strokeWidth={3} aria-hidden="true" /> : <ChevronDown size={9} strokeWidth={3} aria-hidden="true" />;
+  dir === 'up' ? <ChevronUp size={12} strokeWidth={2.5} aria-hidden="true" /> : <ChevronDown size={12} strokeWidth={2.5} aria-hidden="true" />;
 const IconTarget = ({ filled }: { filled: boolean }) => (
-  <Target
-    size={12}
-    strokeWidth={1.75}
-    fill={filled ? 'currentColor' : 'none'}
-    aria-hidden="true"
-  />
+  <Target size={12} strokeWidth={1.75} fill={filled ? 'currentColor' : 'none'} aria-hidden="true" />
 );
 const IconPolygonKind = () => <Hexagon size={11} strokeWidth={1.5} aria-hidden="true" />;
 const IconLineKind = () => <Slash size={11} strokeWidth={1.75} aria-hidden="true" />;
-const IconIsolate = () => <Focus size={12} strokeWidth={1.75} aria-hidden="true" />;
-const IconZoomTo = () => <ZoomIn size={12} strokeWidth={1.75} aria-hidden="true" />;
-const IconDuplicate = () => <Copy size={12} strokeWidth={1.75} aria-hidden="true" />;
-const IconMoveToLayer = () => <ArrowRight size={12} strokeWidth={1.75} aria-hidden="true" />;
-const IconLabelTag = () => <Tag size={12} strokeWidth={1.75} aria-hidden="true" />;
-const IconRuler = () => <Ruler size={12} strokeWidth={1.75} aria-hidden="true" />;
+const IconCircleKind = () => <Circle size={11} strokeWidth={1.5} aria-hidden="true" />;
+const IconPointKind = () => <MapPin size={11} strokeWidth={1.5} aria-hidden="true" />;
 
 function geometryIconForKind(kind: LayerKind) {
-  if (kind === 'calle' || kind === 'linea' || kind === 'rotonda') return <IconLineKind />;
+  if (kind === 'calle' || kind === 'linea' || kind === 'polilinea' || kind === 'rotonda') return <IconLineKind />;
+  if (kind === 'punto') return <IconPointKind />;
+  if (kind === 'circulo') return <IconCircleKind />;
   return <IconPolygonKind />;
 }
 
 function geometryLabelForKind(kind: LayerKind): string {
-  if (kind === 'calle' || kind === 'linea' || kind === 'rotonda') return 'línea';
+  if (kind === 'calle' || kind === 'linea' || kind === 'polilinea' || kind === 'rotonda') return 'línea';
+  if (kind === 'punto') return 'punto';
+  if (kind === 'circulo') return 'círculo';
   return 'polígono';
 }
 
@@ -204,7 +201,7 @@ function OpacitySlider({ value, onChange, layerName, full }: { value: number; on
   );
 }
 
-/* ----------- Fila genérica de capa ----------- */
+/* ----------- Fila de capa (minimal: ojo + color + nombre) ----------- */
 
 interface LayerRowData {
   id: string;
@@ -239,67 +236,39 @@ interface LayerRowData {
   onConfigureLabels?: () => void;
 }
 
-const gearActionStyle: React.CSSProperties = {
-  display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '6px 4px',
-  fontSize: '0.68rem', color: 'var(--cad-text-dim)', cursor: 'pointer', textAlign: 'left', borderRadius: 4,
-};
-
 function LayerRow({
-  data, isActive, onMoveUp, onMoveDown, canMoveUp, canMoveDown, hasSelection,
+  data,
+  isActive,
+  editing,
+  nameDraft,
+  onNameDraftChange,
+  onStartEdit,
+  onCommitEdit,
+  onCancelEdit,
+  onOpenContextMenu,
+  onRowKeyDown,
 }: {
   data: LayerRowData;
   isActive?: boolean;
-  onMoveUp?: () => void;
-  onMoveDown?: () => void;
-  canMoveUp?: boolean;
-  canMoveDown?: boolean;
-  hasSelection?: boolean;
+  editing: boolean;
+  nameDraft: string;
+  onNameDraftChange: (v: string) => void;
+  onStartEdit: () => void;
+  onCommitEdit: () => void;
+  onCancelEdit: () => void;
+  onOpenContextMenu: (e: React.MouseEvent) => void;
+  onRowKeyDown: (e: React.KeyboardEvent<HTMLDivElement>) => void;
 }) {
-  const [gearOpen, setGearOpen] = useState(false);
-  const [editingName, setEditingName] = useState(false);
-  const [nameDraft, setNameDraft] = useState(data.name);
-  const gearRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!gearOpen) return;
-    const onClick = (e: MouseEvent) => {
-      if (gearRef.current && !gearRef.current.contains(e.target as Node)) setGearOpen(false);
-    };
-    document.addEventListener('mousedown', onClick);
-    return () => document.removeEventListener('mousedown', onClick);
-  }, [gearOpen]);
-
-  const startEditing = () => { setNameDraft(data.name); setEditingName(true); };
-
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '4px 6px', borderRadius: 4, flexWrap: 'wrap' }}>
-      {data.reorderable && (
-        <div style={{ display: 'flex', flexDirection: 'column' }} title="Usá las flechas para reordenar la capa">
-          <button
-            type="button"
-            className="cad-a11y-btn"
-            onClick={(e) => { e.stopPropagation(); onMoveUp?.(); }}
-            disabled={!canMoveUp}
-            aria-label={`Subir capa ${data.name} (dibujar encima)`}
-            title="Subir (dibujar encima)"
-            style={{ height: 9, opacity: canMoveUp ? 0.75 : 0.2, color: 'var(--cad-text-dim)' }}
-          >
-            <IconChevronSmall dir="up" />
-          </button>
-          <button
-            type="button"
-            className="cad-a11y-btn"
-            onClick={(e) => { e.stopPropagation(); onMoveDown?.(); }}
-            disabled={!canMoveDown}
-            aria-label={`Bajar capa ${data.name} (dibujar debajo)`}
-            title="Bajar (dibujar debajo)"
-            style={{ height: 9, opacity: canMoveDown ? 0.75 : 0.2, color: 'var(--cad-text-dim)' }}
-          >
-            <IconChevronSmall dir="down" />
-          </button>
-        </div>
-      )}
-
+    <div
+      data-layer-row="true"
+      role="group"
+      tabIndex={0}
+      aria-label={`Capa ${data.name} — click derecho para más opciones`}
+      onContextMenu={onOpenContextMenu}
+      onKeyDown={onRowKeyDown}
+      style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 6px', borderRadius: 4, flexWrap: 'wrap' }}
+    >
       <button
         type="button"
         className="cad-a11y-btn"
@@ -310,33 +279,30 @@ function LayerRow({
         <IconEye visible={data.visible} />
       </button>
 
-      <span title={`Geometría: ${geometryLabelForKind(data.kind)}`} aria-hidden="true" style={{ display: 'flex', color: 'var(--cad-text-muted)', flexShrink: 0 }}>
-        {geometryIconForKind(data.kind)}
-      </span>
+      <ColorDot color={data.color} onChange={data.onColor} title="Color de capa" warn={data.colorDuplicated} />
 
-      <ColorDot color={data.color} onChange={data.onColor} title="Color de capa (contorno)" warn={data.colorDuplicated} />
-
-      {data.editableName && editingName ? (
+      {data.editableName && editing ? (
         <input
           autoFocus
           value={nameDraft}
-          onChange={(e) => setNameDraft(e.target.value)}
-          onBlur={() => { data.onRename?.(nameDraft.trim() || data.name); setEditingName(false); }}
+          onChange={(e) => onNameDraftChange(e.target.value)}
+          onBlur={onCommitEdit}
           onKeyDown={(e) => {
-            if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-            if (e.key === 'Escape') setEditingName(false);
+            if (e.key === 'Enter') onCommitEdit();
+            if (e.key === 'Escape') onCancelEdit();
           }}
           onClick={(e) => e.stopPropagation()}
           aria-label={`Nuevo nombre para la capa ${data.name}`}
           style={{ flex: '1 1 120px', fontSize: '0.72rem', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--cad-border)', borderRadius: 3, padding: '1px 4px', color: 'var(--cad-text)', outline: 'none', minWidth: 80 }}
         />
-      ) : data.editableName ? (
+      ) : (
         <button
           type="button"
           className="cad-a11y-btn"
-          onDoubleClick={startEditing}
-          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); startEditing(); } }}
-          aria-label={`Renombrar capa ${data.name} (doble click o Enter)`}
+          onDoubleClick={onStartEdit}
+          onContextMenu={onOpenContextMenu}
+          onKeyDown={(e) => { if (e.key === 'F2') { e.preventDefault(); onStartEdit(); } }}
+          aria-label={`Capa ${data.name} — doble click para renombrar, click derecho para opciones`}
           style={{ flex: '1 1 140px', justifyContent: 'flex-start', fontSize: '0.72rem', color: data.visible ? 'var(--cad-text)' : 'var(--cad-text-dim)', minWidth: 80, textAlign: 'left' }}
         >
           <span style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 5, width: '100%' }}>
@@ -346,7 +312,10 @@ function LayerRow({
                 ACTIVA
               </span>
             )}
-            {data.isDataLayer && !!data.featureCount && (
+            {data.locked && (
+              <Lock size={9} aria-hidden="true" style={{ opacity: 0.6, flexShrink: 0 }} />
+            )}
+            {!!data.featureCount && (
               <span
                 title={`${data.featureCount} elemento(s) en esta capa`}
                 aria-hidden="true"
@@ -357,126 +326,167 @@ function LayerRow({
             )}
           </span>
         </button>
-      ) : (
-        <span style={{ flex: '1 1 140px', fontSize: '0.72rem', color: data.visible ? 'var(--cad-text)' : 'var(--cad-text-dim)', whiteSpace: 'normal', overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
-          {data.name}
-        </span>
       )}
-
-      <button
-        type="button"
-        className="cad-a11y-btn"
-        onClick={(e) => { e.stopPropagation(); data.onToggleLabel(); }}
-        aria-pressed={data.showLabel}
-        aria-label={`${data.showLabel ? 'Ocultar' : 'Mostrar'} etiquetas de ${data.name}`}
-        title="Etiquetas"
-        style={{ color: data.showLabel ? 'var(--cad-accent)' : 'var(--cad-text-muted)', opacity: data.showLabel ? 1 : 0.5 }}
-      >
-        <IconLabelTag />
-      </button>
-
-      <button
-        type="button"
-        className="cad-a11y-btn"
-        onClick={(e) => { e.stopPropagation(); data.onToggleCota(); }}
-        aria-pressed={data.showCota}
-        aria-label={`${data.showCota ? 'Ocultar' : 'Mostrar'} acotaciones de ${data.name}`}
-        title="Acotaciones"
-        style={{ color: data.showCota ? 'var(--cad-accent)' : 'var(--cad-text-muted)', opacity: data.showCota ? 1 : 0.5 }}
-      >
-        <IconRuler />
-      </button>
-
-      {data.isDataLayer && data.onIsolate && (
-        <button
-          type="button"
-          className="cad-a11y-btn"
-          onClick={(e) => { e.stopPropagation(); data.onIsolate?.(); }}
-          aria-pressed={!!data.isIsolated}
-          aria-label={data.isIsolated ? `Quitar aislamiento de capa ${data.name}` : `Aislar capa ${data.name} (ocultar el resto)`}
-          title={data.isIsolated ? 'Quitar aislamiento' : 'Aislar esta capa (ocultar el resto)'}
-          style={{ color: data.isIsolated ? 'var(--cad-accent)' : 'var(--cad-text-muted)' }}
-        >
-          <IconIsolate />
-        </button>
-      )}
-      {data.isDataLayer && data.onMoveSelectionHere && hasSelection && !data.locked && (
-        <button
-          type="button"
-          className="cad-a11y-btn"
-          onClick={(e) => { e.stopPropagation(); data.onMoveSelectionHere?.(); }}
-          aria-label={`Mover la selección actual a la capa ${data.name}`}
-          title="Mover la selección actual a esta capa"
-          style={{ color: 'var(--cad-accent-green)' }}
-        >
-          <IconMoveToLayer />
-        </button>
-      )}
-
-      <div ref={gearRef} style={{ position: 'relative', display: 'flex' }}>
-        <button
-          type="button"
-          className="cad-a11y-btn"
-          onClick={() => setGearOpen((v) => !v)}
-          aria-haspopup="true"
-          aria-expanded={gearOpen}
-          aria-label={`Opciones de la capa ${data.name}`}
-          style={{ opacity: gearOpen ? 1 : 0.55 }}
-        >
-          <IconGear />
-        </button>
-        {gearOpen && (
-          <div
-            className="cad-panel-glass animate-fade-in"
-            role="menu"
-            aria-label={`Opciones de ${data.name}`}
-            style={{ position: 'absolute', top: '100%', right: 0, marginTop: 4, minWidth: 200, padding: 8, borderRadius: 6, zIndex: 'var(--z-panel-menu)', display: 'flex', flexDirection: 'column', gap: 2 }}
-          >
-            <div style={{ padding: '4px 2px 8px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.62rem', color: 'var(--cad-text-dim)', marginBottom: 4 }}>
-                <span>Opacidad</span>
-                <span style={{ fontFamily: 'JetBrains Mono, monospace' }}>{Math.round(data.opacity * 100)}%</span>
-              </div>
-              <OpacitySlider value={data.opacity} onChange={data.onOpacity} layerName={data.name} full />
-            </div>
-
-            {(data.onZoomToExtent || data.onDuplicate || data.lockable || data.removable) && (
-              <div style={{ height: 1, background: 'var(--cad-border)', margin: '6px 0 2px' }} />
-            )}
-
-            {data.isDataLayer && data.onZoomToExtent && (data.featureCount ?? 0) > 0 && (
-              <button type="button" className="cad-a11y-btn" onClick={() => data.onZoomToExtent?.()} style={gearActionStyle}>
-                <IconZoomTo /> Zoom a extensión
-              </button>
-            )}
-            {data.isDataLayer && data.onDuplicate && (
-              <button type="button" className="cad-a11y-btn" onClick={() => data.onDuplicate?.()} style={gearActionStyle}>
-                <IconDuplicate /> Duplicar capa
-              </button>
-            )}
-            {data.isDataLayer && data.onConfigureLabels && (
-              <button type="button" className="cad-a11y-btn" onClick={() => data.onConfigureLabels?.()} style={gearActionStyle}>
-                <IconLabelTag /> Etiquetado de capa…
-              </button>
-            )}
-            {data.lockable && (
-              <button type="button" className="cad-a11y-btn" onClick={() => data.onToggleLock?.()} style={gearActionStyle}>
-                <IconLock locked={!!data.locked} /> {data.locked ? 'Desbloquear' : 'Bloquear'}
-              </button>
-            )}
-            {data.removable && (
-              <button type="button" className="cad-a11y-btn" onClick={() => data.onRemove?.()} style={{ ...gearActionStyle, color: 'var(--cad-accent-red)' }}>
-                <IconTrash /> Eliminar capa
-              </button>
-            )}
-          </div>
-        )}
-      </div>
     </div>
   );
 }
 
-/* ----------- Adaptadores de cada store ----------- */
+/* ----------- Menú contextual (click derecho) ----------- */
+
+const menuItemStyle: React.CSSProperties = {
+  display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '6px 8px',
+  fontSize: '0.7rem', color: 'var(--cad-text-dim)', cursor: 'pointer', textAlign: 'left', borderRadius: 4,
+};
+const menuToggleStyle: React.CSSProperties = {
+  display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '6px 8px',
+  fontSize: '0.7rem', color: 'var(--cad-text-dim)', cursor: 'pointer', borderRadius: 4,
+};
+const menuDividerStyle: React.CSSProperties = { height: 1, background: 'var(--cad-border)', margin: '4px 0' };
+
+interface LayerContextMenuProps {
+  row: LayerRowData;
+  x: number;
+  y: number;
+  isIsolated: boolean;
+  hasSelection: boolean;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
+  isActiveLayer: boolean;
+  onClose: () => void;
+  onRename: () => void;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+  onSetActive: () => void;
+}
+
+function LayerContextMenu({
+  row, x, y, isIsolated, hasSelection, canMoveUp, canMoveDown, isActiveLayer,
+  onClose, onRename, onMoveUp, onMoveDown, onSetActive,
+}: LayerContextMenuProps) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const onDocMouseDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+    };
+    const onDocKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('mousedown', onDocMouseDown);
+    document.addEventListener('keydown', onDocKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', onDocMouseDown);
+      document.removeEventListener('keydown', onDocKeyDown);
+    };
+  }, [onClose]);
+
+  const run = (fn?: () => void) => () => { fn?.(); onClose(); };
+
+  return (
+    <div
+      ref={ref}
+      className="cad-panel-glass animate-fade-in"
+      role="menu"
+      aria-label={`Opciones de la capa ${row.name}`}
+      style={{
+        position: 'fixed', top: y, left: x, minWidth: 240, maxHeight: '75vh', overflowY: 'auto',
+        padding: 8, borderRadius: 6, zIndex: 'var(--z-panel-menu)',
+        display: 'flex', flexDirection: 'column', gap: 2,
+      }}
+    >
+      <div style={{ padding: '2px 6px 8px', marginBottom: 4, borderBottom: '1px solid var(--cad-border)' }}>
+        <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--cad-text)', overflowWrap: 'anywhere' }}>{row.name}</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.58rem', color: 'var(--cad-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginTop: 2 }}>
+          {geometryIconForKind(row.kind)}
+          <span>{geometryLabelForKind(row.kind)} · {row.featureCount ?? 0} elemento(s)</span>
+        </div>
+      </div>
+
+      <button type="button" className="cad-a11y-btn" style={menuItemStyle} onClick={run(onRename)}>
+        <Pencil size={12} /> Renombrar
+      </button>
+
+      <button type="button" className="cad-a11y-btn" style={menuItemStyle} disabled={row.locked} onClick={run(onSetActive)}>
+        <IconTarget filled={isActiveLayer} /> {isActiveLayer ? 'Es la capa activa' : 'Usar como capa activa'}
+      </button>
+
+      <div style={menuDividerStyle} />
+
+      <label style={menuToggleStyle}>
+        <input type="checkbox" className="cad-toggle" checked={row.showLabel} onChange={() => row.onToggleLabel()} />
+        <Tag size={12} /> Mostrar etiquetas
+      </label>
+      <label style={menuToggleStyle}>
+        <input type="checkbox" className="cad-toggle" checked={row.showCota} onChange={() => row.onToggleCota()} />
+        <Ruler size={12} /> Mostrar acotaciones
+      </label>
+      {row.onConfigureLabels && (
+        <button type="button" className="cad-a11y-btn" style={menuItemStyle} onClick={run(row.onConfigureLabels)}>
+          <Tag size={12} /> Etiquetado de capa…
+        </button>
+      )}
+
+      <div style={menuDividerStyle} />
+
+      <div style={{ padding: '2px 6px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.6rem', color: 'var(--cad-text-dim)', marginBottom: 4 }}>
+          <span>Opacidad</span>
+          <span style={{ fontFamily: 'JetBrains Mono, monospace' }}>{Math.round(row.opacity * 100)}%</span>
+        </div>
+        <OpacitySlider value={row.opacity} onChange={row.onOpacity} layerName={row.name} full />
+      </div>
+
+      <div style={menuDividerStyle} />
+
+      {row.onIsolate && (
+        <button type="button" className="cad-a11y-btn" style={menuItemStyle} onClick={run(row.onIsolate)}>
+          <Focus size={12} /> {isIsolated ? 'Quitar aislamiento' : 'Aislar esta capa'}
+        </button>
+      )}
+      {row.onMoveSelectionHere && hasSelection && !row.locked && (
+        <button type="button" className="cad-a11y-btn" style={menuItemStyle} onClick={run(row.onMoveSelectionHere)}>
+          <ArrowRight size={12} /> Mover selección aquí
+        </button>
+      )}
+      {row.onDuplicate && (
+        <button type="button" className="cad-a11y-btn" style={menuItemStyle} onClick={run(row.onDuplicate)}>
+          <Copy size={12} /> Duplicar capa
+        </button>
+      )}
+      {row.onZoomToExtent && (row.featureCount ?? 0) > 0 && (
+        <button type="button" className="cad-a11y-btn" style={menuItemStyle} onClick={run(row.onZoomToExtent)}>
+          <ZoomIn size={12} /> Zoom a extensión
+        </button>
+      )}
+
+      {row.reorderable && (
+        <>
+          <div style={menuDividerStyle} />
+          <button type="button" className="cad-a11y-btn" style={{ ...menuItemStyle, opacity: canMoveUp ? 1 : 0.4 }} disabled={!canMoveUp} onClick={run(onMoveUp)}>
+            <IconChevronSmall dir="up" /> Subir (dibujar encima)
+          </button>
+          <button type="button" className="cad-a11y-btn" style={{ ...menuItemStyle, opacity: canMoveDown ? 1 : 0.4 }} disabled={!canMoveDown} onClick={run(onMoveDown)}>
+            <IconChevronSmall dir="down" /> Bajar (dibujar debajo)
+          </button>
+        </>
+      )}
+
+      {(row.lockable || row.removable) && <div style={menuDividerStyle} />}
+      {row.lockable && (
+        <button type="button" className="cad-a11y-btn" style={menuItemStyle} onClick={run(row.onToggleLock)}>
+          <IconLock locked={!!row.locked} /> {row.locked ? 'Desbloquear' : 'Bloquear'}
+        </button>
+      )}
+      {row.removable && (
+        <button type="button" className="cad-a11y-btn" style={{ ...menuItemStyle, color: 'var(--cad-accent-red)' }} onClick={run(row.onRemove)}>
+          <IconTrash /> Eliminar capa
+        </button>
+      )}
+    </div>
+  );
+}
+
+/* ----------- Adaptador del store ----------- */
 
 function computeDuplicatedColorIds(layers: Array<{ id: string; color: string }>): Set<string> {
   const byColor = new globalThis.Map<string, string[]>();
@@ -601,6 +611,7 @@ export default function LayerPanel() {
 
   const activeLayerId = useLayersStore((s) => s.activeLayerId);
   const isolatedLayerId = useLayersStore((s) => s.isolatedLayerId);
+  const setActiveLayer = useLayersStore((s) => s.setActiveLayer);
 
   const drawSource = useMapStore((s) => s.drawSource);
   const tick = useDrawSourceTick(drawSource);
@@ -615,7 +626,6 @@ export default function LayerPanel() {
   const selectedCount = useSelectionStore((s) => s.selectedIds.size);
 
   const registryRows = useRegistryRows(setDeleteRequest, featureCounts, isolatedLayerId);
-
   const registryRowsDisplay = [...registryRows].sort((a, b) => b.zIndex - a.zIndex);
 
   const viewportWidth = useViewportWidth();
@@ -626,6 +636,37 @@ export default function LayerPanel() {
   const { visibleCount, sentinelRef } = useIncrementalRender(allRowsForIncremental.length, 60, panelRef);
 
   const [addLayerOpen, setAddLayerOpen] = useState(false);
+
+  // Rename inline (lifted acá para poder dispararlo también desde el menú contextual)
+  const [editingLayerId, setEditingLayerId] = useState<string | null>(null);
+  const [nameDraft, setNameDraft] = useState('');
+
+  const startEditingLayer = (id: string, currentName: string) => {
+    setEditingLayerId(id);
+    setNameDraft(currentName);
+  };
+  const commitEditingLayer = () => {
+    if (editingLayerId) {
+      const row = registryRowsDisplay.find((r) => r.id === editingLayerId);
+      const trimmed = nameDraft.trim();
+      if (trimmed && row) row.onRename?.(trimmed);
+    }
+    setEditingLayerId(null);
+  };
+  const cancelEditingLayer = () => setEditingLayerId(null);
+
+  // Menú contextual (click derecho)
+  const [contextMenu, setContextMenu] = useState<{ layerId: string; x: number; y: number } | null>(null);
+
+  const openContextMenu = (e: React.MouseEvent, layerId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const menuWidth = 250;
+    const x = Math.min(Math.max(8, e.clientX), window.innerWidth - menuWidth - 8);
+    const y = Math.min(Math.max(8, e.clientY), window.innerHeight - 40);
+    setContextMenu({ layerId, x, y });
+  };
+  const closeContextMenu = () => setContextMenu(null);
 
   const moveLayer = (id: string, direction: 'up' | 'down') => {
     const layers = useLayersStore.getState().layers;
@@ -652,39 +693,8 @@ export default function LayerPanel() {
     }
   };
 
-  const renderRow = (row: LayerRowData, isRegistryRow: boolean) => {
-    const displayIndex = registryRowsDisplay.findIndex((r) => r.id === row.id);
-    const canMoveUp = row.reorderable && displayIndex > 0;
-    const canMoveDown = row.reorderable && displayIndex !== -1 && displayIndex < registryRowsDisplay.length - 1;
-    const isActive = isRegistryRow && activeLayerId === row.id;
-
-    return (
-      <div
-        key={row.id}
-        data-layer-row="true"
-        role="group"
-        tabIndex={0}
-        aria-label={`Capa ${row.name}${row.isDataLayer ? '' : ' (capa de referencia)'}`}
-        onKeyDown={(e) => handleRowKeyDown(e, row)}
-        style={{
-          borderRadius: 4,
-          background: isActive ? 'rgba(0,212,255,0.08)' : row.isIsolated ? 'rgba(0,212,255,0.05)' : 'transparent',
-          border: isActive ? '1px solid rgba(0,212,255,0.25)' : row.isIsolated ? '1px dashed rgba(0,212,255,0.4)' : '1px solid transparent',
-          opacity: !row.isDataLayer ? 0.85 : 1,
-        }}
-      >
-        <LayerRow
-          data={row}
-          isActive={isActive}
-          hasSelection={selectedCount > 0}
-          onMoveUp={canMoveUp ? () => moveLayer(row.id, 'up') : undefined}
-          onMoveDown={canMoveDown ? () => moveLayer(row.id, 'down') : undefined}
-          canMoveUp={canMoveUp}
-          canMoveDown={canMoveDown}
-        />
-      </div>
-    );
-  };
+  const contextMenuRow = contextMenu ? registryRowsDisplay.find((r) => r.id === contextMenu.layerId) ?? null : null;
+  const contextMenuIndex = contextMenuRow ? registryRowsDisplay.findIndex((r) => r.id === contextMenuRow.id) : -1;
 
   let renderedSoFar = 0;
 
@@ -731,9 +741,13 @@ export default function LayerPanel() {
             </button>
           </div>
 
+          <p style={{ fontSize: '0.58rem', color: 'var(--cad-text-muted)', marginBottom: 8, fontStyle: 'italic' }}>
+            Click derecho sobre una capa para etiquetado, opacidad, bloqueo y más.
+          </p>
+
           {isolatedLayerId && (
             <div role="status" style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 8px', marginBottom: 6, borderRadius: 6, background: 'rgba(0,212,255,0.08)', border: '1px dashed var(--cad-accent)', fontSize: '0.62rem', color: 'var(--cad-accent)' }}>
-              <IconIsolate />
+              <Focus size={12} aria-hidden="true" />
               <span style={{ flex: 1 }}>Aislando: {registryRows.find((r) => r.id === isolatedLayerId)?.name ?? isolatedLayerId}</span>
               <button
                 onClick={() => useLayersStore.getState().toggleIsolate(isolatedLayerId)}
@@ -754,7 +768,7 @@ export default function LayerPanel() {
               </span>
             ) : (
               <span style={{ color: 'var(--cad-text-dim)', fontStyle: 'italic', flex: 1 }}>
-                Ninguna · elegí una en Vista ? Capa activa
+                Ninguna · elegí una en Vista → Capa activa (o click derecho → Usar como capa activa)
               </span>
             )}
           </div>
@@ -769,9 +783,32 @@ export default function LayerPanel() {
                  </p>
                 ) : (
                   registryRowsDisplay.map((row) => {
-                   if (renderedSoFar >= visibleCount) return null;
+                    if (renderedSoFar >= visibleCount) return null;
                     renderedSoFar++;
-                    return renderRow(row, true);
+                    const isActive = activeLayerId === row.id;
+                    return (
+                      <div
+                        key={row.id}
+                        style={{
+                          borderRadius: 4,
+                          background: isActive ? 'rgba(0,212,255,0.08)' : row.isIsolated ? 'rgba(0,212,255,0.05)' : 'transparent',
+                          border: isActive ? '1px solid rgba(0,212,255,0.25)' : row.isIsolated ? '1px dashed rgba(0,212,255,0.4)' : '1px solid transparent',
+                        }}
+                      >
+                        <LayerRow
+                          data={row}
+                          isActive={isActive}
+                          editing={editingLayerId === row.id}
+                          nameDraft={nameDraft}
+                          onNameDraftChange={setNameDraft}
+                          onStartEdit={() => startEditingLayer(row.id, row.name)}
+                          onCommitEdit={commitEditingLayer}
+                          onCancelEdit={cancelEditingLayer}
+                          onOpenContextMenu={(e) => openContextMenu(e, row.id)}
+                          onRowKeyDown={(e) => handleRowKeyDown(e, row)}
+                        />
+                      </div>
+                    );
                   })
                 )}
               </div>
@@ -785,13 +822,32 @@ export default function LayerPanel() {
               <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 2 }}>
                 <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 2, border: '1.5px solid ' + r.color, flexShrink: 0 }} />
                 <span style={{ whiteSpace: 'normal', overflowWrap: 'anywhere' }}>{r.name}</span>
-                {r.locked && <span aria-hidden="true" style={{ fontSize: '0.55rem', opacity: 0.5, marginLeft: 'auto' }}>??</span>}
+                {r.locked && <span aria-hidden="true" style={{ fontSize: '0.55rem', opacity: 0.5, marginLeft: 'auto' }}>🔒</span>}
               </div>
             ))}
           </div>
         </div>
       )}
     </div>
+
+    {contextMenu && contextMenuRow && (
+      <LayerContextMenu
+        row={contextMenuRow}
+        x={contextMenu.x}
+        y={contextMenu.y}
+        isIsolated={isolatedLayerId === contextMenuRow.id}
+        hasSelection={selectedCount > 0}
+        canMoveUp={contextMenuIndex > 0}
+        canMoveDown={contextMenuIndex !== -1 && contextMenuIndex < registryRowsDisplay.length - 1}
+        isActiveLayer={activeLayerId === contextMenuRow.id}
+        onClose={closeContextMenu}
+        onRename={() => startEditingLayer(contextMenuRow.id, contextMenuRow.name)}
+        onMoveUp={() => moveLayer(contextMenuRow.id, 'up')}
+        onMoveDown={() => moveLayer(contextMenuRow.id, 'down')}
+        onSetActive={() => setActiveLayer(contextMenuRow.id)}
+      />
+    )}
+
     <LayerDeleteModal request={deleteRequest} onClose={() => setDeleteRequest(null)} />
     <AddLayerModal open={addLayerOpen} onOpenChange={setAddLayerOpen} />
     </>

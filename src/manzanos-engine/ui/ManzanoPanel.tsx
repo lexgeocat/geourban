@@ -1,3 +1,4 @@
+// src/manzanos-engine/ui/ManzanoPanel.tsx
 import { useMemo, useEffect, useRef } from 'react';
 import { useMapStore } from '@map-core/store/mapStore';
 import { useDrawSourceTick } from '@shared-ui/hooks/useDrawSourceTick';
@@ -9,8 +10,6 @@ import { useSubdivisionPreviewStore } from '@lotificacion-engine/store/subdivisi
 import { formatMetricArea } from '@georef-engine/metrics';
 import LotParamsCard from '@lotificacion-engine/ui/LotParamsCard';
 import ManzanoCard from '@lotificacion-engine/ui/ManzanoCard';
-import ManzanoLabelingCard from '@label-engine/ui/cards/ManzanoLabelingCard';
-import LoteLabelingCard from '@label-engine/ui/cards/LoteLabelingCard';
 
 export default function ManzanoPanel() {
   const drawSource = useMapStore((s) => s.drawSource);
@@ -48,8 +47,8 @@ export default function ManzanoPanel() {
         onGenerarTodos={actions.handleGenerarTodos}
         onCancelGenerarTodos={actions.handleCancelGenerarTodos}
       />
-      <ManzanoLabelingCard />
-      <LoteLabelingCard />
+      {/* El etiquetado de manzanos/lotes ahora se hace con click derecho sobre
+          la capa correspondiente en el Panel de Capas ("Etiquetado de capa…"). */}
 
       {rows.length === 0 ? (
         <p style={{ fontSize: '0.68rem', color: 'var(--cad-text-muted)' }}>

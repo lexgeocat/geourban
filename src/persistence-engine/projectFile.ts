@@ -4,6 +4,7 @@ import type Geometry from 'ol/geom/Geometry.js';
 import Polygon from 'ol/geom/Polygon.js';
 import LineString from 'ol/geom/LineString.js';
 import MultiPolygon from 'ol/geom/MultiPolygon.js';
+import Point from 'ol/geom/Point.js';
 import { useMapStore } from '@map-core/store/mapStore';
 import { useLayersStore } from '@layers-engine/store/layersRegistryStore';
 import { useStreetStore } from '@vias-engine/store/streetStore';
@@ -104,6 +105,8 @@ function geometryToWkb(geom: Geometry): WkbGeometry | null {
     return { type: 'LineString', coordinates: geom.getCoordinates() as [number, number][] };
   if (geom instanceof MultiPolygon)
     return { type: 'MultiPolygon', coordinates: geom.getCoordinates() as [number, number][][][] };
+  if (geom instanceof Point)
+    return { type: 'Point', coordinates: geom.getCoordinates() as [number, number] };
   return null;
 }
 
@@ -111,6 +114,7 @@ function wkbToGeometry(wkb: WkbGeometry): Geometry {
   if (wkb.type === 'Polygon') return new Polygon(wkb.coordinates);
   if (wkb.type === 'LineString') return new LineString(wkb.coordinates);
   if (wkb.type === 'MultiPolygon') return new MultiPolygon(wkb.coordinates);
+  if (wkb.type === 'Point') return new Point(wkb.coordinates);
   const _exhaustive: never = wkb;
   throw new Error(
     `projectFile: geometría no soportada en drawSource (${(_exhaustive as { type: string }).type})`
@@ -293,10 +297,7 @@ export async function loadProject(name: string): Promise<void> {
   refreshSourceMetrics(drawSource);
 }
 
-function migrateLabelClasses(
-  meta: ProjectMeta,
-  layers: Layer[]
-): Record<string, LabelClass> {
+function migrateLabelClasses(meta: ProjectMeta, layers: Layer[]): Record<string, LabelClass> {
   const version = meta.schemaVersion ?? 1;
   if (version >= 2 && meta.labelClasses) {
     const out: Record<string, LabelClass> = {};

@@ -14,6 +14,7 @@ import { useLotsWorkflow } from '@lotificacion-engine/hooks/useLotsWorkflow';
 import { useLabelConfigModalStore } from '@label-engine/store/labelConfigModalStore';
 import { useEntityLabelStore } from '@label-engine/store/entityLabelStore';
 import { defaultLabelStyleConfig, defaultColorForKind, type LabelStyleConfig } from '@label-engine/model/labelModel';
+import Point from 'ol/geom/Point.js';
 
 const basePanelStyle: React.CSSProperties = {
   position: 'absolute',
@@ -184,12 +185,19 @@ export default function PropertyPanel() {
               <span className="cad-row-value">{formatMetricLength(perimeterM)}</span>
             </div>
           </>
-        ) : (
+        ) : lengthM !== undefined ? (
           <div className="cad-row">
             <span>Longitud</span>
             <span className="cad-row-value">{formatMetricLength(lengthM)}</span>
           </div>
-        )}
+        ) : feat.getGeometry() instanceof Point ? (
+          <div className="cad-row">
+            <span>Coordenadas</span>
+            <span className="cad-row-value" style={{ fontSize: '0.62rem' }}>
+              {(feat.getGeometry() as Point).getCoordinates()[0].toFixed(2)}, {(feat.getGeometry() as Point).getCoordinates()[1].toFixed(2)}
+            </span>
+          </div>
+        ) : null}
 
         {method && (
           <div className="cad-row">

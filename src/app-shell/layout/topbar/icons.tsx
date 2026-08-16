@@ -14,6 +14,9 @@ import {
   IconPerimeter as DomainIconPerimeter,
   IconSubdivide as DomainIconSubdivide,
   IconRoundabout as DomainIconRoundabout,
+  IconPoint as DomainIconPoint,
+  IconCircleShape as DomainIconCircleShape,
+  IconPolyline as DomainIconPolyline,
 } from '@shared-ui/icons/domainIcons';
 
 export const IconCursor = () => <MousePointer2 size={18} aria-hidden="true" />;
@@ -31,3 +34,6 @@ export const IconGrid = () => <Grid3x3 size={18} aria-hidden="true" />;
 export const IconSat = () => <Satellite size={18} aria-hidden="true" />;
 export const IconRoundabout = DomainIconRoundabout;
 export const IconRoad = () => <Route size={18} aria-hidden="true" />;
+export const IconPoint = DomainIconPoint;
+export const IconCircleShape = DomainIconCircleShape;
+export const IconPolyline = DomainIconPolyline;

@@ -10,16 +10,15 @@ import { updateFeatureMetrics } from '@georef-engine/metrics';
 import { requireLayerForKind } from '@layers-engine/store/layerPickerStore';
 import type { ModeContext } from '@kernel/modes/ModeContext';
 
-export function activateLine(ctx: ModeContext): void {
+export function activatePolyline(ctx: ModeContext): void {
   const { map, drawSource: src } = ctx;
   const draw = new Draw({
     source: src,
     type: 'LineString',
-    maxPoints: 2, // "línea normal" = segmento simple; para multi-vértice usar Polilínea
     condition: primaryAction,
     style: new Style({
       stroke: new Stroke({
-        color: 'rgba(0, 212, 255, 0.95)',
+        color: 'rgba(255, 214, 10, 0.95)',
         width: 2,
         lineDash: [6, 4],
         lineCap: 'round',
@@ -29,7 +28,7 @@ export function activateLine(ctx: ModeContext): void {
   draw.on('drawend', (event) => {
     const feature = event.feature as Feature<Geometry>;
     void (async () => {
-      const layerId = await requireLayerForKind('linea');
+      const layerId = await requireLayerForKind('polilinea');
       if (!layerId) {
         src.removeFeature(feature);
         src.changed();
@@ -38,8 +37,8 @@ export function activateLine(ctx: ModeContext): void {
       await runCommand(
         new AddFeatureCommand(feature, {
           mode: 'claim',
-          label: 'Dibujar línea',
-          kind: 'linea',
+          label: 'Dibujar polilínea',
+          kind: 'polilinea',
           layerId,
         })
       );

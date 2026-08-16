@@ -122,3 +122,26 @@ export function SnapIcon({
       );
   }
 }
+
+export const IconPoint = () => (
+  <svg viewBox="0 0 24 24" {...baseProps} style={iconStyle} aria-hidden="true">
+    <circle cx="12" cy="12" r="3" fill="currentColor" stroke="none" />
+    <circle cx="12" cy="12" r="8" strokeDasharray="2 3" />
+  </svg>
+);
+
+export const IconCircleShape = () => (
+  <svg viewBox="0 0 24 24" {...baseProps} style={iconStyle} aria-hidden="true">
+    <circle cx="12" cy="12" r="8" />
+  </svg>
+);
+
+export const IconPolyline = () => (
+  <svg viewBox="0 0 24 24" {...baseProps} style={iconStyle} aria-hidden="true">
+    <polyline points="3,18 9,8 14,14 21,5" />
+    <circle cx="3" cy="18" r="1.2" fill="currentColor" stroke="none" />
+    <circle cx="9" cy="8" r="1.2" fill="currentColor" stroke="none" />
+    <circle cx="14" cy="14" r="1.2" fill="currentColor" stroke="none" />
+    <circle cx="21" cy="5" r="1.2" fill="currentColor" stroke="none" />
+  </svg>
+);

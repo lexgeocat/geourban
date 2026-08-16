@@ -5,6 +5,7 @@ import LineString from 'ol/geom/LineString.js';
 import { useSelectionStore } from '../store/selectionStore';
 import { entityGeometryProviders } from '../entityGeometryProviders';
 import { strokeRingDouble } from '@map-core/scene/canvasPathUtils';
+import Point from 'ol/geom/Point.js';
 
 const GLOW_HUE = '255, 196, 0';
 
@@ -27,7 +28,10 @@ export class SelectionHighlightPainter {
   private getFeatureCount: () => number = () => 0;
 
   private readonly onVisibilityChange = (): void => {
-    if (document.visibilityState === 'visible' && useSelectionStore.getState().selectedIds.size > 0) {
+    if (
+      document.visibilityState === 'visible' &&
+      useSelectionStore.getState().selectedIds.size > 0
+    ) {
       this.startPulseLoop();
     } else {
       this.stopPulseLoop();
@@ -108,7 +112,7 @@ export class SelectionHighlightPainter {
     ctx: CanvasRenderingContext2D,
     toPx: (c: number[]) => [number, number],
     resolution: number,
-    drawSource: VectorSource,
+    drawSource: VectorSource
   ): void {
     const selectedIds = useSelectionStore.getState().selectedIds;
     if (selectedIds.size === 0) return;
@@ -122,11 +126,37 @@ export class SelectionHighlightPainter {
       const feat = drawSource.getFeatureById(id);
       const geom = feat?.getGeometry();
       if (geom instanceof Polygon) {
-        this.strokeRing(ctx, (geom.getCoordinates()[0] ?? []) as number[][], toPx, outerColor, innerColor, outerWidth);
+        this.strokeRing(
+          ctx,
+          (geom.getCoordinates()[0] ?? []) as number[][],
+          toPx,
+          outerColor,
+          innerColor,
+          outerWidth
+        );
         continue;
       }
       if (geom instanceof LineString) {
-        this.strokePath(ctx, geom.getCoordinates() as number[][], toPx, outerColor, innerColor, outerWidth);
+        this.strokePath(
+          ctx,
+          geom.getCoordinates() as number[][],
+          toPx,
+          outerColor,
+          innerColor,
+          outerWidth
+        );
+        continue;
+      }
+      if (geom instanceof Point) {
+        this.strokePointHighlight(
+          ctx,
+          geom.getCoordinates(),
+          toPx,
+          outerColor,
+          innerColor,
+          outerWidth,
+          pulse
+        );
         continue;
       }
 
@@ -155,10 +185,35 @@ export class SelectionHighlightPainter {
     toPx: (c: number[]) => [number, number],
     outerColor: string,
     innerColor: string,
-    outerWidth: number,
+    outerWidth: number
   ): void {
     if (coords.length < 2) return;
     this.drawPath(ctx, coords, toPx, false, outerColor, innerColor, outerWidth);
+  }
+
+  private strokePointHighlight(
+    ctx: CanvasRenderingContext2D,
+    coord: number[],
+    toPx: (c: number[]) => [number, number],
+    outerColor: string,
+    innerColor: string,
+    outerWidth: number,
+    pulse: number
+  ): void {
+    const px = toPx(coord);
+    const baseR = 9 + 4 * pulse;
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(px[0], px[1], baseR + outerWidth / 2, 0, Math.PI * 2);
+    ctx.strokeStyle = outerColor;
+    ctx.lineWidth = outerWidth;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(px[0], px[1], baseR, 0, Math.PI * 2);
+    ctx.strokeStyle = innerColor;
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+    ctx.restore();
   }
 
   private strokeRing(
@@ -167,7 +222,7 @@ export class SelectionHighlightPainter {
     toPx: (c: number[]) => [number, number],
     outerColor: string,
     innerColor: string,
-    outerWidth: number,
+    outerWidth: number
   ): void {
     if (ring.length < 3) return;
     this.drawPath(ctx, ring, toPx, true, outerColor, innerColor, outerWidth);
@@ -180,7 +235,7 @@ export class SelectionHighlightPainter {
     closed: boolean,
     outerColor: string,
     innerColor: string,
-    outerWidth: number,
+    outerWidth: number
   ): void {
     ctx.save();
     ctx.lineJoin = 'round';
@@ -193,7 +248,7 @@ export class SelectionHighlightPainter {
       outerWidth,
       innerColor,
       2.5,
-      closed,
+      closed
     );
     ctx.restore();
   }

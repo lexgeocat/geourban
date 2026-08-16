@@ -6,6 +6,9 @@ export { DeleteFeaturesCommand } from './commands/DeleteFeaturesCommand';
 export * from './modes/PolygonMode';
 export * from './modes/LineMode';
 export * from './modes/RectangleMode';
+export * from './modes/PointMode';
+export * from './modes/CircleMode';
+export * from './modes/PolylineMode';
 export * from './modes/EraseMode';
 
 export * from './styles/styleFactory';

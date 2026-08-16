@@ -15,6 +15,9 @@ export {
   IconPerimeter,
   IconSubdivide,
   IconRoundabout,
+  IconPoint,
+  IconCircleShape,
+  IconPolyline,
   SnapIcon,
   type SnapKind,
 } from './icons/domainIcons';

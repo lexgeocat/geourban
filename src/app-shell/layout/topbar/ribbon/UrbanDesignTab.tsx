@@ -14,6 +14,7 @@ import { RibbonGroup, RibbonTool, RibbonToolDropdown } from '../../topbar/Ribbon
 import {
   IconCursor, IconEraser, IconPolygon, IconLine, IconRect, IconPerimeter,
   IconSubdivide, IconLots, IconStreet, IconRoundabout,
+  IconPoint, IconCircleShape, IconPolyline,
 } from '../../topbar/icons';
 
 export interface UrbanDesignTabProps {
@@ -67,7 +68,17 @@ const handleClearStreets = async () => {
             { mode: 'rectangle', icon: <IconRect />, label: 'Rectángulo', shortcut: 'R' },
           ]}
         />
-        <RibbonTool mode="line" icon={<IconLine />} label="Línea" shortcut="L" />
+        <RibbonToolDropdown
+          icon={<IconLine />}
+          label="Línea"
+          tooltip="Línea — Segmento simple (L) o Polilínea (Y)"
+          options={[
+            { mode: 'line', icon: <IconLine />, label: 'Línea', shortcut: 'L' },
+            { mode: 'polyline', icon: <IconPolyline />, label: 'Polilínea', shortcut: 'Y' },
+          ]}
+        />
+        <RibbonTool mode="circle" icon={<IconCircleShape />} label="Círculo" shortcut="C" />
+        <RibbonTool mode="point" icon={<IconPoint />} label="Punto" shortcut="T" />
       </RibbonGroup>
 
       <RibbonGroup label="Vialidad">

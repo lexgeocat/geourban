@@ -39,6 +39,7 @@ import {
 } from '../engine/LabelEngineService';
 import { useLabelEngineTelemetryStore } from '../store/labelEngineTelemetryStore';
 import LineString from 'ol/geom/LineString.js';
+import Point from 'ol/geom/Point.js';
 
 const LABEL_BG_HEAVY = `rgba(${CAD_BG_DEEPEST_RGB}, 0.72)`;
 
@@ -263,7 +264,8 @@ export class LabelPainter {
       const geometry = feature.getGeometry();
       const isPolygon = geometry instanceof Polygon;
       const isLine = geometry instanceof LineString;
-      if (!isPolygon && !isLine) continue;
+      const isPoint = geometry instanceof Point;
+      if (!isPolygon && !isLine && !isPoint) continue;
 
       const kind = (feature.get('kind') as string) ?? '';
       const cap = labelRenderCaps[kind] ?? labelRenderCapDefault;
@@ -279,14 +281,14 @@ export class LabelPainter {
       const resolved = resolveFeatureLabel(feature, classObj, { zoom });
       if (resolved.source === 'none' || !resolved.style.enabled) continue;
 
-      // Ancla: polígono usa el labelPoint precomputado (pole of inaccessibility);
-      // línea usa el punto medio recorrido — geometría define la estrategia, no el kind.
       let labelPoint: [number, number] | undefined;
       if (isPolygon) {
         labelPoint = feature.get('labelPoint') as [number, number] | undefined;
-      } else {
+      } else if (isLine) {
         const coords = (geometry as LineString).getCoordinates() as [number, number][];
         labelPoint = coords.length > 0 ? polylineMidpoint(coords) : undefined;
+      } else {
+        labelPoint = (geometry as Point).getCoordinates() as [number, number];
       }
       if (!labelPoint) continue;
 
@@ -298,9 +300,7 @@ export class LabelPainter {
 
       if (!layer || layer.showLabel !== false) {
         const effectiveStyle: LabelStyleConfig =
-          cfg.useLayerColor && layer
-            ? { ...cfg, color: layer.color }
-            : cfg;
+          cfg.useLayerColor && layer ? { ...cfg, color: layer.color } : cfg;
         resolvedStyleByFeatureId.set(fid, { style: effectiveStyle, text });
 
         const lines = isPolygon
@@ -309,11 +309,13 @@ export class LabelPainter {
               primaryValue: feature.get('areaM2') as number | undefined,
               secondaryValue: feature.get('perimeterM') as number | undefined,
             })
-          : composeLabelLines(effectiveStyle, {
-              text,
-              primaryValue: feature.get('lengthM') as number | undefined,
-              primaryFormatter: (v) => formatMetricLength(v),
-            });
+          : isLine
+            ? composeLabelLines(effectiveStyle, {
+                text,
+                primaryValue: feature.get('lengthM') as number | undefined,
+                primaryFormatter: (v) => formatMetricLength(v),
+              })
+            : composeLabelLines(effectiveStyle, { text }); // punto: solo texto
 
         if (lines.length > 0) {
           const size = this.measureLabelBlockSize(ctx, lines, effectiveStyle);
@@ -330,7 +332,7 @@ export class LabelPainter {
               heightPx: size.h,
               style: effectiveStyle,
               text,
-              category: isPolygon ? 'polygon' : 'line',
+              category: isPolygon ? 'polygon' : isLine ? 'line' : 'point',
               allowLeaderLine: classObj?.placement?.allowLeaderLine ?? false,
               placementOffsets: isPolygon
                 ? [
@@ -340,7 +342,13 @@ export class LabelPainter {
                     [size.w * 0.6, 0],
                     [-size.w * 0.6, 0],
                   ]
-                : [[0, 0]],
+                : isPoint
+                  ? [
+                      [0, -size.h * 0.9],
+                      [0, size.h * 0.9],
+                      [0, 0],
+                    ]
+                  : [[0, 0]],
             });
           }
         }
@@ -385,18 +393,21 @@ export class LabelPainter {
       if (!feature) continue;
       const resolved = resolvedStyleByFeatureId.get(fid);
       if (!resolved) continue;
-      const isPolygonFeature = feature.getGeometry() instanceof Polygon;
-      const lines = isPolygonFeature
-        ? composeLabelLines(resolved.style, {
-            text: resolved.text,
-            primaryValue: feature.get('areaM2') as number | undefined,
-            secondaryValue: feature.get('perimeterM') as number | undefined,
-          })
-        : composeLabelLines(resolved.style, {
-            text: resolved.text,
-            primaryValue: feature.get('lengthM') as number | undefined,
-            primaryFormatter: (v) => formatMetricLength(v),
-          });
+      const featGeom = feature.getGeometry();
+      const lines =
+        featGeom instanceof Polygon
+          ? composeLabelLines(resolved.style, {
+              text: resolved.text,
+              primaryValue: feature.get('areaM2') as number | undefined,
+              secondaryValue: feature.get('perimeterM') as number | undefined,
+            })
+          : featGeom instanceof LineString
+            ? composeLabelLines(resolved.style, {
+                text: resolved.text,
+                primaryValue: feature.get('lengthM') as number | undefined,
+                primaryFormatter: (v) => formatMetricLength(v),
+              })
+            : composeLabelLines(resolved.style, { text: resolved.text }); // punto
       if (lines.length === 0) continue;
       if (p.leaderFromPx) this.drawLeaderLine(ctx, p.leaderFromPx, p.positionPx, resolved.style);
       this.drawLabelBlock(ctx, p.positionPx, lines, resolved.style);

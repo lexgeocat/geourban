@@ -14,7 +14,7 @@ export interface LabelCandidate {
   rotation?: number;
   placementOffsets?: Array<[number, number]>;
   allowLeaderLine?: boolean;
-  category: 'polygon' | 'line' | 'street' | 'roundabout' | 'cota';
+  category: 'polygon' | 'line' | 'point' | 'street' | 'roundabout' | 'cota';
 }
 
 export interface PlacedLabel {
