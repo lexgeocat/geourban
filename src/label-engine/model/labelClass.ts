@@ -5,7 +5,6 @@ export type LabelPlacementStrategy = 'poleOfInaccessibility' | 'centroid' | 'alo
 
 export interface LabelPlacement {
   strategy: LabelPlacementStrategy;
-  repeatIntervalM?: number;
   allowLeaderLine?: boolean;
 }
 
@@ -21,7 +20,6 @@ export interface LabelClass {
   enabled: boolean;
   priority: number;
   style: LabelStyleConfig;
-  remnantStyle?: LabelStyleConfig;
   placement: LabelPlacement;
   numbering?: LabelClassNumbering;
   visibleMinZoom?: number;

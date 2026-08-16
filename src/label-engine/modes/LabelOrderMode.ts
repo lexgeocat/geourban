@@ -8,10 +8,7 @@ import LineString from 'ol/geom/LineString.js';
 import { getFeatureKind } from '@kernel/domain-model/featureModel';
 import { runCommand } from '@kernel/command/CommandStack';
 import { AssignLabelOrderCommand } from '../commands/AssignLabelOrderCommand';
-import {
-  useLabelConfigModalStore,
-  type LabelOrderKind,
-} from '../store/labelConfigModalStore';
+import { useLabelConfigModalStore, type LabelOrderKind } from '../store/labelConfigModalStore';
 import { useDrawStore } from '@map-core/store/drawStore';
 import { toast } from '@shared-ui/store/toastStore';
 import { polygonCentroidLabelPoint } from '@kernel/geometry/polygonEngine';
@@ -41,7 +38,10 @@ function nearestArcLength(pt: [number, number], line: [number, number][]): numbe
   return bestArc;
 }
 
-const ORDER_KIND_LABELS: Record<LabelOrderKind, { noun: string; commandLabel: string }> = {
+const ORDER_KIND_LABELS: Record<
+  Exclude<LabelOrderKind, 'layer'>,
+  { noun: string; commandLabel: string }
+> = {
   manzana: { noun: 'manzanos', commandLabel: 'Etiquetar manzanos en orden' },
   lote: { noun: 'lotes', commandLabel: 'Etiquetar lotes en orden' },
 };
@@ -85,37 +85,52 @@ export function activateLabelOrder(ctx: ModeContext): void {
       finishAndExit();
       return;
     }
-    const { kind, scopeManzanoId, config, numbering } = request;
-    const kindInfo = ORDER_KIND_LABELS[kind];
+    const { kind, layerId, scopeManzanoId, config, numbering } = request;
+    const kindInfo =
+      kind === 'layer'
+        ? { noun: 'elementos', commandLabel: 'Etiquetar capa en orden' }
+        : ORDER_KIND_LABELS[kind];
 
     const line = geom.getCoordinates() as [number, number][];
     if (line.length < 2) {
       toast(`Trazá una línea que pase cerca de los ${kindInfo.noun}, en el orden deseado.`, {
         variant: 'warning',
       });
-      return; // se puede reintentar el trazo sin abortar el modo
+      return;
     }
 
     const items: Array<{ id: string | number; arc: number }> = [];
     src.forEachFeature((f) => {
       const feat = f as Feature<Geometry>;
-      if (getFeatureKind(feat) !== kind) return;
-      if (
-        kind === 'lote' &&
-        scopeManzanoId != null &&
-        feat.get('lotGroupId') !== String(scopeManzanoId)
-      )
-        return;
+      if (layerId) {
+        if (feat.get('layerId') !== layerId) return;
+      } else {
+        if (getFeatureKind(feat) !== kind) return;
+        if (
+          kind === 'lote' &&
+          scopeManzanoId != null &&
+          feat.get('lotGroupId') !== String(scopeManzanoId)
+        )
+          return;
+      }
+
       const g = feat.getGeometry();
-      if (!(g instanceof Polygon)) return;
       const id = feat.getId();
-      if (id == null) return;
-      const ring = (g.getCoordinates()[0] ?? []) as [number, number][];
-      const anchor =
-        (feat.get('labelPoint') as [number, number] | undefined) ??
-        (ring.length >= 3
-          ? polygonCentroidLabelPoint(ring)
-          : (g.getInteriorPoint().getCoordinates() as [number, number]));
+      if (id == null || !g) return;
+
+      let anchor: [number, number] | null = null;
+      if (g instanceof Polygon) {
+        const ring = (g.getCoordinates()[0] ?? []) as [number, number][];
+        anchor =
+          (feat.get('labelPoint') as [number, number] | undefined) ??
+          (ring.length >= 3
+            ? polygonCentroidLabelPoint(ring)
+            : (g.getInteriorPoint().getCoordinates() as [number, number]));
+      } else if (g instanceof LineString) {
+        const coords = g.getCoordinates() as [number, number][];
+        if (coords.length > 0) anchor = coords[Math.floor(coords.length / 2)];
+      }
+      if (!anchor) return;
       items.push({ id, arc: nearestArcLength(anchor, line) });
     });
 

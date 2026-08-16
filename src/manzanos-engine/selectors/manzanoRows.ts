@@ -44,7 +44,7 @@ export function readManzanoRows(drawSource: VectorSource | null): ManzanoRow[] {
 
   drawSource.forEachFeature((f: Feature<Geometry>) => {
     const kind = getFeatureKind(f);
-    if (kind === 'manzana' || kind === 'equipamiento') {
+    if (kind === 'manzana') {
       manzanoFeatures.push(f);
       return;
     }

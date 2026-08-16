@@ -41,6 +41,9 @@ import { useRoundaboutStore } from '@vias-engine/store/roundaboutStore';
 import { confirmAsync } from '@shared-ui/store/confirmDialogStore';
 import { toast } from '@shared-ui/store/toastStore';
 import { newId } from '@kernel/id/id';
+import { useLabelConfigModalStore } from '@label-engine/store/labelConfigModalStore';
+import { useLabelClassStore } from '@label-engine/store/labelClassStore';
+import { defaultColorForKind, defaultLabelStyleConfig } from '@label-engine/model/labelModel';
 
 /* ----------- Icons (todos vienen de lucide-react; aria-hidden en su punto de uso) ----------- */
 
@@ -233,6 +236,7 @@ interface LayerRowData {
   onZoomToExtent?: () => void;
   onDuplicate?: () => void;
   onMoveSelectionHere?: () => void;
+  onConfigureLabels?: () => void;
 }
 
 const gearActionStyle: React.CSSProperties = {
@@ -450,6 +454,11 @@ function LayerRow({
                 <IconDuplicate /> Duplicar capa
               </button>
             )}
+            {data.isDataLayer && data.onConfigureLabels && (
+              <button type="button" className="cad-a11y-btn" onClick={() => data.onConfigureLabels?.()} style={gearActionStyle}>
+                <IconLabelTag /> Etiquetado de capa…
+              </button>
+            )}
             {data.lockable && (
               <button type="button" className="cad-a11y-btn" onClick={() => data.onToggleLock?.()} style={gearActionStyle}>
                 <IconLock locked={!!data.locked} /> {data.locked ? 'Desbloquear' : 'Bloquear'}
@@ -519,6 +528,13 @@ function useRegistryRows(
     void runCommand(new MoveFeaturesToLayerCommand(ids, layerId));
   };
 
+  const handleConfigureLabels = (layer: { id: string; kind: LayerKind }) => {
+    const style =
+      useLabelClassStore.getState().getForLayer(layer.id)?.style ??
+      defaultLabelStyleConfig({ color: defaultColorForKind(layer.kind) });
+    useLabelConfigModalStore.getState().openForLayerBatch(layer.id, style);
+  };
+
   return layers.map((l): LayerRowData & { zIndex: number } => ({
     id: l.id,
     name: l.name,
@@ -550,6 +566,7 @@ function useRegistryRows(
     onZoomToExtent: () => handleZoomToLayer(l.id),
     onDuplicate: () => handleDuplicate({ id: l.id, name: l.name }),
     onMoveSelectionHere: () => handleMoveSelectionHere(l.id),
+    onConfigureLabels: () => handleConfigureLabels(l),
   }));
 }
 

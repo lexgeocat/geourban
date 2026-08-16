@@ -4,7 +4,7 @@ import type { GeoUrbanFeatureKind } from '@kernel/domain-model/featureModel';
 import type { LabelNumberingMode } from '../model/labelNumbering';
 
 export type { LabelNumberingMode };
-export type LabelOrderKind = Extract<GeoUrbanFeatureKind, 'manzana' | 'lote'>;
+export type LabelOrderKind = Extract<GeoUrbanFeatureKind, 'manzana' | 'lote'> | 'layer';
 
 interface FeatureTarget {
   kind: 'feature';
@@ -24,12 +24,17 @@ interface BatchLotsTarget {
   manzanoId?: string | number;
   layerId?: string;
 }
+interface BatchLayerTarget {
+  kind: 'batch-layer';
+  layerId: string;
+}
 
-export type LabelConfigTarget = FeatureTarget | EntityTarget | BatchTarget | BatchLotsTarget;
+export type LabelConfigTarget =
+  FeatureTarget | EntityTarget | BatchTarget | BatchLotsTarget | BatchLayerTarget;
 
-/** Pedido de trazado de orden en curso — lo consume `LabelOrderMode` al terminar el trazo. */
 export interface LabelOrderRequest {
   kind: LabelOrderKind;
+  layerId?: string;
   scopeManzanoId?: string | number;
   config: LabelStyleConfig;
   numbering: LabelNumberingMode;
@@ -55,8 +60,13 @@ interface LabelConfigModalState {
     initial: LabelStyleConfig,
     initialText?: string
   ) => void;
+  openForLayerBatch: (layerId: string, initial: LabelStyleConfig) => void;
   openForManzanoBatch: (initial: LabelStyleConfig, layerId?: string) => void;
-  openForLotsBatch: (manzanoId: string | number | undefined, initial: LabelStyleConfig, layerId?: string) => void;
+  openForLotsBatch: (
+    manzanoId: string | number | undefined,
+    initial: LabelStyleConfig,
+    layerId?: string
+  ) => void;
   setNumberingMode: (m: LabelNumberingMode) => void;
   setLastManzanoConfig: (cfg: LabelStyleConfig) => void;
   setLastLotsConfig: (cfg: LabelStyleConfig) => void;
@@ -99,6 +109,13 @@ export const useLabelConfigModalStore = create<LabelConfigModalState>()((set) =>
     set({
       open: true,
       target: { kind: 'batch-lots', manzanoId, layerId },
+      initialConfig: initial,
+      initialText: '',
+    }),
+  openForLayerBatch: (layerId, initial) =>
+    set({
+      open: true,
+      target: { kind: 'batch-layer', layerId },
       initialConfig: initial,
       initialText: '',
     }),

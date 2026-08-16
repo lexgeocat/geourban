@@ -13,7 +13,7 @@ import { useDraggablePanel } from '@shared-ui/hooks/useDraggablePanel';
 import { useLotsWorkflow } from '@lotificacion-engine/hooks/useLotsWorkflow';
 import { useLabelConfigModalStore } from '@label-engine/store/labelConfigModalStore';
 import { useEntityLabelStore } from '@label-engine/store/entityLabelStore';
-import { defaultLabelStyleConfig, defaultColorForKind } from '@label-engine/model/labelModel';
+import { defaultLabelStyleConfig, defaultColorForKind, type LabelStyleConfig } from '@label-engine/model/labelModel';
 
 const basePanelStyle: React.CSSProperties = {
   position: 'absolute',
@@ -147,6 +147,9 @@ export default function PropertyPanel() {
   const mergedAt = feat.get('mergedAt') as string | undefined;
 
   const isPolygon = areaM2 !== undefined;
+  const labelConfig = feat.get('labelConfig') as LabelStyleConfig | undefined;
+  const labelText = feat.get('labelText') as string | undefined;
+  const hasActiveLabel = !!labelConfig?.enabled;
 
   return (
     <div style={panelStyle} className="cad-panel-glass animate-fade-in">
@@ -222,35 +225,59 @@ export default function PropertyPanel() {
           </>
         )}
 
-        {/* Acciones rapidas */}
-        <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 4 }}>
+        {/* Acciones rápidas — generales para CUALQUIER kind (perímetro, línea, lote, manzana) */}
+        <div
+          style={{
+            marginTop: 12,
+            paddingTop: 10,
+            borderTop: '1px solid var(--cad-border)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 6,
+          }}
+        >
           {isPolygon && featureKind === 'perimetro' && (
-            <p style={{ fontSize: '0.65rem', color: 'var(--cad-text-muted)', fontStyle: 'italic' }}>
+            <p style={{ fontSize: '0.65rem', color: 'var(--cad-text-muted)', fontStyle: 'italic', margin: 0 }}>
               Este es el perímetro del sitio (referencia intacta). Trazá calles para generar manzanos.
             </p>
           )}
+
           {isPolygon && featureKind === 'manzana' && (
-            <button
-              onClick={() => focusManzanoInSidebar(primaryId)}
-              className="cad-btn-outline"
-            >
+            <button onClick={() => focusManzanoInSidebar(primaryId)} className="cad-btn-outline">
               Subdividir este polígono
             </button>
           )}
-          {isPolygon && featureKind !== 'perimetro' && (
-            <button
-              onClick={() => {
-                const existing = feat.get('labelConfig');
-                openLabelModal(
-                  primaryId,
-                  existing ?? defaultLabelStyleConfig({ color: defaultColorForKind(featureKind) })
-                );
+
+          {hasActiveLabel && (
+            <div
+              style={{
+                fontSize: '0.62rem',
+                color: 'var(--cad-text-muted)',
+                display: 'flex',
+                justifyContent: 'space-between',
+                gap: 6,
               }}
-              className="cad-btn-outline"
             >
-              🏷 Generar etiqueta
-            </button>
+              <span>Etiqueta activa</span>
+              <span style={{ color: 'var(--cad-accent)', fontWeight: 600, overflowWrap: 'anywhere', textAlign: 'right' }}>
+                {labelText || label || '—'}
+              </span>
+            </div>
           )}
+
+          <button
+            onClick={() => {
+              openLabelModal(
+                primaryId,
+                labelConfig ?? defaultLabelStyleConfig({ color: defaultColorForKind(featureKind) }),
+                labelText ?? label ?? ''
+              );
+            }}
+            className="cad-btn-outline"
+            style={hasActiveLabel ? { borderColor: 'var(--cad-accent)', color: 'var(--cad-accent)' } : undefined}
+          >
+            🏷 {hasActiveLabel ? 'Editar etiqueta' : 'Generar etiqueta'}
+          </button>
         </div>
       </div>
     </div>

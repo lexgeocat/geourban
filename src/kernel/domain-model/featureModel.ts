@@ -3,7 +3,7 @@ import type Geometry from 'ol/geom/Geometry.js';
 import type { LabelStyleConfig } from '@label-engine/model/labelModel';
 
 export type GeoUrbanFeatureKind =
-  'lote' | 'manzana' | 'calle' | 'equipamiento' | 'linea' | 'rotonda' | 'perimetro';
+  'lote' | 'manzana' | 'calle' | 'linea' | 'rotonda' | 'perimetro';
 
 export type LayerKind = GeoUrbanFeatureKind;
 
@@ -31,12 +31,6 @@ const LAYER_SUGGESTIONS: LayerSuggestion[] = [
   { kind: 'perimetro', name: 'Perímetro', color: '#f0f6fc', geometryHint: 'polygon' },
   { kind: 'manzana', name: 'Manzano', color: '#f59e0b', geometryHint: 'polygon' },
   { kind: 'lote', name: 'Lote', color: '#58a6ff', geometryHint: 'polygon' },
-  {
-    kind: 'equipamiento',
-    name: 'Áreas de equipamientos',
-    color: '#4dd0c4',
-    geometryHint: 'polygon',
-  },
   { kind: 'calle', name: 'Vías', color: '#8b5cf6', geometryHint: 'line' },
   { kind: 'rotonda', name: 'Rotonda', color: '#f78166', geometryHint: 'line' },
 ];
@@ -82,11 +76,6 @@ interface CalleProps extends BaseFeatureProps {
   widthM: number;
 }
 
-interface EquipamientoProps extends BaseFeatureProps {
-  kind: 'equipamiento';
-  areaM2: number;
-}
-
 interface LineaProps extends BaseFeatureProps {
   kind: 'linea';
 }
@@ -98,13 +87,12 @@ interface PerimetroProps extends BaseFeatureProps {
 }
 
 export type GeoUrbanFeatureProps =
-  LoteProps | ManzanaProps | CalleProps | EquipamientoProps | LineaProps | PerimetroProps;
+  LoteProps | ManzanaProps | CalleProps | LineaProps | PerimetroProps;
 
 const KNOWN_KINDS: ReadonlySet<GeoUrbanFeatureKind> = new Set<GeoUrbanFeatureKind>([
   'lote',
   'manzana',
   'calle',
-  'equipamiento',
   'linea',
   'rotonda',
   'perimetro',
@@ -139,7 +127,6 @@ export function getFeatureKind(
   if (legacy === 'manzana') return 'manzana';
   if (legacy === 'lote' || (typeof legacy === 'string' && legacy.startsWith('Lote'))) return 'lote';
   if (legacy === 'calle') return 'calle';
-  if (legacy === 'equipamiento') return 'equipamiento';
   if (legacy === 'linea') return 'linea';
   return null;
 }

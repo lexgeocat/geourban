@@ -9,10 +9,8 @@ import { useEntityLabelStore, type EntityLabelEntry } from '../store/entityLabel
 import { roundaboutRoadAreaM2 } from '@vias-engine/geometry/roundaboutEngine';
 import {
   composeLabelLines,
-  formatAreaWithUnit,
   labelRenderCapDefault,
   labelRenderCaps,
-  resolveLabelExpression,
   type LabelStyleConfig,
 } from '../model/labelModel';
 import { measureCached } from '../util/textMeasureCache';
@@ -40,6 +38,7 @@ import {
   type PlacedLabel,
 } from '../engine/LabelEngineService';
 import { useLabelEngineTelemetryStore } from '../store/labelEngineTelemetryStore';
+import LineString from 'ol/geom/LineString.js';
 
 const LABEL_BG_HEAVY = `rgba(${CAD_BG_DEEPEST_RGB}, 0.72)`;
 
@@ -233,13 +232,13 @@ export class LabelPainter {
     this.lastZoom = zoom;
     const registry = useLayersStore.getState();
 
-    this.paintPolygonLabelsAndCotas(ctx, features, zoom, resolution, toPx, registry);
+    this.paintFeatureLabelsAndCotas(ctx, features, zoom, resolution, toPx, registry);
 
     if (zoom > STREET_LABEL_MIN_ZOOM) this.paintStreetLabels(ctx, toPx, registry);
     this.paintRoundaboutLabels(ctx, toPx, resolution, registry);
   }
 
-  private paintPolygonLabelsAndCotas(
+  private paintFeatureLabelsAndCotas(
     ctx: CanvasRenderingContext2D,
     features: Array<Feature<Geometry>>,
     zoom: number,
@@ -262,9 +261,11 @@ export class LabelPainter {
 
     for (const feature of features) {
       const geometry = feature.getGeometry();
-      if (!(geometry instanceof Polygon)) continue;
+      const isPolygon = geometry instanceof Polygon;
+      const isLine = geometry instanceof LineString;
+      if (!isPolygon && !isLine) continue;
 
-      const kind = (feature.get('kind') as string) ?? 'poligono';
+      const kind = (feature.get('kind') as string) ?? '';
       const cap = labelRenderCaps[kind] ?? labelRenderCapDefault;
       const seen = processedByKind.get(kind) ?? 0;
       if (seen >= cap) continue;
@@ -278,45 +279,42 @@ export class LabelPainter {
       const resolved = resolveFeatureLabel(feature, classObj, { zoom });
       if (resolved.source === 'none' || !resolved.style.enabled) continue;
 
-      const labelPoint = feature.get('labelPoint') as [number, number] | undefined;
+      // Ancla: polígono usa el labelPoint precomputado (pole of inaccessibility);
+      // línea usa el punto medio recorrido — geometría define la estrategia, no el kind.
+      let labelPoint: [number, number] | undefined;
+      if (isPolygon) {
+        labelPoint = feature.get('labelPoint') as [number, number] | undefined;
+      } else {
+        const coords = (geometry as LineString).getCoordinates() as [number, number][];
+        labelPoint = coords.length > 0 ? polylineMidpoint(coords) : undefined;
+      }
       if (!labelPoint) continue;
 
       const cfg = resolved.style;
       const text = resolved.text || ((feature.get('labelText') as string | undefined) ?? '');
 
       const fid = String(feature.getId() ?? '');
-      if (fid) {
-        featureById.set(fid, feature);
-      }
+      if (fid) featureById.set(fid, feature);
 
       if (!layer || layer.showLabel !== false) {
-        const isRemnant = feature.get('isRemnant') === true;
         const effectiveStyle: LabelStyleConfig =
-          isRemnant && classObj?.remnantStyle
-            ? { ...classObj.remnantStyle, enabled: true, titleBadge: classObj.remnantStyle.titleBadge ?? cfg.titleBadge }
-            : cfg.useLayerColor && layer
-              ? { ...cfg, color: layer.color }
-              : cfg;
-        const resolvedText = effectiveStyle.textExpression
-          ? resolveLabelExpression(
-              effectiveStyle.textExpression,
+          cfg.useLayerColor && layer
+            ? { ...cfg, color: layer.color }
+            : cfg;
+        resolvedStyleByFeatureId.set(fid, { style: effectiveStyle, text });
+
+        const lines = isPolygon
+          ? composeLabelLines(effectiveStyle, {
               text,
-              {
-                code: feature.get('code') as string | undefined,
-                areaM2: feature.get('areaM2') as number | undefined,
-                perimeterM: feature.get('perimeterM') as number | undefined,
-                name: feature.get('label') as string | undefined,
-                layer: layer?.name,
-              },
-              formatAreaWithUnit
-            )
-          : text;
-        resolvedStyleByFeatureId.set(fid, { style: effectiveStyle, text: resolvedText });
-        const lines = composeLabelLines(effectiveStyle, {
-          text: resolvedText,
-          primaryValue: feature.get('areaM2') as number | undefined,
-          secondaryValue: feature.get('perimeterM') as number | undefined,
-        });
+              primaryValue: feature.get('areaM2') as number | undefined,
+              secondaryValue: feature.get('perimeterM') as number | undefined,
+            })
+          : composeLabelLines(effectiveStyle, {
+              text,
+              primaryValue: feature.get('lengthM') as number | undefined,
+              primaryFormatter: (v) => formatMetricLength(v),
+            });
+
         if (lines.length > 0) {
           const size = this.measureLabelBlockSize(ctx, lines, effectiveStyle);
           if (size) {
@@ -332,22 +330,23 @@ export class LabelPainter {
               heightPx: size.h,
               style: effectiveStyle,
               text,
-              category: 'polygon',
+              category: isPolygon ? 'polygon' : 'line',
               allowLeaderLine: classObj?.placement?.allowLeaderLine ?? false,
-              isRemnant,
-              placementOffsets: [
-                [0, 0],
-                [0, -size.h * 0.6],
-                [0, size.h * 0.6],
-                [size.w * 0.6, 0],
-                [-size.w * 0.6, 0],
-              ],
+              placementOffsets: isPolygon
+                ? [
+                    [0, 0],
+                    [0, -size.h * 0.6],
+                    [0, size.h * 0.6],
+                    [size.w * 0.6, 0],
+                    [-size.w * 0.6, 0],
+                  ]
+                : [[0, 0]],
             });
           }
         }
       }
 
-      if (cfg.showEdgeCotas && (!layer || layer.showCota !== false)) {
+      if (isPolygon && cfg.showEdgeCotas && (!layer || layer.showCota !== false)) {
         cotaTargets.push({ feature, labelPoint, layer, style: cfg });
       }
     }
@@ -369,9 +368,7 @@ export class LabelPainter {
     for (const target of cotaTargets) {
       const fid = String(target.feature.getId() ?? '');
       const placed = placedByFeatureId.get(fid);
-      const labelCenterPx: [number, number] = placed
-        ? placed.positionPx
-        : toPx(target.labelPoint);
+      const labelCenterPx: [number, number] = placed ? placed.positionPx : toPx(target.labelPoint);
       this.drawEdgeCotasWithCollision(
         ctx,
         target.feature.get('segmentLengths') as SegmentMetric[] | undefined,
@@ -388,11 +385,18 @@ export class LabelPainter {
       if (!feature) continue;
       const resolved = resolvedStyleByFeatureId.get(fid);
       if (!resolved) continue;
-      const lines = composeLabelLines(resolved.style, {
-        text: resolved.text,
-        primaryValue: feature.get('areaM2') as number | undefined,
-        secondaryValue: feature.get('perimeterM') as number | undefined,
-      });
+      const isPolygonFeature = feature.getGeometry() instanceof Polygon;
+      const lines = isPolygonFeature
+        ? composeLabelLines(resolved.style, {
+            text: resolved.text,
+            primaryValue: feature.get('areaM2') as number | undefined,
+            secondaryValue: feature.get('perimeterM') as number | undefined,
+          })
+        : composeLabelLines(resolved.style, {
+            text: resolved.text,
+            primaryValue: feature.get('lengthM') as number | undefined,
+            primaryFormatter: (v) => formatMetricLength(v),
+          });
       if (lines.length === 0) continue;
       if (p.leaderFromPx) this.drawLeaderLine(ctx, p.leaderFromPx, p.positionPx, resolved.style);
       this.drawLabelBlock(ctx, p.positionPx, lines, resolved.style);

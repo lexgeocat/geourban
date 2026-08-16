@@ -1,5 +1,4 @@
 import { create } from 'zustand';
-import { useShallow } from 'zustand/react/shallow';
 import {
   defaultLabelClass,
   newLabelClassId,
@@ -61,8 +60,4 @@ function defaultStyleForLayer(_layerId: string): LabelStyleConfig {
     showSecondaryMetric: false,
     showEdgeCotas: false,
   });
-}
-
-export function useLabelClassForLayer(layerId: string | undefined): LabelClass | undefined {
-  return useLabelClassStore(useShallow((s) => (layerId ? s.byLayerId[layerId] : undefined)));
 }

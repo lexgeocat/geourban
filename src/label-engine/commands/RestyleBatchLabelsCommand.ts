@@ -6,12 +6,11 @@ import type { LabelStyleConfig } from '../model/labelModel';
 import { useLabelClassStore, type LabelClass } from '../store/labelClassStore';
 
 export interface RestyleBatchLabelsOptions {
-  kind: 'manzana' | 'lote';
+  kind?: 'manzana' | 'lote';
   manzanoId?: string | number;
   config: LabelStyleConfig;
   layerId?: string;
 }
-
 export class RestyleBatchLabelsCommand extends Command {
   readonly label = 'Actualizar estilo de etiquetas';
   private readonly opts: RestyleBatchLabelsOptions;
@@ -33,7 +32,8 @@ export class RestyleBatchLabelsCommand extends Command {
     const out: Feature<Geometry>[] = [];
     ctx.drawSource.forEachFeature((f) => {
       const feat = f as Feature<Geometry>;
-      if (getFeatureKind(feat) !== this.opts.kind) return;
+      if (this.opts.kind && getFeatureKind(feat) !== this.opts.kind) return;
+      if (!this.opts.kind && !targetLayer) return;
       if (targetGroup && feat.get('lotGroupId') !== targetGroup) return;
       if (targetLayer && feat.get('layerId') !== targetLayer) return;
       if (!feat.get('labelConfig')) return;

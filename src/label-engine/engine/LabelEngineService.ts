@@ -14,8 +14,7 @@ export interface LabelCandidate {
   rotation?: number;
   placementOffsets?: Array<[number, number]>;
   allowLeaderLine?: boolean;
-  category: 'polygon' | 'street' | 'roundabout' | 'cota';
-  isRemnant?: boolean;
+  category: 'polygon' | 'line' | 'street' | 'roundabout' | 'cota';
 }
 
 export interface PlacedLabel {
@@ -118,10 +117,7 @@ function zoomAllowed(zoom: number, style: LabelStyleConfig): boolean {
   return true;
 }
 
-function boxForCandidate(
-  c: LabelCandidate,
-  posPx: [number, number]
-): CollisionBox {
+function boxForCandidate(c: LabelCandidate, posPx: [number, number]): CollisionBox {
   if (c.rotation != null) {
     const cos = Math.abs(Math.cos(c.rotation));
     const sin = Math.abs(Math.sin(c.rotation));
@@ -191,8 +187,7 @@ export function resolveVisibleLabels(
     }
     const box = boxForCandidate(c, chosen.pos);
     grid.insert(box);
-    const leaderFromPx =
-      c.allowLeaderLine && chosen.offsetIdx > 0 ? c.anchorPx : undefined;
+    const leaderFromPx = c.allowLeaderLine && chosen.offsetIdx > 0 ? c.anchorPx : undefined;
     placed.push({
       candidate: c,
       positionPx: chosen.pos,

@@ -25,50 +25,6 @@ export interface LabelStyleConfig {
   visibleMinZoom?: number;
   visibleMaxZoom?: number;
   priority?: number;
-  textExpression?: string;
-}
-
-export type LabelExpressionToken = 'code' | 'area' | 'perimeter' | 'name' | 'layer';
-
-export const LABEL_EXPRESSION_TOKENS: Array<{ token: LabelExpressionToken; description: string; example: string }> = [
-  { token: 'code', description: 'Código del feature (lote/manzano)', example: 'A-1' },
-  { token: 'area', description: 'Área en m²', example: '180.00 m²' },
-  { token: 'perimeter', description: 'Perímetro en m', example: '54.00 m' },
-  { token: 'name', description: 'Nombre de la entidad (calle/rotonda)', example: 'Av. Principal' },
-  { token: 'layer', description: 'Nombre de la capa', example: 'Lote' },
-];
-
-export interface LabelExpressionContext {
-  code?: string;
-  areaM2?: number;
-  perimeterM?: number;
-  name?: string;
-  layer?: string;
-}
-
-export function resolveLabelExpression(
-  expression: string | undefined,
-  fallbackText: string,
-  ctx: LabelExpressionContext,
-  areaFormatter: (v: number, unit: AreaUnit) => string
-): string {
-  if (!expression || !expression.trim()) return fallbackText;
-  return expression.replace(/\{(\w+)\}/g, (match, key: string) => {
-    switch (key) {
-      case 'code':
-        return ctx.code ?? fallbackText;
-      case 'area':
-        return ctx.areaM2 != null ? areaFormatter(ctx.areaM2, 'm2') : '';
-      case 'perimeter':
-        return ctx.perimeterM != null ? `${ctx.perimeterM.toFixed(2)} m` : '';
-      case 'name':
-        return ctx.name ?? '';
-      case 'layer':
-        return ctx.layer ?? '';
-      default:
-        return match;
-    }
-  });
 }
 
 export function normalizeLabelStyleConfig(cfg: LabelStyleConfig | undefined): LabelStyleConfig {
@@ -169,7 +125,6 @@ export const AREA_UNIT_OPTIONS: { value: AreaUnit; label: string }[] = [
 export const labelRenderCaps: Record<string, number> = {
   lote: 10_000,
   manzana: 3_000,
-  poligono: 20_000,
 };
 export const labelRenderCapDefault = 20_000;
 
@@ -181,8 +136,6 @@ export function defaultColorForKind(kind: GeoUrbanFeatureKind | null): string {
       return '#38bdf8';
     case 'perimetro':
       return '#f0f6fc';
-    case 'equipamiento':
-      return '#4dd0c4';
     case 'calle':
       return '#8b5cf6';
     case 'rotonda':
