@@ -198,7 +198,7 @@ export default function StatsPanel() {
 
         {stats.streetCount > 0 && (
           <>
-            <span style={{ color: 'var(--cad-text-dim)' }}>Calles:</span>
+            <span style={{ color: 'var(--cad-text-dim)' }}>Vías:</span>
             <span className="font-mono-cad" style={{ color: '#ffa657', textAlign: 'right' }}>{stats.streetCount}</span>
             <span style={{ color: 'var(--cad-text-muted)', fontSize: '0.65rem' }}>{formatMetricArea(stats.streetAreaM2)}</span>
           </>

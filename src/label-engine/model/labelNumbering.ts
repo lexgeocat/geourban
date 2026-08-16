@@ -58,7 +58,6 @@ const ROMAN_TABLE: Array<[number, string]> = [
   [1, 'I'],
 ];
 
-/** Numerales romanos clásicos. Más allá de 3999 (fuera del sistema clásico) cae a numérico. */
 function toRomanNumeral(value: number): string {
   let n = Math.max(1, Math.floor(value));
   if (n > 3999) return String(value);

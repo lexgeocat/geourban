@@ -38,7 +38,10 @@ function resolveNumberingMode(
     const classObj = useLabelClassStore.getState().getForLayer(layerId);
     if (classObj?.numbering?.mode) return classObj.numbering.mode;
   }
-  if (carriedConfig && (carriedConfig as unknown as { labelNumberingMode?: LabelNumberingMode }).labelNumberingMode) {
+  if (
+    carriedConfig &&
+    (carriedConfig as unknown as { labelNumberingMode?: LabelNumberingMode }).labelNumberingMode
+  ) {
     return (carriedConfig as unknown as { labelNumberingMode: LabelNumberingMode })
       .labelNumberingMode;
   }
@@ -46,24 +49,15 @@ function resolveNumberingMode(
   return detected ?? 'numeric';
 }
 
-function resolveLotLayerId(firstOldLayerId: string | undefined, preferredLayerId?: string): string | undefined {
+function resolveLotLayerId(
+  firstOldLayerId: string | undefined,
+  preferredLayerId?: string
+): string | undefined {
   if (firstOldLayerId) return firstOldLayerId;
   if (preferredLayerId) return preferredLayerId;
   const registry = useLayersStore.getState();
   return registry.getLayerForKind('lote')?.id;
 }
-
-/**
- * Quita los lotes viejos del `manzanoId` y agrega los `lots` nuevos al source.
- * Devuelve los IDs nuevos y los snapshots de los viejos (para soportar undo).
- *
- * Comportamiento:
- *  - Captura `labelConfig` y `labelNumberingMode` del primer lote viejo (o de la LabelClass
- *    de la capa) y los arrastra a los nuevos.
- *  - Setea `labelText` re-formateado con `formatOrderLabel` en lugar del `code` crudo,
- *    para que regeneraciones conserven la numeración (B6).
- *  - Deja `lotStatus` del manzano sin tocar: el caller decide.
- */
 export function replaceLotsForManzano(
   ctx: CommandContext,
   args: {

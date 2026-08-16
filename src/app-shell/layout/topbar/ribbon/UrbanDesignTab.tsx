@@ -26,7 +26,7 @@ export default function UrbanDesignTab() {
 const handleClearStreets = async () => {
     clearStreets();
     clearRoundabouts();
-    useEntityLabelStore.getState().clear(); // ← evita que IDs reciclados hereden etiquetas viejas
+    useEntityLabelStore.getState().clear();
     resetIncrementalRoadTracking();
     await recomputeManzanos();
     const src = useMapStore.getState().drawSource;
@@ -70,14 +70,14 @@ const handleClearStreets = async () => {
       </RibbonGroup>
 
       <RibbonGroup label="Vialidad">
-        <RibbonTool mode="street" icon={<IconStreet />} label="Trazar calle" shortcut="S" active={mode === 'street'} />
+        <RibbonTool mode="street" icon={<IconStreet />} label="Trazar Via" shortcut="S" active={mode === 'street'} />
         {streets.length > 0 && (
           <button
             className="ribbon-tool small"
             onClick={handleClearStreets}
             style={{ color: 'var(--cad-accent-red)' }}
-            data-tooltip="Limpiar todas las calles"
-            title="Limpiar todas las calles"
+            data-tooltip="Limpiar todas las vías"
+            title="Limpiar todas las vías"
           >
             <Trash2 />
             <span className="ribbon-tool-label">Limpiar ({streets.length})</span>

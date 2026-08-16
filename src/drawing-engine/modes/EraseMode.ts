@@ -39,8 +39,8 @@ export function activateErase(ctx: ModeContext): void {
       if (id === undefined || id === null) return;
       if (ctx.isLayerLocked(f)) return;
       const kind = f.get('kind') as string | undefined;
-      if (kind === 'calle' || kind === 'rotonda') {
-        if (isEraseIntercepted(kind as 'calle' | 'rotonda', String(id))) {
+      if (kind === 'via' || kind === 'rotonda') {
+        if (isEraseIntercepted(kind as 'via' | 'rotonda', String(id))) {
           useEntityLabelStore.getState().remove(String(id));
           removedRoadEntity = true;
           return;

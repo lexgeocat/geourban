@@ -272,7 +272,7 @@ pub fn union_rings(rings: &[Vec<Pt>], context: &str) -> Vec<Vec<Vec<Pt>>> {
     if total_points > MAX_UNION_POINTS || sanitized.len() > MAX_UNION_SHAPES {
         log::warn!(
             "roadNetworkNet: unión omitida — {} anillo(s) / {} punto(s) totales supera el límite de seguridad \
-             (shapes: {MAX_UNION_SHAPES}, points: {MAX_UNION_POINTS}). Se dibuja cada calle sin fusionar. \
+             (shapes: {MAX_UNION_SHAPES}, points: {MAX_UNION_POINTS}). Se dibuja cada via sin fusionar. \
              Revisá geometría de vías por segmentos degenerados o duplicados.",
             sanitized.len(),
             total_points,

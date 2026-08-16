@@ -4,7 +4,7 @@ import { useStreetTracingSessionStore } from '../store/streetTracingSessionStore
 import type { Command } from '@kernel/command/Command';
 
 export class AddStreetCommand extends RoadEntityCommand<Omit<Street, 'id' | 'name'>> {
-  readonly label = 'Trazar calle';
+  readonly label = 'Trazar via';
 
   constructor(
     start: [number, number],
@@ -12,20 +12,16 @@ export class AddStreetCommand extends RoadEntityCommand<Omit<Street, 'id' | 'nam
     widthM: number,
     waypoints?: Array<[number, number]>,
     sideWidthM?: number,
-    layerId?: string,
+    layerId?: string
   ) {
-    super(
-      'street',
-      () => useStreetTracingSessionStore.getState().currentSessionId,
-      {
-        start,
-        end,
-        widthM,
-        waypoints,
-        sideWidthM: sideWidthM ?? useStreetStore.getState().defaultSideWidthM,
-        layerId,
-      },
-    );
+    super('street', () => useStreetTracingSessionStore.getState().currentSessionId, {
+      start,
+      end,
+      widthM,
+      waypoints,
+      sideWidthM: sideWidthM ?? useStreetStore.getState().defaultSideWidthM,
+      layerId,
+    });
   }
 
   protected addToStore(params: Omit<Street, 'id' | 'name'>): string {

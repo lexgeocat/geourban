@@ -30,5 +30,5 @@ export function resolveRoundaboutLayer(
   registry: LayersRegistryState,
   byId: Map<string, Layer>
 ): Layer | undefined {
-  return resolveEntityLayer(rb, 'calle', registry, byId);
+  return resolveEntityLayer(rb, 'via', registry, byId);
 }

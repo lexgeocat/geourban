@@ -4,6 +4,7 @@ import StatusBar from './layout/StatusBar';
 import LeftSidebar from './layout/leftbar/LeftSidebar';
 import LayerPanel from '@layers-engine/ui/LayerPanel';
 import PropertyPanel from '@drawing-engine/ui/PropertyPanel';
+import ManualDimensionInput from '@drawing-engine/ui/ManualDimensionInput';
 import StatsPanel from './layout/StatsPanel';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import ProjectSetupModal from '@georef-engine/ui/ProjectSetupModal';
@@ -56,6 +57,7 @@ function App() {
       <OpenProjectModal />
       <LabelConfigModal />
       <ToastStack />
+      <ManualDimensionInput />
 
       <StatusBar />
     </div>

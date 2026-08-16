@@ -29,7 +29,11 @@ export { default as RoundaboutPanel } from './ui/RoundaboutPanel';
 import { extraSnapSources } from '@snap-engine/extension-points';
 import { eraseInterceptors, type EraseInterceptor } from '@drawing-engine/extension-points';
 import { entityGeometryProviders } from '@selection-engine/entityGeometryProviders';
-import { layerEntityAdapters, type LayerEntityAdapter, type LayerEntitySnapshot } from '@layers-engine/extension-points';
+import {
+  layerEntityAdapters,
+  type LayerEntityAdapter,
+  type LayerEntitySnapshot,
+} from '@layers-engine/extension-points';
 import { useEntityLabelStore, type EntityLabelEntry } from '@label-engine/store/entityLabelStore';
 import { getOrCreateRoadSnapSource } from './native/roadSnapSource';
 import { useStreetStore, type Street } from './store/streetStore';
@@ -39,7 +43,7 @@ import { roundaboutGeometry } from './geometry/roundaboutEngine';
 extraSnapSources.register('vias:roadSnapSource', () => getOrCreateRoadSnapSource().getFeatures());
 
 const eraseStreetInterceptor: EraseInterceptor = (kind, id) => {
-  if (kind !== 'calle') return false;
+  if (kind !== 'via') return false;
   const street = useStreetStore.getState().streets.find((s) => s.id === id);
   if (!street) return false;
   useStreetStore.getState().removeStreet(id);

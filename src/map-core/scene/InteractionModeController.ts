@@ -7,6 +7,7 @@ import { isFeatureLayerLocked, isFeatureLayerVisible } from '@layers-engine/mode
 import type { PostrenderPainter } from './PostrenderPainter';
 import type { HitTestSelect } from '@selection-engine/interactions/HitTestSelect';
 import type { ModeContext, RefreshableDrawLayer } from '@kernel/modes/ModeContext';
+import { registerActiveDrawRef } from '@kernel/modes/activeDrawRegistry';
 import { activateSelect } from '@selection-engine/modes/SelectEditMode';
 import { activateEdit } from '@selection-engine/modes/EditMode';
 import { activatePolygon } from '@drawing-engine/modes/PolygonMode';
@@ -43,6 +44,7 @@ export class InteractionModeController {
     this.ctx = ctx;
     this.highlightLayer = new VectorLayer({ source: this.highlightSource });
     this.ctx.map.addLayer(this.highlightLayer);
+    registerActiveDrawRef(this.activeDrawRef);
   }
 
   activate(mode: DrawMode): void {

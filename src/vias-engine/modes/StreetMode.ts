@@ -15,7 +15,7 @@ import type { ModeContext } from '@kernel/modes/ModeContext';
 function findNearbyStreetEndpointWarning(
   point: [number, number],
   streets: Street[],
-  toleranceM: number,
+  toleranceM: number
 ): string | null {
   for (const s of streets) {
     for (const candidate of [s.start, s.end]) {
@@ -35,7 +35,12 @@ export function activateStreet(ctx: ModeContext): void {
     type: 'LineString',
     condition: primaryAction,
     style: new Style({
-      stroke: new Stroke({ color: 'rgba(255, 166, 87, 0.95)', width: 2.5, lineDash: [6, 4], lineCap: 'round' }),
+      stroke: new Stroke({
+        color: 'rgba(255, 166, 87, 0.95)',
+        width: 2.5,
+        lineDash: [6, 4],
+        lineCap: 'round',
+      }),
     }),
   });
 
@@ -54,7 +59,8 @@ export function activateStreet(ctx: ModeContext): void {
       const streetStore = useStreetStore.getState();
       const start = coords[0] as [number, number];
       const end = coords[coords.length - 1] as [number, number];
-      const waypoints = coords.length > 2 ? (coords.slice(1, -1) as Array<[number, number]>) : undefined;
+      const waypoints =
+        coords.length > 2 ? (coords.slice(1, -1) as Array<[number, number]>) : undefined;
 
       const TOL_M = 2;
       const warning =
@@ -64,16 +70,25 @@ export function activateStreet(ctx: ModeContext): void {
       void (async () => {
         if (warning) {
           const proceed = await confirmAsync(`${warning}\n\n¿Trazar de todos modos?`, {
-            title: 'Extremo cercano a otra calle',
+            title: 'Extremo cercano a otra via',
             confirmLabel: 'Trazar igual',
             cancelLabel: 'Cancelar',
           });
           if (!proceed) return;
         }
 
-        const layerId = await requireLayerForKind('calle');
-        if (!layerId) return; // cancelado — no se traza la calle sin capa
-        await runCommand(new AddStreetCommand(start, end, streetStore.defaultWidthM, waypoints, streetStore.defaultSideWidthM, layerId));
+        const layerId = await requireLayerForKind('via');
+        if (!layerId) return; // cancelado — no se traza la via sin capa
+        await runCommand(
+          new AddStreetCommand(
+            start,
+            end,
+            streetStore.defaultWidthM,
+            waypoints,
+            streetStore.defaultSideWidthM,
+            layerId
+          )
+        );
       })();
     } finally {
       streetSource.removeFeature(feature);

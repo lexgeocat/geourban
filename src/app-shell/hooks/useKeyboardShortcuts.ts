@@ -24,7 +24,6 @@ function isTypingTarget(target: EventTarget | null): boolean {
   return false;
 }
 
-/** Constante de módulo: antes se recreaba este objeto en cada keydown. */
 const DRAW_MODE_SHORTCUTS: Record<string, DrawMode> = {
   v: 'select',
   p: 'polygon',

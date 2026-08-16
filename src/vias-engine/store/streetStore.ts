@@ -48,7 +48,7 @@ export const useStreetStore = create<StreetState>()(
       set((state) => {
         const id = streetIdCounter.next('street-');
         newId = id;
-        const name = nextEntityName(state.streets.length, 'Calle');
+        const name = nextEntityName(state.streets.length, 'Vía');
         state.streets.push({
           ...clampStreetParams(street),
           sideWidthM: street.sideWidthM ?? state.defaultSideWidthM,
@@ -62,7 +62,7 @@ export const useStreetStore = create<StreetState>()(
     addStreetWithId: (id, street) =>
       set((state) => {
         if (state.streets.some((s) => s.id === id)) return;
-        const name = nextEntityName(state.streets.length, 'Calle');
+        const name = nextEntityName(state.streets.length, 'Vía');
         state.streets.push({ ...street, id, name });
       }),
 
@@ -76,7 +76,7 @@ export const useStreetStore = create<StreetState>()(
     removeStreet: (id) =>
       set((state) => {
         state.streets = state.streets.filter((s) => s.id !== id);
-        renumberEntityNames(state.streets, 'Calle');
+        renumberEntityNames(state.streets, 'Vía');
       }),
 
     clearStreets: () =>

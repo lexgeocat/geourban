@@ -67,11 +67,7 @@ export class PostrenderPainter {
     this.postrenderLayer.on('postrender', this.listener);
   }
 
-  invalidate(): void {
-    // Antes marcaba un flag `dirty` interno para evitar repintar; la lógica
-    // de visibilidad se reescribió por cache + visibleDataVersion y este flag
-    // quedó inerte. Se conserva la firma pública porque `Map.tsx:94` la llama.
-  }
+  invalidate(): void {}
 
   setInteracting(value: boolean): void {
     if (this.interacting === value) return;
@@ -127,12 +123,6 @@ export class PostrenderPainter {
     this.lassoOverlayPainter.paint(ctx, toPx);
   }
 
-  /**
-   * Devuelve el conjunto cacheado de features visibles para el extent actual.
-   * Si no hay cache, filtra síncronamente por bbox (O(n) barato) en vez de
-   * devolver `all`, para no disparar caps innecesarios en el primer frame;
-   * cuando llega la query async al Rust, actualiza el cache y fuerza un paint.
-   */
   private getVisibleFeatures(all: Array<Feature<Geometry>>): Array<Feature<Geometry>> {
     const size = this.map.getSize();
     if (!size) return all;
@@ -155,14 +145,17 @@ export class PostrenderPainter {
       minX - marginX,
       minY - marginY,
       maxX + marginX,
-      maxY + marginY,
+      maxY + marginY
     );
 
     if (this.cachedVisibleFeatures) return this.cachedVisibleFeatures;
     return this.viewportFilterSync(all, extent);
   }
 
-  private viewportFilterSync(all: Array<Feature<Geometry>>, extent: number[]): Array<Feature<Geometry>> {
+  private viewportFilterSync(
+    all: Array<Feature<Geometry>>,
+    extent: number[]
+  ): Array<Feature<Geometry>> {
     const out: Array<Feature<Geometry>> = [];
     for (const f of all) {
       const geom = f.getGeometry();
@@ -176,7 +169,7 @@ export class PostrenderPainter {
     minX: number,
     minY: number,
     maxX: number,
-    maxY: number,
+    maxY: number
   ): void {
     if (this.inFlightKey === key) return;
     this.inFlightKey = key;
@@ -199,11 +192,7 @@ export class PostrenderPainter {
       });
   }
 
-  private updateCaches(
-    ctx: CanvasRenderingContext2D,
-    zoom: number,
-    resolution: number
-  ): void {
+  private updateCaches(ctx: CanvasRenderingContext2D, zoom: number, resolution: number): void {
     this.streetPainter.update();
     this.labelPainter.update(ctx, zoom, resolution);
   }

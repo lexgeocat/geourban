@@ -29,12 +29,9 @@ export default function LeftSidebar() {
 
   const activeTabDef = TABS.find((t) => t.id === activeTab);
 
-  /* Resize handle: arrastra el borde derecho del panel */
   const dragRef = useRef<{ startX: number; startWidth: number } | null>(null);
   const railRef = useRef<HTMLElement>(null);
 
-  /* El ancho del rail se ajusta al texto rotado más ancho: medimos el rail
-     real y sincronizamos --cad-leftbar-rail-width (usado por el panel) */
   useEffect(() => {
     const rail = railRef.current;
     if (!rail) return;

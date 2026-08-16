@@ -2,7 +2,6 @@ import Point from 'ol/geom/Point.js';
 import { Fill, Stroke, Style, Text } from 'ol/style.js';
 import { CAD_BG_DEEPEST_RGB } from '@kernel/theme/colors';
 
-// ─── Colores
 const GEOURBAN_MANZANA_COLOR = '#58a6ff';
 const GEOURBAN_LIVE_BG = `rgba(${CAD_BG_DEEPEST_RGB}, 0.80)`;
 

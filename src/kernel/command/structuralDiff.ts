@@ -80,7 +80,7 @@ export class StructuralDiffRecorder {
     const id = feature.getId();
     if (id == null) return;
     if (this.addedIds.has(id)) {
-      this.addedIds.delete(id); // agregado y quitado en la misma operación: neto cero.
+      this.addedIds.delete(id);
       return;
     }
     if (this.modifiedBeforeById.has(id)) {
@@ -111,7 +111,6 @@ export class StructuralDiffRecorder {
     if (snap) this.modifiedAfterById.set(id, snap);
   }
 
-  /** Vuelca lo grabado a un `StructuralDiff` — lee de `source` el estado final de los "added"/"modified". */
   toDiff(source: VectorSource): StructuralDiff {
     const added: FeatureSnapshot[] = [];
     for (const id of this.addedIds) {
@@ -207,7 +206,6 @@ export function composeStructuralDiffs(base: StructuralDiff, next: StructuralDif
   };
 }
 
-/** Aplica el estado "after" del diff sobre `source` — usado en redo(). */
 export function applyStructuralDiffForward(source: VectorSource, diff: StructuralDiff): void {
   for (const snap of diff.removed) {
     const f = source.getFeatureById(snap.id);
@@ -226,7 +224,6 @@ export function applyStructuralDiffForward(source: VectorSource, diff: Structura
   source.changed();
 }
 
-/** Revierte el diff sobre `source` (vuelve al estado "before") — usado en undo(). */
 export function revertStructuralDiff(source: VectorSource, diff: StructuralDiff): void {
   for (const snap of diff.added) {
     const f = source.getFeatureById(snap.id);

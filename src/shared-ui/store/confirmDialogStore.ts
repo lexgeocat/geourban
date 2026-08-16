@@ -51,10 +51,9 @@ export const useConfirmDialogStore = create<ConfirmDialogState>()((set, get) => 
   },
 }));
 
-/** Helper para llamar desde código no-React (equivalente async a window.confirm). */
 export function confirmAsync(
   message: string,
-  opts?: { title?: string; confirmLabel?: string; cancelLabel?: string; danger?: boolean },
+  opts?: { title?: string; confirmLabel?: string; cancelLabel?: string; danger?: boolean }
 ): Promise<boolean> {
   return useConfirmDialogStore.getState().request({ message, ...opts });
 }

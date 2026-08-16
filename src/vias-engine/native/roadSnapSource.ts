@@ -14,7 +14,7 @@ function streetToFeature(s: Street): Feature {
   const coords: Array<[number, number]> = [s.start, ...(s.waypoints ?? []), s.end];
   const feat = new Feature({ geometry: new LineString(coords) });
   feat.setId(s.id);
-  feat.set('kind', 'calle', true);
+  feat.set('kind', 'via', true);
   feat.set('layerId', s.layerId, true);
   feat.set('label', s.name, true);
   feat.set('roadWidthM', s.widthM, true);
@@ -36,10 +36,7 @@ function resync(src: VectorSource): void {
   const streets = useStreetStore.getState().streets;
   const roundabouts = useRoundaboutStore.getState().roundabouts;
   src.clear(true);
-  src.addFeatures([
-    ...streets.map(streetToFeature),
-    ...roundabouts.map(roundaboutToFeature),
-  ]);
+  src.addFeatures([...streets.map(streetToFeature), ...roundabouts.map(roundaboutToFeature)]);
   src.changed();
 }
 

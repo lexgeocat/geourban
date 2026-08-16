@@ -80,7 +80,6 @@ export default function StatusBar() {
 
   const epsgLabel = crsMode === 'utm' ? (exportEpsg ?? 'EPSG:UTM') : 'Local';
 
-  // History controls (Undo / Redo)
   const canUndo = useCommandStack((s) => s.canUndo);
   const canRedo = useCommandStack((s) => s.canRedo);
   const zoomIn = useMapStore((s) => s.zoomIn);

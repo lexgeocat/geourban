@@ -4,7 +4,6 @@ import type { BaseMapId } from '@map-core/baseMaps';
 
 type PanelKey = 'properties';
 
-/** Tabs del ribbon estilo ArcGIS Pro. Cada tab tiene un id y un label. */
 export type RibbonTabId = 'map' | 'edit' | 'view';
 
 type UiShellState = {
@@ -49,5 +48,5 @@ export const useUiShellStore = create<UiShellState>()(
       set((state) => {
         state.ribbonCollapsed = v;
       }),
-  })),
+  }))
 );

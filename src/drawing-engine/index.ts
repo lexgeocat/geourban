@@ -12,8 +12,10 @@ export * from './modes/PolylineMode';
 export * from './modes/EraseMode';
 
 export * from './styles/styleFactory';
+export * from './styles/liveDimensions';
 
 export { default as PropertyPanel } from './ui/PropertyPanel';
+export { default as ManualDimensionInput } from './ui/ManualDimensionInput';
 
 export {
   eraseInterceptors,

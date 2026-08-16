@@ -5,7 +5,7 @@ import type { LabelStyleConfig } from '@label-engine/model/labelModel';
 export type GeoUrbanFeatureKind =
   | 'lote'
   | 'manzana'
-  | 'calle'
+  | 'via'
   | 'linea'
   | 'polilinea'
   | 'circulo'
@@ -39,7 +39,7 @@ const LAYER_SUGGESTIONS: LayerSuggestion[] = [
   { kind: 'perimetro', name: 'Perímetro', color: '#f0f6fc', geometryHint: 'polygon' },
   { kind: 'manzana', name: 'Manzano', color: '#f59e0b', geometryHint: 'polygon' },
   { kind: 'lote', name: 'Lote', color: '#58a6ff', geometryHint: 'polygon' },
-  { kind: 'calle', name: 'Vías', color: '#8b5cf6', geometryHint: 'line' },
+  { kind: 'via', name: 'Vías', color: '#8b5cf6', geometryHint: 'line' },
   { kind: 'rotonda', name: 'Rotonda', color: '#f78166', geometryHint: 'line' },
   { kind: 'linea', name: 'Línea', color: '#e2e8f0', geometryHint: 'line' },
   { kind: 'polilinea', name: 'Polilínea', color: '#ffd60a', geometryHint: 'line' },
@@ -83,8 +83,8 @@ interface ManzanaProps extends BaseFeatureProps {
   lotStatus?: LotStatus;
 }
 
-interface CalleProps extends BaseFeatureProps {
-  kind: 'calle';
+interface ViaProps extends BaseFeatureProps {
+  kind: 'via';
   widthM: number;
 }
 
@@ -115,7 +115,7 @@ interface PerimetroProps extends BaseFeatureProps {
 export type GeoUrbanFeatureProps =
   | LoteProps
   | ManzanaProps
-  | CalleProps
+  | ViaProps
   | LineaProps
   | PolilineaProps
   | CirculoProps
@@ -125,7 +125,7 @@ export type GeoUrbanFeatureProps =
 const KNOWN_KINDS: ReadonlySet<GeoUrbanFeatureKind> = new Set<GeoUrbanFeatureKind>([
   'lote',
   'manzana',
-  'calle',
+  'via',
   'linea',
   'polilinea',
   'circulo',
@@ -162,7 +162,7 @@ export function getFeatureKind(
   const legacy = props.type;
   if (legacy === 'manzana') return 'manzana';
   if (legacy === 'lote' || (typeof legacy === 'string' && legacy.startsWith('Lote'))) return 'lote';
-  if (legacy === 'calle') return 'calle';
+  if (legacy === 'via') return 'via';
   if (legacy === 'linea') return 'linea';
   return null;
 }

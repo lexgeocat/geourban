@@ -72,7 +72,7 @@ export default function MapView() {
     let cancelled = false;
 
     const initialWorkVisibility: WorkVisibility = {
-      streets: useLayersStore.getState().hasKindVisible('calle'),
+      streets: useLayersStore.getState().hasKindVisible('via'),
     };
     const drawLayers = buildDrawLayers(initialWorkVisibility);
     const drawSrc = drawLayers.source;
@@ -89,8 +89,6 @@ export default function MapView() {
     void (async () => {
       await reloadRustSpatialIndex(drawSrc.getFeatures() as Feature<Geometry>[]);
       if (cancelled) return;
-      // Después de cargar el Rust spatial index, el PostrenderPainter ya puede
-      // hacer queries correctas desde su primer paint.
       postrenderPainterRef.current?.invalidate();
     })();
 
@@ -156,7 +154,6 @@ export default function MapView() {
     });
     postrenderPainterRef.current = postrenderPainter;
 
-    // --- Live cursor coordinates & zoom ---
     const setCursorCoords = useMapStore.getState().setCursorCoords;
     const throttledSetCursorCoords = rafThrottle(setCursorCoords);
     const setZoom = useMapStore.getState().setZoom;
@@ -397,8 +394,6 @@ const rotateLotsInteraction = new RotateLotsInteraction(map, (id, dir) => {
       if (m) m.setTarget(undefined);
       mapInstanceRef.current = null;
     };
-    // setup único del map (refs y stores satisfacen la reactividad).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -416,8 +411,8 @@ const rotateLotsInteraction = new RotateLotsInteraction(map, (id, dir) => {
 
 useEffect(() => {
   const unsub = useLayersStore.subscribe((state) => {
-    const anyCalleVisible = state.layers.some((l) => l.kind === 'calle' && l.visible);
-    if (streetLayerRef.current) streetLayerRef.current.setVisible(anyCalleVisible);
+    const anyViaVisible = state.layers.some((l) => l.kind === 'via' && l.visible);
+    if (streetLayerRef.current) streetLayerRef.current.setVisible(anyViaVisible);
   });
   return unsub;
 }, []);

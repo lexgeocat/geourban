@@ -30,7 +30,7 @@ export function useLotsWorkflow() {
       if (getFeatureKind(f) === 'manzana') manzanoCount++;
     });
     if (manzanoCount === 0) {
-      toast('No hay manzanos para subdividir. Trazá calles primero para generar manzanos.', {
+      toast('No hay manzanos para subdividir. Trazá vías primero para generar manzanos.', {
         variant: 'warning',
       });
       return;
@@ -54,16 +54,22 @@ export function useLotsWorkflow() {
       let newLotes = 0;
       src.forEachFeature((f) => {
         const k = getFeatureKind(f);
-        if (k === 'lote' || (typeof f.get('label') === 'string' && f.get('label')?.toString().startsWith('Lote'))) {
+        if (
+          k === 'lote' ||
+          (typeof f.get('label') === 'string' && f.get('label')?.toString().startsWith('Lote'))
+        ) {
           newLotes++;
         }
       });
       if (newLotes > 0) {
         toast(`${newLotes} lotes generados automáticamente.`, { variant: 'success' });
       } else {
-        toast('No se pudieron generar lotes. Verificá que los manzanos sean lo suficientemente grandes.', {
-          variant: 'warning',
-        });
+        toast(
+          'No se pudieron generar lotes. Verificá que los manzanos sean lo suficientemente grandes.',
+          {
+            variant: 'warning',
+          }
+        );
       }
     } catch (err) {
       toast(err instanceof Error ? err.message : 'Error al generar lotes', {
@@ -82,7 +88,7 @@ export function useLotsWorkflow() {
     useManzanoStore.getState().setCardOpen(featureId, true);
     if (typeof window !== 'undefined') {
       window.dispatchEvent(
-        new CustomEvent<ManzanoFocusEventDetail>(MANZANO_FOCUS_EVENT, { detail: { id: featureId } }),
+        new CustomEvent<ManzanoFocusEventDetail>(MANZANO_FOCUS_EVENT, { detail: { id: featureId } })
       );
     }
   };

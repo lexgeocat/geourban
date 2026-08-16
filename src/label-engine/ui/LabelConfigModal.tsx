@@ -463,7 +463,7 @@ export default function LabelConfigModal() {
 
         <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
           <Field label={`Prefijo${isBatch || isBatchLots ? ' (+ letra/número de orden)' : ''}`} style={{ flex: 1 }}>
-            <input value={cfg.prefix} onChange={(e) => patch({ prefix: e.target.value })} className="cad-input" placeholder="Ej. Mzo., Lote, Calle" />
+            <input value={cfg.prefix} onChange={(e) => patch({ prefix: e.target.value })} className="cad-input" placeholder="Ej. Mzo., Lote, Vía" />
           </Field>
           <ToggleRow label="Mostrar" checked={cfg.showPrefix} onChange={(v) => patch({ showPrefix: v })} />
         </div>

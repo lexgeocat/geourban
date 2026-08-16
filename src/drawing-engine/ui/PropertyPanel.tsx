@@ -91,7 +91,7 @@ export default function PropertyPanel() {
                   'street',
                   street.id,
                   existing?.config ??
-                    defaultLabelStyleConfig({ prefix: 'Calle', color: defaultColorForKind('calle') }),
+                    defaultLabelStyleConfig({ prefix: 'Vía', color: defaultColorForKind('via') }),
                   existing?.text ?? street.name
                 );
               }}
@@ -246,7 +246,7 @@ export default function PropertyPanel() {
         >
           {isPolygon && featureKind === 'perimetro' && (
             <p style={{ fontSize: '0.65rem', color: 'var(--cad-text-muted)', fontStyle: 'italic', margin: 0 }}>
-              Este es el perímetro del sitio (referencia intacta). Trazá calles para generar manzanos.
+              Este es el perímetro del sitio (referencia intacta). Trazá vías para generar manzanos.
             </p>
           )}
 

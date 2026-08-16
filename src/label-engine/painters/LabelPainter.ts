@@ -181,7 +181,6 @@ export class LabelPainter {
   private streetSlotsSignature = '';
   private lastZoom = 0;
 
-  /** Recalcula los slots de etiqueta de calle (posición + evita cruces/extremos) cuando cambia algo relevante. */
   update(ctx: CanvasRenderingContext2D, zoom: number, resolution: number): void {
     const streets = useStreetStore.getState().streets;
     const entries = useEntityLabelStore.getState().byId;
@@ -562,7 +561,7 @@ export class LabelPainter {
     for (const layer of registry.layers) byId.set(layer.id, layer);
     const classByLayer = useLabelClassStore.getState().byLayerId;
     for (const s of streets) {
-      const layer = resolveEntityLayer(s, 'calle', registry, byId);
+      const layer = resolveEntityLayer(s, 'via', registry, byId);
       if (layer && (layer.showLabel === false || !layer.visible)) continue;
       const classObj = layer ? classByLayer[layer.id] : undefined;
       const override = entries[s.id];

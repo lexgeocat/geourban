@@ -47,7 +47,6 @@ export const LABEL_FONT_GROUPS = [
 ] as const;
 
 export const LABEL_FONT_OPTIONS: LabelFontOption[] = [
-  // Monoespaciadas — estilo "callout" de AutoCAD / QGIS / notas técnicas
   {
     value: "'JetBrains Mono', 'Fira Code', monospace",
     label: 'JetBrains Mono',
@@ -136,7 +135,7 @@ export function defaultColorForKind(kind: GeoUrbanFeatureKind | null): string {
       return '#38bdf8';
     case 'perimetro':
       return '#f0f6fc';
-    case 'calle':
+    case 'via':
       return '#8b5cf6';
     case 'rotonda':
       return '#f78166';

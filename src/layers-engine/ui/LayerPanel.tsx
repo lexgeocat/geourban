@@ -84,14 +84,14 @@ const IconCircleKind = () => <Circle size={11} strokeWidth={1.5} aria-hidden="tr
 const IconPointKind = () => <MapPin size={11} strokeWidth={1.5} aria-hidden="true" />;
 
 function geometryIconForKind(kind: LayerKind) {
-  if (kind === 'calle' || kind === 'linea' || kind === 'polilinea' || kind === 'rotonda') return <IconLineKind />;
+  if (kind === 'via' || kind === 'linea' || kind === 'polilinea' || kind === 'rotonda') return <IconLineKind />;
   if (kind === 'punto') return <IconPointKind />;
   if (kind === 'circulo') return <IconCircleKind />;
   return <IconPolygonKind />;
 }
 
 function geometryLabelForKind(kind: LayerKind): string {
-  if (kind === 'calle' || kind === 'linea' || kind === 'polilinea' || kind === 'rotonda') return 'línea';
+  if (kind === 'via' || kind === 'linea' || kind === 'polilinea' || kind === 'rotonda') return 'línea';
   if (kind === 'punto') return 'punto';
   if (kind === 'circulo') return 'círculo';
   return 'polígono';

@@ -124,13 +124,13 @@ export default function StreetPanel() {
       </div>
 
       {streets.length === 0 ? (
-        <p style={{ fontSize: '0.68rem', color: 'var(--cad-text-muted)' }}>Todavía no hay calles trazadas.</p>
+        <p style={{ fontSize: '0.68rem', color: 'var(--cad-text-muted)' }}>Todavía no hay vías trazadas.</p>
       ) : (
         streets.map((s) => (
           <div
             key={s.id}
             onClick={() => selectOnMap([s.id], s.id)}
-            title="Click: resalta esta calle en el mapa"
+            title="Click: resalta esta via en el mapa"
             style={{
               border: `1px solid ${selectedIds.has(s.id) ? 'var(--cad-accent-amber)' : 'var(--cad-border)'}`,
               borderLeft: '3px solid #8b5cf6',
@@ -170,7 +170,7 @@ export default function StreetPanel() {
                   openEntityLabel(
                     'street',
                     s.id,
-                    existing?.config ?? defaultLabelStyleConfig({ prefix: 'Calle', color: defaultColorForKind('calle') }),
+                    existing?.config ?? defaultLabelStyleConfig({ prefix: 'Vía', color: defaultColorForKind('via') }),
                     existing?.text ?? s.name,
                   );
                 }}
@@ -182,7 +182,7 @@ export default function StreetPanel() {
               <button
                 onClick={(e) => { e.stopPropagation(); handleDelete(s.id); }}
                 style={{ background: 'none', border: 'none', color: 'var(--cad-accent-red)', cursor: 'pointer', fontSize: '0.75rem' }}
-                title="Eliminar calle"
+                title="Eliminar via"
                 aria-label={`Eliminar ${s.name}`}
               >
                 ×

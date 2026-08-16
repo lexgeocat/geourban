@@ -1,4 +1,3 @@
-// Distancias euclidianas entre punto y segmento.
 import type { Pt } from './polygonEngine';
 
 export function distToSegmentXY(
@@ -7,7 +6,7 @@ export function distToSegmentXY(
   ax: number,
   ay: number,
   bx: number,
-  by: number,
+  by: number
 ): number {
   const dx = bx - ax;
   const dy = by - ay;

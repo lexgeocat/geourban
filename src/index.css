@@ -54,8 +54,6 @@
   --cad-transition: 150ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* Cinta contraída: el contenido (mapa, sidebar, paneles) empuja hacia arriba
-   y solo queda la fila de tabs. Los tabs pasan a abrir menús desplegables. */
 :root[data-ribbon-collapsed='true'] {
   --cad-topbar-height: var(--cad-topbar-tabs-height);
 }
@@ -510,7 +508,6 @@ body,
     crosshair !important;
 }
 
-/* En modo erase: cruz de "prohibido" (circulo con diagonal) */
 .ol-viewport[data-cursor='erase'] canvas {
   cursor:
     url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='48' height='48' viewBox='0 0 48 48'><g stroke='%23ef4444' stroke-width='3' fill='none' stroke-linecap='round'><circle cx='24' cy='24' r='20'/><line x1='12' y1='12' x2='36' y2='36'/></g></svg>")
@@ -591,15 +588,6 @@ body,
 
 /* ============================================================
    TopBar — ArcGIS Pro Style Ribbon
-   ============================================================
-   Estructura:
-   ┌─ HEADER ROW ─────────────────────────────────────────────┐
-   │  [app brand]  | [project] | [save/import/export] | zoom  │
-   ├─ TAB STRIP ───────────────────────────────────────────────┤
-   │  [Map] [Edit] [Insert] [View]                            │
-   ├─ RIBBON PANELS (cuando tab activo y no collapsed) ───────┤
-   │  [Navegación] [Dibujo] [Edición] [Modificar] [Subdiv]     │
-   └──────────────────────────────────────────────────────────┘
    ============================================================ */
 
 .topbar-root {
@@ -960,9 +948,6 @@ body,
   text-align: center;
   letter-spacing: 0.02em;
 }
-
-/* ─── Popover de tab contraído (modo "desplegables") ───
-   Se renderiza por portal en <body>; nunca queda bajo el sidebar. */
 .ribbon-popover {
   position: fixed;
   min-width: 240px;
@@ -1134,7 +1119,6 @@ body,
   color: var(--cad-text-dim);
   transition: color var(--cad-transition);
   white-space: nowrap;
-  /* Texto rotado 90° a la izquierda (lectura de abajo hacia arriba) */
   writing-mode: vertical-rl;
   transform: rotate(180deg);
   min-height: 0;

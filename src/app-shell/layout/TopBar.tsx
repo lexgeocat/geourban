@@ -27,7 +27,6 @@ export default function TopBar() {
 
   const actions = useTopBarActions();
 
-  /* Popover de tab contraído: posición anclada bajo el tab activo */
   const [popoverPos, setPopoverPos] = useState<{ top: number; left: number } | null>(null);
   const tabRefs = useRef(new Map<string, HTMLButtonElement>());
   const popoverRef = useRef<HTMLDivElement>(null);
@@ -41,8 +40,6 @@ export default function TopBar() {
     const onDown = (e: MouseEvent) => {
       const target = e.target as Node;
       if (popoverRef.current?.contains(target)) return;
-      /* Menús desplegables portaleados (RibbonToolDropdown) viven en <body>:
-         un clic en ellos no debe cerrar el popover antes de completar la selección */
       if (target instanceof Element && target.closest('[data-ribbon-menu]')) return;
       for (const btn of tabRefs.current.values()) {
         if (btn.contains(target)) return;

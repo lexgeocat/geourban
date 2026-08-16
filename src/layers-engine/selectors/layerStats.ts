@@ -8,10 +8,10 @@ import { useLayersStore } from '@layers-engine/store/layersRegistryStore';
 
 function resolveEntityLayerId(
   entityLayerId: string | undefined,
-  registry: ReturnType<typeof useLayersStore.getState>,
+  registry: ReturnType<typeof useLayersStore.getState>
 ): string | undefined {
   if (entityLayerId && registry.getById(entityLayerId)) return entityLayerId;
-  return registry.getLayerForKind('calle')?.id;
+  return registry.getLayerForKind('via')?.id;
 }
 
 export function computeLayerFeatureCounts(drawSource: VectorSource | null): Record<string, number> {
@@ -41,7 +41,10 @@ export function computeLayerFeatureCounts(drawSource: VectorSource | null): Reco
   return counts;
 }
 
-export function computeLayerExtent(drawSource: VectorSource | null, layerId: string): Extent | null {
+export function computeLayerExtent(
+  drawSource: VectorSource | null,
+  layerId: string
+): Extent | null {
   let ext: Extent | null = null;
   const extend = (e: Extent) => {
     if (!ext) ext = [...e] as Extent;
@@ -62,7 +65,10 @@ export function computeLayerExtent(drawSource: VectorSource | null, layerId: str
   for (const s of useStreetStore.getState().streets) {
     if (resolveEntityLayerId(s.layerId, registry) !== layerId) continue;
     const pts: Array<[number, number]> = [s.start, ...(s.waypoints ?? []), s.end];
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    let minX = Infinity,
+      minY = Infinity,
+      maxX = -Infinity,
+      maxY = -Infinity;
     for (const [x, y] of pts) {
       if (x < minX) minX = x;
       if (x > maxX) maxX = x;

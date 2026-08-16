@@ -15,8 +15,6 @@ export default function ManzanoPanel() {
   const drawSource = useMapStore((s) => s.drawSource);
   const tick = useDrawSourceTick(drawSource);
   const rows = useMemo(() => readManzanoRows(drawSource),
-    // tick refleja cambios internos del drawSource
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [drawSource, tick]);
 
   const panelRef = useRef<HTMLDivElement>(null);
@@ -47,9 +45,6 @@ export default function ManzanoPanel() {
         onGenerarTodos={actions.handleGenerarTodos}
         onCancelGenerarTodos={actions.handleCancelGenerarTodos}
       />
-      {/* El etiquetado de manzanos/lotes ahora se hace con click derecho sobre
-          la capa correspondiente en el Panel de Capas ("Etiquetado de capa…"). */}
-
       {rows.length === 0 ? (
         <p style={{ fontSize: '0.68rem', color: 'var(--cad-text-muted)' }}>
           Todavía no hay manzanos. Trazá vías que crucen la parcela para generarlos.
