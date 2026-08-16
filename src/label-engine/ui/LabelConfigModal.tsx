@@ -146,6 +146,35 @@ function findSampleFeatureMetrics(
   return found;
 }
 
+/** Cuenta cuántos elementos caen dentro del alcance del target — sirve para "congelar" botones sin efecto. */
+function countBatchTargets(target: LabelConfigTarget | null): number {
+  if (!target) return 0;
+  const src = useMapStore.getState().drawSource;
+  if (!src) return 0;
+  let count = 0;
+  if (target.kind === 'batch-manzanos') {
+    src.forEachFeature((f) => {
+      const feat = f as Feature<Geometry>;
+      if (getFeatureKind(feat) !== 'manzana') return;
+      if (target.layerId && feat.get('layerId') !== target.layerId) return;
+      count++;
+    });
+  } else if (target.kind === 'batch-lots') {
+    src.forEachFeature((f) => {
+      const feat = f as Feature<Geometry>;
+      if (getFeatureKind(feat) !== 'lote') return;
+      if (target.manzanoId != null && feat.get('lotGroupId') !== String(target.manzanoId)) return;
+      count++;
+    });
+  } else if (target.kind === 'batch-layer') {
+    src.forEachFeature((f) => {
+      if ((f as Feature<Geometry>).get('layerId') !== target.layerId) return;
+      count++;
+    });
+  }
+  return count;
+}
+
 /** Resuelve las métricas a mostrar en el preview según el tipo de target (real cuando existe, ilustrativa si no). */
 function computePreviewMetrics(target: LabelConfigTarget | null, numberingMode: LabelNumberingMode): LabelLineMetrics {
   if (!target) return { text: 'Etiqueta' };
@@ -159,7 +188,7 @@ function computePreviewMetrics(target: LabelConfigTarget | null, numberingMode: 
       if (areaM2 !== undefined) {
         return { text, primaryValue: areaM2, secondaryValue: f.get('perimeterM') as number | undefined };
       }
-      // Línea: no hay área/perímetro — se usa longitud como métrica primaria.
+      // Línea/punto: no hay área/perímetro — se usa longitud (si existe) como métrica primaria.
       return {
         text,
         primaryValue: f.get('lengthM') as number | undefined,
@@ -226,13 +255,16 @@ function computePreviewMetrics(target: LabelConfigTarget | null, numberingMode: 
   return { text: orderSample, primaryValue: sample?.primaryValue ?? 180, secondaryValue: sample?.secondaryValue ?? 54 };
 }
 
-/** true si el target es una feature de línea (sin área) — adapta preview y toggles de métricas. */
 function resolveTargetIsLineFeature(target: LabelConfigTarget | null): boolean {
   if (!target || target.kind !== 'feature') return false;
   const src = useMapStore.getState().drawSource;
   const f = src?.getFeatureById(target.featureId) as Feature<Geometry> | null;
   if (!f) return false;
-  return f.get('areaM2') === undefined && f.get('lengthM') !== undefined;
+  return f.get('areaM2') === undefined;
+}
+
+function snapshotOf(cfg: LabelStyleConfig, name: string): string {
+  return `${JSON.stringify(cfg)}|${name}`;
 }
 
 /* ─────────── Modal principal ─────────── */
@@ -251,12 +283,16 @@ export default function LabelConfigModal() {
   const [cfg, setCfg] = useState<LabelStyleConfig>(defaultLabelStyleConfig());
   const [name, setName] = useState('');
   const [prevOpen, setPrevOpen] = useState(open);
+  const [openedSnapshot, setOpenedSnapshot] = useState('');
 
   if (open !== prevOpen) {
     setPrevOpen(open);
     if (open) {
-      setCfg(initialConfig ?? defaultLabelStyleConfig());
-      setName(initialText ?? '');
+      const initial = initialConfig ?? defaultLabelStyleConfig();
+      const initialName = initialText ?? '';
+      setCfg(initial);
+      setName(initialName);
+      setOpenedSnapshot(snapshotOf(initial, initialName));
     }
   }
 
@@ -275,11 +311,14 @@ export default function LabelConfigModal() {
     [cfg, previewMetrics, previewText],
   );
 
+  const targetCount = useMemo(() => countBatchTargets(target), [target]);
+  const hasChanges = snapshotOf(cfg, name) !== openedSnapshot;
+
   if (!target) return null;
 
   const patch = (p: Partial<LabelStyleConfig>) => setCfg((c) => ({ ...c, ...p }));
 
-  const handleApplyOnly = () => {
+  const handleSave = () => {
     if (target.kind === 'feature') {
       void runCommand(new ApplyLabelConfigCommand(target.featureId, cfg, name));
       close();
@@ -290,31 +329,34 @@ export default function LabelConfigModal() {
       close();
       return;
     }
-    if (target.kind === 'batch-lots') {
-      void runCommand(new AssignLotsLabelConfigCommand(cfg, { manzanoId: target.manzanoId, numbering: numberingMode }));
-      if (target.layerId) {
-        void runCommand(
-          new UpsertLabelClassCommand({
-            layerId: target.layerId,
-            style: cfg,
-            numbering: { mode: numberingMode, restartPerParent: true },
-            enabled: cfg.enabled,
-            visibleMinZoom: cfg.visibleMinZoom,
-            visibleMaxZoom: cfg.visibleMaxZoom,
-            priority: cfg.priority,
-          })
-        );
+
+    const kind = target.kind === 'batch-manzanos' ? 'manzana' : target.kind === 'batch-lots' ? 'lote' : undefined;
+    const manzanoId = target.kind === 'batch-lots' ? target.manzanoId : undefined;
+    const layerId = target.layerId;
+    const cmd = new RestyleBatchLabelsCommand({ kind, manzanoId, config: cfg, layerId });
+    void runCommand(cmd).then((result) => {
+      if (!result.ok) return;
+      if (cmd.affectedCount > 0) {
+        toast(`Estilo guardado y actualizado en ${cmd.affectedCount} elemento(s) ya etiquetados.`, { variant: 'success' });
+      } else {
+        toast('Estilo guardado. Se va a aplicar automáticamente a lo que etiquetes de acá en más.', { variant: 'info' });
       }
-      setLastLotsConfig(cfg);
-      close();
-      return;
-    }
+    });
+    if (target.kind === 'batch-manzanos') setLastManzanoConfig(cfg);
+    else if (target.kind === 'batch-lots') setLastLotsConfig(cfg);
+    close();
+  };
+
+  /** Solo tiene sentido para lotes: numera y aplica automáticamente, reiniciando por manzano. */
+  const handleApplyAuto = () => {
+    if (target.kind !== 'batch-lots') return;
+    void runCommand(new AssignLotsLabelConfigCommand(cfg, { manzanoId: target.manzanoId, numbering: numberingMode }));
     if (target.layerId) {
       void runCommand(
         new UpsertLabelClassCommand({
           layerId: target.layerId,
           style: cfg,
-          numbering: { mode: numberingMode, restartPerParent: false },
+          numbering: { mode: numberingMode, restartPerParent: true },
           enabled: cfg.enabled,
           visibleMinZoom: cfg.visibleMinZoom,
           visibleMaxZoom: cfg.visibleMaxZoom,
@@ -322,34 +364,7 @@ export default function LabelConfigModal() {
         })
       );
     }
-    if (target.kind === 'batch-manzanos') setLastManzanoConfig(cfg);
-    close();
-  };
-
-  const handleRestyleOnly = () => {
-    if (target.kind !== 'batch-manzanos' && target.kind !== 'batch-lots' && target.kind !== 'batch-layer') return;
-    const kind = target.kind === 'batch-manzanos' ? 'manzana' : target.kind === 'batch-lots' ? 'lote' : undefined;
-    const manzanoId = target.kind === 'batch-lots' ? target.manzanoId : undefined;
-    const layerId = target.layerId;
-    const styleWithZoom: LabelStyleConfig = {
-      ...cfg,
-      visibleMinZoom: cfg.visibleMinZoom,
-      visibleMaxZoom: cfg.visibleMaxZoom,
-    };
-    const cmd = new RestyleBatchLabelsCommand({ kind, manzanoId, config: styleWithZoom, layerId });
-    void runCommand(cmd).then((result) => {
-      if (!result.ok) return;
-      if (cmd.affectedCount === 0) {
-        toast('No hay elementos etiquetados todavía — usá "Trazar orden…" o "Aplicar" primero.', {
-          variant: 'warning',
-          durationMs: 6000,
-        });
-      } else {
-        toast(`Estilo actualizado en ${cmd.affectedCount} elemento(s).`, { variant: 'success' });
-      }
-    });
-    if (target.kind === 'batch-manzanos') setLastManzanoConfig(cfg);
-    else if (target.kind === 'batch-lots') setLastLotsConfig(cfg);
+    setLastLotsConfig(cfg);
     close();
   };
 
@@ -382,7 +397,7 @@ export default function LabelConfigModal() {
   const title = isBatch
     ? 'Etiquetado de manzanos'
     : isBatchLots
-      ? 'Etiquetado de lotes'
+      ? (target.manzanoId != null ? 'Etiquetado de lotes' : 'Etiquetado de lotes — todos los manzanos')
       : isBatchLayer
         ? 'Etiquetado de capa'
         : entityCopy
@@ -391,15 +406,19 @@ export default function LabelConfigModal() {
 
   let subtitle: string | null = null;
   if (target.kind === 'batch-lots') {
-    subtitle = target.manzanoId != null ? 'Lotes del manzano seleccionado' : 'Todos los lotes del proyecto';
+    subtitle = target.manzanoId != null
+      ? 'Lotes del manzano seleccionado.'
+      : 'Todos los lotes del proyecto — la numeración reinicia automáticamente en cada manzano.';
   } else if (target.kind === 'batch-manzanos') {
-    subtitle = 'Todos los manzanos trazados';
+    subtitle = 'Todos los manzanos trazados.';
   } else if (target.kind === 'batch-layer') {
     const layerName = useLayersStore.getState().getById(target.layerId)?.name;
     subtitle = layerName ? `Todos los elementos de "${layerName}"` : 'Todos los elementos de esta capa';
   }
 
-  const primaryLabel = isBatch ? 'Guardar estilo' : isBatchLots ? 'Aplicar automático' : isBatchLayer ? 'Guardar estilo' : 'Aplicar';
+  const showAutoApply = isBatchLots;
+  const showTraceOrder = isAnyBatch && !(isBatchLots && target.manzanoId == null);
+
   return (
     <Modal
       open={open}
@@ -413,11 +432,24 @@ export default function LabelConfigModal() {
         {subtitle && (
           <p style={{ fontSize: '0.62rem', color: 'var(--cad-text-muted)', marginTop: 1 }}>{subtitle}</p>
         )}
+        {isAnyBatch && (
+          <p style={{ fontSize: '0.58rem', color: 'var(--cad-text-muted)', marginTop: 4, lineHeight: 1.4 }}>
+            💾 <strong style={{ color: 'var(--cad-text-dim)' }}>Guardar</strong> aplica el estilo a lo nuevo y
+            actualiza al toque lo que ya esté etiquetado — sin pasos extra.
+          </p>
+        )}
       </div>
 
       <LabelPreview cfg={cfg} lines={previewLines} />
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: '48vh', overflowY: 'auto', paddingRight: 4, marginTop: 10 }}>
+      <div
+        style={{
+          display: 'flex', flexDirection: 'column', gap: 8, maxHeight: '48vh', overflowY: 'auto',
+          paddingRight: 4, marginTop: 10,
+          opacity: cfg.enabled ? 1 : 0.55,
+          transition: 'opacity 150ms ease',
+        }}
+      >
         {!isBatch && !isBatchLots && (
           <Field label="Nombre">
             <input
@@ -499,12 +531,12 @@ export default function LabelConfigModal() {
               onChange={(v) => patch({ showSecondaryMetric: v, showPerimeter: v })}
             />
           )}
-          {!isEntity && (
+          {!isEntity && !isLineFeature && (
             <ToggleRow label="Cotas por lado" checked={cfg.showEdgeCotas} onChange={(v) => patch({ showEdgeCotas: v })} />
           )}
         </div>
 
-        {!isEntity && (
+        {!isEntity && !isLineFeature && (
           <div
             style={{
               display: 'flex', gap: 8,
@@ -608,25 +640,51 @@ export default function LabelConfigModal() {
         </div>
       </div>
 
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, marginTop: 12, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 6, marginTop: 12, flexWrap: 'wrap' }}>
+        {isAnyBatch && (
+          <span
+            style={{
+              fontSize: '0.58rem',
+              color: hasChanges ? 'var(--cad-accent-amber)' : 'var(--cad-text-muted)',
+              marginRight: 'auto',
+            }}
+          >
+            {hasChanges ? '● cambios sin guardar' : '✓ estilo al día'}
+          </span>
+        )}
         <button onClick={close} className="cad-btn-secondary">
           Cancelar
         </button>
-        {isAnyBatch && (
+        <button
+          onClick={handleSave}
+          disabled={isAnyBatch && !hasChanges}
+          className="cad-btn-primary"
+          title={isAnyBatch ? 'Guarda el estilo y sincroniza lo ya etiquetado' : undefined}
+        >
+          💾 Guardar
+        </button>
+        {showAutoApply && (
           <button
-            onClick={handleRestyleOnly}
-            className="cad-btn-secondary"
-            title="Actualiza color, tamaño, fuente, prefijo, cotas, etc. de lo YA etiquetado — sin renumerar ni volver a trazar."
+            onClick={handleApplyAuto}
+            disabled={targetCount === 0}
+            className="cad-btn-primary"
+            title={
+              targetCount === 0
+                ? 'No hay lotes en este alcance todavía'
+                : 'Numera y aplica automáticamente, reiniciando por manzano'
+            }
           >
-            🎨 Solo actualizar estilo
+            ▶ Aplicar automático
           </button>
         )}
-        <button onClick={handleApplyOnly} className="cad-btn-primary">
-          {primaryLabel}
-        </button>
-        {isAnyBatch && (
-          <button onClick={handleTraceOrder} className="cad-btn-primary">
-            ▶ Trazar orden…
+        {showTraceOrder && (
+          <button
+            onClick={handleTraceOrder}
+            disabled={targetCount === 0}
+            className="cad-btn-primary"
+            title={targetCount === 0 ? 'No hay elementos para trazar todavía' : undefined}
+          >
+            ✏ Trazar orden…
           </button>
         )}
       </div>

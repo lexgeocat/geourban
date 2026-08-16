@@ -539,10 +539,20 @@ function useRegistryRows(
   };
 
   const handleConfigureLabels = (layer: { id: string; kind: LayerKind }) => {
-    const style =
-      useLabelClassStore.getState().getForLayer(layer.id)?.style ??
-      defaultLabelStyleConfig({ color: defaultColorForKind(layer.kind) });
-    useLabelConfigModalStore.getState().openForLayerBatch(layer.id, style);
+    const savedStyle = useLabelClassStore.getState().getForLayer(layer.id)?.style;
+    const modal = useLabelConfigModalStore.getState();
+    if (layer.kind === 'lote') {
+      const style = savedStyle ?? modal.lastLotsConfig ?? defaultLabelStyleConfig({ prefix: 'Lote', color: defaultColorForKind('lote') });
+      modal.openForLotsBatch(undefined, style, layer.id);
+      return;
+    }
+    if (layer.kind === 'manzana') {
+      const style = savedStyle ?? modal.lastManzanoConfig ?? defaultLabelStyleConfig({ prefix: 'Mzo.', color: defaultColorForKind('manzana') });
+      modal.openForManzanoBatch(style, layer.id);
+      return;
+    }
+    const style = savedStyle ?? defaultLabelStyleConfig({ color: defaultColorForKind(layer.kind) });
+    modal.openForLayerBatch(layer.id, style);
   };
 
   return layers.map((l): LayerRowData & { zIndex: number } => ({
