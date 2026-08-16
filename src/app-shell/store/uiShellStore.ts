@@ -49,5 +49,5 @@ export const useUiShellStore = create<UiShellState>()(
       set((state) => {
         state.ribbonCollapsed = v;
       }),
-  }))
+  })),
 );

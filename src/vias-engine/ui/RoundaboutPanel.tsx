@@ -41,7 +41,7 @@ export default function RoundaboutPanel() {
     <div style={{ height: '100%', overflowY: 'auto', fontSize: '0.72rem' }}>
       <div style={{ background: 'var(--cad-bg-surface)', borderRadius: 6, padding: 8, marginBottom: 8 }}>
         <div style={{ fontSize: '0.62rem', color: 'var(--cad-accent)', fontWeight: 700, marginBottom: 6, letterSpacing: '0.05em' }}>
-          ◆ PARÁMETROS DE DISEÑO
+          ◆ PARÁMETROS DE ROTONDAS
         </div>
 
         <label style={{ display: 'block', fontSize: '0.65rem', color: 'var(--cad-text-dim)' }}>Radio al eje (m)</label>

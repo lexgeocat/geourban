@@ -80,7 +80,7 @@ export default function StreetPanel() {
     <div style={{ height: '100%', overflowY: 'auto', fontSize: '0.72rem' }}>
       <div style={{ background: 'var(--cad-bg-surface)', borderRadius: 6, padding: 8, marginBottom: 8 }}>
         <div style={{ fontSize: '0.62rem', color: 'var(--cad-accent)', fontWeight: 700, marginBottom: 6, letterSpacing: '0.05em' }}>
-          ▾ VALORES POR DEFECTO (próximas calles)
+          ╣PARÁMETROS DE VIAS
         </div>
         <div style={{ display: 'flex', gap: 6 }}>
           <div style={{ flex: 1 }}>

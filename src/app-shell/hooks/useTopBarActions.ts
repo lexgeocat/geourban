@@ -10,16 +10,12 @@ import { useManzanoStore } from '@lotificacion-engine/store/manzanoLotConfigStor
 import { useLayersStore } from '@layers-engine/store/layersRegistryStore';
 import { useDrawStore } from '@map-core/store/drawStore';
 import { refreshSourceMetrics } from '@georef-engine/metrics';
-import { getFeatureKind } from '@kernel/domain-model/featureModel';
 import { confirmAsync } from '@shared-ui/store/confirmDialogStore';
 import { toast } from '@shared-ui/store/toastStore';
 import { useProjectFileStore } from '@persistence-engine/store/projectFileStore';
-import { useLotsWorkflow } from '@lotificacion-engine/hooks/useLotsWorkflow';
 import { resetManzanoSeq } from '@manzanos-engine/naming/manzanoNaming';
 
 export function useTopBarActions() {
-  const { lotsBusy, runGenerateAllLots, focusManzanoInSidebar } = useLotsWorkflow();
-
   const handleNewProject = async () => {
     const drawSource = useMapStore.getState().drawSource;
     const ok = await confirmAsync(
@@ -81,37 +77,6 @@ export function useTopBarActions() {
     }
   };
 
-  const handleOpenSubdivision = () => {
-    const primaryId = useSelectionStore.getState().primaryId;
-    if (!primaryId) {
-      toast('Seleccioná un manzano para subdividir.', { variant: 'warning' });
-      return;
-    }
-    const src = useMapStore.getState().drawSource;
-    const feat = src?.getFeatureById(primaryId);
-    const kind = feat ? getFeatureKind(feat) : null;
-
-    if (kind === 'perimetro') {
-      toast(
-        'El perímetro es la referencia intacta del sitio y no se subdivide directamente. Trazá calles para generar manzanos, o seleccioná un manzano.',
-        { variant: 'info', durationMs: 6000 },
-      );
-      return;
-    }
-    if (kind !== 'manzana') {
-      toast(
-        'Seleccioná un manzano para subdividir — la subdivisión de lotes se maneja desde el panel "Manzanos".',
-        { variant: 'warning', durationMs: 5000 },
-      );
-      return;
-    }
-    focusManzanoInSidebar(primaryId);
-  };
-
-  const handleGenerateLots = async () => {
-    await runGenerateAllLots();
-  };
-
   const handleSaveProject = () => {
     useProjectFileStore.getState().setSaveModalOpen(true);
   };
@@ -121,14 +86,11 @@ export function useTopBarActions() {
   };
 
   return {
-    lotsBusy,
     handleNewProject,
     handleSaveProject,
     handleOpenProject,
     handleExit,
     handleAbout,
     handleDeleteSelected,
-    handleOpenSubdivision,
-    handleGenerateLots,
   };
 }

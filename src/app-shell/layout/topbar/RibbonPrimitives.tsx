@@ -1,4 +1,5 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import type { DrawMode } from '@map-core/store/drawStore';
 import { useRibbonCtx } from './RibbonContext';
 
@@ -102,7 +103,10 @@ export function RibbonToolDropdown({
   const handleToggle = () => {
     if (!open && btnRef.current) {
       const rect = btnRef.current.getBoundingClientRect();
-      setPos({ top: rect.bottom + 4, left: rect.left });
+      setPos({
+        top: Math.max(4, rect.bottom + 4),
+        left: Math.max(4, Math.min(rect.left, window.innerWidth - 220)),
+      });
     }
     setOpen((v) => !v);
   };
@@ -134,34 +138,51 @@ export function RibbonToolDropdown({
           </svg>
         </span>
       </button>
-      {open && pos && (
-        <div
-          ref={menuRef}
-          className="cad-panel-glass animate-fade-in"
-          role="menu"
-          style={{ position: 'fixed', top: pos.top, left: pos.left, minWidth: 170, padding: 4, zIndex: 'var(--z-ribbon-dropdown)', display: 'flex', flexDirection: 'column', gap: 1 }}
-        >
-          {options.map((opt) => (
-            <button
-              key={opt.mode}
-              type="button"
-              role="menuitem"
-              onClick={() => handleSelect(opt)}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 10px',
-                background: currentMode === opt.mode ? 'var(--cad-bg-active)' : 'transparent',
-                border: 'none', borderRadius: 4,
-                color: currentMode === opt.mode ? 'var(--cad-accent)' : 'var(--cad-text-dim)',
-                fontSize: '0.72rem', fontWeight: 500, textAlign: 'left', cursor: 'pointer',
-              }}
-            >
-              <span style={{ display: 'flex', width: 14, height: 14 }}>{opt.icon}</span>
-              <span style={{ flex: 1 }}>{opt.label}</span>
-              {opt.shortcut && <span style={{ fontSize: '0.6rem', color: 'var(--cad-text-muted)', fontFamily: 'JetBrains Mono, monospace' }}>{opt.shortcut}</span>}
-            </button>
-          ))}
-        </div>
-      )}
+      {open &&
+        pos &&
+        createPortal(
+          <div
+            ref={menuRef}
+            className="cad-panel-glass animate-fade-in"
+            role="menu"
+            data-ribbon-menu="true"
+            style={{
+              position: 'fixed',
+              top: pos.top,
+              left: pos.left,
+              minWidth: 190,
+              maxWidth: 260,
+              maxHeight: `calc(100vh - ${pos.top}px - 12px)`,
+              overflowY: 'auto',
+              padding: 4,
+              zIndex: 'var(--z-ribbon-dropdown)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 1,
+            }}
+          >
+            {options.map((opt) => (
+              <button
+                key={opt.mode}
+                type="button"
+                role="menuitem"
+                onClick={() => handleSelect(opt)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 10px',
+                  background: currentMode === opt.mode ? 'var(--cad-bg-active)' : 'transparent',
+                  border: 'none', borderRadius: 4,
+                  color: currentMode === opt.mode ? 'var(--cad-accent)' : 'var(--cad-text-dim)',
+                  fontSize: '0.72rem', fontWeight: 500, textAlign: 'left', cursor: 'pointer',
+                }}
+              >
+                <span style={{ display: 'flex', width: 14, height: 14 }}>{opt.icon}</span>
+                <span style={{ flex: 1 }}>{opt.label}</span>
+                {opt.shortcut && <span style={{ fontSize: '0.6rem', color: 'var(--cad-text-muted)', fontFamily: 'JetBrains Mono, monospace' }}>{opt.shortcut}</span>}
+              </button>
+            ))}
+          </div>,
+          document.body,
+        )}
     </>
   );
 }

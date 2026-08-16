@@ -31,8 +31,8 @@
   /* ─── Spacing ─── */
   --cad-toolbar-width: 48px;
   --cad-topbar-tabs-height: 28px;
-  --cad-topbar-ribbon-height: 100px;
-  --cad-topbar-height: 128px;
+  --cad-topbar-ribbon-height: 56px;
+  --cad-topbar-height: calc(var(--cad-topbar-tabs-height) + var(--cad-topbar-ribbon-height));
   --cad-statusbar-height: 28px;
 
   /* ─── Shadows ─── */
@@ -52,6 +52,12 @@
 
   /* ─── Transitions ─── */
   --cad-transition: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Cinta contraída: el contenido (mapa, sidebar, paneles) empuja hacia arriba
+   y solo queda la fila de tabs. Los tabs pasan a abrir menús desplegables. */
+:root[data-ribbon-collapsed='true'] {
+  --cad-topbar-height: var(--cad-topbar-tabs-height);
 }
 
 /* ─── Global Reset ─── */
@@ -490,8 +496,14 @@ body,
 /* ============================================================
    Cursor crosshair (AutoCAD-like) en modos de dibujo
    ============================================================ */
+.ol-viewport[data-cursor='polygon'] canvas,
+.ol-viewport[data-cursor='line'] canvas,
+.ol-viewport[data-cursor='rectangle'] canvas,
+.ol-viewport[data-cursor='circle'] canvas,
+.ol-viewport[data-cursor='point'] canvas,
 .ol-viewport[data-cursor='polyline'] canvas,
-.ol-viewport[data-cursor='line'] canvas {
+.ol-viewport[data-cursor='roundabout'] canvas,
+.ol-viewport[data-cursor='labelOrder'] canvas {
   cursor:
     url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='48' height='48' viewBox='0 0 48 48'><g stroke='%2300d4ff' stroke-width='2.5' fill='none' stroke-linecap='round'><line x1='24' y1='0' x2='24' y2='48'/><line x1='0' y1='24' x2='48' y2='24'/></g></svg>")
       24 24,
@@ -613,7 +625,6 @@ body,
 
 /* GU app menu button (leftmost in the tab strip) */
 .topbar-app-menu {
-  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -651,14 +662,10 @@ body,
   transform: rotate(180deg);
 }
 
-/* App menu dropdown panel */
+/* App menu dropdown panel (renderizado por portal en <body>) */
 .app-menu-panel {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 0;
   min-width: 220px;
   padding: 4px;
-  z-index: 200;
   display: flex;
   flex-direction: column;
   gap: 1px;
@@ -768,9 +775,6 @@ body,
   color: var(--cad-accent);
   border-color: rgba(0, 212, 255, 0.3);
 }
-.topbar-collapse-btn.collapsed svg {
-  transform: rotate(180deg);
-}
 
 /* ─── RIBBON PANELS ─── */
 .topbar-ribbon {
@@ -779,7 +783,7 @@ body,
   height: var(--cad-topbar-ribbon-height);
   background: var(--cad-bg-panel);
   border-top: 1px solid var(--cad-border);
-  padding: 6px 8px 6px;
+  padding: 4px 8px 4px;
   gap: 4px;
   overflow-x: auto;
   overflow-y: hidden;
@@ -815,7 +819,7 @@ body,
   text-align: center;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  padding: 2px 0 4px;
+  padding: 0 0 2px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -828,15 +832,16 @@ body,
   min-width: 0;
 }
 
-/* Large icon button (within ribbon) */
+/* Compact ribbon tool (icon + label en horizontal) */
 .ribbon-tool {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
-  justify-content: center;
-  min-width: 36px;
-  height: 52px;
-  padding: 4px 6px;
+  justify-content: flex-start;
+  min-width: 0;
+  height: 28px;
+  padding: 0 8px;
+  gap: 6px;
   background: transparent;
   border: 1px solid transparent;
   border-radius: 4px;
@@ -844,19 +849,21 @@ body,
   cursor: pointer;
   transition: all var(--cad-transition);
   position: relative;
-  gap: 2px;
 }
 .ribbon-tool svg {
-  width: 18px;
-  height: 18px;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
 }
 .ribbon-tool-label {
-  font-size: 0.55rem;
+  font-size: 0.66rem;
   font-weight: 500;
-  color: var(--cad-text-muted);
+  color: var(--cad-text-dim);
   line-height: 1;
   white-space: nowrap;
   letter-spacing: 0.02em;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .ribbon-tool:hover {
   background: var(--cad-bg-hover);
@@ -954,41 +961,114 @@ body,
   letter-spacing: 0.02em;
 }
 
-/* Responsive: smaller screens */
-@media (max-width: 1100px) {
-  .ribbon-tool-label {
-    display: none;
-  }
-  .ribbon-group-label {
-    display: none;
-  }
+/* ─── Popover de tab contraído (modo "desplegables") ───
+   Se renderiza por portal en <body>; nunca queda bajo el sidebar. */
+.ribbon-popover {
+  position: fixed;
+  min-width: 240px;
+  max-width: 320px;
+  max-height: calc(100vh - var(--cad-topbar-tabs-height) - 20px);
+  padding: 6px;
+  overflow-y: auto;
+  z-index: var(--z-ribbon-dropdown);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ribbon-popover-title {
+  padding: 5px 8px 7px;
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--cad-accent);
+  border-bottom: 1px solid var(--cad-border);
+  margin-bottom: 4px;
+}
+.ribbon-popover .ribbon-group {
+  flex-direction: column;
+  align-items: stretch;
+  border-right: none;
+  border-bottom: 1px solid var(--cad-border);
+  padding: 2px 2px 6px;
+}
+.ribbon-popover .ribbon-group:last-child {
+  border-bottom: none;
+}
+.ribbon-popover .ribbon-group-label {
+  text-align: left;
+  padding: 4px 8px 2px;
+}
+.ribbon-popover .ribbon-group-items {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+}
+.ribbon-popover .ribbon-tool {
+  flex-direction: row;
+  justify-content: flex-start;
+  width: 100%;
+  min-width: 0;
+  height: 36px;
+  padding: 0 10px;
+  gap: 10px;
+  border-radius: 6px;
+}
+.ribbon-popover .ribbon-tool-label {
+  font-size: 0.7rem;
+  color: var(--cad-text-dim);
+}
+.ribbon-popover .ribbon-tool:hover .ribbon-tool-label,
+.ribbon-popover .ribbon-tool.active .ribbon-tool-label {
+  color: var(--cad-accent);
+}
+.ribbon-popover .ribbon-tool.small {
+  height: 34px;
+}
+.ribbon-popover .ribbon-inline-control {
+  min-width: 0;
+  padding: 4px 8px;
 }
 
+/* Responsive: en pantallas pequeñas compactamos más el ribbon */
 @media (max-width: 900px) {
-  :root {
-    --cad-topbar-ribbon-height: 60px;
-  }
   .ribbon-group {
     border-right: none;
   }
-  .ribbon-group-label {
-    display: none;
-  }
   .ribbon-tool {
-    height: 44px;
-    min-width: 32px;
+    height: 26px;
+    padding: 0 6px;
+    gap: 4px;
+  }
+  .ribbon-tool svg {
+    width: 12px;
+    height: 12px;
   }
   .ribbon-tool-label {
-    display: none;
+    font-size: 0.62rem;
+  }
+  .ribbon-group-label {
+    font-size: 0.5rem;
+  }
+  .ribbon-popover .ribbon-tool {
+    height: 36px;
+    min-width: 0;
+  }
+  .ribbon-popover .ribbon-tool-label {
+    display: inline;
+  }
+  .ribbon-popover .ribbon-group-label {
+    display: block;
   }
 }
 
 /* ============================================================
-   Left Sidebar — pestañas verticales (Vías / Rotondas / Manzanos)
+   Left Sidebar — rail slim con icono + etiqueta rotada 90°
+   (Vías / Rotondas / Manzanos) y panel glassmorphism redimensionable
    ============================================================ */
 :root {
-  --cad-leftbar-rail-width: 44px;
-  --cad-leftbar-panel-width: 300px;
+  --cad-leftbar-rail-width: 36px;
+  --cad-leftbar-panel-width: 320px;
   --z-leftbar: 115;
 }
 
@@ -1003,53 +1083,100 @@ body,
 }
 
 .leftbar-rail {
-  width: var(--cad-leftbar-rail-width);
+  width: max-content;
   background: var(--cad-bg-deep);
   border-right: 1px solid var(--cad-border);
   display: flex;
   flex-direction: column;
-  align-items: center;
-  padding: 8px 0;
+  align-items: stretch;
+  padding: 8px 4px;
   gap: 4px;
+  overflow-y: auto;
   pointer-events: auto;
 }
 
 .leftbar-tab {
   position: relative;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
+  justify-content: flex-start;
+  gap: 8px;
+  width: 100%;
+  height: 110px;
+  padding: 8px 4px 6px;
   border: 1px solid transparent;
   border-radius: 6px;
   background: transparent;
   color: var(--cad-text-dim);
   cursor: pointer;
   transition: all var(--cad-transition);
+  flex-shrink: 0;
 }
-.leftbar-tab svg {
-  width: 16px;
-  height: 16px;
+.leftbar-tab-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+.leftbar-tab-icon svg {
+  width: 18px;
+  height: 18px;
+  transition: all var(--cad-transition);
+}
+.leftbar-tab-label {
+  font-size: 0.6rem;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  color: var(--cad-text-dim);
+  transition: color var(--cad-transition);
+  white-space: nowrap;
+  /* Texto rotado 90° a la izquierda (lectura de abajo hacia arriba) */
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  min-height: 0;
+  overflow: hidden;
 }
 .leftbar-tab:hover {
   background: var(--cad-bg-hover);
-  color: var(--cad-accent);
+  border-color: var(--cad-border);
+}
+.leftbar-tab:hover .leftbar-tab-label {
+  color: var(--cad-text);
+}
+.leftbar-tab:hover .leftbar-tab-icon svg {
+  filter: drop-shadow(0 0 4px rgba(0, 212, 255, 0.4));
 }
 .leftbar-tab.active {
   background: var(--cad-bg-active);
-  color: var(--cad-accent);
   border-color: rgba(0, 212, 255, 0.35);
-  box-shadow: inset 2px 0 0 var(--cad-accent);
+  box-shadow:
+    inset 2px 0 0 var(--cad-accent),
+    0 0 12px rgba(0, 212, 255, 0.15);
+}
+.leftbar-tab.active .leftbar-tab-icon {
+  color: var(--cad-accent);
+}
+.leftbar-tab.active .leftbar-tab-icon svg {
+  filter: drop-shadow(0 0 6px rgba(0, 212, 255, 0.5));
+}
+.leftbar-tab.active .leftbar-tab-label {
+  color: var(--cad-accent);
+}
+.leftbar-tab:active {
+  transform: scale(0.97);
 }
 .leftbar-tab-badge {
   position: absolute;
-  top: -3px;
-  right: -3px;
-  min-width: 14px;
-  height: 14px;
-  padding: 0 3px;
-  border-radius: 7px;
+  top: 3px;
+  right: 3px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 4px;
+  border-radius: 8px;
   background: var(--cad-accent-red);
   color: #fff;
   font-size: 0.55rem;
@@ -1058,34 +1185,92 @@ body,
   align-items: center;
   justify-content: center;
   pointer-events: none;
+  box-shadow: 0 0 6px rgba(239, 68, 68, 0.5);
 }
 
 .leftbar-panel {
-  width: var(--cad-leftbar-panel-width);
-  max-width: calc(100vw - var(--cad-leftbar-rail-width) - 16px);
-  margin-left: 6px;
+  width: var(--cad-leftbar-panel-width, 320px);
+  max-width: calc(100vw - var(--cad-leftbar-rail-width) - 24px);
+  margin-left: 4px;
   display: flex;
   flex-direction: column;
   pointer-events: auto;
+  position: relative;
 }
 
 .leftbar-panel-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 8px 10px;
-  font-size: 0.7rem;
+  padding: 10px 12px;
+  font-size: 0.72rem;
   font-weight: 700;
   color: var(--cad-text);
   letter-spacing: 0.03em;
   border-bottom: 1px solid var(--cad-border);
   flex-shrink: 0;
+  gap: 8px;
+}
+.leftbar-panel-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.leftbar-panel-title-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  color: var(--cad-accent);
+  flex-shrink: 0;
+}
+.leftbar-panel-title-icon svg {
+  width: 16px;
+  height: 16px;
 }
 
 .leftbar-panel-body {
   flex: 1;
   min-height: 0;
-  padding: 10px;
+  padding: 12px;
+  overflow-y: auto;
+}
+
+/* Borde de resize en el costado derecho del panel */
+.leftbar-resize-handle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 6px;
+  height: 100%;
+  cursor: ew-resize;
+  background: transparent;
+  transition: background var(--cad-transition);
+  touch-action: none;
+}
+.leftbar-resize-handle::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  right: 2px;
+  transform: translateY(-50%);
+  width: 2px;
+  height: 28px;
+  border-radius: 1px;
+  background: var(--cad-border);
+  opacity: 0;
+  transition: opacity var(--cad-transition);
+}
+.leftbar-resize-handle:hover,
+.leftbar-resize-handle:focus-visible {
+  background: var(--cad-bg-hover);
+}
+.leftbar-resize-handle:hover::after,
+.leftbar-resize-handle:focus-visible::after {
+  opacity: 1;
+  background: var(--cad-accent);
 }
 
 @media (max-width: 700px) {

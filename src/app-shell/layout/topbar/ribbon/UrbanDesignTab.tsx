@@ -4,7 +4,6 @@ import { useStreetStore } from '@vias-engine/store/streetStore';
 import { useRoundaboutStore } from '@vias-engine/store/roundaboutStore';
 import { useEntityLabelStore } from '@label-engine/store/entityLabelStore';
 import { useLayersStore } from '@layers-engine/store/layersRegistryStore';
-import { useGenerateLotsProgressStore } from '@lotificacion-engine/store/generateLotsProgressStore';
 import { recomputeManzanos, resetIncrementalRoadTracking } from '@manzanos-engine/orchestration/recomputeManzanos';
 import { useMapStore } from '@map-core/store/mapStore';
 import { runCommand } from '@kernel/command/CommandStack';
@@ -13,27 +12,16 @@ import { computeLayerFeatureCounts } from '@layers-engine/selectors/layerStats';
 import { RibbonGroup, RibbonTool, RibbonToolDropdown } from '../../topbar/RibbonPrimitives';
 import {
   IconCursor, IconEraser, IconPolygon, IconLine, IconRect, IconPerimeter,
-  IconSubdivide, IconLots, IconStreet, IconRoundabout,
+  IconStreet,
   IconPoint, IconCircleShape, IconPolyline,
 } from '../../topbar/icons';
 
-export interface UrbanDesignTabProps {
-  lotsBusy: boolean;
-  onOpenSubdivision: () => void;
-  onGenerateLots: () => void;
-}
-
-export default function UrbanDesignTab({ lotsBusy, onOpenSubdivision, onGenerateLots }: UrbanDesignTabProps) {
+export default function UrbanDesignTab() {
   const mode = useDrawStore((s) => s.mode);
-  const genLotsProgress = useGenerateLotsProgressStore();
 
   const streets = useStreetStore((s) => s.streets);
   const clearStreets = useStreetStore((s) => s.clearStreets);
   const clearRoundabouts = useRoundaboutStore((s) => s.clearRoundabouts);
-
-  const layers = useLayersStore((s) => s.layers);
-  const activeLayerId = useLayersStore((s) => s.activeLayerId);
-  const setActiveLayer = useLayersStore((s) => s.setActiveLayer);
 
 const handleClearStreets = async () => {
     clearStreets();
@@ -83,7 +71,6 @@ const handleClearStreets = async () => {
 
       <RibbonGroup label="Vialidad">
         <RibbonTool mode="street" icon={<IconStreet />} label="Trazar calle" shortcut="S" active={mode === 'street'} />
-        <RibbonTool mode="roundabout" icon={<IconRoundabout />} label="Rotonda" shortcut="O" active={mode === 'roundabout'} />
         {streets.length > 0 && (
           <button
             className="ribbon-tool small"
@@ -96,34 +83,6 @@ const handleClearStreets = async () => {
             <span className="ribbon-tool-label">Limpiar ({streets.length})</span>
           </button>
         )}
-      </RibbonGroup>
-
-      <RibbonGroup label="Capa activa">
-        <div className="ribbon-inline-control" style={{ minWidth: 160 }}>
-          <select
-            className="ribbon-inline-input"
-            value={activeLayerId ?? ''}
-            onChange={(e) => setActiveLayer(e.target.value || null)}
-            title="Capa activa — los nuevos trazos se asignan acá"
-            aria-label="Capa activa"
-          >
-            <option value="">— Sin capa activa —</option>
-            {layers.map((l) => (
-              <option key={l.id} value={l.id} disabled={l.locked}>
-                {l.name}{l.locked ? ' 🔒' : ''}
-              </option>
-            ))}
-          </select>
-          <span className="ribbon-inline-text">Capa activa</span>
-        </div>
-      </RibbonGroup>
-
-      <RibbonGroup label="Subdivisión">
-        <RibbonTool icon={<IconSubdivide />} label="Subdividir" onClick={onOpenSubdivision} />
-        <RibbonTool
-          icon={<IconLots />} label="Gen. Lotes" disabled={lotsBusy}
-          badge={genLotsProgress.active ? genLotsProgress.processed : undefined} onClick={onGenerateLots}
-        />
       </RibbonGroup>
     </>
   );
