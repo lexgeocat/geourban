@@ -873,7 +873,6 @@ function SectionHeader({ label, count, expanded, onToggle, panelId }: { label: s
 }
 
 /* ----------- Panel principal ----------- */
-
 export default function LayerPanel() {
   const open = useLayerPanelUiStore((s) => s.open);
   const setOpen = useLayerPanelUiStore((s) => s.setOpen);
@@ -892,8 +891,6 @@ export default function LayerPanel() {
   const roundabouts = useRoundaboutStore((s) => s.roundabouts);
   const featureCounts = useMemo(
     () => computeLayerFeatureCounts(drawSource),
-    // tick refleja cambios internos del drawSource
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [drawSource, tick, streets, roundabouts]
   );
   const selectedCount = useSelectionStore((s) => s.selectedIds.size);
@@ -907,23 +904,7 @@ export default function LayerPanel() {
   const panelRef = useRef<HTMLDivElement>(null);
   const allRowsForIncremental = expandedData ? registryRowsDisplay : [];
   const { visibleCount, sentinelRef } = useIncrementalRender(allRowsForIncremental.length, 60, panelRef);
-
-  /* ── Drag & drop de capas (Pointer Events, estilo QGIS / ArcGIS Pro) ──
-     Sustituye el HTML5 Drag&Drop nativo, que fallaba al iniciar el drag
-     sobre controles anidados (color picker, slider) y cuyo indicador
-     visual se confundía con el highlight de selección.
-
-     El hook se encarga de:
-       - Threshold de 4px antes de iniciar el drag (un click normal no
-         dispara nada).
-       - Línea de inserción entre dos filas (no superpuesta), con
-         `transform` directo.
-       - Pill flotante (portal) que sigue al cursor.
-       - Auto-scroll cuando el cursor se acerca al borde del panel. */
   const rowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
-  // Snapshot de los rects de las filas, actualizado por los efectos de
-  // scroll/resize/mount. Vive en `state` (no en `ref`) para que el
-  // `useMemo` derivado sea válido bajo las reglas de hooks de React 19.
   const [rowRects, setRowRects] = useState<Record<string, DOMRect>>({});
 
   const reorderRows = useMemo<PointerReorderRow[]>(
@@ -936,16 +917,12 @@ export default function LayerPanel() {
       })),
     [registryRowsDisplay, rowRects],
   );
-
-  // Re-medir todos los rects. Llamado desde los efectos de scroll,
-  // resize y mount de filas nuevas.
   const refreshRects = useCallback(() => {
     const next: Record<string, DOMRect> = {};
     for (const [id, el] of rowRefs.current) {
       next[id] = el.getBoundingClientRect();
     }
     setRowRects((prev) => {
-      // Evitar re-render si nada cambió materialmente.
       const prevKeys = Object.keys(prev);
       const nextKeys = Object.keys(next);
       if (prevKeys.length !== nextKeys.length) return next;
@@ -964,9 +941,6 @@ export default function LayerPanel() {
     if (el) {
       const isNew = !rowRefs.current.has(id);
       rowRefs.current.set(id, el);
-      // Cuando se monta una fila nueva (caso típico: incremental render
-      // reveló una fila que antes no estaba en el DOM), necesitamos
-      // refrescar el snapshot de rects.
       if (isNew) {
         requestAnimationFrame(refreshRects);
       }
@@ -975,9 +949,6 @@ export default function LayerPanel() {
     }
   }, [refreshRects]);
 
-  // Re-medir rects cuando el panel scrollea (necesario para que el
-  // snapshot quede fresco entre drags; durante un drag, el hook ya
-  // lee los rects en vivo vía getLiveRect).
   useEffect(() => {
     const panel = panelRef.current;
     if (!panel) return;
@@ -993,7 +964,6 @@ export default function LayerPanel() {
     };
   }, [open, refreshRects]);
 
-  // Re-medir rects al final de cada cambio de tamaño del panel.
   useEffect(() => {
     const panel = panelRef.current;
     if (!panel || typeof ResizeObserver === 'undefined') return;
@@ -1010,12 +980,6 @@ export default function LayerPanel() {
       const layers = useLayersStore.getState().layers;
       const targetStoreIdx = layers.findIndex((l) => l.id === targetId);
       if (targetStoreIdx === -1) return;
-      /* `position` se interpreta sobre la lista visible (que va de
-         zIndex descendente: visible top = store bottom).
-           - 'before' = insertar ARRIBA del target en la lista visible
-             = zIndex mayor al del target = store index MAYOR.
-           - 'after'  = insertar ABAJO del target en la lista visible
-             = zIndex menor al del target = store index MENOR. */
       const targetStorePos = position === 'before' ? targetStoreIdx + 1 : targetStoreIdx;
       void runCommand(new ReorderLayersCommand([sourceId], targetStorePos));
     },
@@ -1033,8 +997,6 @@ export default function LayerPanel() {
     enabled: open && expandedData && registryRowsDisplay.length > 1,
   });
 
-  /* Ancho automático del panel: se mide el nombre más largo de las capas
-     con un span oculto en la misma tipografía, evitando scroll horizontal. */
   const measureRef = useRef<HTMLSpanElement>(null);
   const [autoPanelWidth, setAutoPanelWidth] = useState<number>(panelMinWidth);
   useLayoutEffect(() => {
@@ -1052,8 +1014,6 @@ export default function LayerPanel() {
   }, [registryRowsDisplay, open, viewportWidth]);
 
   const [addLayerOpen, setAddLayerOpen] = useState(false);
-
-  // Rename inline (lifted acá para poder dispararlo también desde el menú contextual)
   const [editingLayerId, setEditingLayerId] = useState<string | null>(null);
   const [nameDraft, setNameDraft] = useState('');
 
@@ -1070,10 +1030,7 @@ export default function LayerPanel() {
     setEditingLayerId(null);
   };
   const cancelEditingLayer = () => setEditingLayerId(null);
-
-  // Menú contextual (click derecho)
   const [contextMenu, setContextMenu] = useState<{ layerId: string; x: number; y: number } | null>(null);
-
   const openContextMenu = (e: React.MouseEvent, layerId: string) => {
     e.preventDefault();
     e.stopPropagation();
@@ -1282,9 +1239,6 @@ export default function LayerPanel() {
 
     <LayerDeleteModal request={deleteRequest} onClose={() => setDeleteRequest(null)} />
     <AddLayerModal open={addLayerOpen} onOpenChange={setAddLayerOpen} />
-
-    {/* Pill flotante que sigue al cursor durante el drag (portal a body
-        para no ser cortado por overflow:hidden del panel). */}
     <LayerReorderPill row={dragState.draggingRow} pointer={dragState.pointer} />
     </>
   );
