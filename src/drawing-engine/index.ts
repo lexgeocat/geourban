@@ -10,6 +10,7 @@ export * from './modes/PointMode';
 export * from './modes/CircleMode';
 export * from './modes/PolylineMode';
 export * from './modes/EraseMode';
+export * from './interactions/RectangleResizeInteraction';
 
 export * from './styles/styleFactory';
 export * from './styles/liveDimensions';

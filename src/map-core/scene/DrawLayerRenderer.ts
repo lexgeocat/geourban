@@ -24,13 +24,26 @@ export interface DrawLayers {
   streetSource: VectorSource;
 }
 
-function safeDisposeLayer(layer: { dispose: () => void }): void {
+const renderedWebglLayers = new WeakSet<WebGLVectorLayer>();
+
+function trackRenderOnce(layer: WebGLVectorLayer): void {
+  layer.once('postrender', () => {
+    renderedWebglLayers.add(layer);
+  });
+}
+
+function safeDisposeLayer(layer: WebGLVectorLayer): void {
+  if (!renderedWebglLayers.has(layer)) {
+    // El renderer WebGL nunca llegó a inicializar su helper (nunca pintó un
+    // frame), así que no hay recursos GPU que liberar. Llamar a dispose()
+    // acá rompe porque su implementación asume que el helper ya existe.
+    return;
+  }
   try {
     layer.dispose();
   } catch (err) {
     console.warn(
-      'DrawLayerRenderer: layer.dispose() falló (probablemente el helper WebGL nunca se inicializó ' +
-        'porque la capa nunca llegó a renderizar) — se ignora.',
+      'DrawLayerRenderer: layer.dispose() falló pese a haber renderizado — se ignora.',
       err
     );
   }
@@ -121,6 +134,7 @@ export class LayeredWebglRenderer {
       zIndex,
     });
     layer.setVisible(visible);
+    trackRenderOnce(layer);
     return { source, layer };
   }
   private static layerSignature(layer: Layer): string {
@@ -335,6 +349,7 @@ export class LayeredWebglRenderer {
           style: LayeredWebglRenderer.buildPoolSlotStyle(colorTable),
           zIndex: 0, // todos los slots del pool quedan al mismo Z base
         });
+        trackRenderOnce(layer);
         nextSlots[i] = { source, layer, colorTable, lastSig: sig };
         this.map?.addLayer(layer);
       }
@@ -383,6 +398,7 @@ export class LayeredWebglRenderer {
         style: FALLBACK_STYLE,
         zIndex: -1,
       });
+      trackRenderOnce(this.poolFallbackLayer);
       this.map?.addLayer(this.poolFallbackLayer);
 
       this.allocatePoolSlots(layers);

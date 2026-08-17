@@ -78,13 +78,31 @@ export default function StreetPanel() {
 
   return (
     <div style={{ height: '100%', overflowY: 'auto', fontSize: '0.72rem' }}>
-      <div style={{ background: 'var(--cad-bg-surface)', borderRadius: 6, padding: 8, marginBottom: 8 }}>
-        <div style={{ fontSize: '0.62rem', color: 'var(--cad-accent)', fontWeight: 700, marginBottom: 6, letterSpacing: '0.05em' }}>
+      <div
+        style={{
+          background: 'var(--cad-bg-surface)',
+          borderRadius: 6,
+          padding: 8,
+          marginBottom: 8,
+        }}
+      >
+        <div
+          style={{
+            fontSize: '0.62rem',
+            color: 'var(--cad-accent)',
+            fontWeight: 700,
+            marginBottom: 6,
+            letterSpacing: '0.05em',
+          }}
+        >
           ╣PARÁMETROS DE VIAS
         </div>
         <div style={{ display: 'flex', gap: 6 }}>
           <div style={{ flex: 1 }}>
-            <label style={{ display: 'block', fontSize: '0.65rem', color: 'var(--cad-text-dim)' }} htmlFor="street-panel-default-width">
+            <label
+              style={{ display: 'block', fontSize: '0.65rem', color: 'var(--cad-text-dim)' }}
+              htmlFor="street-panel-default-width"
+            >
               Calzada (m)
             </label>
             <input
@@ -99,7 +117,10 @@ export default function StreetPanel() {
             />
           </div>
           <div style={{ flex: 1 }}>
-            <label style={{ display: 'block', fontSize: '0.65rem', color: 'var(--cad-text-dim)' }} htmlFor="street-panel-default-side">
+            <label
+              style={{ display: 'block', fontSize: '0.65rem', color: 'var(--cad-text-dim)' }}
+              htmlFor="street-panel-default-side"
+            >
               Vereda (m)
             </label>
             <input
@@ -116,15 +137,32 @@ export default function StreetPanel() {
         </div>
       </div>
 
-      <div style={{ background: 'var(--cad-bg-surface)', borderRadius: 6, padding: 8, marginBottom: 8 }}>
-        <div style={{ fontSize: '0.62rem', color: 'var(--cad-accent)', fontWeight: 700, marginBottom: 6, letterSpacing: '0.05em' }}>
+      <div
+        style={{
+          background: 'var(--cad-bg-surface)',
+          borderRadius: 6,
+          padding: 8,
+          marginBottom: 8,
+        }}
+      >
+        <div
+          style={{
+            fontSize: '0.62rem',
+            color: 'var(--cad-accent)',
+            fontWeight: 700,
+            marginBottom: 6,
+            letterSpacing: '0.05em',
+          }}
+        >
           ▾ ESQUINAS DE VÍA
         </div>
         <CornerModeControl />
       </div>
 
       {streets.length === 0 ? (
-        <p style={{ fontSize: '0.68rem', color: 'var(--cad-text-muted)' }}>Todavía no hay vías trazadas.</p>
+        <p style={{ fontSize: '0.68rem', color: 'var(--cad-text-muted)' }}>
+          Todavía no hay vías trazadas.
+        </p>
       ) : (
         streets.map((s) => (
           <div
@@ -132,7 +170,9 @@ export default function StreetPanel() {
             onClick={() => selectOnMap([s.id], s.id)}
             title="Click: resalta esta via en el mapa"
             style={{
-              border: `1px solid ${selectedIds.has(s.id) ? 'var(--cad-accent-amber)' : 'var(--cad-border)'}`,
+              borderTop: `1px solid ${selectedIds.has(s.id) ? 'var(--cad-accent-amber)' : 'var(--cad-border)'}`,
+              borderRight: `1px solid ${selectedIds.has(s.id) ? 'var(--cad-accent-amber)' : 'var(--cad-border)'}`,
+              borderBottom: `1px solid ${selectedIds.has(s.id) ? 'var(--cad-accent-amber)' : 'var(--cad-border)'}`,
               borderLeft: '3px solid #8b5cf6',
               borderRadius: 4,
               marginBottom: 6,
@@ -149,14 +189,21 @@ export default function StreetPanel() {
                   value={editName}
                   onChange={(e) => setEditName(e.target.value)}
                   onBlur={commitRename}
-                  onKeyDown={(e) => { if (e.key === 'Enter') commitRename(); if (e.key === 'Escape') setEditingId(null); }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') commitRename();
+                    if (e.key === 'Escape') setEditingId(null);
+                  }}
                   onClick={(e) => e.stopPropagation()}
-                  className="cad-input cad-input-sm" style={{ marginTop: 0, flex: 1, marginRight: 6 }}
+                  className="cad-input cad-input-sm"
+                  style={{ marginTop: 0, flex: 1, marginRight: 6 }}
                   aria-label={`Nombre de ${s.name}`}
                 />
               ) : (
                 <span
-                  onDoubleClick={(e) => { e.stopPropagation(); startRename(s.id, s.name); }}
+                  onDoubleClick={(e) => {
+                    e.stopPropagation();
+                    startRename(s.id, s.name);
+                  }}
                   style={{ fontWeight: 700, color: 'var(--cad-text)', cursor: 'text' }}
                   title="Doble click para renombrar"
                 >
@@ -170,18 +217,34 @@ export default function StreetPanel() {
                   openEntityLabel(
                     'street',
                     s.id,
-                    existing?.config ?? defaultLabelStyleConfig({ prefix: 'Vía', color: defaultColorForKind('via') }),
-                    existing?.text ?? s.name,
+                    existing?.config ??
+                      defaultLabelStyleConfig({ prefix: 'Vía', color: defaultColorForKind('via') }),
+                    existing?.text ?? s.name
                   );
                 }}
-                style={{ background: 'none', border: 'none', color: 'var(--cad-accent)', cursor: 'pointer', fontSize: '0.72rem' }}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--cad-accent)',
+                  cursor: 'pointer',
+                  fontSize: '0.72rem',
+                }}
                 title="Generar etiqueta"
               >
                 🏷
               </button>
               <button
-                onClick={(e) => { e.stopPropagation(); handleDelete(s.id); }}
-                style={{ background: 'none', border: 'none', color: 'var(--cad-accent-red)', cursor: 'pointer', fontSize: '0.75rem' }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleDelete(s.id);
+                }}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--cad-accent-red)',
+                  cursor: 'pointer',
+                  fontSize: '0.75rem',
+                }}
                 title="Eliminar via"
                 aria-label={`Eliminar ${s.name}`}
               >
@@ -189,7 +252,8 @@ export default function StreetPanel() {
               </button>
             </div>
             <div style={{ color: 'var(--cad-text-muted)', fontSize: '0.65rem', marginBottom: 4 }}>
-              {formatMetricLength(streetLengthMetricM(s))} · {formatMetricArea(streetLengthMetricM(s) * s.widthM)} de calzada
+              {formatMetricLength(streetLengthMetricM(s))} ·{' '}
+              {formatMetricArea(streetLengthMetricM(s) * s.widthM)} de calzada
             </div>
             <div style={{ display: 'flex', gap: 6 }}>
               <label style={{ flex: 1, fontSize: '0.6rem', color: 'var(--cad-text-dim)' }}>
@@ -199,7 +263,11 @@ export default function StreetPanel() {
                   min={0.5}
                   step={0.5}
                   value={s.widthM}
-                  onChange={(e) => applyStreetPatch(s.id, { widthM: Math.max(0.5, parseFloat(e.target.value) || s.widthM) })}
+                  onChange={(e) =>
+                    applyStreetPatch(s.id, {
+                      widthM: Math.max(0.5, parseFloat(e.target.value) || s.widthM),
+                    })
+                  }
                   onClick={(e) => e.stopPropagation()}
                   className="cad-input cad-input-sm"
                   aria-label={`Ancho de calzada de ${s.name} en metros`}
@@ -212,7 +280,11 @@ export default function StreetPanel() {
                   min={0}
                   step={0.5}
                   value={s.sideWidthM}
-                  onChange={(e) => applyStreetPatch(s.id, { sideWidthM: Math.max(0, parseFloat(e.target.value) || 0) })}
+                  onChange={(e) =>
+                    applyStreetPatch(s.id, {
+                      sideWidthM: Math.max(0, parseFloat(e.target.value) || 0),
+                    })
+                  }
                   onClick={(e) => e.stopPropagation()}
                   className="cad-input cad-input-sm"
                   aria-label={`Ancho de vereda de ${s.name} en metros`}

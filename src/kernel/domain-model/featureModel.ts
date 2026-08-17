@@ -195,3 +195,20 @@ export function ensureKind(
   }
   return merged as unknown as GeoUrbanFeatureProps;
 }
+
+const VERTEX_EDIT_EXCLUDED_KINDS: ReadonlySet<GeoUrbanFeatureKind> = new Set<GeoUrbanFeatureKind>([
+  'rotonda',
+  'circulo',
+  'punto',
+]);
+
+export function isVertexEditableKind(feature: Feature<Geometry> | null | undefined): boolean {
+  const kind = getFeatureKind(feature);
+  if (!kind) return true;
+  return !VERTEX_EDIT_EXCLUDED_KINDS.has(kind);
+}
+
+export function isRectangleFeature(feature: Feature<Geometry> | null | undefined): boolean {
+  if (!feature) return false;
+  return feature.get('shapeType') === 'rectangle';
+}

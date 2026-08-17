@@ -31,6 +31,7 @@ export function activateRectangle(ctx: ModeContext): void {
   });
   draw.on('drawend', (event) => {
     const feature = event.feature as Feature<Geometry>;
+    feature.set('shapeType', 'rectangle', true); // habilita el resize inteligente en modo edición
     const layerId = resolveOrCreateLayerForKind('perimetro');
 
     void (async () => {

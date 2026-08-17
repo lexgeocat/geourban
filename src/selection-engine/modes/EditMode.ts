@@ -6,9 +6,11 @@ import type Geometry from 'ol/geom/Geometry.js';
 import SafeTranslate, { type TranslateEvent } from '../interactions/safeTranslate';
 import { useSelectionStore } from '../store/selectionStore';
 import { ModifyGeometryCommand } from '@drawing-engine/commands/ModifyGeometryCommand';
+import { RectangleResizeInteraction } from '@drawing-engine/interactions/RectangleResizeInteraction';
 import { runCommand } from '@kernel/command/CommandStack';
 import { updateFeatureMetrics } from '@georef-engine/metrics';
 import { findNearestVertex, removeVertexFromFeature } from '@kernel/geometry/vertexEditing';
+import { isVertexEditableKind, isRectangleFeature } from '@kernel/domain-model/featureModel';
 import type { HitTestSelect } from '../interactions/HitTestSelect';
 import type { ModeContext } from '@kernel/modes/ModeContext';
 import { toast } from '@shared-ui/store/toastStore';
@@ -89,14 +91,45 @@ export function activateEdit(ctx: ModeContext, select: HitTestSelect): void {
     );
   }
 
-  const { collection: editableFeatures, dispose: disposeMirror } = createEditableMirror(
+  const vertexUnsupportedCount = selectedFeatures.filter(
+    (f) => ctx.isLayerEditable(f) && !isVertexEditableKind(f)
+  ).length;
+  if (vertexUnsupportedCount > 0) {
+    toast(
+      `${vertexUnsupportedCount} elemento(s) no muestran vértices editables (rotondas, círculos y puntos se ajustan por sus propios parámetros).`,
+      { variant: 'info', durationMs: 5000 }
+    );
+  }
+
+  const isVertexEditable = (f: Feature<Geometry>) =>
+    ctx.isLayerEditable(f) && isVertexEditableKind(f) && !isRectangleFeature(f);
+
+  const { collection: vertexEditableFeatures, dispose: disposeVertexMirror } = createEditableMirror(
     select.getFeatures(),
-    ctx.isLayerEditable
+    isVertexEditable
   );
-  ctx.addCleanup(disposeMirror);
+  ctx.addCleanup(disposeVertexMirror);
+
+  const { collection: translatableFeatures, dispose: disposeTranslateMirror } =
+    createEditableMirror(select.getFeatures(), ctx.isLayerEditable);
+  ctx.addCleanup(disposeTranslateMirror);
+
+  const isRectEligible = (f: Feature<Geometry>) => ctx.isLayerEditable(f) && isRectangleFeature(f);
+  const rectInteraction = new RectangleResizeInteraction(
+    map,
+    select.getFeatures(),
+    isRectEligible,
+    src
+  );
+  const disposeRect = rectInteraction.install();
+  map.addInteraction(rectInteraction);
+  ctx.addCleanup(() => {
+    map.removeInteraction(rectInteraction);
+    disposeRect();
+  });
 
   const modify = new Modify({
-    features: editableFeatures,
+    features: vertexEditableFeatures,
     style: new Style({
       fill: new Fill({ color: 'rgba(245, 158, 11, 0.2)' }),
       stroke: new Stroke({ color: '#f59e0b', width: 2 }),
@@ -121,13 +154,13 @@ export function activateEdit(ctx: ModeContext, select: HitTestSelect): void {
   map.addInteraction(modify);
   ctx.addCleanup(() => map.removeInteraction(modify));
 
-  const translate = new SafeTranslate({ features: editableFeatures, hitTolerance: 6 });
+  const translate = new SafeTranslate({ features: translatableFeatures, hitTolerance: 6 });
   let pendingTranslate: ModifyGeometryCommand | null = null;
 
   translate.on('translatestart', (event) => {
     const feats =
       ((event as unknown as TranslateEvent).features.getArray() as Array<Feature<Geometry>>) ??
-      editableFeatures.getArray();
+      translatableFeatures.getArray();
     pendingTranslate = new ModifyGeometryCommand(feats, 'Mover');
     pendingTranslate.captureBefore();
   });
@@ -144,9 +177,9 @@ export function activateEdit(ctx: ModeContext, select: HitTestSelect): void {
   map.addInteraction(translate);
   ctx.addCleanup(() => map.removeInteraction(translate));
 
-  // ── Eliminar vértice con clic derecho (estilo QGIS / ArcGIS Pro) ──────
+  // ── Eliminar vértice con clic derecho (solo elementos con vértices libres) ──
   const onContextMenu = (e: MouseEvent) => {
-    const candidates = editableFeatures.getArray();
+    const candidates = vertexEditableFeatures.getArray();
     if (candidates.length === 0) return;
     const pixel = map.getEventPixel(e);
     const coord = map.getCoordinateFromPixel(pixel);

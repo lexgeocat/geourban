@@ -7,7 +7,7 @@ export * from './interactions/LassoSelection';
 export * from './interactions/safeTranslate';
 
 export * from './modes/EditMode';
-export * from './modes/SelectEditMode';
+export { activateSelect, clearSelection } from './modes/SelectEditMode';
 
 export * from './painters/SelectionHighlightPainter';
 export * from './painters/LassoOverlayPainter';

@@ -20,6 +20,33 @@ function seedFromStore(ctx: ModeContext, select: HitTestSelect) {
   });
 }
 
+/**
+ * Limpia por completo la selección actual, sincronizando tanto la Collection
+ * interna de OpenLayers (source de verdad para los painters de highlight)
+ * como el store de Zustand (source de verdad para los modos de edición y la UI).
+ * Idempotente y barato si ya está vacío.
+ */
+export function clearSelection(ctx: ModeContext, select: HitTestSelect): boolean {
+  const selected = select.getFeatures();
+  const store = useSelectionStore.getState();
+  const hadOl = selected.getLength() > 0;
+  const hadStore = store.selectedIds.size > 0 || store.primaryId !== null;
+  if (!hadOl && !hadStore) return false;
+
+  selected.clear();
+  store.clear();
+  ctx.refreshLayers();
+  return true;
+}
+
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  const tag = target.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
+  if (target.isContentEditable) return true;
+  return false;
+}
+
 export function activateSelect(ctx: ModeContext): HitTestSelect {
   const select = new HitTestSelect({
     map: ctx.map,
@@ -55,7 +82,26 @@ export function activateSelect(ctx: ModeContext): HitTestSelect {
   ctx.selectInteractionRef.current = select;
   ctx.addCleanup(() => {
     ctx.map.removeInteraction(select);
+    ctx.selectInteractionRef.current = null;
   });
+
+  // ── Tecla Escape: limpia toda la selección ──
+  const viewport = ctx.map.getViewport();
+  if (!viewport.hasAttribute('tabindex')) viewport.setAttribute('tabindex', '0');
+  const onKeyDown = (e: KeyboardEvent) => {
+    if (e.key !== 'Escape') return;
+    if (e.altKey || e.ctrlKey || e.metaKey) return;
+    if (isEditableTarget(e.target)) return;
+    if (useDrawStore.getState().mode !== 'select') return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (clearSelection(ctx, select)) {
+      ctx.postrenderPainter?.setLassoPreview(null);
+      ctx.map.render();
+    }
+  };
+  viewport.addEventListener('keydown', onKeyDown);
+  ctx.addCleanup(() => viewport.removeEventListener('keydown', onKeyDown));
 
   const subMode = useSelectionStore.getState().selectMode;
   if (subMode === 'rect' || subMode === 'lasso') {
