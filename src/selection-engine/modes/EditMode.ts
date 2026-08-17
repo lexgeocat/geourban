@@ -1,5 +1,6 @@
 import { Fill, Stroke, Style } from 'ol/style.js';
 import Modify from 'ol/interaction/Modify.js';
+import Collection from 'ol/Collection.js';
 import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
 import SafeTranslate, { type TranslateEvent } from '../interactions/safeTranslate';
@@ -7,8 +8,10 @@ import { useSelectionStore } from '../store/selectionStore';
 import { ModifyGeometryCommand } from '@drawing-engine/commands/ModifyGeometryCommand';
 import { runCommand } from '@kernel/command/CommandStack';
 import { updateFeatureMetrics } from '@georef-engine/metrics';
+import { findNearestVertex, removeVertexFromFeature } from '@kernel/geometry/vertexEditing';
 import type { HitTestSelect } from '../interactions/HitTestSelect';
 import type { ModeContext } from '@kernel/modes/ModeContext';
+import { toast } from '@shared-ui/store/toastStore';
 
 function commitPendingOrFallback(
   pending: ModifyGeometryCommand | null,
@@ -36,6 +39,33 @@ function commitPendingOrFallback(
   }
 }
 
+function createEditableMirror(
+  source: Collection<Feature<Geometry>>,
+  isEditable: (f: Feature<Geometry>) => boolean
+): { collection: Collection<Feature<Geometry>>; dispose: () => void } {
+  const mirror = new Collection<Feature<Geometry>>(source.getArray().filter(isEditable));
+
+  const onAdd = (evt: { element: Feature<Geometry> }) => {
+    const f = evt.element;
+    if (isEditable(f) && mirror.getArray().indexOf(f) === -1) mirror.push(f);
+  };
+  const onRemove = (evt: { element: Feature<Geometry> }) => {
+    const idx = mirror.getArray().indexOf(evt.element);
+    if (idx !== -1) mirror.removeAt(idx);
+  };
+
+  source.on('add', onAdd as never);
+  source.on('remove', onRemove as never);
+
+  return {
+    collection: mirror,
+    dispose: () => {
+      source.un('add', onAdd as never);
+      source.un('remove', onRemove as never);
+    },
+  };
+}
+
 export function activateEdit(ctx: ModeContext, select: HitTestSelect): void {
   const { map, drawSource: src } = ctx;
   const primaryId = useSelectionStore.getState().primaryId;
@@ -46,8 +76,27 @@ export function activateEdit(ctx: ModeContext, select: HitTestSelect): void {
   });
   if (!primaryId || selectedFeatures.length === 0) return;
 
+  const editableCount = selectedFeatures.filter((f) => ctx.isLayerEditable(f)).length;
+  if (editableCount === 0) {
+    toast(
+      'Ningún elemento seleccionado se puede editar: activá "Iniciar edición" en su capa desde el panel de Capas.',
+      { variant: 'warning', durationMs: 6000 }
+    );
+  } else if (editableCount < selectedFeatures.length) {
+    toast(
+      `${selectedFeatures.length - editableCount} de ${selectedFeatures.length} elemento(s) no se pueden editar (activá edición en su capa).`,
+      { variant: 'info', durationMs: 5000 }
+    );
+  }
+
+  const { collection: editableFeatures, dispose: disposeMirror } = createEditableMirror(
+    select.getFeatures(),
+    ctx.isLayerEditable
+  );
+  ctx.addCleanup(disposeMirror);
+
   const modify = new Modify({
-    features: select.getFeatures(),
+    features: editableFeatures,
     style: new Style({
       fill: new Fill({ color: 'rgba(245, 158, 11, 0.2)' }),
       stroke: new Stroke({ color: '#f59e0b', width: 2 }),
@@ -72,13 +121,13 @@ export function activateEdit(ctx: ModeContext, select: HitTestSelect): void {
   map.addInteraction(modify);
   ctx.addCleanup(() => map.removeInteraction(modify));
 
-  const translate = new SafeTranslate({ features: select.getFeatures(), hitTolerance: 6 });
+  const translate = new SafeTranslate({ features: editableFeatures, hitTolerance: 6 });
   let pendingTranslate: ModifyGeometryCommand | null = null;
 
   translate.on('translatestart', (event) => {
     const feats =
       ((event as unknown as TranslateEvent).features.getArray() as Array<Feature<Geometry>>) ??
-      select.getFeatures().getArray();
+      editableFeatures.getArray();
     pendingTranslate = new ModifyGeometryCommand(feats, 'Mover');
     pendingTranslate.captureBefore();
   });
@@ -94,4 +143,31 @@ export function activateEdit(ctx: ModeContext, select: HitTestSelect): void {
   });
   map.addInteraction(translate);
   ctx.addCleanup(() => map.removeInteraction(translate));
+
+  // ── Eliminar vértice con clic derecho (estilo QGIS / ArcGIS Pro) ──────
+  const onContextMenu = (e: MouseEvent) => {
+    const candidates = editableFeatures.getArray();
+    if (candidates.length === 0) return;
+    const pixel = map.getEventPixel(e);
+    const coord = map.getCoordinateFromPixel(pixel);
+    if (!coord) return;
+    const resolution = map.getView().getResolution() ?? 1;
+    const hit = findNearestVertex(candidates, coord, 10 * resolution);
+    if (!hit) return;
+    e.preventDefault();
+
+    const cmd = new ModifyGeometryCommand([hit.feature], 'Eliminar vértice');
+    cmd.captureBefore();
+    const removed = removeVertexFromFeature(hit.feature, hit.ringIndex, hit.vertexIndex);
+    if (!removed) {
+      toast('No se puede eliminar: la geometría necesita un mínimo de vértices.', {
+        variant: 'warning',
+      });
+      return;
+    }
+    void runCommand(cmd);
+  };
+  const viewport = map.getViewport();
+  viewport.addEventListener('contextmenu', onContextMenu);
+  ctx.addCleanup(() => viewport.removeEventListener('contextmenu', onContextMenu));
 }

@@ -35,6 +35,7 @@ const DRAW_MODE_SHORTCUTS: Record<string, DrawMode> = {
   s: 'street',
   o: 'roundabout',
   e: 'erase',
+  x: 'splitFeature',
 };
 
 function handleDeleteSelection(): void {
@@ -61,11 +62,23 @@ function handleDeleteSelection(): void {
   if (regularIds.length > 0) {
     const cmd = new DeleteFeaturesCommand(regularIds);
     void runCommand(cmd);
-    if (cmd.skippedCount > 0) {
-      toast(`${cmd.skippedCount} elemento(s) no se borraron por estar en una capa bloqueada.`, {
-        variant: 'warning',
-        durationMs: 5000,
-      });
+    if (cmd.skippedLockedCount > 0) {
+      toast(
+        `${cmd.skippedLockedCount} elemento(s) no se borraron por estar en una capa bloqueada.`,
+        {
+          variant: 'warning',
+          durationMs: 5000,
+        }
+      );
+    }
+    if (cmd.skippedNotEditingCount > 0) {
+      toast(
+        `${cmd.skippedNotEditingCount} elemento(s) no se borraron: activá edición en su capa (panel de Capas).`,
+        {
+          variant: 'warning',
+          durationMs: 5000,
+        }
+      );
     }
   }
   if (streetIds.length > 0 || roundaboutIds.length > 0) {
@@ -158,6 +171,15 @@ export function useKeyboardShortcuts() {
       if (ctrlOrCmd && (key === 'o' || key === 'O')) {
         e.preventDefault();
         useProjectFileStore.getState().setOpenModalOpen(true);
+        return;
+      }
+      if (ctrlOrCmd && (key === 'e' || key === 'E')) {
+        e.preventDefault();
+        if (useSelectionStore.getState().selectedIds.size === 0) {
+          toast('Seleccioná primero un elemento para editar sus vértices.', { variant: 'info' });
+          return;
+        }
+        useDrawStore.getState().setMode('edit');
         return;
       }
       if (ctrlOrCmd) return;

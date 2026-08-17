@@ -4,24 +4,23 @@ import { useLeftSidebarStore } from '@app-shell/store/leftSidebarStore';
 
 export type DrawMode =
   | 'select'
-  | 'polygon' // Perímetro/Manzana/Lote — polígono libre
-  | 'rectangle' // Perímetro/Manzana/Lote — rectángulo (drag)
-  | 'line' // Línea normal (segmento simple, 2 puntos)
-  | 'polyline' // Polilínea normal (multi-vértice)
-  | 'circle' // Círculo normal (no vial)
-  | 'point' // Punto normal
-  | 'street' // Línea de vía (eje segmentado) — modo dominio
-  | 'roundabout' // Círculo de rotonda (2 clics: centro → radio) — modo dominio
-  | 'erase' // Borrar seleccionados
-  | 'edit' // Edición de vértices de la selección
-  | 'labelOrder' // Trazado de línea para ordenar etiquetas de manzanos/lotes/capa
-  | 'none'; // Sin herramienta activa (UI state)
+  | 'polygon'
+  | 'rectangle'
+  | 'line'
+  | 'polyline'
+  | 'circle'
+  | 'point'
+  | 'street'
+  | 'roundabout'
+  | 'erase'
+  | 'edit'
+  | 'splitFeature' // NEW: herramienta "Dividir" (Split Features) estilo QGIS/ArcGIS
+  | 'labelOrder'
+  | 'none';
 
 type DrawState = {
   mode: DrawMode;
   lastDrawnLineId: string | number | null;
-
-  /* ----- Mutations ----- */
   setMode: (mode: DrawMode) => void;
   setLastDrawnLineId: (id: string | number | null) => void;
 };

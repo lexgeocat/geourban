@@ -15,3 +15,4 @@ export { UpdateLayerCommand } from './commands/UpdateLayerCommand';
 
 export * from './selectors/layerStats';
 export * from './selectors/layersPainterHelpers';
+export * from './store/editSessionStore';

@@ -14,13 +14,14 @@ import { confirmAsync } from '@shared-ui/store/confirmDialogStore';
 import { toast } from '@shared-ui/store/toastStore';
 import { useProjectFileStore } from '@persistence-engine/store/projectFileStore';
 import { resetManzanoSeq } from '@manzanos-engine/naming/manzanoNaming';
+import { useEditSessionStore } from '@layers-engine/store/editSessionStore';
 
 export function useTopBarActions() {
   const handleNewProject = async () => {
     const drawSource = useMapStore.getState().drawSource;
     const ok = await confirmAsync(
       '¿Crear un nuevo proyecto? Se borrarán todos los features del mapa actual.',
-      { title: 'Nuevo proyecto', confirmLabel: 'Crear', cancelLabel: 'Cancelar', danger: true },
+      { title: 'Nuevo proyecto', confirmLabel: 'Crear', cancelLabel: 'Cancelar', danger: true }
     );
     if (!ok || !drawSource) return;
     await useCommandStack.getState().run(new ClearFeaturesCommand());
@@ -30,6 +31,7 @@ export function useTopBarActions() {
     resetIncrementalRoadTracking();
     useLayersStore.getState().resetToEmpty();
     useManzanoStore.getState().resetAll();
+    useEditSessionStore.getState().stopAll();
     resetManzanoSeq();
     useDrawStore.getState().setMode('select');
     useDrawStore.getState().setLastDrawnLineId(null);
@@ -40,8 +42,7 @@ export function useTopBarActions() {
   };
 
   const handleExit = async () => {
-    const isNative =
-      typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+    const isNative = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
     if (isNative) {
       try {
         const { exit } = await import('@tauri-apps/plugin-process');
@@ -65,7 +66,7 @@ export function useTopBarActions() {
   const handleAbout = () => {
     toast(
       'GeoUrban v0.1 · Editor CAD/GIS client-side para planificación urbana.\nReact + TypeScript + OpenLayers + Tauri.\n© 2026',
-      { variant: 'info', durationMs: 8000 },
+      { variant: 'info', durationMs: 8000 }
     );
   };
 

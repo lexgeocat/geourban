@@ -26,4 +26,5 @@ export interface ModeContext {
   refreshLayers: () => void;
   isLayerLocked: (f: Feature<Geometry>) => boolean;
   isLayerVisible: (f: Feature<Geometry>) => boolean;
+  isLayerEditable: (f: Feature<Geometry>) => boolean;
 }

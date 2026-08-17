@@ -3,6 +3,7 @@ import type Geometry from 'ol/geom/Geometry.js';
 import { Command, type CommandContext } from '@kernel/command/Command';
 import { GeoUrbanFeatureKind } from '@kernel/domain-model/featureModel';
 import { pickLayerId } from '@layers-engine/store/layerResolution';
+import { useEditSessionStore } from '@layers-engine/store/editSessionStore';
 import { newId } from '@kernel/id/id';
 
 function resolveLayerId(override?: string, kind?: GeoUrbanFeatureKind): string | undefined {
@@ -19,7 +20,13 @@ export class AddFeatureCommand extends Command {
 
   constructor(
     feature: Feature<Geometry>,
-    options: { mode?: 'register' | 'claim'; label?: string; prefix?: string; kind?: GeoUrbanFeatureKind; layerId?: string } = {},
+    options: {
+      mode?: 'register' | 'claim';
+      label?: string;
+      prefix?: string;
+      kind?: GeoUrbanFeatureKind;
+      layerId?: string;
+    } = {}
   ) {
     super();
     const { mode = 'register', label, prefix = 'feat', kind = 'lote', layerId } = options;
@@ -28,17 +35,13 @@ export class AddFeatureCommand extends Command {
     this.kind = kind;
     this.layerId = layerId;
     this.label = label ?? (mode === 'claim' ? 'Dibujar feature' : 'Agregar feature');
-    if (mode === 'register' && feature.getId() == null) {
-      feature.setId(newId(prefix));
-    }
+    if (mode === 'register' && feature.getId() == null) feature.setId(newId(prefix));
   }
 
   execute(ctx: CommandContext): void {
     if (this.mode === 'claim') {
       const id = this.feature.getId();
-      if (id == null) {
-        this.feature.setId(newId('feat'));
-      }
+      if (id == null) this.feature.setId(newId('feat'));
       if (ctx.drawSource.getFeatureById(this.feature.getId() as string | number) == null) {
         ctx.drawSource.addFeature(this.feature);
       }
@@ -47,7 +50,10 @@ export class AddFeatureCommand extends Command {
     }
     this.feature.set('kind', this.kind);
     const resolvedLayerId = this.layerId ?? resolveLayerId(undefined, this.kind);
-    if (resolvedLayerId) this.feature.set('layerId', resolvedLayerId);
+    if (resolvedLayerId) {
+      this.feature.set('layerId', resolvedLayerId);
+      useEditSessionStore.getState().startEditing(resolvedLayerId);
+    }
     ctx.drawSource.changed();
   }
 

@@ -54,6 +54,7 @@ import { newId } from '@kernel/id/id';
 import { useLabelConfigModalStore } from '@label-engine/store/labelConfigModalStore';
 import { useLabelClassStore } from '@label-engine/store/labelClassStore';
 import { defaultColorForKind, defaultLabelStyleConfig } from '@label-engine/model/labelModel';
+import { useEditSessionStore } from '@layers-engine/store/editSessionStore';
 
 /* ----------- Icons ----------- */
 
@@ -61,7 +62,10 @@ const IconChevron = ({ open }: { open: boolean }) => (
   <ChevronRight
     size={11}
     aria-hidden="true"
-    style={{ transition: 'transform 150ms ease', transform: open ? 'rotate(90deg)' : 'rotate(0deg)' }}
+    style={{
+      transition: 'transform 150ms ease',
+      transform: open ? 'rotate(90deg)' : 'rotate(0deg)',
+    }}
   />
 );
 
@@ -71,6 +75,18 @@ const IconEye = ({ visible }: { visible: boolean }) => (
     strokeWidth={visible ? 2 : 1.5}
     aria-hidden="true"
     style={{ opacity: visible ? 1 : 0.4, transition: 'opacity 150ms ease' }}
+  />
+);
+const IconEdit = ({ editing, locked }: { editing: boolean; locked?: boolean }) => (
+  <Pencil
+    size={13}
+    strokeWidth={editing && !locked ? 2.25 : 1.5}
+    aria-hidden="true"
+    style={{
+      opacity: editing && !locked ? 1 : 0.4,
+      color: editing && !locked ? 'var(--cad-accent-amber)' : undefined,
+      transition: 'opacity 150ms ease, color 150ms ease',
+    }}
   />
 );
 
@@ -92,14 +108,16 @@ const IconCircleKind = () => <Circle size={11} strokeWidth={1.5} aria-hidden="tr
 const IconPointKind = () => <MapPin size={11} strokeWidth={1.5} aria-hidden="true" />;
 
 function geometryIconForKind(kind: LayerKind) {
-  if (kind === 'via' || kind === 'linea' || kind === 'polilinea' || kind === 'rotonda') return <IconLineKind />;
+  if (kind === 'via' || kind === 'linea' || kind === 'polilinea' || kind === 'rotonda')
+    return <IconLineKind />;
   if (kind === 'punto') return <IconPointKind />;
   if (kind === 'circulo') return <IconCircleKind />;
   return <IconPolygonKind />;
 }
 
 function geometryLabelForKind(kind: LayerKind): string {
-  if (kind === 'via' || kind === 'linea' || kind === 'polilinea' || kind === 'rotonda') return 'línea';
+  if (kind === 'via' || kind === 'linea' || kind === 'polilinea' || kind === 'rotonda')
+    return 'línea';
   if (kind === 'punto') return 'punto';
   if (kind === 'circulo') return 'círculo';
   return 'polígono';
@@ -107,7 +125,17 @@ function geometryLabelForKind(kind: LayerKind): string {
 
 /* ----------- Color Picker (contorno de capa) ----------- */
 
-function ColorDot({ color, onChange, title, warn }: { color: string; onChange: (c: string) => void; title?: string; warn?: boolean }) {
+function ColorDot({
+  color,
+  onChange,
+  title,
+  warn,
+}: {
+  color: string;
+  onChange: (c: string) => void;
+  title?: string;
+  warn?: boolean;
+}) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [localColor, setLocalColor] = useState(color);
   const commitTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -132,11 +160,17 @@ function ColorDot({ color, onChange, title, warn }: { color: string; onChange: (
       <button
         type="button"
         className="cad-a11y-btn"
-        onClick={(e) => { e.stopPropagation(); inputRef.current?.click(); }}
+        onClick={(e) => {
+          e.stopPropagation();
+          inputRef.current?.click();
+        }}
         aria-label={label}
         title={label}
         style={{
-          width: 14, height: 14, borderRadius: 3, background: localColor,
+          width: 14,
+          height: 14,
+          borderRadius: 3,
+          background: localColor,
           border: '1.5px solid rgba(255,255,255,0.25)',
         }}
       />
@@ -159,8 +193,14 @@ function ColorDot({ color, onChange, title, warn }: { color: string; onChange: (
         <span
           aria-hidden="true"
           style={{
-            position: 'absolute', top: -4, right: -4, width: 7, height: 7, borderRadius: '50%',
-            background: 'var(--cad-accent-amber)', border: '1px solid var(--cad-bg-deepest)',
+            position: 'absolute',
+            top: -4,
+            right: -4,
+            width: 7,
+            height: 7,
+            borderRadius: '50%',
+            background: 'var(--cad-accent-amber)',
+            border: '1px solid var(--cad-bg-deepest)',
           }}
         />
       )}
@@ -168,7 +208,17 @@ function ColorDot({ color, onChange, title, warn }: { color: string; onChange: (
   );
 }
 
-function OpacitySlider({ value, onChange, layerName, full }: { value: number; onChange: (v: number) => void; layerName: string; full?: boolean }) {
+function OpacitySlider({
+  value,
+  onChange,
+  layerName,
+  full,
+}: {
+  value: number;
+  onChange: (v: number) => void;
+  layerName: string;
+  full?: boolean;
+}) {
   const [localValue, setLocalValue] = useState(value);
   const commitTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const draggingRef = useRef(false);
@@ -189,7 +239,11 @@ function OpacitySlider({ value, onChange, layerName, full }: { value: number; on
 
   return (
     <input
-      type="range" min={0} max={1} step={0.05} value={localValue}
+      type="range"
+      min={0}
+      max={1}
+      step={0.05}
+      value={localValue}
       onChange={(e) => {
         e.stopPropagation();
         draggingRef.current = true;
@@ -201,7 +255,12 @@ function OpacitySlider({ value, onChange, layerName, full }: { value: number; on
       aria-label={`Opacidad de la capa ${layerName}`}
       aria-valuetext={`${pct}%`}
       title={`Opacidad: ${pct}%`}
-      style={{ width: full ? '100%' : 52, height: 4, accentColor: 'var(--cad-accent)', cursor: 'pointer' }}
+      style={{
+        width: full ? '100%' : 52,
+        height: 4,
+        accentColor: 'var(--cad-accent)',
+        cursor: 'pointer',
+      }}
     />
   );
 }
@@ -220,6 +279,7 @@ interface LayerRowData {
   removable: boolean;
   lockable: boolean;
   locked?: boolean;
+  editing: boolean;
   kind: LayerKind;
   reorderable: boolean;
   featureCount?: number;
@@ -233,6 +293,7 @@ interface LayerRowData {
   onToggleCota: () => void;
   onRename?: (name: string) => void;
   onToggleLock?: () => void;
+  onToggleEditing: () => void;
   onRemove?: () => void;
   onIsolate?: () => void;
   onZoomToExtent?: () => void;
@@ -282,8 +343,12 @@ function LayerRow({
       onKeyDown={onRowKeyDown}
       onPointerDown={onRowPointerDown}
       style={{
-        display: 'flex', alignItems: 'center', gap: 6, padding: '5px 6px',
-        borderRadius: 4, flexWrap: 'wrap',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 6,
+        padding: '5px 6px',
+        borderRadius: 4,
+        flexWrap: 'wrap',
         cursor: 'default',
         opacity: dragging ? 0.35 : 1,
         position: 'relative',
@@ -294,8 +359,12 @@ function LayerRow({
         aria-hidden="true"
         title="Arrastrar para reordenar"
         style={{
-          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-          width: 12, height: 14, flexShrink: 0,
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          width: 12,
+          height: 14,
+          flexShrink: 0,
           color: 'var(--cad-text-muted)',
           cursor: dragging ? 'grabbing' : 'grab',
           touchAction: 'none',
@@ -309,14 +378,42 @@ function LayerRow({
         type="button"
         className="cad-a11y-btn"
         onMouseDown={(e) => e.stopPropagation()}
-        onClick={(e) => { e.stopPropagation(); data.onToggleVisible(); }}
+        onClick={(e) => {
+          e.stopPropagation();
+          data.onToggleVisible();
+        }}
         aria-pressed={data.visible}
         aria-label={`${data.visible ? 'Ocultar' : 'Mostrar'} capa ${data.name}`}
       >
         <IconEye visible={data.visible} />
       </button>
+      <button
+        type="button"
+        className="cad-a11y-btn"
+        onMouseDown={(e) => e.stopPropagation()}
+        onClick={(e) => {
+          e.stopPropagation();
+          data.onToggleEditing();
+        }}
+        aria-pressed={data.editing}
+        aria-label={`${data.editing ? 'Detener' : 'Iniciar'} edición de la capa ${data.name}`}
+        title={
+          data.locked
+            ? 'Capa bloqueada — desbloqueá para editar'
+            : data.editing
+              ? 'Edición activa — clic para detener'
+              : 'Iniciar edición de esta capa'
+        }
+      >
+        <IconEdit editing={data.editing} locked={data.locked} />
+      </button>
 
-      <ColorDot color={data.color} onChange={data.onColor} title="Color de capa" warn={data.colorDuplicated} />
+      <ColorDot
+        color={data.color}
+        onChange={data.onColor}
+        title="Color de capa"
+        warn={data.colorDuplicated}
+      />
 
       {data.editableName && editing ? (
         <input
@@ -331,7 +428,17 @@ function LayerRow({
           onMouseDown={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
           aria-label={`Nuevo nombre para la capa ${data.name}`}
-          style={{ flex: '1 1 120px', fontSize: '0.72rem', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--cad-border)', borderRadius: 3, padding: '1px 4px', color: 'var(--cad-text)', outline: 'none', minWidth: 80 }}
+          style={{
+            flex: '1 1 120px',
+            fontSize: '0.72rem',
+            background: 'rgba(0,0,0,0.3)',
+            border: '1px solid var(--cad-border)',
+            borderRadius: 3,
+            padding: '1px 4px',
+            color: 'var(--cad-text)',
+            outline: 'none',
+            minWidth: 80,
+          }}
         />
       ) : (
         <button
@@ -340,14 +447,50 @@ function LayerRow({
           onMouseDown={(e) => e.stopPropagation()}
           onDoubleClick={onStartEdit}
           onContextMenu={onOpenContextMenu}
-          onKeyDown={(e) => { if (e.key === 'F2') { e.preventDefault(); onStartEdit(); } }}
+          onKeyDown={(e) => {
+            if (e.key === 'F2') {
+              e.preventDefault();
+              onStartEdit();
+            }
+          }}
           aria-label={`Capa ${data.name} — doble click para renombrar, click derecho para opciones`}
-          style={{ flex: '1 1 140px', justifyContent: 'flex-start', fontSize: '0.72rem', color: data.visible ? 'var(--cad-text)' : 'var(--cad-text-dim)', minWidth: 80, textAlign: 'left' }}
+          style={{
+            flex: '1 1 140px',
+            justifyContent: 'flex-start',
+            fontSize: '0.72rem',
+            color: data.visible ? 'var(--cad-text)' : 'var(--cad-text-dim)',
+            minWidth: 80,
+            textAlign: 'left',
+          }}
         >
-          <span style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 5, width: '100%' }}>
-            <span style={{ whiteSpace: 'normal', overflowWrap: 'anywhere', wordBreak: 'break-word' }}>{data.name}</span>
+          <span
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: 5,
+              width: '100%',
+            }}
+          >
+            <span
+              style={{ whiteSpace: 'normal', overflowWrap: 'anywhere', wordBreak: 'break-word' }}
+            >
+              {data.name}
+            </span>
             {isActive && (
-              <span aria-hidden="true" style={{ fontSize: '0.55rem', fontWeight: 700, letterSpacing: '0.04em', color: 'var(--cad-accent)', border: '1px solid var(--cad-accent)', borderRadius: 3, padding: '0 4px', flexShrink: 0 }}>
+              <span
+                aria-hidden="true"
+                style={{
+                  fontSize: '0.55rem',
+                  fontWeight: 700,
+                  letterSpacing: '0.04em',
+                  color: 'var(--cad-accent)',
+                  border: '1px solid var(--cad-accent)',
+                  borderRadius: 3,
+                  padding: '0 4px',
+                  flexShrink: 0,
+                }}
+              >
                 ACTIVA
               </span>
             )}
@@ -358,7 +501,15 @@ function LayerRow({
               <span
                 title={`${data.featureCount} elemento(s) en esta capa`}
                 aria-hidden="true"
-                style={{ fontSize: '0.55rem', color: 'var(--cad-text-dim)', border: '1px solid var(--cad-border)', borderRadius: 8, padding: '0 5px', flexShrink: 0, fontFamily: 'JetBrains Mono, monospace' }}
+                style={{
+                  fontSize: '0.55rem',
+                  color: 'var(--cad-text-dim)',
+                  border: '1px solid var(--cad-border)',
+                  borderRadius: 8,
+                  padding: '0 5px',
+                  flexShrink: 0,
+                  fontFamily: 'JetBrains Mono, monospace',
+                }}
               >
                 {data.featureCount}
               </span>
@@ -373,27 +524,45 @@ function LayerRow({
 /* ----------- Menú contextual (click derecho) ----------- */
 
 const ICON_BOX: React.CSSProperties = {
-  width: 18, height: 18, flexShrink: 0,
-  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+  width: 18,
+  height: 18,
+  flexShrink: 0,
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
   color: 'var(--cad-text-dim)',
 };
 const ITEM_BASE: React.CSSProperties = {
-  display: 'flex', alignItems: 'center', gap: 9, width: '100%',
-  padding: '7px 10px', borderRadius: 5,
-  fontSize: '0.72rem', fontWeight: 500, color: 'var(--cad-text-dim)',
-  cursor: 'pointer', textAlign: 'left',
-  background: 'transparent', border: '1px solid transparent',
+  display: 'flex',
+  alignItems: 'center',
+  gap: 9,
+  width: '100%',
+  padding: '7px 10px',
+  borderRadius: 5,
+  fontSize: '0.72rem',
+  fontWeight: 500,
+  color: 'var(--cad-text-dim)',
+  cursor: 'pointer',
+  textAlign: 'left',
+  background: 'transparent',
+  border: '1px solid transparent',
   transition: 'background 100ms ease, color 100ms ease, border-color 100ms ease',
   position: 'relative',
 };
 const SECTION_LABEL: React.CSSProperties = {
-  fontSize: '0.55rem', fontWeight: 700, letterSpacing: '0.1em',
-  textTransform: 'uppercase', color: 'var(--cad-text-muted)',
-  padding: '8px 4px 4px', userSelect: 'none',
+  fontSize: '0.55rem',
+  fontWeight: 700,
+  letterSpacing: '0.1em',
+  textTransform: 'uppercase',
+  color: 'var(--cad-text-muted)',
+  padding: '8px 4px 4px',
+  userSelect: 'none',
 };
 const DIVIDER: React.CSSProperties = {
-  height: 1, margin: '4px 8px',
-  background: 'linear-gradient(90deg, transparent, var(--cad-border) 30%, var(--cad-border) 70%, transparent)',
+  height: 1,
+  margin: '4px 8px',
+  background:
+    'linear-gradient(90deg, transparent, var(--cad-border) 30%, var(--cad-border) 70%, transparent)',
 };
 
 interface LayerContextMenuProps {
@@ -427,9 +596,13 @@ function LayerRowMenuItem({
 }) {
   const handleMouseEnter = (e: React.MouseEvent<HTMLButtonElement>) => {
     if (disabled) return;
-    e.currentTarget.style.background = destructive ? 'rgba(239, 68, 68, 0.12)' : 'var(--cad-bg-hover)';
+    e.currentTarget.style.background = destructive
+      ? 'rgba(239, 68, 68, 0.12)'
+      : 'var(--cad-bg-hover)';
     e.currentTarget.style.color = destructive ? 'var(--cad-accent-red)' : 'var(--cad-text)';
-    e.currentTarget.style.borderColor = destructive ? 'rgba(239, 68, 68, 0.25)' : 'var(--cad-border)';
+    e.currentTarget.style.borderColor = destructive
+      ? 'rgba(239, 68, 68, 0.25)'
+      : 'var(--cad-border)';
     const iconEl = e.currentTarget.querySelector('span[data-role="icon"]') as HTMLElement | null;
     if (iconEl) iconEl.style.color = destructive ? 'var(--cad-accent-red)' : 'var(--cad-accent)';
   };
@@ -460,15 +633,25 @@ function LayerRowMenuItem({
         color: destructive ? 'var(--cad-accent-red)' : 'var(--cad-text-dim)',
       }}
     >
-      <span data-role="icon" style={ICON_BOX}>{icon}</span>
+      <span data-role="icon" style={ICON_BOX}>
+        {icon}
+      </span>
       <span style={{ flex: 1, lineHeight: 1.2 }}>{children}</span>
       {hint && (
-        <span style={{
-          fontSize: '0.58rem', fontWeight: 600, color: 'var(--cad-text-muted)',
-          padding: '1px 6px', borderRadius: 3,
-          background: 'var(--cad-bg-deepest)', border: '1px solid var(--cad-border)',
-          letterSpacing: '0.04em',
-        }}>{hint}</span>
+        <span
+          style={{
+            fontSize: '0.58rem',
+            fontWeight: 600,
+            color: 'var(--cad-text-muted)',
+            padding: '1px 6px',
+            borderRadius: 3,
+            background: 'var(--cad-bg-deepest)',
+            border: '1px solid var(--cad-border)',
+            letterSpacing: '0.04em',
+          }}
+        >
+          {hint}
+        </span>
       )}
     </button>
   );
@@ -484,8 +667,15 @@ function LayerRowSection({ label, children }: { label: string; children: React.R
 }
 
 function LayerContextMenu({
-  row, x, y, isIsolated, hasSelection, isActiveLayer,
-  onClose, onRename, onSetActive,
+  row,
+  x,
+  y,
+  isIsolated,
+  hasSelection,
+  isActiveLayer,
+  onClose,
+  onRename,
+  onSetActive,
 }: LayerContextMenuProps) {
   const ref = useRef<HTMLDivElement>(null);
 
@@ -520,10 +710,19 @@ function LayerContextMenu({
       role="menu"
       aria-label={`Opciones de la capa ${row.name}`}
       style={{
-        position: 'fixed', top, left, width: MENU_WIDTH,
-        maxHeight, overflowY: 'auto', overflowX: 'hidden',
-        padding: 6, borderRadius: 8, zIndex: 'var(--z-ribbon-dropdown)',
-        display: 'flex', flexDirection: 'column', gap: 2,
+        position: 'fixed',
+        top,
+        left,
+        width: MENU_WIDTH,
+        maxHeight,
+        overflowY: 'auto',
+        overflowX: 'hidden',
+        padding: 6,
+        borderRadius: 8,
+        zIndex: 'var(--z-ribbon-dropdown)',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 2,
         boxShadow: '0 12px 40px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.04)',
       }}
     >
@@ -542,10 +741,15 @@ function LayerContextMenu({
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span
             style={{
-              width: 22, height: 22, flexShrink: 0,
-              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              width: 22,
+              height: 22,
+              flexShrink: 0,
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
               color: 'var(--cad-accent)',
-              background: 'var(--cad-bg-deepest)', borderRadius: 4,
+              background: 'var(--cad-bg-deepest)',
+              borderRadius: 4,
               border: '1px solid var(--cad-border)',
             }}
           >
@@ -553,20 +757,28 @@ function LayerContextMenu({
           </span>
           <div
             style={{
-              fontSize: '0.78rem', fontWeight: 700, color: 'var(--cad-text)',
+              fontSize: '0.78rem',
+              fontWeight: 700,
+              color: 'var(--cad-text)',
               lineHeight: 1.15,
-              flex: 1, minWidth: 0,
-              overflowWrap: 'anywhere', wordBreak: 'break-word',
+              flex: 1,
+              minWidth: 0,
+              overflowWrap: 'anywhere',
+              wordBreak: 'break-word',
             }}
           >
             {row.name}
           </div>
           <span
             style={{
-              fontSize: '0.58rem', color: 'var(--cad-text-dim)', fontWeight: 600,
+              fontSize: '0.58rem',
+              color: 'var(--cad-text-dim)',
+              fontWeight: 600,
               fontFamily: 'JetBrains Mono, monospace',
-              padding: '1px 6px', borderRadius: 3,
-              background: 'var(--cad-bg-deepest)', border: '1px solid var(--cad-border)',
+              padding: '1px 6px',
+              borderRadius: 3,
+              background: 'var(--cad-bg-deepest)',
+              border: '1px solid var(--cad-border)',
               flexShrink: 0,
             }}
           >
@@ -595,7 +807,8 @@ function LayerContextMenu({
 
       {/* ── Visualización ────────────────────────────────────── */}
       <LayerRowSection label="Visualización">
-        <label style={{ ...ITEM_BASE, cursor: 'pointer' }}
+        <label
+          style={{ ...ITEM_BASE, cursor: 'pointer' }}
           onMouseEnter={(e) => {
             e.currentTarget.style.background = 'var(--cad-bg-hover)';
             e.currentTarget.style.color = 'var(--cad-text)';
@@ -607,16 +820,20 @@ function LayerContextMenu({
             e.currentTarget.style.borderColor = 'transparent';
           }}
         >
-          <span data-role="icon" style={ICON_BOX}><Tag size={13} /></span>
+          <span data-role="icon" style={ICON_BOX}>
+            <Tag size={13} />
+          </span>
           <span style={{ flex: 1 }}>Mostrar etiquetas</span>
           <input
-            type="checkbox" className="cad-toggle"
+            type="checkbox"
+            className="cad-toggle"
             checked={row.showLabel}
             onChange={() => row.onToggleLabel()}
             style={{ marginLeft: 'auto' }}
           />
         </label>
-        <label style={{ ...ITEM_BASE, cursor: 'pointer' }}
+        <label
+          style={{ ...ITEM_BASE, cursor: 'pointer' }}
           onMouseEnter={(e) => {
             e.currentTarget.style.background = 'var(--cad-bg-hover)';
             e.currentTarget.style.color = 'var(--cad-text)';
@@ -628,10 +845,13 @@ function LayerContextMenu({
             e.currentTarget.style.borderColor = 'transparent';
           }}
         >
-          <span data-role="icon" style={ICON_BOX}><Ruler size={13} /></span>
+          <span data-role="icon" style={ICON_BOX}>
+            <Ruler size={13} />
+          </span>
           <span style={{ flex: 1 }}>Mostrar acotaciones</span>
           <input
-            type="checkbox" className="cad-toggle"
+            type="checkbox"
+            className="cad-toggle"
             checked={row.showCota}
             onChange={() => row.onToggleCota()}
             style={{ marginLeft: 'auto' }}
@@ -654,22 +874,37 @@ function LayerContextMenu({
       {/* ── Apariencia ───────────────────────────────────────── */}
       <LayerRowSection label="Apariencia">
         <div style={{ padding: '6px 10px 8px' }}>
-          <div style={{
-            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-            fontSize: '0.6rem', color: 'var(--cad-text-dim)', marginBottom: 6,
-            fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase',
-          }}>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              fontSize: '0.6rem',
+              color: 'var(--cad-text-dim)',
+              marginBottom: 6,
+              fontWeight: 600,
+              letterSpacing: '0.04em',
+              textTransform: 'uppercase',
+            }}
+          >
             <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={ICON_BOX}><Ruler size={12} /></span>
+              <span style={ICON_BOX}>
+                <Ruler size={12} />
+              </span>
               Opacidad
             </span>
-            <span style={{
-              fontFamily: 'JetBrains Mono, monospace',
-              color: 'var(--cad-accent)', fontWeight: 700,
-              fontSize: '0.65rem',
-              padding: '1px 6px', borderRadius: 3,
-              background: 'var(--cad-bg-deepest)', border: '1px solid var(--cad-border)',
-            }}>
+            <span
+              style={{
+                fontFamily: 'JetBrains Mono, monospace',
+                color: 'var(--cad-accent)',
+                fontWeight: 700,
+                fontSize: '0.65rem',
+                padding: '1px 6px',
+                borderRadius: 3,
+                background: 'var(--cad-bg-deepest)',
+                border: '1px solid var(--cad-border)',
+              }}
+            >
               {opacityPct}%
             </span>
           </div>
@@ -682,11 +917,7 @@ function LayerContextMenu({
       {/* ── Gestión ──────────────────────────────────────────── */}
       <LayerRowSection label="Gestión">
         {row.onIsolate && (
-          <LayerRowMenuItem
-            icon={<Focus size={13} />}
-            onClick={row.onIsolate}
-            onClose={onClose}
-          >
+          <LayerRowMenuItem icon={<Focus size={13} />} onClick={row.onIsolate} onClose={onClose}>
             {isIsolated ? 'Quitar aislamiento' : 'Aislar esta capa'}
           </LayerRowMenuItem>
         )}
@@ -724,6 +955,14 @@ function LayerContextMenu({
 
       {/* ── Estado ───────────────────────────────────────────── */}
       <LayerRowSection label="Estado">
+        <LayerRowMenuItem
+          icon={<Pencil size={13} />}
+          onClick={row.onToggleEditing}
+          onClose={onClose}
+          hint={row.editing && !row.locked ? 'activa' : undefined}
+        >
+          {row.editing ? 'Detener edición' : 'Iniciar edición'}
+        </LayerRowMenuItem>
         {row.lockable && (
           <LayerRowMenuItem
             icon={<IconLock locked={!!row.locked} />}
@@ -745,7 +984,7 @@ function LayerContextMenu({
         )}
       </LayerRowSection>
     </div>,
-    document.body,
+    document.body
   );
 }
 
@@ -768,10 +1007,12 @@ function computeDuplicatedColorIds(layers: Array<{ id: string; color: string }>)
 function useRegistryRows(
   onRequestRemove: (request: LayerDeleteRequest) => void,
   featureCounts: Record<string, number>,
-  isolatedLayerId: string | null,
+  isolatedLayerId: string | null
 ): Array<LayerRowData & { zIndex: number }> {
   const layers = useLayersStore((s) => s.layers);
   const toggleIsolate = useLayersStore((s) => s.toggleIsolate);
+  const editingLayerIds = useEditSessionStore((s) => s.editingLayerIds); // NEW
+  const toggleEditingLayer = useEditSessionStore((s) => s.toggleEditing);
   const duplicatedColorIds = useMemo(() => computeDuplicatedColorIds(layers), [layers]);
   const handleZoomToLayer = (layerId: string) => {
     const map = useMapStore.getState().mapInstance;
@@ -779,7 +1020,9 @@ function useRegistryRows(
     if (!map || !drawSource) return;
     const ext = computeLayerExtent(drawSource, layerId);
     if (!ext || !isFinite(ext[0])) return;
-    map.getView().fit(ext, { size: map.getSize() ?? undefined, maxZoom: 19, padding: [60, 60, 60, 60] });
+    map
+      .getView()
+      .fit(ext, { size: map.getSize() ?? undefined, maxZoom: 19, padding: [60, 60, 60, 60] });
   };
 
   const handleDuplicate = (layer: { id: string; name: string }) => {
@@ -787,10 +1030,17 @@ function useRegistryRows(
     void (async () => {
       const duplicateFeatures = await confirmAsync(
         `¿Duplicar también los elementos de "${layer.name}" a la capa nueva?\n\nAceptar = copiar elementos · Cancelar = capa vacía`,
-        { title: 'Duplicar capa', confirmLabel: 'Copiar elementos', cancelLabel: 'Capa vacía' },
+        { title: 'Duplicar capa', confirmLabel: 'Copiar elementos', cancelLabel: 'Capa vacía' }
       );
       const newLayerId = newId('layer-dup');
-      await runCommand(new DuplicateLayerCommand({ sourceLayerId: layer.id, newLayerId, newName, duplicateFeatures }));
+      await runCommand(
+        new DuplicateLayerCommand({
+          sourceLayerId: layer.id,
+          newLayerId,
+          newName,
+          duplicateFeatures,
+        })
+      );
       toast(`Capa "${newName}" creada.`, { variant: 'success' });
     })();
   };
@@ -805,12 +1055,18 @@ function useRegistryRows(
     const savedStyle = useLabelClassStore.getState().getForLayer(layer.id)?.style;
     const modal = useLabelConfigModalStore.getState();
     if (layer.kind === 'lote') {
-      const style = savedStyle ?? modal.lastLotsConfig ?? defaultLabelStyleConfig({ prefix: 'Lote', color: defaultColorForKind('lote') });
+      const style =
+        savedStyle ??
+        modal.lastLotsConfig ??
+        defaultLabelStyleConfig({ prefix: 'Lote', color: defaultColorForKind('lote') });
       modal.openForLotsBatch(undefined, style, layer.id);
       return;
     }
     if (layer.kind === 'manzana') {
-      const style = savedStyle ?? modal.lastManzanoConfig ?? defaultLabelStyleConfig({ prefix: 'Mzo.', color: defaultColorForKind('manzana') });
+      const style =
+        savedStyle ??
+        modal.lastManzanoConfig ??
+        defaultLabelStyleConfig({ prefix: 'Mzo.', color: defaultColorForKind('manzana') });
       modal.openForManzanoBatch(style, layer.id);
       return;
     }
@@ -830,6 +1086,7 @@ function useRegistryRows(
     removable: true,
     lockable: true,
     locked: l.locked,
+    editing: editingLayerIds.has(l.id),
     kind: l.kind,
     reorderable: true,
     isDataLayer: true,
@@ -837,13 +1094,23 @@ function useRegistryRows(
     colorDuplicated: duplicatedColorIds.has(l.id),
     isIsolated: isolatedLayerId === l.id,
     zIndex: l.zIndex,
-    onToggleVisible: () => void runCommand(new UpdateLayerCommand(l.id, { visible: !l.visible }, 'Visibilidad de capa')),
-    onOpacity: (v) => void runCommand(new UpdateLayerCommand(l.id, { opacity: v }, 'Opacidad de capa')),
+    onToggleVisible: () =>
+      void runCommand(new UpdateLayerCommand(l.id, { visible: !l.visible }, 'Visibilidad de capa')),
+    onOpacity: (v) =>
+      void runCommand(new UpdateLayerCommand(l.id, { opacity: v }, 'Opacidad de capa')),
     onColor: (c) => void runCommand(new UpdateLayerCommand(l.id, { color: c }, 'Color de capa')),
-    onToggleLabel: () => void runCommand(new UpdateLayerCommand(l.id, { showLabel: !l.showLabel }, 'Mostrar etiqueta de capa')),
-    onToggleCota: () => void runCommand(new UpdateLayerCommand(l.id, { showCota: !l.showCota }, 'Mostrar acotación de capa')),
+    onToggleLabel: () =>
+      void runCommand(
+        new UpdateLayerCommand(l.id, { showLabel: !l.showLabel }, 'Mostrar etiqueta de capa')
+      ),
+    onToggleCota: () =>
+      void runCommand(
+        new UpdateLayerCommand(l.id, { showCota: !l.showCota }, 'Mostrar acotación de capa')
+      ),
     onRename: (name) => void runCommand(new UpdateLayerCommand(l.id, { name }, 'Renombrar capa')),
-    onToggleLock: () => void runCommand(new UpdateLayerCommand(l.id, { locked: !l.locked }, 'Bloqueo de capa')),
+    onToggleLock: () =>
+      void runCommand(new UpdateLayerCommand(l.id, { locked: !l.locked }, 'Bloqueo de capa')),
+    onToggleEditing: () => toggleEditingLayer(l.id),
     onRemove: () => onRequestRemove({ id: l.id, name: l.name }),
     onIsolate: () => toggleIsolate(l.id),
     onZoomToExtent: () => handleZoomToLayer(l.id),
@@ -855,7 +1122,19 @@ function useRegistryRows(
 
 /* ----------- Header de sección ----------- */
 
-function SectionHeader({ label, count, expanded, onToggle, panelId }: { label: string; count: number; expanded: boolean; onToggle: () => void; panelId: string }) {
+function SectionHeader({
+  label,
+  count,
+  expanded,
+  onToggle,
+  panelId,
+}: {
+  label: string;
+  count: number;
+  expanded: boolean;
+  onToggle: () => void;
+  panelId: string;
+}) {
   return (
     <button
       type="button"
@@ -866,8 +1145,15 @@ function SectionHeader({ label, count, expanded, onToggle, panelId }: { label: s
       style={{ width: '100%', justifyContent: 'flex-start', gap: 5, padding: '3px 0' }}
     >
       <IconChevron open={expanded} />
-      <span style={{ fontSize: '0.68rem', color: 'var(--cad-text-dim)', fontWeight: 500 }}>{label}</span>
-      <span aria-hidden="true" style={{ fontSize: '0.6rem', color: 'var(--cad-text-dim)', marginLeft: 'auto' }}>{count}</span>
+      <span style={{ fontSize: '0.68rem', color: 'var(--cad-text-dim)', fontWeight: 500 }}>
+        {label}
+      </span>
+      <span
+        aria-hidden="true"
+        style={{ fontSize: '0.6rem', color: 'var(--cad-text-dim)', marginLeft: 'auto' }}
+      >
+        {count}
+      </span>
     </button>
   );
 }
@@ -903,7 +1189,11 @@ export default function LayerPanel() {
 
   const panelRef = useRef<HTMLDivElement>(null);
   const allRowsForIncremental = expandedData ? registryRowsDisplay : [];
-  const { visibleCount, sentinelRef } = useIncrementalRender(allRowsForIncremental.length, 60, panelRef);
+  const { visibleCount, sentinelRef } = useIncrementalRender(
+    allRowsForIncremental.length,
+    60,
+    panelRef
+  );
   const rowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const [rowRects, setRowRects] = useState<Record<string, DOMRect>>({});
 
@@ -915,7 +1205,7 @@ export default function LayerPanel() {
         color: r.color,
         rect: rowRects[r.id] ?? new DOMRect(0, 0, 0, 0),
       })),
-    [registryRowsDisplay, rowRects],
+    [registryRowsDisplay, rowRects]
   );
   const refreshRects = useCallback(() => {
     const next: Record<string, DOMRect> = {};
@@ -929,7 +1219,14 @@ export default function LayerPanel() {
       for (const id of nextKeys) {
         const a = prev[id];
         const b = next[id];
-        if (!a || a.top !== b.top || a.bottom !== b.bottom || a.left !== b.left || a.width !== b.width || a.height !== b.height) {
+        if (
+          !a ||
+          a.top !== b.top ||
+          a.bottom !== b.bottom ||
+          a.left !== b.left ||
+          a.width !== b.width ||
+          a.height !== b.height
+        ) {
           return next;
         }
       }
@@ -937,17 +1234,20 @@ export default function LayerPanel() {
     });
   }, []);
 
-  const setRowRef = useCallback((id: string, el: HTMLDivElement | null) => {
-    if (el) {
-      const isNew = !rowRefs.current.has(id);
-      rowRefs.current.set(id, el);
-      if (isNew) {
-        requestAnimationFrame(refreshRects);
+  const setRowRef = useCallback(
+    (id: string, el: HTMLDivElement | null) => {
+      if (el) {
+        const isNew = !rowRefs.current.has(id);
+        rowRefs.current.set(id, el);
+        if (isNew) {
+          requestAnimationFrame(refreshRects);
+        }
+      } else {
+        rowRefs.current.delete(id);
       }
-    } else {
-      rowRefs.current.delete(id);
-    }
-  }, [refreshRects]);
+    },
+    [refreshRects]
+  );
 
   useEffect(() => {
     const panel = panelRef.current;
@@ -983,10 +1283,14 @@ export default function LayerPanel() {
       const targetStorePos = position === 'before' ? targetStoreIdx + 1 : targetStoreIdx;
       void runCommand(new ReorderLayersCommand([sourceId], targetStorePos));
     },
-    [],
+    []
   );
 
-  const { state: dragState, rowProps: dragRowProps, scrollerRef } = usePointerLayerReorder({
+  const {
+    state: dragState,
+    rowProps: dragRowProps,
+    scrollerRef,
+  } = usePointerLayerReorder({
     rows: reorderRows,
     getLiveRect: useCallback((id: string) => {
       const el = rowRefs.current.get(id);
@@ -1030,7 +1334,9 @@ export default function LayerPanel() {
     setEditingLayerId(null);
   };
   const cancelEditingLayer = () => setEditingLayerId(null);
-  const [contextMenu, setContextMenu] = useState<{ layerId: string; x: number; y: number } | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ layerId: string; x: number; y: number } | null>(
+    null
+  );
   const openContextMenu = (e: React.MouseEvent, layerId: string) => {
     e.preventDefault();
     e.stopPropagation();
@@ -1049,7 +1355,8 @@ export default function LayerPanel() {
       const rows = Array.from(panel.querySelectorAll<HTMLElement>('[data-layer-row="true"]'));
       const idx = rows.findIndex((el) => el === e.currentTarget);
       if (idx === -1) return;
-      const nextIdx = e.key === 'ArrowDown' ? Math.min(rows.length - 1, idx + 1) : Math.max(0, idx - 1);
+      const nextIdx =
+        e.key === 'ArrowDown' ? Math.min(rows.length - 1, idx + 1) : Math.max(0, idx - 1);
       rows[nextIdx]?.focus();
     } else if ((e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) {
       e.preventDefault();
@@ -1057,189 +1364,309 @@ export default function LayerPanel() {
     }
   };
 
-  const contextMenuRow = contextMenu ? registryRowsDisplay.find((r) => r.id === contextMenu.layerId) ?? null : null;
+  const contextMenuRow = contextMenu
+    ? (registryRowsDisplay.find((r) => r.id === contextMenu.layerId) ?? null)
+    : null;
 
   let renderedSoFar = 0;
 
   return (
     <>
-    <div style={{ position: 'absolute', top: 'calc(var(--cad-topbar-height) + 12px)', right: 12, zIndex: 90, display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
-      <button
-        onClick={() => setOpen(!open)}
-        className="cad-icon-btn cad-tooltip"
-        data-tooltip="Capas"
-        aria-expanded={open}
-        aria-label={open ? 'Cerrar panel de capas' : 'Abrir panel de capas'}
+      <div
         style={{
-          display: 'flex', marginBottom: open ? 6 : 0,
-          background: open ? 'var(--cad-bg-active)' : 'rgba(26, 34, 54, 0.85)',
-          backdropFilter: 'blur(16px)', border: '1px solid var(--cad-border)',
-          color: open ? 'var(--cad-accent)' : 'var(--cad-text-dim)',
+          position: 'absolute',
+          top: 'calc(var(--cad-topbar-height) + 12px)',
+          right: 12,
+          zIndex: 90,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'flex-end',
         }}
       >
-        <Layers size={14} aria-hidden="true" />
-      </button>
-
-      {open && (
-        <div
-          ref={(el) => {
-            panelRef.current = el;
-            scrollerRef.current = el;
-          }}
-          className="cad-panel-glass animate-fade-in"
-          role="region"
-          aria-label="Panel de capas"
+        <button
+          onClick={() => setOpen(!open)}
+          className="cad-icon-btn cad-tooltip"
+          data-tooltip="Capas"
+          aria-expanded={open}
+          aria-label={open ? 'Cerrar panel de capas' : 'Abrir panel de capas'}
           style={{
-            padding: '10px 12px',
-            width: autoPanelWidth,
-            maxWidth: viewportWidth - 24,
-            maxHeight: '65vh',
-            overflowY: 'auto',
-            overflowX: 'hidden',
+            display: 'flex',
+            marginBottom: open ? 6 : 0,
+            background: open ? 'var(--cad-bg-active)' : 'rgba(26, 34, 54, 0.85)',
+            backdropFilter: 'blur(16px)',
+            border: '1px solid var(--cad-border)',
+            color: open ? 'var(--cad-accent)' : 'var(--cad-text-dim)',
           }}
         >
-          <span
-            ref={measureRef}
-            aria-hidden="true"
-            style={{
-              position: 'absolute', left: -9999, top: -9999, visibility: 'hidden',
-              pointerEvents: 'none', whiteSpace: 'nowrap',
-              fontSize: '0.72rem', fontWeight: 600, fontFamily: 'Inter, system-ui, sans-serif',
-              letterSpacing: 'normal',
-            }}
-          />
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6, paddingBottom: 6, borderBottom: '1px solid var(--cad-border)' }}>
-            <span style={{ fontSize: '0.6rem', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--cad-text-dim)' }}>
-              Capas
-            </span>
-            <button onClick={() => setAddLayerOpen(true)} className="cad-icon-btn cad-tooltip" data-tooltip="Nueva capa" aria-label="Crear nueva capa" style={{ width: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <IconPlus />
-            </button>
-          </div>
+          <Layers size={14} aria-hidden="true" />
+        </button>
 
-          {isolatedLayerId && (
-            <div role="status" style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 8px', marginBottom: 6, borderRadius: 6, background: 'rgba(0,212,255,0.08)', border: '1px dashed var(--cad-accent)', fontSize: '0.62rem', color: 'var(--cad-accent)' }}>
-              <Focus size={12} aria-hidden="true" />
-              <span style={{ flex: 1 }}>Aislando: {registryRows.find((r) => r.id === isolatedLayerId)?.name ?? isolatedLayerId}</span>
-              <button
-                onClick={() => useLayersStore.getState().toggleIsolate(isolatedLayerId)}
-                className="cad-icon-btn"
-                aria-label="Mostrar todas las capas (quitar aislamiento)"
-                style={{ width: 'auto', height: 'auto', padding: '2px 6px', fontSize: '0.58rem', color: 'var(--cad-accent)' }}
-              >
-                Mostrar todas
-              </button>
-            </div>
-          )}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 8px', marginBottom: 8, borderRadius: 6, background: 'var(--cad-bg-surface)', border: '1px solid var(--cad-border)', fontSize: '0.65rem' }}>
-            <IconTarget filled={activeLayerId != null} />
-            <select
-              value={activeLayerId ?? ''}
-              onChange={(e) => setActiveLayer(e.target.value || null)}
-              title="Capa activa — los nuevos trazos se asignan acá"
-              aria-label="Capa activa"
+        {open && (
+          <div
+            ref={(el) => {
+              panelRef.current = el;
+              scrollerRef.current = el;
+            }}
+            className="cad-panel-glass animate-fade-in"
+            role="region"
+            aria-label="Panel de capas"
+            style={{
+              padding: '10px 12px',
+              width: autoPanelWidth,
+              maxWidth: viewportWidth - 24,
+              maxHeight: '65vh',
+              overflowY: 'auto',
+              overflowX: 'hidden',
+            }}
+          >
+            <span
+              ref={measureRef}
+              aria-hidden="true"
               style={{
-                flex: 1, minWidth: 0,
-                background: 'var(--cad-bg-deepest)',
-                border: '1px solid var(--cad-border)',
-                borderRadius: 3,
-                color: activeLayerId ? 'var(--cad-accent)' : 'var(--cad-text-dim)',
-                fontSize: '0.7rem',
-                fontFamily: 'Inter, system-ui, sans-serif',
+                position: 'absolute',
+                left: -9999,
+                top: -9999,
+                visibility: 'hidden',
+                pointerEvents: 'none',
+                whiteSpace: 'nowrap',
+                fontSize: '0.72rem',
                 fontWeight: 600,
-                padding: '2px 6px',
-                outline: 'none',
-                cursor: 'pointer',
+                fontFamily: 'Inter, system-ui, sans-serif',
+                letterSpacing: 'normal',
+              }}
+            />
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                marginBottom: 6,
+                paddingBottom: 6,
+                borderBottom: '1px solid var(--cad-border)',
               }}
             >
-              <option value="">— Sin capa activa —</option>
-              {registryRowsDisplay.map((r) => (
-                <option key={r.id} value={r.id} disabled={r.locked}>
-                  {r.name}{r.locked ? ' 🔒' : ''}
-                </option>
-              ))}
-            </select>
-          </div>
+              <span
+                style={{
+                  fontSize: '0.6rem',
+                  fontWeight: 600,
+                  letterSpacing: '0.06em',
+                  textTransform: 'uppercase',
+                  color: 'var(--cad-text-dim)',
+                }}
+              >
+                Capas
+              </span>
+              <button
+                onClick={() => setAddLayerOpen(true)}
+                className="cad-icon-btn cad-tooltip"
+                data-tooltip="Nueva capa"
+                aria-label="Crear nueva capa"
+                style={{
+                  width: 22,
+                  height: 22,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <IconPlus />
+              </button>
+            </div>
 
-          <div>
-            <SectionHeader panelId="layerpanel-data-section" label="Capas de datos" count={registryRowsDisplay.length} expanded={expandedData} onToggle={() => setExpandedData(!expandedData)} />
-            {expandedData && (
-              <div id="layerpanel-data-section" style={{ marginTop: 2 }}>
-                {registryRowsDisplay.length === 0 ? (
-                  <p style={{ fontSize: '0.65rem', color: 'var(--cad-text-muted)', padding: '6px 2px', fontStyle: 'italic' }}>
-                    Todavía no hay capas. Se crean automáticamente al dibujar o generar tu primera entidad · o con el botón "+" de arriba.
-                 </p>
-                ) : (
-                  registryRowsDisplay.map((row) => {
-                    if (renderedSoFar >= visibleCount) return null;
-                    renderedSoFar++;
-                    const isActive = activeLayerId === row.id;
-                    const props = dragRowProps(row.id);
-                    const showIndicatorBefore =
-                      dragState.dropTarget?.id === row.id && dragState.dropTarget.position === 'before';
-                    const showIndicatorAfter =
-                      dragState.dropTarget?.id === row.id && dragState.dropTarget.position === 'after';
-                    return (
-                      <div key={row.id}>
-                        {showIndicatorBefore && (
-                          <LayerDropIndicator color={dragState.draggingRow?.color} />
-                        )}
-                        <div
-                          style={{
-                            borderRadius: 4,
-                            background: isActive ? 'rgba(0,212,255,0.08)' : row.isIsolated ? 'rgba(0,212,255,0.05)' : 'transparent',
-                            border: isActive ? '1px solid rgba(0,212,255,0.25)' : row.isIsolated ? '1px dashed rgba(0,212,255,0.4)' : '1px solid transparent',
-                          }}
-                        >
-                          <LayerRow
-                            data={row}
-                            isActive={isActive}
-                            editing={editingLayerId === row.id}
-                            nameDraft={nameDraft}
-                            dragging={dragState.draggingId === row.id && dragState.draggingRow != null}
-                            onNameDraftChange={setNameDraft}
-                            onStartEdit={() => startEditingLayer(row.id, row.name)}
-                            onCommitEdit={commitEditingLayer}
-                            onCancelEdit={cancelEditingLayer}
-                            onOpenContextMenu={(e) => openContextMenu(e, row.id)}
-                            onRowKeyDown={(e) => handleRowKeyDown(e, row)}
-                            onRowPointerDown={props.onPointerDown}
-                            rowRef={(el) => setRowRef(row.id, el)}
-                          />
-                        </div>
-                        {showIndicatorAfter && (
-                          <LayerDropIndicator color={dragState.draggingRow?.color} />
-                        )}
-                      </div>
-                    );
-                  })
-                )}
+            {isolatedLayerId && (
+              <div
+                role="status"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '4px 8px',
+                  marginBottom: 6,
+                  borderRadius: 6,
+                  background: 'rgba(0,212,255,0.08)',
+                  border: '1px dashed var(--cad-accent)',
+                  fontSize: '0.62rem',
+                  color: 'var(--cad-accent)',
+                }}
+              >
+                <Focus size={12} aria-hidden="true" />
+                <span style={{ flex: 1 }}>
+                  Aislando:{' '}
+                  {registryRows.find((r) => r.id === isolatedLayerId)?.name ?? isolatedLayerId}
+                </span>
+                <button
+                  onClick={() => useLayersStore.getState().toggleIsolate(isolatedLayerId)}
+                  className="cad-icon-btn"
+                  aria-label="Mostrar todas las capas (quitar aislamiento)"
+                  style={{
+                    width: 'auto',
+                    height: 'auto',
+                    padding: '2px 6px',
+                    fontSize: '0.58rem',
+                    color: 'var(--cad-accent)',
+                  }}
+                >
+                  Mostrar todas
+                </button>
               </div>
             )}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '5px 8px',
+                marginBottom: 8,
+                borderRadius: 6,
+                background: 'var(--cad-bg-surface)',
+                border: '1px solid var(--cad-border)',
+                fontSize: '0.65rem',
+              }}
+            >
+              <IconTarget filled={activeLayerId != null} />
+              <select
+                value={activeLayerId ?? ''}
+                onChange={(e) => setActiveLayer(e.target.value || null)}
+                title="Capa activa — los nuevos trazos se asignan acá"
+                aria-label="Capa activa"
+                style={{
+                  flex: 1,
+                  minWidth: 0,
+                  background: 'var(--cad-bg-deepest)',
+                  border: '1px solid var(--cad-border)',
+                  borderRadius: 3,
+                  color: activeLayerId ? 'var(--cad-accent)' : 'var(--cad-text-dim)',
+                  fontSize: '0.7rem',
+                  fontFamily: 'Inter, system-ui, sans-serif',
+                  fontWeight: 600,
+                  padding: '2px 6px',
+                  outline: 'none',
+                  cursor: 'pointer',
+                }}
+              >
+                <option value="">— Sin capa activa —</option>
+                {registryRowsDisplay.map((r) => (
+                  <option key={r.id} value={r.id} disabled={r.locked}>
+                    {r.name}
+                    {r.locked ? ' 🔒' : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <SectionHeader
+                panelId="layerpanel-data-section"
+                label="Capas de datos"
+                count={registryRowsDisplay.length}
+                expanded={expandedData}
+                onToggle={() => setExpandedData(!expandedData)}
+              />
+              {expandedData && (
+                <div id="layerpanel-data-section" style={{ marginTop: 2 }}>
+                  {registryRowsDisplay.length === 0 ? (
+                    <p
+                      style={{
+                        fontSize: '0.65rem',
+                        color: 'var(--cad-text-muted)',
+                        padding: '6px 2px',
+                        fontStyle: 'italic',
+                      }}
+                    >
+                      Todavía no hay capas. Se crean automáticamente al dibujar o generar tu primera
+                      entidad · o con el botón "+" de arriba.
+                    </p>
+                  ) : (
+                    registryRowsDisplay.map((row) => {
+                      if (renderedSoFar >= visibleCount) return null;
+                      renderedSoFar++;
+                      const isActive = activeLayerId === row.id;
+                      const props = dragRowProps(row.id);
+                      const showIndicatorBefore =
+                        dragState.dropTarget?.id === row.id &&
+                        dragState.dropTarget.position === 'before';
+                      const showIndicatorAfter =
+                        dragState.dropTarget?.id === row.id &&
+                        dragState.dropTarget.position === 'after';
+                      return (
+                        <div key={row.id}>
+                          {showIndicatorBefore && (
+                            <LayerDropIndicator color={dragState.draggingRow?.color} />
+                          )}
+                          <div
+                            style={{
+                              borderRadius: 4,
+                              background:
+                                row.editing && !row.locked
+                                  ? 'rgba(245,158,11,0.08)'
+                                  : isActive
+                                    ? 'rgba(0,212,255,0.08)'
+                                    : row.isIsolated
+                                      ? 'rgba(0,212,255,0.05)'
+                                      : 'transparent',
+                              border:
+                                row.editing && !row.locked
+                                  ? '1px solid rgba(245,158,11,0.35)'
+                                  : isActive
+                                    ? '1px solid rgba(0,212,255,0.25)'
+                                    : row.isIsolated
+                                      ? '1px dashed rgba(0,212,255,0.4)'
+                                      : '1px solid transparent',
+                            }}
+                          >
+                            <LayerRow
+                              data={row}
+                              isActive={isActive}
+                              editing={editingLayerId === row.id}
+                              nameDraft={nameDraft}
+                              dragging={
+                                dragState.draggingId === row.id && dragState.draggingRow != null
+                              }
+                              onNameDraftChange={setNameDraft}
+                              onStartEdit={() => startEditingLayer(row.id, row.name)}
+                              onCommitEdit={commitEditingLayer}
+                              onCancelEdit={cancelEditingLayer}
+                              onOpenContextMenu={(e) => openContextMenu(e, row.id)}
+                              onRowKeyDown={(e) => handleRowKeyDown(e, row)}
+                              onRowPointerDown={props.onPointerDown}
+                              rowRef={(el) => setRowRef(row.id, el)}
+                            />
+                          </div>
+                          {showIndicatorAfter && (
+                            <LayerDropIndicator color={dragState.draggingRow?.color} />
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              )}
+            </div>
+
+            {allRowsForIncremental.length > visibleCount && (
+              <div ref={sentinelRef} style={{ height: 1 }} />
+            )}
           </div>
+        )}
+      </div>
 
-          {allRowsForIncremental.length > visibleCount && <div ref={sentinelRef} style={{ height: 1 }} />}
-        </div>
+      {contextMenu && contextMenuRow && (
+        <LayerContextMenu
+          row={contextMenuRow}
+          x={contextMenu.x}
+          y={contextMenu.y}
+          isIsolated={isolatedLayerId === contextMenuRow.id}
+          hasSelection={selectedCount > 0}
+          isActiveLayer={activeLayerId === contextMenuRow.id}
+          onClose={closeContextMenu}
+          onRename={() => startEditingLayer(contextMenuRow.id, contextMenuRow.name)}
+          onSetActive={() => setActiveLayer(contextMenuRow.id)}
+        />
       )}
-    </div>
 
-    {contextMenu && contextMenuRow && (
-      <LayerContextMenu
-        row={contextMenuRow}
-        x={contextMenu.x}
-        y={contextMenu.y}
-        isIsolated={isolatedLayerId === contextMenuRow.id}
-        hasSelection={selectedCount > 0}
-        isActiveLayer={activeLayerId === contextMenuRow.id}
-        onClose={closeContextMenu}
-        onRename={() => startEditingLayer(contextMenuRow.id, contextMenuRow.name)}
-        onSetActive={() => setActiveLayer(contextMenuRow.id)}
-      />
-    )}
-
-    <LayerDeleteModal request={deleteRequest} onClose={() => setDeleteRequest(null)} />
-    <AddLayerModal open={addLayerOpen} onOpenChange={setAddLayerOpen} />
-    <LayerReorderPill row={dragState.draggingRow} pointer={dragState.pointer} />
+      <LayerDeleteModal request={deleteRequest} onClose={() => setDeleteRequest(null)} />
+      <AddLayerModal open={addLayerOpen} onOpenChange={setAddLayerOpen} />
+      <LayerReorderPill row={dragState.draggingRow} pointer={dragState.pointer} />
     </>
   );
 }

@@ -4,10 +4,8 @@ import { Command, type CommandContext } from '@kernel/command/Command';
 import { useLayersStore } from '@layers-engine/store/layersRegistryStore';
 import type { Layer } from '@kernel/domain-model/featureModel';
 import { estimateGeometryBytes } from '@kernel/command/memoryEstimate';
-import {
-  layerEntityAdapters,
-  type LayerEntitySnapshot,
-} from '@layers-engine/extension-points';
+import { layerEntityAdapters, type LayerEntitySnapshot } from '@layers-engine/extension-points';
+import { useEditSessionStore } from '@layers-engine/store/editSessionStore';
 
 export interface RemoveLayerOptions {
   layerId: string;
@@ -72,6 +70,7 @@ export class RemoveLayerCommand extends Command {
     ctx.drawSource.changed();
 
     store.remove(this.opts.layerId);
+    useEditSessionStore.getState().stopEditing(this.opts.layerId);
   }
 
   override undo(ctx: CommandContext): void {
@@ -127,6 +126,9 @@ export class RemoveLayerCommand extends Command {
   }
   override approxMemoryBytes(): number {
     if (this.removedFeatures.length === 0) return 256;
-    return this.removedFeatures.reduce((sum, r) => sum + estimateGeometryBytes(r.feature.getGeometry()), 0);
+    return this.removedFeatures.reduce(
+      (sum, r) => sum + estimateGeometryBytes(r.feature.getGeometry()),
+      0
+    );
   }
 }

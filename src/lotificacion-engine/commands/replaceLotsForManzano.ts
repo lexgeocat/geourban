@@ -7,6 +7,7 @@ import type { LotResult } from '@kernel/geometry/polygonEngine';
 import { formatOrderLabel, type LabelNumberingMode } from '@label-engine/model/labelNumbering';
 import { useLabelClassStore } from '@label-engine/store/labelClassStore';
 import { useLayersStore } from '@layers-engine/store/layersRegistryStore';
+import { useEditSessionStore } from '@layers-engine/store/editSessionStore';
 
 export interface RemovedLotSnapshot {
   id: string | number;
@@ -110,6 +111,7 @@ export function replaceLotsForManzano(
   }
 
   const targetLayerId = resolveLotLayerId(firstOldLayerId, preferredLayerId);
+  if (targetLayerId) useEditSessionStore.getState().startEditing(targetLayerId);
   const numberingMode = resolveNumberingMode(
     carriedMode,
     carriedLabelConfig,

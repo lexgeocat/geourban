@@ -28,6 +28,7 @@ import type { LabelClass } from '@label-engine/model/labelClass';
 import type { Layer } from '@kernel/domain-model/featureModel';
 import type { LabelStyleConfig } from '@label-engine/model/labelModel';
 import { normalizeLabelStyleConfig } from '@label-engine/model/labelModel';
+import { useEditSessionStore } from '@layers-engine/store/editSessionStore';
 
 interface LayerDto {
   id: string;
@@ -226,6 +227,7 @@ export async function loadProject(name: string): Promise<void> {
 
   useCommandStack.getState().clear();
   useSelectionStore.getState().clear();
+  useEditSessionStore.getState().stopAll();
   useStreetStore.getState().clearStreets();
   useRoundaboutStore.getState().clearRoundabouts();
   resetIncrementalRoadTracking();

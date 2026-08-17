@@ -3,7 +3,11 @@ import VectorSource from 'ol/source/Vector.js';
 import VectorLayer from 'ol/layer/Vector.js';
 import type Draw from 'ol/interaction/Draw.js';
 import type { DrawMode } from '@map-core/store/drawStore';
-import { isFeatureLayerLocked, isFeatureLayerVisible } from '@layers-engine/model/layerVisibility';
+import {
+  isFeatureLayerLocked,
+  isFeatureLayerVisible,
+  isFeatureLayerEditable,
+} from '@layers-engine/model/layerVisibility';
 import type { PostrenderPainter } from './PostrenderPainter';
 import type { HitTestSelect } from '@selection-engine/interactions/HitTestSelect';
 import type { ModeContext, RefreshableDrawLayer } from '@kernel/modes/ModeContext';
@@ -20,6 +24,7 @@ import { activateStreet } from '@vias-engine/modes/StreetMode';
 import { activateRoundabout } from '@vias-engine/modes/RoundaboutMode';
 import { activateErase } from '@drawing-engine/modes/EraseMode';
 import { activateLabelOrder } from '@label-engine/modes/LabelOrderMode';
+import { activateSplitFeature } from '@drawing-engine/modes/SplitFeatureMode';
 
 export interface InteractionContext {
   map: Map;
@@ -66,7 +71,8 @@ export class InteractionModeController {
       mode === 'labelOrder' ||
       mode === 'point' ||
       mode === 'circle' ||
-      mode === 'polyline'
+      mode === 'polyline' ||
+      mode === 'splitFeature'
     ) {
       viewport.setAttribute('data-cursor', mode);
     } else {
@@ -92,6 +98,7 @@ export class InteractionModeController {
       refreshLayers: () => drawLayer?.changed(),
       isLayerLocked: isFeatureLayerLocked,
       isLayerVisible: isFeatureLayerVisible,
+      isLayerEditable: isFeatureLayerEditable,
     };
 
     switch (mode) {
@@ -132,6 +139,9 @@ export class InteractionModeController {
         break;
       case 'labelOrder':
         activateLabelOrder(modeCtx);
+        break;
+      case 'splitFeature':
+        activateSplitFeature(modeCtx);
         break;
       case 'none':
         break;

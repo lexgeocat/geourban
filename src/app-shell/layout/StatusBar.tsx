@@ -23,6 +23,8 @@ import { BASE_MAP_DEFS, type BaseMapId } from '@map-core/baseMaps';
 import { refreshSourceMetrics } from '@georef-engine/metrics';
 import SnapPanel from '@snap-engine/ui/SnapPanel';
 import { useRecomputeStatusStore } from '@manzanos-engine/store/recomputeStatusStore';
+import { useEditSessionStore } from '@layers-engine/store/editSessionStore';
+import EditSessionIndicator from './EditSessionIndicator';
 
 const BASE_MAP_ICONS: Record<BaseMapId, React.ReactNode> = {
   cad: <Grid3x3 size={13} />,
@@ -61,6 +63,8 @@ export default function StatusBar() {
   const setUtmZone = useProjectCrsStore((s) => s.setUtmZone);
   const autoDetectFromLonLat = useProjectCrsStore((s) => s.autoDetectFromLonLat);
   const requestReconfigure = useProjectCrsStore((s) => s.requestReconfigure);
+
+  const hasEditingLayers = useEditSessionStore((s) => s.editingLayerIds.size > 0);
 
   const [baseMapOpen, setBaseMapOpen] = useState(false);
   const [crsOpen, setCrsOpen] = useState(false);
@@ -359,6 +363,13 @@ export default function StatusBar() {
 
         {/* OSNAP · panel unificado: tipos de snap + grilla + master switch (F3) */}
         <SnapPanel />
+
+        {hasEditingLayers && (
+          <>
+            <span>•</span>
+            <EditSessionIndicator />
+          </>
+        )}
 
         <span>•</span>
 

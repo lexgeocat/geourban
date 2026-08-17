@@ -25,7 +25,7 @@ export function activateErase(ctx: ModeContext): void {
     source: ctx.drawSource,
     pixelTolerance: 6,
     multi: false,
-    filter: (feature) => !ctx.isLayerLocked(feature) && ctx.isLayerVisible(feature),
+    filter: (feature) => ctx.isLayerVisible(feature) && ctx.isLayerEditable(feature),
     getExtraFeatures: () => extraSnapSources.collect().flat() as Feature<Geometry>[],
   });
   ctx.highlightLayer.setStyle(ERASE_STYLE);
@@ -51,11 +51,23 @@ export function activateErase(ctx: ModeContext): void {
     if (ids.length > 0) {
       const cmd = new DeleteFeaturesCommand(ids);
       void runCommand(cmd);
-      if (cmd.skippedCount > 0) {
-        toast(`${cmd.skippedCount} elemento(s) no se borraron por estar en una capa bloqueada.`, {
-          variant: 'warning',
-          durationMs: 5000,
-        });
+      if (cmd.skippedLockedCount > 0) {
+        toast(
+          `${cmd.skippedLockedCount} elemento(s) no se borraron por estar en una capa bloqueada.`,
+          {
+            variant: 'warning',
+            durationMs: 5000,
+          }
+        );
+      }
+      if (cmd.skippedNotEditingCount > 0) {
+        toast(
+          `${cmd.skippedNotEditingCount} elemento(s) no se borraron: activá edición en su capa (panel de Capas).`,
+          {
+            variant: 'warning',
+            durationMs: 5000,
+          }
+        );
       }
     }
     if (removedRoadEntity) void recomputeManzanos();

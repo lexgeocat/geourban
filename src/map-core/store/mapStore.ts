@@ -149,22 +149,46 @@ export const useMapStore = create<MapState>()(
       if (selectedIds.length === 0) return 0;
       const cmd = new DeleteFeaturesCommand(selectedIds);
       void runCommand(cmd);
-      if (cmd.skippedCount > 0) {
-        toast(`${cmd.skippedCount} elemento(s) no se borraron por estar en una capa bloqueada.`, {
-          variant: 'warning',
-          durationMs: 5000,
-        });
+      if (cmd.skippedLockedCount > 0) {
+        toast(
+          `${cmd.skippedLockedCount} elemento(s) no se borraron por estar en una capa bloqueada.`,
+          {
+            variant: 'warning',
+            durationMs: 5000,
+          }
+        );
+      }
+      if (cmd.skippedNotEditingCount > 0) {
+        toast(
+          `${cmd.skippedNotEditingCount} elemento(s) no se borraron: activá edición en su capa (panel de Capas).`,
+          {
+            variant: 'warning',
+            durationMs: 5000,
+          }
+        );
       }
       return selectedIds.length - cmd.skippedCount;
     },
     deleteFeatureById: (id) => {
       const cmd = new DeleteFeaturesCommand([id]);
       void runCommand(cmd);
-      if (cmd.skippedCount > 0) {
-        toast('El elemento no se borró: pertenece a una capa bloqueada.', {
-          variant: 'warning',
-          durationMs: 5000,
-        });
+      if (cmd.skippedLockedCount > 0) {
+        toast(
+          `${cmd.skippedLockedCount} elemento(s) no se borraron por estar en una capa bloqueada.`,
+          {
+            variant: 'warning',
+            durationMs: 5000,
+          }
+        );
+      }
+      if (cmd.skippedNotEditingCount > 0) {
+        toast(
+          `${cmd.skippedNotEditingCount} elemento(s) no se borraron: activá edición en su capa (panel de Capas).`,
+          {
+            variant: 'warning',
+            durationMs: 5000,
+          }
+        );
       }
       return cmd.skippedCount === 0;
     },

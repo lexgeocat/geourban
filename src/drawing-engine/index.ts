@@ -13,6 +13,8 @@ export * from './modes/EraseMode';
 
 export * from './styles/styleFactory';
 export * from './styles/liveDimensions';
+export { SplitFeatureCommand } from './commands/SplitFeatureCommand';
+export * from './modes/SplitFeatureMode';
 
 export { default as PropertyPanel } from './ui/PropertyPanel';
 export { default as ManualDimensionInput } from './ui/ManualDimensionInput';

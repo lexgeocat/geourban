@@ -3,26 +3,29 @@ import type Geometry from 'ol/geom/Geometry.js';
 import { Command, type CommandContext } from '@kernel/command/Command';
 import { useSelectionStore } from '@selection-engine/store/selectionStore';
 import { useLayersStore } from '@layers-engine/store/layersRegistryStore';
+import { isLayerEditing } from '@layers-engine/model/layerVisibility';
 import { estimateGeometryBytes } from '@kernel/command/memoryEstimate';
 
 export class DeleteFeaturesCommand extends Command {
   readonly label = 'Borrar features';
   private readonly ids: Array<string | number>;
   private removed: Array<{ id: string | number; feature: Feature<Geometry> }> = [];
-  skippedCount = 0;
+  skippedLockedCount = 0;
+  skippedNotEditingCount = 0;
+
+  get skippedCount(): number {
+    return this.skippedLockedCount + this.skippedNotEditingCount;
+  }
 
   constructor(ids?: Array<string | number>) {
     super();
-    if (ids && ids.length > 0) {
-      this.ids = ids;
-    } else {
-      this.ids = Array.from(useSelectionStore.getState().selectedIds);
-    }
+    this.ids = ids && ids.length > 0 ? ids : Array.from(useSelectionStore.getState().selectedIds);
   }
 
   execute(ctx: CommandContext): void {
     this.removed = [];
-    this.skippedCount = 0;
+    this.skippedLockedCount = 0;
+    this.skippedNotEditingCount = 0;
     for (const id of this.ids) {
       const f = ctx.drawSource.getFeatureById(id) as Feature<Geometry> | null;
       if (!f) continue;
@@ -30,7 +33,11 @@ export class DeleteFeaturesCommand extends Command {
       if (layerId) {
         const layer = useLayersStore.getState().getById(layerId);
         if (layer?.locked) {
-          this.skippedCount++;
+          this.skippedLockedCount++;
+          continue;
+        }
+        if (!isLayerEditing(layerId)) {
+          this.skippedNotEditingCount++;
           continue;
         }
       }
@@ -43,9 +50,7 @@ export class DeleteFeaturesCommand extends Command {
 
   override undo(ctx: CommandContext): void {
     for (const { id, feature } of this.removed) {
-      if (ctx.drawSource.getFeatureById(id) == null) {
-        ctx.drawSource.addFeature(feature);
-      }
+      if (ctx.drawSource.getFeatureById(id) == null) ctx.drawSource.addFeature(feature);
     }
     ctx.drawSource.changed();
   }

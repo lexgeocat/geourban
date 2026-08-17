@@ -9,6 +9,8 @@ import {
   Eraser,
   Grid3x3,
   Satellite,
+  Scissors,
+  PenLine,
 } from 'lucide-react';
 import {
   IconPerimeter as DomainIconPerimeter,
@@ -37,3 +39,5 @@ export const IconRoad = () => <Route size={18} aria-hidden="true" />;
 export const IconPoint = DomainIconPoint;
 export const IconCircleShape = DomainIconCircleShape;
 export const IconPolyline = DomainIconPolyline;
+export const IconSplit = () => <Scissors size={18} aria-hidden="true" />;
+export const IconEditVertices = () => <PenLine size={18} aria-hidden="true" />;
