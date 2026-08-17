@@ -1,5 +1,5 @@
 // src/layers-engine/ui/LayerPanel.tsx
-import { useState, useRef, useEffect, useMemo, useLayoutEffect } from 'react';
+import { useState, useRef, useEffect, useMemo, useLayoutEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Layers,
@@ -21,6 +21,7 @@ import {
   Pencil,
   Circle,
   MapPin,
+  GripVertical,
 } from 'lucide-react';
 import { useLayersStore } from '@layers-engine/store/layersRegistryStore';
 import type { LayerKind } from '@kernel/domain-model/featureModel';
@@ -33,6 +34,13 @@ import { useMapStore } from '@map-core/store/mapStore';
 import { useSelectionStore } from '@selection-engine/store/selectionStore';
 import LayerDeleteModal, { type LayerDeleteRequest } from './LayerDeleteModal';
 import AddLayerModal from './AddLayerModal';
+import { LayerReorderPill } from './LayerReorderPill';
+import { LayerDropIndicator } from './LayerDropIndicator';
+import {
+  usePointerLayerReorder,
+  type PointerReorderRow,
+  type DropPosition,
+} from '@layers-engine/hooks/usePointerLayerReorder';
 import { runCommand } from '@kernel/command/CommandStack';
 import { UpdateLayerCommand } from '@layers-engine/commands/UpdateLayerCommand';
 import { ReorderLayersCommand } from '@layers-engine/commands/ReorderLayersCommand';
@@ -239,60 +247,64 @@ function LayerRow({
   editing,
   nameDraft,
   dragging,
-  dropPosition,
   onNameDraftChange,
   onStartEdit,
   onCommitEdit,
   onCancelEdit,
   onOpenContextMenu,
   onRowKeyDown,
-  onRowDragStart,
-  onRowDragOver,
-  onRowDragLeave,
-  onRowDragEnd,
-  onRowDrop,
+  onRowPointerDown,
+  rowRef,
 }: {
   data: LayerRowData;
   isActive?: boolean;
   editing: boolean;
   nameDraft: string;
   dragging: boolean;
-  dropPosition: 'before' | 'after' | null;
   onNameDraftChange: (v: string) => void;
   onStartEdit: () => void;
   onCommitEdit: () => void;
   onCancelEdit: () => void;
   onOpenContextMenu: (e: React.MouseEvent) => void;
   onRowKeyDown: (e: React.KeyboardEvent<HTMLDivElement>) => void;
-  onRowDragStart: (e: React.DragEvent) => void;
-  onRowDragOver: (e: React.DragEvent) => void;
-  onRowDragLeave: (e: React.DragEvent) => void;
-  onRowDragEnd: (e: React.DragEvent) => void;
-  onRowDrop: (e: React.DragEvent) => void;
+  onRowPointerDown: (e: React.PointerEvent) => void;
+  rowRef?: (el: HTMLDivElement | null) => void;
 }) {
   return (
     <div
+      ref={rowRef}
       data-layer-row="true"
       role="group"
       tabIndex={0}
-      draggable
-      aria-label={`Capa ${data.name} — click derecho para más opciones`}
+      aria-grabbed={dragging || undefined}
+      aria-label={`Capa ${data.name} — mantener presionado y arrastrar para reordenar, click derecho para más opciones`}
       onContextMenu={onOpenContextMenu}
       onKeyDown={onRowKeyDown}
-      onDragStart={onRowDragStart}
-      onDragOver={onRowDragOver}
-      onDragLeave={onRowDragLeave}
-      onDragEnd={onRowDragEnd}
-      onDrop={onRowDrop}
+      onPointerDown={onRowPointerDown}
       style={{
         display: 'flex', alignItems: 'center', gap: 6, padding: '5px 6px',
         borderRadius: 4, flexWrap: 'wrap',
-        cursor: dragging ? 'grabbing' : 'grab',
+        cursor: 'default',
         opacity: dragging ? 0.35 : 1,
         position: 'relative',
-        boxShadow: dropPosition === 'before' ? 'inset 0 2px 0 var(--cad-accent)' : dropPosition === 'after' ? 'inset 0 -2px 0 var(--cad-accent)' : 'none',
+        touchAction: 'none', // crítico para que el pointermove no se pierda en pan/scroll del browser
       }}
     >
+      <span
+        aria-hidden="true"
+        title="Arrastrar para reordenar"
+        style={{
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+          width: 12, height: 14, flexShrink: 0,
+          color: 'var(--cad-text-muted)',
+          cursor: dragging ? 'grabbing' : 'grab',
+          touchAction: 'none',
+          userSelect: 'none',
+        }}
+      >
+        <GripVertical size={11} strokeWidth={1.75} />
+      </span>
+
       <button
         type="button"
         className="cad-a11y-btn"
@@ -896,73 +908,130 @@ export default function LayerPanel() {
   const allRowsForIncremental = expandedData ? registryRowsDisplay : [];
   const { visibleCount, sentinelRef } = useIncrementalRender(allRowsForIncremental.length, 60, panelRef);
 
-  /* ── Drag & drop de capas (estilo QGIS / ArcGIS Pro) ── */
-  const [draggingId, setDraggingId] = useState<string | null>(null);
-  const [dropTarget, setDropTarget] = useState<{ id: string; position: 'before' | 'after' } | null>(null);
-  const dragScrollRef = useRef<number | null>(null);
+  /* ── Drag & drop de capas (Pointer Events, estilo QGIS / ArcGIS Pro) ──
+     Sustituye el HTML5 Drag&Drop nativo, que fallaba al iniciar el drag
+     sobre controles anidados (color picker, slider) y cuyo indicador
+     visual se confundía con el highlight de selección.
 
-  useEffect(() => {
-    return () => {
-      if (dragScrollRef.current != null) cancelAnimationFrame(dragScrollRef.current);
-    };
+     El hook se encarga de:
+       - Threshold de 4px antes de iniciar el drag (un click normal no
+         dispara nada).
+       - Línea de inserción entre dos filas (no superpuesta), con
+         `transform` directo.
+       - Pill flotante (portal) que sigue al cursor.
+       - Auto-scroll cuando el cursor se acerca al borde del panel. */
+  const rowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  // Snapshot de los rects de las filas, actualizado por los efectos de
+  // scroll/resize/mount. Vive en `state` (no en `ref`) para que el
+  // `useMemo` derivado sea válido bajo las reglas de hooks de React 19.
+  const [rowRects, setRowRects] = useState<Record<string, DOMRect>>({});
+
+  const reorderRows = useMemo<PointerReorderRow[]>(
+    () =>
+      registryRowsDisplay.map((r) => ({
+        id: r.id,
+        name: r.name,
+        color: r.color,
+        rect: rowRects[r.id] ?? new DOMRect(0, 0, 0, 0),
+      })),
+    [registryRowsDisplay, rowRects],
+  );
+
+  // Re-medir todos los rects. Llamado desde los efectos de scroll,
+  // resize y mount de filas nuevas.
+  const refreshRects = useCallback(() => {
+    const next: Record<string, DOMRect> = {};
+    for (const [id, el] of rowRefs.current) {
+      next[id] = el.getBoundingClientRect();
+    }
+    setRowRects((prev) => {
+      // Evitar re-render si nada cambió materialmente.
+      const prevKeys = Object.keys(prev);
+      const nextKeys = Object.keys(next);
+      if (prevKeys.length !== nextKeys.length) return next;
+      for (const id of nextKeys) {
+        const a = prev[id];
+        const b = next[id];
+        if (!a || a.top !== b.top || a.bottom !== b.bottom || a.left !== b.left || a.width !== b.width || a.height !== b.height) {
+          return next;
+        }
+      }
+      return prev;
+    });
   }, []);
 
-  const handleRowDragStart = (e: React.DragEvent, rowId: string) => {
-    e.dataTransfer.setData('text/plain', rowId);
-    e.dataTransfer.effectAllowed = 'move';
-    setDraggingId(rowId);
-  };
+  const setRowRef = useCallback((id: string, el: HTMLDivElement | null) => {
+    if (el) {
+      const isNew = !rowRefs.current.has(id);
+      rowRefs.current.set(id, el);
+      // Cuando se monta una fila nueva (caso típico: incremental render
+      // reveló una fila que antes no estaba en el DOM), necesitamos
+      // refrescar el snapshot de rects.
+      if (isNew) {
+        requestAnimationFrame(refreshRects);
+      }
+    } else {
+      rowRefs.current.delete(id);
+    }
+  }, [refreshRects]);
 
-  const handleRowDragOver = (e: React.DragEvent, rowId: string) => {
-    if (!draggingId || draggingId === rowId) return;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
-    const position: 'before' | 'after' = e.clientY < rect.top + rect.height / 2 ? 'before' : 'after';
-    setDropTarget((prev) => (prev?.id === rowId && prev.position === position ? prev : { id: rowId, position }));
-
-    /* Auto-scroll del panel si el cursor está cerca de su borde */
+  // Re-medir rects cuando el panel scrollea (necesario para que el
+  // snapshot quede fresco entre drags; durante un drag, el hook ya
+  // lee los rects en vivo vía getLiveRect).
+  useEffect(() => {
     const panel = panelRef.current;
     if (!panel) return;
-    const px = e.clientY - panel.getBoundingClientRect().top;
-    const edge = 36;
-    if (dragScrollRef.current != null) cancelAnimationFrame(dragScrollRef.current);
-    dragScrollRef.current = requestAnimationFrame(() => {
-      if (px < edge) panel.scrollTop -= 6;
-      else if (px > panel.clientHeight - edge) panel.scrollTop += 6;
+    let raf = 0;
+    const onScroll = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(refreshRects);
+    };
+    panel.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      cancelAnimationFrame(raf);
+      panel.removeEventListener('scroll', onScroll);
+    };
+  }, [open, refreshRects]);
+
+  // Re-medir rects al final de cada cambio de tamaño del panel.
+  useEffect(() => {
+    const panel = panelRef.current;
+    if (!panel || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => {
+      requestAnimationFrame(refreshRects);
     });
-  };
+    ro.observe(panel);
+    return () => ro.disconnect();
+  }, [open, refreshRects]);
 
-  const handleRowDragLeave = (e: React.DragEvent, rowId: string) => {
-    if (!dropTarget || dropTarget.id !== rowId) return;
-    const related = e.relatedTarget as Node | null;
-    if (related && (e.currentTarget as Node).contains(related)) return;
-    setDropTarget(null);
-  };
+  const handleReorderDrop = useCallback(
+    (sourceId: string, targetId: string, position: DropPosition) => {
+      if (sourceId === targetId) return;
+      const layers = useLayersStore.getState().layers;
+      const targetStoreIdx = layers.findIndex((l) => l.id === targetId);
+      if (targetStoreIdx === -1) return;
+      /* `position` se interpreta sobre la lista visible (que va de
+         zIndex descendente: visible top = store bottom).
+           - 'before' = insertar ARRIBA del target en la lista visible
+             = zIndex mayor al del target = store index MAYOR.
+           - 'after'  = insertar ABAJO del target en la lista visible
+             = zIndex menor al del target = store index MENOR. */
+      const targetStorePos = position === 'before' ? targetStoreIdx + 1 : targetStoreIdx;
+      void runCommand(new ReorderLayersCommand([sourceId], targetStorePos));
+    },
+    [],
+  );
 
-  const handleRowDragEnd = () => {
-    setDraggingId(null);
-    setDropTarget(null);
-  };
-
-  const handleRowDrop = (e: React.DragEvent, rowId: string) => {
-    e.preventDefault();
-    const sourceId = e.dataTransfer.getData('text/plain') || draggingId;
-    setDropTarget(null);
-    setDraggingId(null);
-    if (!sourceId || sourceId === rowId) return;
-    const layers = useLayersStore.getState().layers;
-    const fromIdx = layers.findIndex((l) => l.id === sourceId);
-    const toIdx = layers.findIndex((l) => l.id === rowId);
-    if (fromIdx === -1 || toIdx === -1) return;
-    /* ReorderLayersCommand usa `position` como el índice donde terminamos.
-       En el store, las capas se dibujan con zIndex ascendente; el panel las
-       muestra con zIndex descendente (arriba = más alto = encima). Por
-       coherencia con el orden visible, "before" = insertar antes en la lista
-       visible = menor zIndex = posición más alta en el store. */
-    const targetPos = dropTarget?.position === 'after' ? toIdx + 1 : toIdx;
-    void runCommand(new ReorderLayersCommand([sourceId], targetPos));
-  };
+  const { state: dragState, rowProps: dragRowProps, scrollerRef } = usePointerLayerReorder({
+    rows: reorderRows,
+    getLiveRect: useCallback((id: string) => {
+      const el = rowRefs.current.get(id);
+      return el ? el.getBoundingClientRect() : null;
+    }, []),
+    threshold: 4,
+    onDrop: handleReorderDrop,
+    enabled: open && expandedData && registryRowsDisplay.length > 1,
+  });
 
   /* Ancho automático del panel: se mide el nombre más largo de las capas
      con un span oculto en la misma tipografía, evitando scroll horizontal. */
@@ -1056,7 +1125,10 @@ export default function LayerPanel() {
 
       {open && (
         <div
-          ref={panelRef}
+          ref={(el) => {
+            panelRef.current = el;
+            scrollerRef.current = el;
+          }}
           className="cad-panel-glass animate-fade-in"
           role="region"
           aria-label="Panel de capas"
@@ -1145,34 +1217,42 @@ export default function LayerPanel() {
                     if (renderedSoFar >= visibleCount) return null;
                     renderedSoFar++;
                     const isActive = activeLayerId === row.id;
+                    const props = dragRowProps(row.id);
+                    const showIndicatorBefore =
+                      dragState.dropTarget?.id === row.id && dragState.dropTarget.position === 'before';
+                    const showIndicatorAfter =
+                      dragState.dropTarget?.id === row.id && dragState.dropTarget.position === 'after';
                     return (
-                      <div
-                        key={row.id}
-                        style={{
-                          borderRadius: 4,
-                          background: isActive ? 'rgba(0,212,255,0.08)' : row.isIsolated ? 'rgba(0,212,255,0.05)' : 'transparent',
-                          border: isActive ? '1px solid rgba(0,212,255,0.25)' : row.isIsolated ? '1px dashed rgba(0,212,255,0.4)' : '1px solid transparent',
-                        }}
-                      >
-                        <LayerRow
-                          data={row}
-                          isActive={isActive}
-                          editing={editingLayerId === row.id}
-                          nameDraft={nameDraft}
-                          dragging={draggingId === row.id}
-                          dropPosition={dropTarget?.id === row.id ? dropTarget.position : null}
-                          onNameDraftChange={setNameDraft}
-                          onStartEdit={() => startEditingLayer(row.id, row.name)}
-                          onCommitEdit={commitEditingLayer}
-                          onCancelEdit={cancelEditingLayer}
-                          onOpenContextMenu={(e) => openContextMenu(e, row.id)}
-                          onRowKeyDown={(e) => handleRowKeyDown(e, row)}
-                          onRowDragStart={(e) => handleRowDragStart(e, row.id)}
-                          onRowDragOver={(e) => handleRowDragOver(e, row.id)}
-                          onRowDragLeave={(e) => handleRowDragLeave(e, row.id)}
-                          onRowDragEnd={handleRowDragEnd}
-                          onRowDrop={(e) => handleRowDrop(e, row.id)}
-                        />
+                      <div key={row.id}>
+                        {showIndicatorBefore && (
+                          <LayerDropIndicator color={dragState.draggingRow?.color} />
+                        )}
+                        <div
+                          style={{
+                            borderRadius: 4,
+                            background: isActive ? 'rgba(0,212,255,0.08)' : row.isIsolated ? 'rgba(0,212,255,0.05)' : 'transparent',
+                            border: isActive ? '1px solid rgba(0,212,255,0.25)' : row.isIsolated ? '1px dashed rgba(0,212,255,0.4)' : '1px solid transparent',
+                          }}
+                        >
+                          <LayerRow
+                            data={row}
+                            isActive={isActive}
+                            editing={editingLayerId === row.id}
+                            nameDraft={nameDraft}
+                            dragging={dragState.draggingId === row.id && dragState.draggingRow != null}
+                            onNameDraftChange={setNameDraft}
+                            onStartEdit={() => startEditingLayer(row.id, row.name)}
+                            onCommitEdit={commitEditingLayer}
+                            onCancelEdit={cancelEditingLayer}
+                            onOpenContextMenu={(e) => openContextMenu(e, row.id)}
+                            onRowKeyDown={(e) => handleRowKeyDown(e, row)}
+                            onRowPointerDown={props.onPointerDown}
+                            rowRef={(el) => setRowRef(row.id, el)}
+                          />
+                        </div>
+                        {showIndicatorAfter && (
+                          <LayerDropIndicator color={dragState.draggingRow?.color} />
+                        )}
                       </div>
                     );
                   })
@@ -1202,6 +1282,10 @@ export default function LayerPanel() {
 
     <LayerDeleteModal request={deleteRequest} onClose={() => setDeleteRequest(null)} />
     <AddLayerModal open={addLayerOpen} onOpenChange={setAddLayerOpen} />
+
+    {/* Pill flotante que sigue al cursor durante el drag (portal a body
+        para no ser cortado por overflow:hidden del panel). */}
+    <LayerReorderPill row={dragState.draggingRow} pointer={dragState.pointer} />
     </>
   );
 }
