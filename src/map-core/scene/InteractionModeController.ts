@@ -62,6 +62,7 @@ export class InteractionModeController {
       mode === 'line' ||
       mode === 'rectangle' ||
       mode === 'roundabout' ||
+      mode === 'street' ||
       mode === 'labelOrder' ||
       mode === 'point' ||
       mode === 'circle' ||
