@@ -20,7 +20,7 @@ export class MoveFeaturesToLayerCommand extends Command {
       const f = ctx.drawSource.getFeatureById(id) as Feature<Geometry> | null;
       if (!f) continue;
       this.before.set(id, f.get('layerId') as string | undefined);
-      f.set('layerId', this.targetLayerId, true);
+      f.set('layerId', this.targetLayerId);
     }
     ctx.drawSource.changed();
   }
@@ -29,8 +29,8 @@ export class MoveFeaturesToLayerCommand extends Command {
     for (const [id, prevLayerId] of this.before) {
       const f = ctx.drawSource.getFeatureById(id) as Feature<Geometry> | null;
       if (!f) continue;
-      if (prevLayerId) f.set('layerId', prevLayerId, true);
-      else f.unset('layerId', true);
+      if (prevLayerId) f.set('layerId', prevLayerId);
+      else f.unset('layerId');
     }
     ctx.drawSource.changed();
   }
