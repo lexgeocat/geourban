@@ -35,7 +35,10 @@ import { getFeatureKind } from '@kernel/domain-model/featureModel';
 import { CAD_BG_DEEPEST_RGB } from '@kernel/theme/colors';
 import { useLayersStore } from '@layers-engine/store/layersRegistryStore';
 
-const ENTITY_COPY: Record<'street' | 'roundabout', { title: string; nameHint: string; metricLabel: string; secondaryLabel: string }> = {
+const ENTITY_COPY: Record<
+  'street' | 'roundabout',
+  { title: string; nameHint: string; metricLabel: string; secondaryLabel: string }
+> = {
   street: {
     title: 'Generar etiqueta de vía',
     nameHint: 'Ej. Av. Principal',
@@ -53,10 +56,25 @@ const ENTITY_COPY: Record<'street' | 'roundabout', { title: string; nameHint: st
 /* ─────────── Sub-componentes compactos (compartidos por todos los campos) ─────────── */
 
 function Field({
-  label, children, style,
-}: { label: string; children: React.ReactNode; style?: React.CSSProperties }) {
+  label,
+  children,
+  style,
+}: {
+  label: string;
+  children: React.ReactNode;
+  style?: React.CSSProperties;
+}) {
   return (
-    <label style={{ fontSize: '0.65rem', color: 'var(--cad-text-dim)', display: 'flex', flexDirection: 'column', gap: 3, ...style }}>
+    <label
+      style={{
+        fontSize: '0.65rem',
+        color: 'var(--cad-text-dim)',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 3,
+        ...style,
+      }}
+    >
       {label}
       {children}
     </label>
@@ -64,11 +82,32 @@ function Field({
 }
 
 function ToggleRow({
-  label, checked, onChange,
-}: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
+  label,
+  checked,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (v: boolean) => void;
+}) {
   return (
-    <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.68rem', color: 'var(--cad-text)', cursor: 'pointer', whiteSpace: 'nowrap' }}>
-      <input type="checkbox" className="cad-toggle" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+    <label
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 6,
+        fontSize: '0.68rem',
+        color: 'var(--cad-text)',
+        cursor: 'pointer',
+        whiteSpace: 'nowrap',
+      }}
+    >
+      <input
+        type="checkbox"
+        className="cad-toggle"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+      />
       {label}
     </label>
   );
@@ -105,7 +144,15 @@ function LabelPreview({ cfg, lines }: { cfg: LabelStyleConfig; lines: string[] }
           }}
         >
           {lines.map((line, i) => (
-            <div key={i} style={{ fontSize: previewFontSize, fontWeight: previewFontWeight, color: cfg.color, whiteSpace: 'nowrap' }}>
+            <div
+              key={i}
+              style={{
+                fontSize: previewFontSize,
+                fontWeight: previewFontWeight,
+                color: cfg.color,
+                whiteSpace: 'nowrap',
+              }}
+            >
               {line}
             </div>
           ))}
@@ -116,9 +163,18 @@ function LabelPreview({ cfg, lines }: { cfg: LabelStyleConfig; lines: string[] }
         </span>
       )}
       {cfg.showEdgeCotas && (
-        <span style={{ fontSize: '0.56rem', color: 'var(--cad-text-muted)' }}>+ cotas por lado en el mapa</span>
+        <span style={{ fontSize: '0.56rem', color: 'var(--cad-text-muted)' }}>
+          + cotas por lado en el mapa
+        </span>
       )}
-      <span style={{ fontSize: '0.54rem', color: 'var(--cad-text-muted)', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+      <span
+        style={{
+          fontSize: '0.54rem',
+          color: 'var(--cad-text-muted)',
+          letterSpacing: '0.05em',
+          textTransform: 'uppercase',
+        }}
+      >
         Vista previa
       </span>
     </div>
@@ -128,7 +184,7 @@ function LabelPreview({ cfg, lines }: { cfg: LabelStyleConfig; lines: string[] }
 /** Busca una feature real (manzano/lote) para que el preview de un batch use métricas reales cuando existen. */
 function findSampleFeatureMetrics(
   kind: 'manzana' | 'lote',
-  scopeManzanoId?: string | number,
+  scopeManzanoId?: string | number
 ): { primaryValue?: number; secondaryValue?: number } | null {
   const src = useMapStore.getState().drawSource;
   if (!src) return null;
@@ -137,7 +193,12 @@ function findSampleFeatureMetrics(
     if (found) return;
     const feat = f as Feature<Geometry>;
     if (getFeatureKind(feat) !== kind) return;
-    if (kind === 'lote' && scopeManzanoId != null && feat.get('lotGroupId') !== String(scopeManzanoId)) return;
+    if (
+      kind === 'lote' &&
+      scopeManzanoId != null &&
+      feat.get('lotGroupId') !== String(scopeManzanoId)
+    )
+      return;
     found = {
       primaryValue: feat.get('areaM2') as number | undefined,
       secondaryValue: feat.get('perimeterM') as number | undefined,
@@ -176,7 +237,10 @@ function countBatchTargets(target: LabelConfigTarget | null): number {
 }
 
 /** Resuelve las métricas a mostrar en el preview según el tipo de target (real cuando existe, ilustrativa si no). */
-function computePreviewMetrics(target: LabelConfigTarget | null, numberingMode: LabelNumberingMode): LabelLineMetrics {
+function computePreviewMetrics(
+  target: LabelConfigTarget | null,
+  numberingMode: LabelNumberingMode
+): LabelLineMetrics {
   if (!target) return { text: 'Etiqueta' };
 
   if (target.kind === 'feature') {
@@ -186,7 +250,11 @@ function computePreviewMetrics(target: LabelConfigTarget | null, numberingMode: 
       const text = (f.get('label') as string | undefined) ?? '';
       const areaM2 = f.get('areaM2') as number | undefined;
       if (areaM2 !== undefined) {
-        return { text, primaryValue: areaM2, secondaryValue: f.get('perimeterM') as number | undefined };
+        return {
+          text,
+          primaryValue: areaM2,
+          secondaryValue: f.get('perimeterM') as number | undefined,
+        };
       }
       // Línea/punto: no hay área/perímetro — se usa longitud (si existe) como métrica primaria.
       return {
@@ -224,7 +292,7 @@ function computePreviewMetrics(target: LabelConfigTarget | null, numberingMode: 
     return { text: 'Elemento' };
   }
 
- const isLotsTarget = target.kind === 'batch-lots';
+  const isLotsTarget = target.kind === 'batch-lots';
   const orderSample = formatOrderLabel(numberingMode, 0, 8, isLotsTarget ? 'A' : undefined);
   if (target.kind === 'batch-layer') {
     const orderSampleLayer = formatOrderLabel(numberingMode, 0, 8);
@@ -244,15 +312,23 @@ function computePreviewMetrics(target: LabelConfigTarget | null, numberingMode: 
     return {
       text: orderSampleLayer,
       primaryValue: sample?.primaryValue ?? 180,
-      secondaryValue: sample?.isLine? undefined : (sample?.secondaryValue ?? 54),
+      secondaryValue: sample?.isLine ? undefined : (sample?.secondaryValue ?? 54),
     };
   }
   if (target.kind === 'batch-manzanos') {
     const sample = findSampleFeatureMetrics('manzana');
-    return { text: orderSample, primaryValue: sample?.primaryValue ?? 480, secondaryValue: sample?.secondaryValue ?? 92 };
+    return {
+      text: orderSample,
+      primaryValue: sample?.primaryValue ?? 480,
+      secondaryValue: sample?.secondaryValue ?? 92,
+    };
   }
   const sample = findSampleFeatureMetrics('lote', target.manzanoId);
-  return { text: orderSample, primaryValue: sample?.primaryValue ?? 180, secondaryValue: sample?.secondaryValue ?? 54 };
+  return {
+    text: orderSample,
+    primaryValue: sample?.primaryValue ?? 180,
+    secondaryValue: sample?.secondaryValue ?? 54,
+  };
 }
 
 function resolveTargetIsLineFeature(target: LabelConfigTarget | null): boolean {
@@ -304,11 +380,17 @@ export default function LabelConfigModal() {
   const entityCopy = target && target.kind === 'entity' ? ENTITY_COPY[target.entityType] : null;
   const isLineFeature = useMemo(() => resolveTargetIsLineFeature(target), [target]);
 
-  const previewMetrics = useMemo(() => computePreviewMetrics(target, numberingMode), [target, numberingMode]);
-  const previewText = isBatch || isBatchLots ? (previewMetrics.text ?? '') : (name.trim() || previewMetrics.text || 'Etiqueta');
+  const previewMetrics = useMemo(
+    () => computePreviewMetrics(target, numberingMode),
+    [target, numberingMode]
+  );
+  const previewText =
+    isBatch || isBatchLots
+      ? (previewMetrics.text ?? '')
+      : name.trim() || previewMetrics.text || 'Etiqueta';
   const previewLines = useMemo(
     () => composeLabelLines(cfg, { ...previewMetrics, text: previewText }),
-    [cfg, previewMetrics, previewText],
+    [cfg, previewMetrics, previewText]
   );
 
   const targetCount = useMemo(() => countBatchTargets(target), [target]);
@@ -330,16 +412,26 @@ export default function LabelConfigModal() {
       return;
     }
 
-    const kind = target.kind === 'batch-manzanos' ? 'manzana' : target.kind === 'batch-lots' ? 'lote' : undefined;
+    const kind =
+      target.kind === 'batch-manzanos'
+        ? 'manzana'
+        : target.kind === 'batch-lots'
+          ? 'lote'
+          : undefined;
     const manzanoId = target.kind === 'batch-lots' ? target.manzanoId : undefined;
     const layerId = target.layerId;
     const cmd = new RestyleBatchLabelsCommand({ kind, manzanoId, config: cfg, layerId });
     void runCommand(cmd).then((result) => {
       if (!result.ok) return;
       if (cmd.affectedCount > 0) {
-        toast(`Estilo guardado y actualizado en ${cmd.affectedCount} elemento(s) ya etiquetados.`, { variant: 'success' });
+        toast(`Estilo guardado y actualizado en ${cmd.affectedCount} elemento(s) ya etiquetados.`, {
+          variant: 'success',
+        });
       } else {
-        toast('Estilo guardado. Se va a aplicar automáticamente a lo que etiquetes de acá en más.', { variant: 'info' });
+        toast(
+          'Estilo guardado. Se va a aplicar automáticamente a lo que etiquetes de acá en más.',
+          { variant: 'info' }
+        );
       }
     });
     if (target.kind === 'batch-manzanos') setLastManzanoConfig(cfg);
@@ -350,7 +442,12 @@ export default function LabelConfigModal() {
   /** Solo tiene sentido para lotes: numera y aplica automáticamente, reiniciando por manzano. */
   const handleApplyAuto = () => {
     if (target.kind !== 'batch-lots') return;
-    void runCommand(new AssignLotsLabelConfigCommand(cfg, { manzanoId: target.manzanoId, numbering: numberingMode }));
+    void runCommand(
+      new AssignLotsLabelConfigCommand(cfg, {
+        manzanoId: target.manzanoId,
+        numbering: numberingMode,
+      })
+    );
     if (target.layerId) {
       void runCommand(
         new UpsertLabelClassCommand({
@@ -371,7 +468,9 @@ export default function LabelConfigModal() {
   const handleTraceOrder = () => {
     if (target.kind === 'batch-manzanos') {
       setLastManzanoConfig(cfg);
-      useLabelConfigModalStore.getState().startOrderTrace({ kind: 'manzana', config: cfg, numbering: numberingMode });
+      useLabelConfigModalStore
+        .getState()
+        .startOrderTrace({ kind: 'manzana', config: cfg, numbering: numberingMode });
     } else if (target.kind === 'batch-lots') {
       setLastLotsConfig(cfg);
       useLabelConfigModalStore.getState().startOrderTrace({
@@ -397,7 +496,9 @@ export default function LabelConfigModal() {
   const title = isBatch
     ? 'Etiquetado de manzanos'
     : isBatchLots
-      ? (target.manzanoId != null ? 'Etiquetado de lotes' : 'Etiquetado de lotes — todos los manzanos')
+      ? target.manzanoId != null
+        ? 'Etiquetado de lotes'
+        : 'Etiquetado de lotes — todos los manzanos'
       : isBatchLayer
         ? 'Etiquetado de capa'
         : entityCopy
@@ -406,14 +507,17 @@ export default function LabelConfigModal() {
 
   let subtitle: string | null = null;
   if (target.kind === 'batch-lots') {
-    subtitle = target.manzanoId != null
-      ? 'Lotes del manzano seleccionado.'
-      : 'Todos los lotes del proyecto — la numeración reinicia automáticamente en cada manzano.';
+    subtitle =
+      target.manzanoId != null
+        ? 'Lotes del manzano seleccionado.'
+        : 'Todos los lotes del proyecto — la numeración reinicia automáticamente en cada manzano.';
   } else if (target.kind === 'batch-manzanos') {
     subtitle = 'Todos los manzanos trazados.';
   } else if (target.kind === 'batch-layer') {
     const layerName = useLayersStore.getState().getById(target.layerId)?.name;
-    subtitle = layerName ? `Todos los elementos de "${layerName}"` : 'Todos los elementos de esta capa';
+    subtitle = layerName
+      ? `Todos los elementos de "${layerName}"`
+      : 'Todos los elementos de esta capa';
   }
 
   const showAutoApply = isBatchLots;
@@ -422,7 +526,9 @@ export default function LabelConfigModal() {
   return (
     <Modal
       open={open}
-      onOpenChange={(o) => { if (!o) close(); }}
+      onOpenChange={(o) => {
+        if (!o) close();
+      }}
       title="Configurar etiqueta"
       visuallyHiddenTitle
       width="min(400px, 92vw)"
@@ -430,12 +536,8 @@ export default function LabelConfigModal() {
       <div style={{ marginBottom: 8 }}>
         <h2 style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--cad-text)' }}>{title}</h2>
         {subtitle && (
-          <p style={{ fontSize: '0.62rem', color: 'var(--cad-text-muted)', marginTop: 1 }}>{subtitle}</p>
-        )}
-        {isAnyBatch && (
-          <p style={{ fontSize: '0.58rem', color: 'var(--cad-text-muted)', marginTop: 4, lineHeight: 1.4 }}>
-            💾 <strong style={{ color: 'var(--cad-text-dim)' }}>Guardar</strong> aplica el estilo a lo nuevo y
-            actualiza al toque lo que ya esté etiquetado — sin pasos extra.
+          <p style={{ fontSize: '0.62rem', color: 'var(--cad-text-muted)', marginTop: 1 }}>
+            {subtitle}
           </p>
         )}
       </div>
@@ -444,8 +546,13 @@ export default function LabelConfigModal() {
 
       <div
         style={{
-          display: 'flex', flexDirection: 'column', gap: 8, maxHeight: '48vh', overflowY: 'auto',
-          paddingRight: 4, marginTop: 10,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 8,
+          maxHeight: '48vh',
+          overflowY: 'auto',
+          paddingRight: 4,
+          marginTop: 10,
           opacity: cfg.enabled ? 1 : 0.55,
           transition: 'opacity 150ms ease',
         }}
@@ -462,15 +569,31 @@ export default function LabelConfigModal() {
         )}
 
         <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
-          <Field label={`Prefijo${isBatch || isBatchLots ? ' (+ letra/número de orden)' : ''}`} style={{ flex: 1 }}>
-            <input value={cfg.prefix} onChange={(e) => patch({ prefix: e.target.value })} className="cad-input" placeholder="Ej. Mzo., Lote, Vía" />
+          <Field
+            label={`Prefijo${isBatch || isBatchLots ? ' (+ letra/número de orden)' : ''}`}
+            style={{ flex: 1 }}
+          >
+            <input
+              value={cfg.prefix}
+              onChange={(e) => patch({ prefix: e.target.value })}
+              className="cad-input"
+              placeholder="Ej. Mzo., Lote, Vía"
+            />
           </Field>
-          <ToggleRow label="Mostrar" checked={cfg.showPrefix} onChange={(v) => patch({ showPrefix: v })} />
+          <ToggleRow
+            label="Mostrar"
+            checked={cfg.showPrefix}
+            onChange={(v) => patch({ showPrefix: v })}
+          />
         </div>
 
         {isAnyBatch && (
           <Field label="Numeración del trazado">
-            <select value={numberingMode} onChange={(e) => setNumberingMode(e.target.value as LabelNumberingMode)} className="cad-input">
+            <select
+              value={numberingMode}
+              onChange={(e) => setNumberingMode(e.target.value as LabelNumberingMode)}
+              className="cad-input"
+            >
               {LABEL_NUMBERING_MODES.map((m) => (
                 <option key={m.key} value={m.key}>
                   {m.label} — {m.example}
@@ -497,26 +620,45 @@ export default function LabelConfigModal() {
         )}
 
         <div style={{ display: 'flex', gap: 8 }}>
-          {(!isEntity && !isLineFeature) || (target.kind === 'entity' && target.entityType === 'roundabout') ? (
+          {(!isEntity && !isLineFeature) ||
+          (target.kind === 'entity' && target.entityType === 'roundabout') ? (
             <Field label="Unidad" style={{ flex: 1 }}>
-              <select value={cfg.unit} onChange={(e) => patch({ unit: e.target.value as AreaUnit })} className="cad-input">
-                {AREA_UNIT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              <select
+                value={cfg.unit}
+                onChange={(e) => patch({ unit: e.target.value as AreaUnit })}
+                className="cad-input"
+              >
+                {AREA_UNIT_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
               </select>
             </Field>
           ) : null}
           <Field label="Fuente" style={{ flex: 1 }}>
-            <select value={cfg.fontFamily} onChange={(e) => patch({ fontFamily: e.target.value })} className="cad-input">
+            <select
+              value={cfg.fontFamily}
+              onChange={(e) => patch({ fontFamily: e.target.value })}
+              className="cad-input"
+            >
               {LABEL_FONT_GROUPS.map((group) => (
                 <optgroup key={group} label={group}>
                   {LABEL_FONT_OPTIONS.filter((o) => o.group === group).map((o) => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
                   ))}
                 </optgroup>
               ))}
             </select>
           </Field>
         </div>
-        <ToggleRow label="Negrita" checked={cfg.bold !== false} onChange={(v) => patch({ bold: v })} />
+        <ToggleRow
+          label="Negrita"
+          checked={cfg.bold !== false}
+          onChange={(v) => patch({ bold: v })}
+        />
 
         <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
           <ToggleRow
@@ -532,14 +674,19 @@ export default function LabelConfigModal() {
             />
           )}
           {!isEntity && !isLineFeature && (
-            <ToggleRow label="Cotas por lado" checked={cfg.showEdgeCotas} onChange={(v) => patch({ showEdgeCotas: v })} />
+            <ToggleRow
+              label="Cotas por lado"
+              checked={cfg.showEdgeCotas}
+              onChange={(v) => patch({ showEdgeCotas: v })}
+            />
           )}
         </div>
 
         {!isEntity && !isLineFeature && (
           <div
             style={{
-              display: 'flex', gap: 8,
+              display: 'flex',
+              gap: 8,
               opacity: cfg.showEdgeCotas ? 1 : 0.4,
               pointerEvents: cfg.showEdgeCotas ? 'auto' : 'none',
             }}
@@ -547,17 +694,21 @@ export default function LabelConfigModal() {
             <Field label="Estilo de cota" style={{ flex: 1 }}>
               <select
                 value={cfg.cotaStyle ?? 'lines'}
-                onChange={(e) => patch({ cotaStyle: e.target.value as LabelStyleConfig['cotaStyle'] })}
+                onChange={(e) =>
+                  patch({ cotaStyle: e.target.value as LabelStyleConfig['cotaStyle'] })
+                }
                 className="cad-input"
               >
                 <option value="lines">Con líneas de cota</option>
                 <option value="text">Solo texto (sin líneas)</option>
-             </select>
+              </select>
             </Field>
             <Field label="Posición" style={{ flex: 1 }}>
               <select
                 value={cfg.cotaPosition ?? 'external'}
-                onChange={(e) => patch({ cotaPosition: e.target.value as LabelStyleConfig['cotaPosition'] })}
+                onChange={(e) =>
+                  patch({ cotaPosition: e.target.value as LabelStyleConfig['cotaPosition'] })
+                }
                 className="cad-input"
               >
                 <option value="external">Externa (hacia afuera)</option>
@@ -569,12 +720,32 @@ export default function LabelConfigModal() {
 
         <div style={{ display: 'flex', gap: 8 }}>
           <Field label="Tam. etiqueta (px)" style={{ flex: 1 }}>
-            <input type="number" min={7} max={40} value={cfg.labelFontSizePx}
-              onChange={(e) => patch({ labelFontSizePx: Math.max(7, parseInt(e.target.value, 10) || cfg.labelFontSizePx) })} className="cad-input" />
+            <input
+              type="number"
+              min={7}
+              max={40}
+              value={cfg.labelFontSizePx}
+              onChange={(e) =>
+                patch({
+                  labelFontSizePx: Math.max(7, parseInt(e.target.value, 10) || cfg.labelFontSizePx),
+                })
+              }
+              className="cad-input"
+            />
           </Field>
           <Field label="Tam. cotas (px)" style={{ flex: 1 }}>
-            <input type="number" min={6} max={30} value={cfg.cotaFontSizePx}
-              onChange={(e) => patch({ cotaFontSizePx: Math.max(6, parseInt(e.target.value, 10) || cfg.cotaFontSizePx) })} className="cad-input" />
+            <input
+              type="number"
+              min={6}
+              max={30}
+              value={cfg.cotaFontSizePx}
+              onChange={(e) =>
+                patch({
+                  cotaFontSizePx: Math.max(6, parseInt(e.target.value, 10) || cfg.cotaFontSizePx),
+                })
+              }
+              className="cad-input"
+            />
           </Field>
         </div>
 
@@ -627,7 +798,15 @@ export default function LabelConfigModal() {
               type="color"
               value={cfg.color}
               onChange={(e) => patch({ color: e.target.value })}
-              style={{ width: 46, height: 26, background: 'none', border: '1px solid var(--cad-border)', borderRadius: 4, cursor: 'pointer', padding: 0 }}
+              style={{
+                width: 46,
+                height: 26,
+                background: 'none',
+                border: '1px solid var(--cad-border)',
+                borderRadius: 4,
+                cursor: 'pointer',
+                padding: 0,
+              }}
             />
           </Field>
           <ToggleRow
@@ -636,11 +815,24 @@ export default function LabelConfigModal() {
             onChange={(v) => patch({ useLayerColor: v })}
           />
           <div style={{ flex: 1 }} />
-          <ToggleRow label="Habilitada" checked={cfg.enabled} onChange={(v) => patch({ enabled: v })} />
+          <ToggleRow
+            label="Habilitada"
+            checked={cfg.enabled}
+            onChange={(v) => patch({ enabled: v })}
+          />
         </div>
       </div>
 
-      <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 6, marginTop: 12, flexWrap: 'wrap' }}>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'flex-end',
+          alignItems: 'center',
+          gap: 6,
+          marginTop: 12,
+          flexWrap: 'wrap',
+        }}
+      >
         {isAnyBatch && (
           <span
             style={{
