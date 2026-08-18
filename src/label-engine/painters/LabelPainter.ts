@@ -158,23 +158,6 @@ function buildRoundaboutLabelLines(rb: Roundabout, cfg: LabelStyleConfig, text: 
   });
 }
 
-function streetLabelSignature(
-  streets: Street[],
-  entries: Record<string, EntityLabelEntry>,
-  zoomBucket: number
-): string {
-  let sig = `z${zoomBucket}`;
-  for (const s of streets) {
-    const e = entries[s.id];
-    if (!e || !e.config.enabled) continue;
-    sig +=
-      `|${s.id}:${s.start[0]},${s.start[1]}-${s.end[0]},${s.end[1]}:${s.widthM}:${s.sideWidthM}` +
-      `:${(s.waypoints ?? []).length}:${e.text}:${e.config.prefix}:${e.config.showPrefix}` +
-      `:${e.config.showArea}:${e.config.showPerimeter}:${e.config.labelFontSizePx}:${e.config.fontFamily}`;
-  }
-  return sig;
-}
-
 export class LabelPainter {
   private readonly collisionGrid = new PainterCollisionGrid();
   private readonly streetSlots = new globalThis.Map<string, StreetLabelSlot[]>();
@@ -184,23 +167,53 @@ export class LabelPainter {
   update(ctx: CanvasRenderingContext2D, zoom: number, resolution: number): void {
     const streets = useStreetStore.getState().streets;
     const entries = useEntityLabelStore.getState().byId;
+    const registry = useLayersStore.getState();
+    const byId = new globalThis.Map<string, Layer>();
+    for (const layer of registry.layers) byId.set(layer.id, layer);
+    const classByLayer = useLabelClassStore.getState().byLayerId;
     const zoomBucket = Math.round(zoom * 4);
-    const sig = streetLabelSignature(streets, entries, zoomBucket);
+
+    const relevant: Array<{ street: Street; style: LabelStyleConfig; text: string }> = [];
+    for (const s of streets) {
+      const layer = resolveEntityLayer(s, 'via', registry, byId);
+      if (layer && (layer.showLabel === false || !layer.visible)) continue;
+      const classObj = layer ? classByLayer[layer.id] : undefined;
+      const override = entries[s.id];
+      const resolved = override
+        ? resolveEntityLabelFromClass(classObj, override.text, { zoom })
+        : resolveEntityLabelFromClass(classObj, s.name, { zoom });
+      const effectiveStyle = override && override.config.enabled ? override.config : resolved.style;
+      if (!effectiveStyle || !effectiveStyle.enabled) continue;
+      const effectiveText = override ? override.text : resolved.text;
+      const hasPrefixOnly = effectiveStyle.showPrefix && !!effectiveStyle.prefix;
+      if (!effectiveText && !hasPrefixOnly) continue;
+      relevant.push({ street: s, style: effectiveStyle, text: effectiveText });
+    }
+
+    const sig =
+      `z${zoomBucket}|` +
+      relevant
+        .map(
+          ({ street: s, style, text }) =>
+            `${s.id}:${s.start[0]},${s.start[1]}-${s.end[0]},${s.end[1]}:${s.widthM}:${s.sideWidthM}` +
+            `:${(s.waypoints ?? []).length}:${text}:${style.prefix}:${style.showPrefix}` +
+            `:${style.showPrimaryMetric ?? style.showArea}:${style.showSecondaryMetric ?? style.showPerimeter}` +
+            `:${style.labelFontSizePx}:${style.fontFamily}`
+        )
+        .join('|');
+
     if (sig === this.streetSlotsSignature) return;
     this.streetSlotsSignature = sig;
     this.streetSlots.clear();
-
-    const relevant = streets.filter((s) => entries[s.id]?.config.enabled);
     if (relevant.length === 0) return;
 
     const crossings = computeStreetCrossings(streets);
-    for (const s of relevant) {
-      const entry = entries[s.id];
-      const lines = buildStreetLabelLines(s, entry.config, entry.text);
+    for (const { street: s, style, text } of relevant) {
+      const lines = buildStreetLabelLines(s, style, text);
       if (lines.length === 0) continue;
 
       ctx.save();
-      ctx.font = `${labelFontWeight(entry.config)} ${entry.config.labelFontSizePx}px ${entry.config.fontFamily}`;
+      ctx.font = `${labelFontWeight(style)} ${style.labelFontSizePx}px ${style.fontFamily}`;
       let maxW = 0;
       for (const line of lines) maxW = Math.max(maxW, measureCached(ctx, line).width);
       ctx.restore();
@@ -571,7 +584,8 @@ export class LabelPainter {
       const effectiveStyle = override && override.config.enabled ? override.config : resolved.style;
       if (!effectiveStyle || !effectiveStyle.enabled) continue;
       const effectiveText = override ? override.text : resolved.text;
-      if (!effectiveText) continue;
+      const hasPrefixOnly = effectiveStyle.showPrefix && !!effectiveStyle.prefix;
+      if (!effectiveText && !hasPrefixOnly) continue;
       const lines = buildStreetLabelLines(s, effectiveStyle, effectiveText);
       if (lines.length === 0) continue;
 
@@ -613,7 +627,8 @@ export class LabelPainter {
       const effectiveStyle = override && override.config.enabled ? override.config : resolved.style;
       if (!effectiveStyle || !effectiveStyle.enabled) continue;
       const effectiveText = override ? override.text : resolved.text;
-      if (!effectiveText) continue;
+      const hasPrefixOnly = effectiveStyle.showPrefix && !!effectiveStyle.prefix;
+      if (!effectiveText && !hasPrefixOnly) continue;
       const lines = buildRoundaboutLabelLines(rb, effectiveStyle, effectiveText);
       if (lines.length === 0) continue;
       const px = toPx(rb.center);

@@ -7,7 +7,7 @@ import type { LabelNumberingMode } from '../model/labelNumbering';
 export interface UpsertLabelClassOptions {
   layerId: string;
   style: LabelStyleConfig;
-  numbering?: { mode: LabelNumberingMode; restartPerParent: boolean };
+  numbering?: { mode: LabelNumberingMode; restartPerParent: boolean; customTemplate?: string };
   enabled?: boolean;
   priority?: number;
   placement?: LabelClass['placement'];

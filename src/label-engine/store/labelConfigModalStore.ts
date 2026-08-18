@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { LabelStyleConfig } from '../model/labelModel';
 import type { GeoUrbanFeatureKind } from '@kernel/domain-model/featureModel';
 import type { LabelNumberingMode } from '../model/labelNumbering';
+import { useLabelClassStore } from './labelClassStore';
 
 export type { LabelNumberingMode };
 export type LabelOrderKind = Extract<GeoUrbanFeatureKind, 'manzana' | 'lote'> | 'layer';
@@ -38,6 +39,7 @@ export interface LabelOrderRequest {
   scopeManzanoId?: string | number;
   config: LabelStyleConfig;
   numbering: LabelNumberingMode;
+  customTemplate?: string;
 }
 
 interface LabelConfigModalState {
@@ -48,6 +50,7 @@ interface LabelConfigModalState {
   lastManzanoConfig: LabelStyleConfig | null;
   lastLotsConfig: LabelStyleConfig | null;
   numberingMode: LabelNumberingMode;
+  customNumberingTemplate: string;
   orderRequest: LabelOrderRequest | null;
   openForFeature: (
     featureId: string | number,
@@ -68,6 +71,7 @@ interface LabelConfigModalState {
     layerId?: string
   ) => void;
   setNumberingMode: (m: LabelNumberingMode) => void;
+  setCustomNumberingTemplate: (t: string) => void;
   setLastManzanoConfig: (cfg: LabelStyleConfig) => void;
   setLastLotsConfig: (cfg: LabelStyleConfig) => void;
   startOrderTrace: (req: LabelOrderRequest) => void;
@@ -75,7 +79,16 @@ interface LabelConfigModalState {
   close: () => void;
 }
 
-export const useLabelConfigModalStore = create<LabelConfigModalState>()((set) => ({
+function numberingFromLayer(layerId: string | undefined): {
+  mode?: LabelNumberingMode;
+  template?: string;
+} {
+  if (!layerId) return {};
+  const cls = useLabelClassStore.getState().getForLayer(layerId);
+  return { mode: cls?.numbering?.mode, template: cls?.numbering?.customTemplate };
+}
+
+export const useLabelConfigModalStore = create<LabelConfigModalState>()((set, get) => ({
   open: false,
   target: null,
   initialConfig: null,
@@ -83,6 +96,7 @@ export const useLabelConfigModalStore = create<LabelConfigModalState>()((set) =>
   lastManzanoConfig: null,
   lastLotsConfig: null,
   numberingMode: 'alpha-upper',
+  customNumberingTemplate: '',
   orderRequest: null,
   openForFeature: (featureId, initial, initialText = '') =>
     set({
@@ -98,28 +112,41 @@ export const useLabelConfigModalStore = create<LabelConfigModalState>()((set) =>
       initialConfig: initial,
       initialText,
     }),
-  openForManzanoBatch: (initial, layerId) =>
+  openForManzanoBatch: (initial, layerId) => {
+    const { mode, template } = numberingFromLayer(layerId);
     set({
       open: true,
       target: { kind: 'batch-manzanos', layerId },
       initialConfig: initial,
       initialText: '',
-    }),
-  openForLotsBatch: (manzanoId, initial, layerId) =>
+      numberingMode: mode ?? get().numberingMode,
+      customNumberingTemplate: template ?? '',
+    });
+  },
+  openForLotsBatch: (manzanoId, initial, layerId) => {
+    const { mode, template } = numberingFromLayer(layerId);
     set({
       open: true,
       target: { kind: 'batch-lots', manzanoId, layerId },
       initialConfig: initial,
       initialText: '',
-    }),
-  openForLayerBatch: (layerId, initial) =>
+      numberingMode: mode ?? get().numberingMode,
+      customNumberingTemplate: template ?? '',
+    });
+  },
+  openForLayerBatch: (layerId, initial) => {
+    const { mode, template } = numberingFromLayer(layerId);
     set({
       open: true,
       target: { kind: 'batch-layer', layerId },
       initialConfig: initial,
       initialText: '',
-    }),
+      numberingMode: mode ?? get().numberingMode,
+      customNumberingTemplate: template ?? '',
+    });
+  },
   setNumberingMode: (m) => set({ numberingMode: m }),
+  setCustomNumberingTemplate: (t) => set({ customNumberingTemplate: t }),
   setLastManzanoConfig: (cfg) => set({ lastManzanoConfig: cfg }),
   setLastLotsConfig: (cfg) => set({ lastLotsConfig: cfg }),
   startOrderTrace: (req) => set({ orderRequest: req }),

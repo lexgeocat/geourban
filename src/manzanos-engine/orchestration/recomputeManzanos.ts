@@ -7,7 +7,14 @@ import type { FeatureCollection, Feature as GeoJSONFeature } from 'geojson';
 
 import { useMapStore } from '@map-core/store/mapStore';
 import { updateFeatureMetrics } from '@georef-engine/metrics';
-import { polyArea, ringPerimeter, polygonCentroid, closeRing, polySignedArea, type Pt } from '@kernel/geometry/polygonEngine';
+import {
+  polyArea,
+  ringPerimeter,
+  polygonCentroid,
+  closeRing,
+  polySignedArea,
+  type Pt,
+} from '@kernel/geometry/polygonEngine';
 import { useStreetStore, type Street } from '@vias-engine/store/streetStore';
 import { useRoundaboutStore, type Roundabout } from '@vias-engine/store/roundaboutStore';
 import { useManzanoStore } from '@lotificacion-engine/store/manzanoLotConfigStore';
@@ -21,7 +28,12 @@ import {
 } from '@kernel/native/geoWorkerClient';
 import { confirmAsync } from '@shared-ui/store/confirmDialogStore';
 import { useLeftSidebarStore } from '@app-shell/store/leftSidebarStore';
-import { ensureKind, getFeatureKind, getLotStatus, setLotStatus } from '@kernel/domain-model/featureModel';
+import {
+  ensureKind,
+  getFeatureKind,
+  getLotStatus,
+  setLotStatus,
+} from '@kernel/domain-model/featureModel';
 import type { ManzanoLoteMethod } from '@lotificacion-engine/model/types';
 import { buildRoadNetworkRings } from '@vias-engine/geometry/roadNetworkEngine';
 import { roundRingReflex, pointOnRing } from '@vias-engine/geometry/ringFillet';
@@ -1096,13 +1108,16 @@ async function relotAfterCornerModeChange(
           oldLots.push(feat);
           if (!carriedLabelConfig) carriedLabelConfig = feat.get('labelConfig');
           if (!carriedLayerId) carriedLayerId = feat.get('layerId') as string | undefined;
-          if (!carriedMode) carriedMode = feat.get('labelNumberingMode') as LabelNumberingMode | undefined;
+          if (!carriedMode)
+            carriedMode = feat.get('labelNumberingMode') as LabelNumberingMode | undefined;
           if (!firstOldCode) firstOldCode = feat.get('code') as string | undefined;
         }
       });
       for (const f of oldLots) src.removeFeature(f);
 
-      const classObj = carriedLayerId ? useLabelClassStore.getState().getForLayer(carriedLayerId) : undefined;
+      const classObj = carriedLayerId
+        ? useLabelClassStore.getState().getForLayer(carriedLayerId)
+        : undefined;
       const numberingMode: LabelNumberingMode =
         carriedMode ?? classObj?.numbering?.mode ?? 'numeric';
       const manzanoCodeAttr = mznFeat.get('code') as string | undefined;
@@ -1120,7 +1135,13 @@ async function relotAfterCornerModeChange(
         });
         if (carriedLabelConfig) {
           feature.set('labelConfig', carriedLabelConfig, true);
-          const text = formatOrderLabel(numberingMode, i, lots.length, manzanoCodeAttr);
+          const text = formatOrderLabel(
+            numberingMode,
+            i,
+            lots.length,
+            manzanoCodeAttr,
+            classObj?.numbering?.customTemplate
+          );
           feature.set('labelText', text, true);
           feature.set('labelNumberingMode', numberingMode, true);
         }

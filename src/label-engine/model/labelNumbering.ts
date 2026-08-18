@@ -1,6 +1,7 @@
 import { autoLetterCode } from '@kernel/id/autoName';
 
 export type LabelNumberingMode =
+  | 'none'
   | 'numeric'
   | 'numeric-padded'
   | 'alpha-upper'
@@ -10,16 +11,19 @@ export type LabelNumberingMode =
   | 'circled'
   | 'circled-alpha'
   | 'parent-dash'
-  | 'parent-compact';
+  | 'parent-compact'
+  | 'custom';
 
 export interface NumberingModeInfo {
   key: LabelNumberingMode;
   label: string;
   example: string;
   needsParent?: boolean;
+  needsTemplate?: boolean;
 }
 
 export const LABEL_NUMBERING_MODES: NumberingModeInfo[] = [
+  { key: 'none', label: 'Ninguno', example: 'sin número — solo el prefijo' },
   { key: 'numeric', label: 'Numérico', example: '1, 2, 3…' },
   { key: 'numeric-padded', label: 'Numérico con ceros', example: '01, 02, 03…' },
   { key: 'alpha-upper', label: 'Alfabético (mayúsculas)', example: 'A, B, C…' },
@@ -40,6 +44,7 @@ export const LABEL_NUMBERING_MODES: NumberingModeInfo[] = [
     example: 'A1, A2… (según manzano)',
     needsParent: true,
   },
+  { key: 'custom', label: 'Personalizado', example: 'usa {n} y {parent}', needsTemplate: true },
 ];
 
 const ROMAN_TABLE: Array<[number, string]> = [
@@ -75,9 +80,12 @@ export function formatOrderLabel(
   mode: LabelNumberingMode,
   index0: number,
   total: number,
-  parentCode?: string
+  parentCode?: string,
+  customTemplate?: string
 ): string {
   switch (mode) {
+    case 'none':
+      return '';
     case 'numeric':
       return String(index0 + 1);
     case 'numeric-padded': {
@@ -100,6 +108,10 @@ export function formatOrderLabel(
       return parentCode ? `${parentCode}-${index0 + 1}` : autoLetterCode(index0);
     case 'parent-compact':
       return parentCode ? `${parentCode}${index0 + 1}` : autoLetterCode(index0);
+    case 'custom':
+      return (customTemplate && customTemplate.trim() ? customTemplate : '{n}')
+        .replace(/\{n\}/g, String(index0 + 1))
+        .replace(/\{parent\}/g, parentCode ?? '');
     default:
       return String(index0 + 1);
   }

@@ -13,6 +13,7 @@ import {
   LABEL_FONT_GROUPS,
   defaultLabelStyleConfig,
   composeLabelLines,
+  resolveEffectiveLabelConfig,
   type LabelStyleConfig,
   type AreaUnit,
   type LabelLineMetrics,
@@ -22,6 +23,7 @@ import { runCommand } from '@kernel/command/CommandStack';
 import { ApplyLabelConfigCommand } from '../commands/ApplyLabelConfigCommand';
 import { ApplyEntityLabelConfigCommand } from '../commands/ApplyEntityLabelConfigCommand';
 import { AssignLotsLabelConfigCommand } from '../commands/AssignLotsLabelConfigCommand';
+import { AssignLayerEntityOrderCommand } from '../commands/AssignLayerEntityOrderCommand';
 import { RestyleBatchLabelsCommand } from '../commands/RestyleBatchLabelsCommand';
 import { UpsertLabelClassCommand } from '../commands/UpsertLabelClassCommand';
 import { useDrawStore } from '@map-core/store/drawStore';
@@ -210,6 +212,19 @@ function findSampleFeatureMetrics(
 /** Cuenta cuántos elementos caen dentro del alcance del target — sirve para "congelar" botones sin efecto. */
 function countBatchTargets(target: LabelConfigTarget | null): number {
   if (!target) return 0;
+  if (target.kind === 'batch-layer') {
+    const layer = useLayersStore.getState().getById(target.layerId);
+    if (layer && (layer.kind === 'via' || layer.kind === 'rotonda')) {
+      const fallbackViaId = useLayersStore.getState().getLayerForKind('via')?.id;
+      const streets = useStreetStore
+        .getState()
+        .streets.filter((s) => (s.layerId ?? fallbackViaId) === target.layerId).length;
+      const roundabouts = useRoundaboutStore
+        .getState()
+        .roundabouts.filter((r) => (r.layerId ?? fallbackViaId) === target.layerId).length;
+      return streets + roundabouts;
+    }
+  }
   const src = useMapStore.getState().drawSource;
   if (!src) return 0;
   let count = 0;
@@ -295,7 +310,9 @@ function computePreviewMetrics(
   const isLotsTarget = target.kind === 'batch-lots';
   const orderSample = formatOrderLabel(numberingMode, 0, 8, isLotsTarget ? 'A' : undefined);
   if (target.kind === 'batch-layer') {
-    const orderSampleLayer = formatOrderLabel(numberingMode, 0, 8);
+    const orderSampleLayer = formatOrderLabel(numberingMode, 0, 8, undefined, undefined);
+    const layer = useLayersStore.getState().getById(target.layerId);
+    const isLineLayer = !!layer && (layer.kind === 'via' || layer.kind === 'linea' || layer.kind === 'polilinea');
     const src = useMapStore.getState().drawSource;
     let sample: { primaryValue?: number; secondaryValue?: number; isLine?: boolean } | null = null;
     if (src) {
@@ -309,10 +326,17 @@ function computePreviewMetrics(
             : { primaryValue: f.get('lengthM') as number | undefined, isLine: true };
       }
     }
+    if (isLineLayer || sample?.isLine) {
+      return {
+        text: orderSampleLayer,
+        primaryValue: sample?.primaryValue ?? 120,
+        primaryFormatter: (v) => formatMetricLength(v),
+      };
+    }
     return {
       text: orderSampleLayer,
       primaryValue: sample?.primaryValue ?? 180,
-      secondaryValue: sample?.isLine ? undefined : (sample?.secondaryValue ?? 54),
+      secondaryValue: sample?.secondaryValue ?? 54,
     };
   }
   if (target.kind === 'batch-manzanos') {
@@ -332,15 +356,22 @@ function computePreviewMetrics(
 }
 
 function resolveTargetIsLineFeature(target: LabelConfigTarget | null): boolean {
-  if (!target || target.kind !== 'feature') return false;
-  const src = useMapStore.getState().drawSource;
-  const f = src?.getFeatureById(target.featureId) as Feature<Geometry> | null;
-  if (!f) return false;
-  return f.get('areaM2') === undefined;
+  if (!target) return false;
+  if (target.kind === 'feature') {
+    const src = useMapStore.getState().drawSource;
+    const f = src?.getFeatureById(target.featureId) as Feature<Geometry> | null;
+    if (!f) return false;
+    return f.get('areaM2') === undefined;
+  }
+  if (target.kind === 'batch-layer') {
+    const layer = useLayersStore.getState().getById(target.layerId);
+    return layer ? (layer.kind === 'via' || layer.kind === 'linea' || layer.kind === 'polilinea') : false;
+  }
+  return false;
 }
 
-function snapshotOf(cfg: LabelStyleConfig, name: string): string {
-  return `${JSON.stringify(cfg)}|${name}`;
+function snapshotOf(cfg: LabelStyleConfig, name: string, numberingMode: LabelNumberingMode, customTemplate: string): string {
+  return `${JSON.stringify(cfg)}|${name}|${numberingMode}|${customTemplate}`;
 }
 
 /* ─────────── Modal principal ─────────── */
@@ -352,6 +383,8 @@ export default function LabelConfigModal() {
   const initialText = useLabelConfigModalStore((s) => s.initialText);
   const numberingMode = useLabelConfigModalStore((s) => s.numberingMode);
   const setNumberingMode = useLabelConfigModalStore((s) => s.setNumberingMode);
+  const customNumberingTemplate = useLabelConfigModalStore((s) => s.customNumberingTemplate);
+  const setCustomNumberingTemplate = useLabelConfigModalStore((s) => s.setCustomNumberingTemplate);
   const setLastManzanoConfig = useLabelConfigModalStore((s) => s.setLastManzanoConfig);
   const setLastLotsConfig = useLabelConfigModalStore((s) => s.setLastLotsConfig);
   const close = useLabelConfigModalStore((s) => s.close);
@@ -368,7 +401,7 @@ export default function LabelConfigModal() {
       const initialName = initialText ?? '';
       setCfg(initial);
       setName(initialName);
-      setOpenedSnapshot(snapshotOf(initial, initialName));
+      setOpenedSnapshot(snapshotOf(initial, initialName, numberingMode, customNumberingTemplate));
     }
   }
 
@@ -379,22 +412,27 @@ export default function LabelConfigModal() {
   const isEntity = target?.kind === 'entity';
   const entityCopy = target && target.kind === 'entity' ? ENTITY_COPY[target.entityType] : null;
   const isLineFeature = useMemo(() => resolveTargetIsLineFeature(target), [target]);
-
-  const previewMetrics = useMemo(
-    () => computePreviewMetrics(target, numberingMode),
-    [target, numberingMode]
+  const targetLayerKind =
+    target?.kind === 'batch-layer' ? useLayersStore.getState().getById(target.layerId)?.kind : undefined;
+  const isViaLikeLayerBatch = target?.kind === 'batch-layer' && (targetLayerKind === 'via' || targetLayerKind === 'rotonda');
+  const availableNumberingModes = useMemo(
+    () => LABEL_NUMBERING_MODES.filter((m) => !(m.needsParent && (isBatch || isBatchLayer))),
+    [isBatch, isBatchLayer]
   );
-  const previewText =
-    isBatch || isBatchLots
-      ? (previewMetrics.text ?? '')
-      : name.trim() || previewMetrics.text || 'Etiqueta';
+
+  const previewMetrics = useMemo(() => computePreviewMetrics(target, numberingMode), [target, numberingMode]);
+  const previewText = isBatch || isBatchLots ? (previewMetrics.text ?? '') : name;
+  const previewCfg = useMemo(
+    () => (isAnyBatch ? resolveEffectiveLabelConfig(cfg, numberingMode) : cfg),
+    [cfg, numberingMode, isAnyBatch]
+  );
   const previewLines = useMemo(
-    () => composeLabelLines(cfg, { ...previewMetrics, text: previewText }),
-    [cfg, previewMetrics, previewText]
+    () => composeLabelLines(previewCfg, { ...previewMetrics, text: previewText }),
+    [previewCfg, previewMetrics, previewText]
   );
 
   const targetCount = useMemo(() => countBatchTargets(target), [target]);
-  const hasChanges = snapshotOf(cfg, name) !== openedSnapshot;
+  const hasChanges = snapshotOf(cfg, name, numberingMode, customNumberingTemplate) !== openedSnapshot;
 
   if (!target) return null;
 
@@ -407,31 +445,28 @@ export default function LabelConfigModal() {
       return;
     }
     if (target.kind === 'entity') {
-      void runCommand(new ApplyEntityLabelConfigCommand(target.entityId, cfg, name));
+      void runCommand(new ApplyEntityLabelConfigCommand(target.entityId, target.entityType, cfg, name));
       close();
       return;
     }
 
-    const kind =
-      target.kind === 'batch-manzanos'
-        ? 'manzana'
-        : target.kind === 'batch-lots'
-          ? 'lote'
-          : undefined;
+    const kind = target.kind === 'batch-manzanos' ? 'manzana' : target.kind === 'batch-lots' ? 'lote' : undefined;
     const manzanoId = target.kind === 'batch-lots' ? target.manzanoId : undefined;
     const layerId = target.layerId;
-    const cmd = new RestyleBatchLabelsCommand({ kind, manzanoId, config: cfg, layerId });
+    const cmd = new RestyleBatchLabelsCommand({
+      kind,
+      manzanoId,
+      config: cfg,
+      layerId,
+      numbering: numberingMode,
+      customTemplate: numberingMode === 'custom' ? customNumberingTemplate : undefined,
+    });
     void runCommand(cmd).then((result) => {
       if (!result.ok) return;
       if (cmd.affectedCount > 0) {
-        toast(`Estilo guardado y actualizado en ${cmd.affectedCount} elemento(s) ya etiquetados.`, {
-          variant: 'success',
-        });
+        toast(`Estilo guardado y actualizado en ${cmd.affectedCount} elemento(s) ya etiquetados.`, { variant: 'success' });
       } else {
-        toast(
-          'Estilo guardado. Se va a aplicar automáticamente a lo que etiquetes de acá en más.',
-          { variant: 'info' }
-        );
+        toast('Estilo guardado. Se va a aplicar automáticamente a lo que etiquetes de acá en más.', { variant: 'info' });
       }
     });
     if (target.kind === 'batch-manzanos') setLastManzanoConfig(cfg);
@@ -441,28 +476,41 @@ export default function LabelConfigModal() {
 
   /** Solo tiene sentido para lotes: numera y aplica automáticamente, reiniciando por manzano. */
   const handleApplyAuto = () => {
-    if (target.kind !== 'batch-lots') return;
-    void runCommand(
-      new AssignLotsLabelConfigCommand(cfg, {
-        manzanoId: target.manzanoId,
-        numbering: numberingMode,
-      })
-    );
-    if (target.layerId) {
+    const customTemplate = numberingMode === 'custom' ? customNumberingTemplate : undefined;
+    if (target.kind === 'batch-lots') {
+      void runCommand(new AssignLotsLabelConfigCommand(cfg, { manzanoId: target.manzanoId, numbering: numberingMode, customTemplate }));
+      if (target.layerId) {
+        void runCommand(
+          new UpsertLabelClassCommand({
+            layerId: target.layerId,
+            style: cfg,
+            numbering: { mode: numberingMode, restartPerParent: true, customTemplate },
+            enabled: cfg.enabled,
+            visibleMinZoom: cfg.visibleMinZoom,
+            visibleMaxZoom: cfg.visibleMaxZoom,
+            priority: cfg.priority,
+          })
+        );
+      }
+      setLastLotsConfig(cfg);
+      close();
+      return;
+    }
+    if (target.kind === 'batch-layer' && isViaLikeLayerBatch) {
+      void runCommand(new AssignLayerEntityOrderCommand({ layerId: target.layerId, config: cfg, numbering: numberingMode, customTemplate }));
       void runCommand(
         new UpsertLabelClassCommand({
           layerId: target.layerId,
           style: cfg,
-          numbering: { mode: numberingMode, restartPerParent: true },
+          numbering: { mode: numberingMode, restartPerParent: false, customTemplate },
           enabled: cfg.enabled,
           visibleMinZoom: cfg.visibleMinZoom,
           visibleMaxZoom: cfg.visibleMaxZoom,
           priority: cfg.priority,
         })
       );
+      close();
     }
-    setLastLotsConfig(cfg);
-    close();
   };
 
   const handleTraceOrder = () => {
@@ -520,8 +568,9 @@ export default function LabelConfigModal() {
       : 'Todos los elementos de esta capa';
   }
 
-  const showAutoApply = isBatchLots;
-  const showTraceOrder = isAnyBatch && !(isBatchLots && target.manzanoId == null);
+  const showAutoApply = isBatchLots || isViaLikeLayerBatch;
+  const showTraceOrder =
+    isBatch || (isBatchLots && target.manzanoId != null) || (isBatchLayer && !isViaLikeLayerBatch);
 
   return (
     <Modal
@@ -542,7 +591,7 @@ export default function LabelConfigModal() {
         )}
       </div>
 
-      <LabelPreview cfg={cfg} lines={previewLines} />
+      <LabelPreview cfg={previewCfg} lines={previewLines} />
 
       <div
         style={{
@@ -569,39 +618,45 @@ export default function LabelConfigModal() {
         )}
 
         <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
-          <Field
-            label={`Prefijo${isBatch || isBatchLots ? ' (+ letra/número de orden)' : ''}`}
-            style={{ flex: 1 }}
-          >
+          <Field label={`Prefijo${isBatch || isBatchLots ? ' (+ letra/número de orden)' : ''}`} style={{ flex: 1 }}>
             <input
               value={cfg.prefix}
               onChange={(e) => patch({ prefix: e.target.value })}
               className="cad-input"
               placeholder="Ej. Mzo., Lote, Vía"
+              disabled={!cfg.showPrefix}
+              style={{ opacity: cfg.showPrefix ? 1 : 0.45 }}
             />
           </Field>
-          <ToggleRow
-            label="Mostrar"
-            checked={cfg.showPrefix}
-            onChange={(v) => patch({ showPrefix: v })}
-          />
+          <ToggleRow label="Mostrar" checked={cfg.showPrefix} onChange={(v) => patch({ showPrefix: v })} />
         </div>
 
         {isAnyBatch && (
-          <Field label="Numeración del trazado">
-            <select
-              value={numberingMode}
-              onChange={(e) => setNumberingMode(e.target.value as LabelNumberingMode)}
-              className="cad-input"
-            >
-              {LABEL_NUMBERING_MODES.map((m) => (
-                <option key={m.key} value={m.key}>
-                  {m.label} — {m.example}
-                  {m.needsParent && isBatch ? ' (usa código de manzano; sin efecto acá)' : ''}
-                </option>
-              ))}
-            </select>
-          </Field>
+          <>
+            <Field label="Tipo de numeración">
+              <select
+                value={numberingMode}
+                onChange={(e) => setNumberingMode(e.target.value as LabelNumberingMode)}
+                className="cad-input"
+              >
+                {availableNumberingModes.map((m) => (
+                  <option key={m.key} value={m.key}>
+                    {m.label} — {m.example}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            {numberingMode === 'custom' && (
+              <Field label="Patrón personalizado">
+                <input
+                  value={customNumberingTemplate}
+                  onChange={(e) => setCustomNumberingTemplate(e.target.value)}
+                  className="cad-input"
+                  placeholder="Ej. Mza-{n} · usa {n} para el número y {parent} para el código padre"
+                />
+              </Field>
+            )}
+          </>
         )}
 
         {isAnyBatch && (
@@ -627,6 +682,8 @@ export default function LabelConfigModal() {
                 value={cfg.unit}
                 onChange={(e) => patch({ unit: e.target.value as AreaUnit })}
                 className="cad-input"
+                disabled={!(cfg.showPrimaryMetric ?? cfg.showArea)}
+                style={{ opacity: (cfg.showPrimaryMetric ?? cfg.showArea) ? 1 : 0.45 }}
               >
                 {AREA_UNIT_OPTIONS.map((o) => (
                   <option key={o.value} value={o.value}>
@@ -725,26 +782,22 @@ export default function LabelConfigModal() {
               min={7}
               max={40}
               value={cfg.labelFontSizePx}
-              onChange={(e) =>
-                patch({
-                  labelFontSizePx: Math.max(7, parseInt(e.target.value, 10) || cfg.labelFontSizePx),
-                })
-              }
+              onChange={(e) => patch({ labelFontSizePx: Math.max(7, parseInt(e.target.value, 10) || cfg.labelFontSizePx) })}
               className="cad-input"
             />
           </Field>
-          <Field label="Tam. cotas (px)" style={{ flex: 1 }}>
+          <Field
+            label="Tam. cotas (px)"
+            style={{ flex: 1, opacity: cfg.showEdgeCotas ? 1 : 0.4, pointerEvents: cfg.showEdgeCotas ? 'auto' : 'none' }}
+          >
             <input
               type="number"
               min={6}
               max={30}
               value={cfg.cotaFontSizePx}
-              onChange={(e) =>
-                patch({
-                  cotaFontSizePx: Math.max(6, parseInt(e.target.value, 10) || cfg.cotaFontSizePx),
-                })
-              }
+              onChange={(e) => patch({ cotaFontSizePx: Math.max(6, parseInt(e.target.value, 10) || cfg.cotaFontSizePx) })}
               className="cad-input"
+              disabled={!cfg.showEdgeCotas}
             />
           </Field>
         </div>

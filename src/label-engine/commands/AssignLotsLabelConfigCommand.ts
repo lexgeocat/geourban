@@ -6,6 +6,7 @@ import type { LabelStyleConfig } from '../model/labelModel';
 import { resolveEffectiveLabelConfig } from '../model/labelModel';
 import { formatOrderLabel } from '../model/labelNumbering';
 import type { LabelNumberingMode } from '../store/labelConfigModalStore';
+import { naturalCompare } from '@kernel/utils/naturalSort';
 import {
   ensureLayerLabelsVisible,
   restoreLabelFields,
@@ -17,14 +18,7 @@ import {
 export interface AssignLotsLabelConfigOptions {
   manzanoId?: string | number;
   numbering: LabelNumberingMode;
-}
-function lotSortKey(f: Feature<Geometry>): number {
-  const code = f.get('code') as string | undefined;
-  if (code) {
-    const m = /-(\d+)R?$/.exec(code);
-    if (m) return parseInt(m[1], 10);
-  }
-  return 0;
+  customTemplate?: string;
 }
 
 export class AssignLotsLabelConfigCommand extends Command {
@@ -40,7 +34,6 @@ export class AssignLotsLabelConfigCommand extends Command {
     this.opts = opts;
   }
 
-  /** Agrupa lotes por manzano padre (lotGroupId) — la numeración reinicia en 1 por grupo. */
   private targetGroups(ctx: CommandContext): Map<string, Feature<Geometry>[]> {
     const targetGroup = this.opts.manzanoId != null ? String(this.opts.manzanoId) : null;
     const groups = new Map<string, Feature<Geometry>[]>();
@@ -64,14 +57,28 @@ export class AssignLotsLabelConfigCommand extends Command {
     for (const [groupId, feats] of this.targetGroups(ctx)) {
       const parentFeat = ctx.drawSource.getFeatureById(groupId) as Feature<Geometry> | null;
       const parentCode = (parentFeat?.get('code') as string | undefined) ?? undefined;
-      const sorted = [...feats].sort((a, b) => lotSortKey(a) - lotSortKey(b));
+      const sorted = [...feats].sort((a, b) =>
+        naturalCompare(String(a.get('code') ?? ''), String(b.get('code') ?? ''))
+      );
       sorted.forEach((f, i) => {
         const id = f.getId();
         if (id == null) return;
-        this.before.set(id, { config: f.get('labelConfig'), text: f.get('labelText') });
-        const text = formatOrderLabel(this.opts.numbering, i, sorted.length, parentCode);
+        this.before.set(id, {
+          config: f.get('labelConfig') as LabelStyleConfig | undefined,
+          text: f.get('labelText') as string | undefined,
+          orderIndex: f.get('labelOrderIndex') as number | undefined,
+        });
+        const text = formatOrderLabel(
+          this.opts.numbering,
+          i,
+          sorted.length,
+          parentCode,
+          this.opts.customTemplate
+        );
         f.set('labelConfig', effectiveConfig, true);
         f.set('labelText', text, true);
+        f.set('labelOrderIndex', i, true);
+        f.set('labelNumberingMode', this.opts.numbering, true);
         const layerId = f.get('layerId') as string | undefined;
         if (layerId && !this.layerSnapshots.has(layerId)) {
           this.layerSnapshots.set(layerId, ensureLayerLabelsVisible(layerId));

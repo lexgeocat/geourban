@@ -50,3 +50,9 @@ export function defaultLabelClass(layerId: string, style: LabelStyleConfig): Lab
     updatedAt: new Date().toISOString(),
   };
 }
+
+export interface LabelClassNumbering {
+  mode: LabelNumberingMode;
+  restartPerParent: boolean;
+  customTemplate?: string;
+}

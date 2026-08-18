@@ -312,6 +312,55 @@ body,
 }
 
 /* ============================================================
+   Layer Panel — Hover profesional en filas de capa
+   ============================================================ */
+[data-layer-row='true'] {
+  transition: background 120ms ease, box-shadow 120ms ease;
+}
+[data-layer-row='true']:hover {
+  background: var(--cad-bg-hover);
+  box-shadow: inset 2px 0 0 0 var(--cad-accent);
+}
+/* Chip de hover en los botones de acción (ojo, lápiz, color…) */
+[data-layer-row='true'] .cad-a11y-btn {
+  padding: 2px;
+  margin: -2px 0;
+  border-radius: 4px;
+  transition: background 100ms ease;
+}
+[data-layer-row='true'] .cad-a11y-btn:hover {
+  background: rgba(255, 255, 255, 0.07);
+}
+/* Al hacer hover sobre el botón, su icono se ilumina por completo
+   (gana al opacity inline del estado inactivo del ojo/lápiz) */
+[data-layer-row='true'] .cad-a11y-btn:hover svg {
+  opacity: 1 !important;
+  color: var(--cad-accent) !important;
+}
+/* Grip de arrastre: se ilumina con el accent al hoverear la fila */
+.layer-row-grip {
+  transition: color 120ms ease;
+}
+[data-layer-row='true']:hover .layer-row-grip {
+  color: var(--cad-accent) !important;
+}
+/* Nombre de la capa: se aclara al hoverear la fila (aunque esté oculta) */
+.layer-row-name-btn {
+  transition: color 120ms ease;
+}
+[data-layer-row='true']:hover .layer-row-name-btn {
+  color: var(--cad-text) !important;
+}
+/* Header de sección ("Capas de datos"): pill de hover sutil */
+.layer-section-header {
+  border-radius: 4px;
+  transition: background 120ms ease;
+}
+.layer-section-header:hover {
+  background: var(--cad-bg-hover);
+}
+
+/* ============================================================
    CAD Toggle Switch
    ============================================================ */
 .cad-toggle {

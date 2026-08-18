@@ -6,12 +6,16 @@ import { useLayersStore } from '@layers-engine/store/layersRegistryStore';
 export interface LabelFieldsSnapshot {
   config?: LabelStyleConfig;
   text?: string;
+  orderIndex?: number;
 }
+
 export function restoreLabelFields(feature: Feature<Geometry>, prev: LabelFieldsSnapshot): void {
   if (prev.config) feature.set('labelConfig', prev.config, true);
   else feature.unset('labelConfig', true);
   if (prev.text !== undefined) feature.set('labelText', prev.text, true);
   else feature.unset('labelText', true);
+  if (prev.orderIndex !== undefined) feature.set('labelOrderIndex', prev.orderIndex, true);
+  else feature.unset('labelOrderIndex', true);
 }
 
 export interface LayerVisibilitySnapshot {
@@ -19,9 +23,7 @@ export interface LayerVisibilitySnapshot {
   showCota?: boolean;
 }
 
-export function ensureLayerLabelsVisible(
-  layerId: string | undefined
-): LayerVisibilitySnapshot {
+export function ensureLayerLabelsVisible(layerId: string | undefined): LayerVisibilitySnapshot {
   const snap: LayerVisibilitySnapshot = {};
   if (!layerId) return snap;
   const store = useLayersStore.getState();
@@ -38,7 +40,10 @@ export function ensureLayerLabelsVisible(
   return snap;
 }
 
-export function restoreLayerVisibility(layerId: string | undefined, snap: LayerVisibilitySnapshot): void {
+export function restoreLayerVisibility(
+  layerId: string | undefined,
+  snap: LayerVisibilitySnapshot
+): void {
   if (!layerId) return;
   const store = useLayersStore.getState();
   if (snap.showLabel !== undefined) store.update({ id: layerId, showLabel: snap.showLabel });

@@ -21,6 +21,7 @@ export * from './utils/rafThrottle';
 export * from './modes/ModeContext';
 export * from './geometry/vertexEditing';
 export * from './geometry/splitGeometry';
+export * from './utils/naturalSort';
 
 export {
   createExtensionPoint,

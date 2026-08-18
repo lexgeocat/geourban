@@ -37,7 +37,13 @@ function resolveTextFromClass(
   if (explicit) return explicit;
   if (classObj.numbering && ctx.orderIndex != null) {
     const total = ctx.total ?? ctx.orderIndex + 1;
-    return formatOrderLabel(classObj.numbering.mode, ctx.orderIndex, total, ctx.parentCode);
+    return formatOrderLabel(
+      classObj.numbering.mode,
+      ctx.orderIndex,
+      total,
+      ctx.parentCode,
+      classObj.numbering.customTemplate
+    );
   }
   return '';
 }

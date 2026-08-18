@@ -22,6 +22,7 @@ export * from './modes/LabelOrderMode';
 export * from './painters/LabelPainter';
 
 export * from './util/textMeasureCache';
+export * from './commands/AssignLayerEntityOrderCommand';
 
 export { default as LabelConfigModal } from './ui/LabelConfigModal';
 export { default as LabelingCard } from './ui/cards/LabelingCard';
