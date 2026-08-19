@@ -22,6 +22,7 @@ import {
   Circle,
   MapPin,
   GripVertical,
+  Table2,
 } from 'lucide-react';
 import { useLayersStore } from '@layers-engine/store/layersRegistryStore';
 import type { LayerKind } from '@kernel/domain-model/featureModel';
@@ -55,6 +56,7 @@ import { useLabelConfigModalStore } from '@label-engine/store/labelConfigModalSt
 import { useLabelClassStore } from '@label-engine/store/labelClassStore';
 import { defaultColorForKind, defaultLabelStyleConfig } from '@label-engine/model/labelModel';
 import { useEditSessionStore } from '@layers-engine/store/editSessionStore';
+import { useAttributeTableStore } from '@attributes-engine';
 
 /* ----------- Icons ----------- */
 
@@ -809,6 +811,13 @@ function LayerContextMenu({
         onClose={onClose}
       >
         Zoom a extensión
+      </LayerRowMenuItem>
+      <LayerRowMenuItem
+        icon={<Table2 size={13} />}
+        onClick={() => useAttributeTableStore.getState().openForLayer(row.id)}
+        onClose={onClose}
+      >
+        Tabla de atributos
       </LayerRowMenuItem>
       <LayerRowMenuItem icon={<Pencil size={13} />} onClick={onRename} onClose={onClose}>
         Renombrar

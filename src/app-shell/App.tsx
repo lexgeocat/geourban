@@ -13,6 +13,7 @@ import ToastStack from '@shared-ui/ToastStack';
 import SaveProjectModal from '@persistence-engine/ui/SaveProjectModal';
 import OpenProjectModal from '@persistence-engine/ui/OpenProjectModal';
 import LabelConfigModal from '@label-engine/ui/LabelConfigModal';
+import { AttributeTablePanel } from '@attributes-engine';
 
 function App() {
   useKeyboardShortcuts();
@@ -58,6 +59,7 @@ function App() {
       <LabelConfigModal />
       <ToastStack />
       <ManualDimensionInput />
+      <AttributeTablePanel />
 
       <StatusBar />
     </div>

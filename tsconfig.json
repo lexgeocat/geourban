@@ -28,7 +28,9 @@
       "@map-core/*": ["src/map-core/*"],
       "@persistence-engine/*": ["src/persistence-engine/*"],
       "@shared-ui/*": ["src/shared-ui/*"],
-      "@app-shell/*": ["src/app-shell/*"]
+      "@app-shell/*": ["src/app-shell/*"],
+      "@attributes-engine": ["src/attributes-engine/index.ts"],
+      "@attributes-engine/*": ["src/attributes-engine/*"]
     }
   },
   "include": ["src"],

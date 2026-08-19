@@ -22,6 +22,7 @@ export default defineConfig({
       '@persistence-engine': path.resolve(__dirname, './src/persistence-engine'),
       '@shared-ui': path.resolve(__dirname, './src/shared-ui'),
       '@app-shell': path.resolve(__dirname, './src/app-shell'),
+      '@attributes-engine': path.resolve(__dirname, './src/attributes-engine'),
     },
   },
   server: {
