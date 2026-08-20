@@ -12,6 +12,8 @@ import type Geometry from 'ol/geom/Geometry.js';
 import { Style, Fill, Stroke, Circle as CircleStyle, RegularShape } from 'ol/style.js';
 import { runCommand } from '@kernel/command/CommandStack';
 import { ModifyGeometryCommand } from '../commands/ModifyGeometryCommand';
+import { ringCorners } from '@kernel/geometry/vertexEditing';
+import { SKETCH_POLY_COLOR, SKETCH_POLY_FILL } from '../styles/sketchVisualization';
 
 type Pt = [number, number];
 
@@ -23,13 +25,6 @@ interface HandleRef {
 
 const HIT_TOLERANCE_PX = 10;
 const MIN_SIZE_MAP_UNITS = 0.05;
-
-function ringCorners(geom: Polygon): Pt[] | null {
-  const ring = geom.getCoordinates()[0];
-  if (!ring || ring.length < 4) return null;
-  const pts = ring.slice(0, 4).map((c) => [c[0], c[1]] as Pt);
-  return pts.length === 4 ? pts : null;
-}
 
 const sub = (a: Pt, b: Pt): Pt => [a[0] - b[0], a[1] - b[1]];
 const add = (a: Pt, b: Pt): Pt => [a[0] + b[0], a[1] + b[1]];
@@ -82,16 +77,16 @@ export class RectangleResizeInteraction extends Interaction {
               points: 4,
               radius: 7,
               angle: Math.PI / 4,
-              fill: new Fill({ color: '#f59e0b' }),
-              stroke: new Stroke({ color: '#0d1117', width: 1.5 }),
+              fill: new Fill({ color: SKETCH_POLY_FILL }),
+              stroke: new Stroke({ color: SKETCH_POLY_COLOR, width: 1.5 }),
             }),
           });
         }
         return new Style({
           image: new CircleStyle({
             radius: 5,
-            fill: new Fill({ color: '#f59e0b' }),
-            stroke: new Stroke({ color: '#0d1117', width: 1.5 }),
+            fill: new Fill({ color: SKETCH_POLY_FILL }),
+            stroke: new Stroke({ color: SKETCH_POLY_COLOR, width: 1.5 }),
           }),
         });
       },

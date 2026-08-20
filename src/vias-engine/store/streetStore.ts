@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import { createIdCounter, nextEntityName, renumberEntityNames } from './roadEntityStore';
+import { nextLayerFid } from '@kernel/id/layerFidRegistry';
 
 export interface Street {
   id: string;
@@ -11,6 +12,7 @@ export interface Street {
   waypoints?: Array<[number, number]>;
   name: string;
   layerId?: string;
+  fid?: number;
 }
 
 interface StreetState {
@@ -19,7 +21,7 @@ interface StreetState {
   defaultSideWidthM: number;
 
   addStreet: (
-    street: Omit<Street, 'id' | 'name' | 'sideWidthM'> & { sideWidthM?: number }
+    street: Omit<Street, 'id' | 'name' | 'sideWidthM' | 'fid'> & { sideWidthM?: number }
   ) => string;
   addStreetWithId: (id: string, street: Omit<Street, 'id' | 'name'>) => void;
   updateStreet: (id: string, patch: Partial<Omit<Street, 'id'>>) => void;
@@ -49,11 +51,13 @@ export const useStreetStore = create<StreetState>()(
         const id = streetIdCounter.next('street-');
         newId = id;
         const name = nextEntityName(state.streets.length, 'Vía');
+        const clamped = clampStreetParams(street);
         state.streets.push({
-          ...clampStreetParams(street),
+          ...clamped,
           sideWidthM: street.sideWidthM ?? state.defaultSideWidthM,
           id,
           name,
+          fid: clamped.layerId ? nextLayerFid(clamped.layerId) : undefined,
         });
       });
       return newId;
@@ -63,14 +67,19 @@ export const useStreetStore = create<StreetState>()(
       set((state) => {
         if (state.streets.some((s) => s.id === id)) return;
         const name = nextEntityName(state.streets.length, 'Vía');
-        state.streets.push({ ...street, id, name });
+        const fid = street.fid ?? (street.layerId ? nextLayerFid(street.layerId) : undefined);
+        state.streets.push({ ...street, id, name, fid });
       }),
 
     updateStreet: (id, patch) =>
       set((state) => {
         const street = state.streets.find((s) => s.id === id);
         if (!street) return;
-        Object.assign(street, clampStreetParams(patch));
+        const clamped = clampStreetParams(patch);
+        if (clamped.layerId !== undefined && clamped.layerId !== street.layerId) {
+          street.fid = nextLayerFid(clamped.layerId);
+        }
+        Object.assign(street, clamped);
       }),
 
     removeStreet: (id) =>

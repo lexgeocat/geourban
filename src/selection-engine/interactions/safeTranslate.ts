@@ -12,11 +12,7 @@ import { hitTestFeature } from '../geometry/hitTest';
 export class TranslateEvent extends BaseEvent {
   features: Collection<Feature<Geometry>>;
   coordinate: [number, number];
-  constructor(
-    type: string,
-    features: Collection<Feature<Geometry>>,
-    coordinate: [number, number]
-  ) {
+  constructor(type: string, features: Collection<Feature<Geometry>>, coordinate: [number, number]) {
     super(type);
     this.features = features;
     this.coordinate = coordinate;
@@ -26,6 +22,7 @@ export class TranslateEvent extends BaseEvent {
 export interface SafeTranslateOptions {
   features: Collection<Feature<Geometry>>;
   hitTolerance?: number;
+  isBlockedByHandle?: (coordinate: [number, number]) => boolean;
 }
 
 export default class SafeTranslate extends Interaction {
@@ -36,6 +33,7 @@ export default class SafeTranslate extends Interaction {
   private hitTolerancePx_: number;
   private lastCoordinate_: [number, number] | null = null;
   private dragging_ = false;
+  private readonly isBlockedByHandle_?: (coordinate: [number, number]) => boolean;
 
   constructor(options: SafeTranslateOptions) {
     super({
@@ -43,6 +41,7 @@ export default class SafeTranslate extends Interaction {
     });
     this.features_ = options.features;
     this.hitTolerancePx_ = options.hitTolerance ?? 6;
+    this.isBlockedByHandle_ = options.isBlockedByHandle;
   }
 
   private featureAtCoordinate_(map: Map, coordinate: [number, number]): Feature<Geometry> | null {
@@ -59,9 +58,12 @@ export default class SafeTranslate extends Interaction {
     const type = evt.type;
 
     if (type === 'pointerdown') {
-      const feature = this.featureAtCoordinate_(map, evt.coordinate as [number, number]);
+      const coordinate = evt.coordinate as [number, number];
+      if (this.isBlockedByHandle_?.(coordinate)) return true; // hay un vértice/handle acá — no es "mover"
+
+      const feature = this.featureAtCoordinate_(map, coordinate);
       if (feature) {
-        this.lastCoordinate_ = evt.coordinate as [number, number];
+        this.lastCoordinate_ = coordinate;
         this.dragging_ = true;
         this.dispatchEvent(
           new TranslateEvent('translatestart', this.features_, this.lastCoordinate_)

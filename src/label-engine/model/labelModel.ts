@@ -25,6 +25,7 @@ export interface LabelStyleConfig {
   visibleMinZoom?: number;
   visibleMaxZoom?: number;
   priority?: number;
+  fieldBindings?: string[];
 }
 
 export function normalizeLabelStyleConfig(cfg: LabelStyleConfig | undefined): LabelStyleConfig {

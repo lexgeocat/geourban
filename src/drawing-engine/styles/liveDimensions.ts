@@ -7,9 +7,19 @@ const LABEL_PX_OFFSET = 14;
 const MIN_LABEL_LEN_MAP_UNITS = 0.3;
 const MIN_LABEL_LEN_M = 0.3;
 
-export function buildSegmentLiveLabels(map: Map, sketchCoords: number[][]): Style[] {
+export interface LiveSegmentStat {
+  p0: [number, number];
+  p1: [number, number];
+  midpoint: [number, number];
+  labelPoint: [number, number];
+  angleRad: number;
+  lengthM: number;
+  isLastSegment: boolean;
+}
+
+export function computeLiveSegmentStats(map: Map, sketchCoords: number[][]): LiveSegmentStat[] {
   if (sketchCoords.length < 2) return [];
-  const labels: Style[] = [];
+  const stats: LiveSegmentStat[] = [];
   const skRes = map.getView().getResolution() ?? 1;
   const totalSegments = sketchCoords.length - 1;
 
@@ -37,12 +47,27 @@ export function buildSegmentLiveLabels(map: Map, sketchCoords: number[][]): Styl
     const labelX = midX + perpNx * perpLen;
     const labelY = midY + perpNy * perpLen;
 
-    const isLastSegment = i === totalSegments - 1;
-    const label = liveLen >= 100 ? liveLen.toFixed(1) + ' m' : liveLen.toFixed(2) + ' m';
-
-    labels.push(
-      createLiveDrawingLabelStyle(label, [labelX, labelY], textAngle, true, isLastSegment)
-    );
+    stats.push({
+      p0: [a[0], a[1]],
+      p1: [b[0], b[1]],
+      midpoint: [midX, midY],
+      labelPoint: [labelX, labelY],
+      angleRad: textAngle,
+      lengthM: liveLen,
+      isLastSegment: i === totalSegments - 1,
+    });
   }
-  return labels;
+  return stats;
+}
+
+export function buildSegmentLiveLabels(map: Map, sketchCoords: number[][]): Style[] {
+  return computeLiveSegmentStats(map, sketchCoords).map((s) =>
+    createLiveDrawingLabelStyle(
+      s.lengthM >= 100 ? s.lengthM.toFixed(1) + ' m' : s.lengthM.toFixed(2) + ' m',
+      s.labelPoint,
+      s.angleRad,
+      true,
+      s.isLastSegment
+    )
+  );
 }

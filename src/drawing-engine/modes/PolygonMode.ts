@@ -11,6 +11,7 @@ import { AddFeatureCommand } from '../commands/AddFeatureCommand';
 import { updateFeatureMetrics } from '@georef-engine/metrics';
 import { buildSegmentLiveLabels } from '../styles/liveDimensions';
 import { resolveOrCreateLayerForKind } from '@layers-engine/store/layerResolution';
+import { SKETCH_POLY_COLOR, SKETCH_POLY_FILL } from '../styles/sketchVisualization';
 import type { ModeContext } from '@kernel/modes/ModeContext';
 
 export function activatePolygon(ctx: ModeContext): void {
@@ -35,15 +36,15 @@ export function activatePolygon(ctx: ModeContext): void {
               geometry: new MultiPoint(confirmedCoords as number[][]),
               image: new CircleStyle({
                 radius: 5,
-                fill: new Fill({ color: 'rgba(0, 212, 255, 0.25)' }),
-                stroke: new Stroke({ color: 'rgba(0, 212, 255, 0.95)', width: 1.5 }),
+                fill: new Fill({ color: SKETCH_POLY_FILL }),
+                stroke: new Stroke({ color: SKETCH_POLY_COLOR, width: 1.5 }),
               }),
             })
           : null;
 
       const lineStyle = new Style({
         stroke: new Stroke({
-          color: 'rgba(0, 212, 255, 0.95)',
+          color: SKETCH_POLY_COLOR,
           width: 2,
           lineDash: [6, 4],
           lineCap: 'round',

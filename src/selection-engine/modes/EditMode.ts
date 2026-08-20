@@ -1,19 +1,34 @@
-import { Fill, Stroke, Style } from 'ol/style.js';
+import { Fill, Stroke, Style, Circle as CircleStyle } from 'ol/style.js';
 import Modify from 'ol/interaction/Modify.js';
 import Collection from 'ol/Collection.js';
 import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
+import type { FeatureLike } from 'ol/Feature.js';
+import Polygon from 'ol/geom/Polygon.js';
+import LineString from 'ol/geom/LineString.js';
 import SafeTranslate, { type TranslateEvent } from '../interactions/safeTranslate';
 import { useSelectionStore } from '../store/selectionStore';
 import { ModifyGeometryCommand } from '@drawing-engine/commands/ModifyGeometryCommand';
 import { RectangleResizeInteraction } from '@drawing-engine/interactions/RectangleResizeInteraction';
 import { runCommand } from '@kernel/command/CommandStack';
 import { updateFeatureMetrics } from '@georef-engine/metrics';
-import { findNearestVertex, removeVertexFromFeature } from '@kernel/geometry/vertexEditing';
+import {
+  findNearestVertex,
+  findNearestRectHandle,
+  removeVertexFromFeature,
+} from '@kernel/geometry/vertexEditing';
 import { isVertexEditableKind, isRectangleFeature } from '@kernel/domain-model/featureModel';
 import type { HitTestSelect } from '../interactions/HitTestSelect';
 import type { ModeContext } from '@kernel/modes/ModeContext';
 import { toast } from '@shared-ui/store/toastStore';
+import {
+  SKETCH_POLY_COLOR,
+  SKETCH_POLY_FILL,
+  SKETCH_LINE_COLOR,
+  SKETCH_LINE_FILL,
+} from '@drawing-engine/styles/sketchVisualization';
+
+const HANDLE_BLOCK_TOLERANCE_PX = 10;
 
 function commitPendingOrFallback(
   pending: ModifyGeometryCommand | null,
@@ -101,6 +116,15 @@ export function activateEdit(ctx: ModeContext, select: HitTestSelect): void {
     );
   }
 
+  // ── Overlay: cotas por segmento en vivo, igual que al dibujar ──
+  const overlayTargets = selectedFeatures.filter((f) => {
+    if (!ctx.isLayerEditable(f)) return false;
+    const g = f.getGeometry();
+    return g instanceof Polygon || g instanceof LineString;
+  });
+  ctx.postrenderPainter?.setVertexEditTargets(overlayTargets);
+  ctx.addCleanup(() => ctx.postrenderPainter?.setVertexEditTargets(null));
+
   const isVertexEditable = (f: Feature<Geometry>) =>
     ctx.isLayerEditable(f) && isVertexEditableKind(f) && !isRectangleFeature(f);
 
@@ -130,10 +154,21 @@ export function activateEdit(ctx: ModeContext, select: HitTestSelect): void {
 
   const modify = new Modify({
     features: vertexEditableFeatures,
-    style: new Style({
-      fill: new Fill({ color: 'rgba(245, 158, 11, 0.2)' }),
-      stroke: new Stroke({ color: '#f59e0b', width: 2 }),
-    }),
+    style: (styleFeature: FeatureLike, _resolution: number): Style => {
+      const underlying = (styleFeature.get('features') as Feature<Geometry>[] | undefined) ?? [];
+      const isLineKind = underlying.some((f) => f.getGeometry() instanceof LineString);
+      const color = isLineKind ? SKETCH_LINE_COLOR : SKETCH_POLY_COLOR;
+      const fillColor = isLineKind ? SKETCH_LINE_FILL : SKETCH_POLY_FILL;
+      return new Style({
+        fill: new Fill({ color: fillColor }),
+        stroke: new Stroke({ color, width: 2 }),
+        image: new CircleStyle({
+          radius: 6,
+          fill: new Fill({ color: fillColor }),
+          stroke: new Stroke({ color, width: 1.5 }),
+        }),
+      });
+    },
   });
   let pendingModify: ModifyGeometryCommand | null = null;
   modify.on('modifystart', (event) => {
@@ -154,7 +189,22 @@ export function activateEdit(ctx: ModeContext, select: HitTestSelect): void {
   map.addInteraction(modify);
   ctx.addCleanup(() => map.removeInteraction(modify));
 
-  const translate = new SafeTranslate({ features: translatableFeatures, hitTolerance: 6 });
+  const isPointerBlockedByHandle = (coordinate: [number, number]): boolean => {
+    const resolution = map.getView().getResolution() ?? 1;
+    const tol = HANDLE_BLOCK_TOLERANCE_PX * resolution;
+    if (findNearestVertex(vertexEditableFeatures.getArray(), coordinate, tol)) return true;
+    const rectCandidates = translatableFeatures.getArray().filter(isRectEligible);
+    if (rectCandidates.length > 0 && findNearestRectHandle(rectCandidates, coordinate, tol)) {
+      return true;
+    }
+    return false;
+  };
+
+  const translate = new SafeTranslate({
+    features: translatableFeatures,
+    hitTolerance: 6,
+    isBlockedByHandle: isPointerBlockedByHandle,
+  });
   let pendingTranslate: ModifyGeometryCommand | null = null;
 
   translate.on('translatestart', (event) => {

@@ -1,5 +1,15 @@
-import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
-import { Table2, Search, X, ArrowUpDown, ArrowUp, ArrowDown, Trash2, ZoomIn } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Table2,
+  Search,
+  X,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
+  Trash2,
+  ZoomIn,
+  Tag,
+} from 'lucide-react';
 import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
 import type { Extent } from 'ol/extent.js';
@@ -26,6 +36,9 @@ import type { RoundaboutParams } from '@vias-engine/geometry/roundaboutEngine';
 import { useEntityLabelStore } from '@label-engine/store/entityLabelStore';
 import { recomputeManzanos } from '@manzanos-engine/orchestration/recomputeManzanos';
 import { toast } from '@shared-ui/store/toastStore';
+import { useLabelClassStore } from '@label-engine/store/labelClassStore';
+import { UpsertLabelClassCommand } from '@label-engine/commands/UpsertLabelClassCommand';
+import { defaultLabelStyleConfig, defaultColorForKind } from '@label-engine/model/labelModel';
 
 const PANEL_MIN_H = 180;
 const PANEL_MAX_RATIO = 0.72;
@@ -45,8 +58,6 @@ function extentFromPoints(pts: Array<[number, number]>, padM = 0): Extent {
   return [minX - padM, minY - padM, maxX + padM, maxY + padM];
 }
 
-// ─── Grilla genérica: sirve para Feature<Geometry>, Street o Roundabout ────
-
 interface RowDescriptor<T> {
   id: string | number;
   item: T;
@@ -59,6 +70,8 @@ interface AttributeGridProps<T> {
   onSelectRow: (id: string | number) => void;
   onZoomRow: (item: T) => void;
   onCommitEdit: (id: string | number, key: string, value: unknown) => void;
+  isLabelField?: (key: string) => boolean;
+  onToggleLabelField?: (key: string) => void;
 }
 
 function AttributeGrid<T>({
@@ -68,6 +81,8 @@ function AttributeGrid<T>({
   onSelectRow,
   onZoomRow,
   onCommitEdit,
+  isLabelField,
+  onToggleLabelField,
 }: AttributeGridProps<T>) {
   const search = useAttributeTableStore((s) => s.search);
   const sortKey = useAttributeTableStore((s) => s.sortKey);
@@ -115,38 +130,64 @@ function AttributeGrid<T>({
       >
         <div style={{ width: 34, flexShrink: 0 }} />
         {columns.map((col) => (
-          <button
+          <div
             key={col.key}
-            onClick={() => toggleSort(col.key)}
-            style={{
-              flex: 1,
-              minWidth: 90,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-              justifyContent: col.align === 'right' ? 'flex-end' : 'flex-start',
-              padding: '6px 8px',
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              fontSize: '0.64rem',
-              fontWeight: 700,
-              letterSpacing: '0.03em',
-              textTransform: 'uppercase',
-              color: sortKey === col.key ? 'var(--cad-accent)' : 'var(--cad-text-dim)',
-            }}
+            style={{ flex: 1, minWidth: 90, display: 'flex', alignItems: 'center' }}
           >
-            {col.label}
-            {sortKey === col.key ? (
-              sortDir === 'asc' ? (
-                <ArrowUp size={10} />
+            <button
+              onClick={() => toggleSort(col.key)}
+              style={{
+                flex: 1,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+                justifyContent: col.align === 'right' ? 'flex-end' : 'flex-start',
+                padding: '6px 8px',
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                fontSize: '0.64rem',
+                fontWeight: 700,
+                letterSpacing: '0.03em',
+                textTransform: 'uppercase',
+                color: sortKey === col.key ? 'var(--cad-accent)' : 'var(--cad-text-dim)',
+              }}
+            >
+              {col.label}
+              {sortKey === col.key ? (
+                sortDir === 'asc' ? (
+                  <ArrowUp size={10} />
+                ) : (
+                  <ArrowDown size={10} />
+                )
               ) : (
-                <ArrowDown size={10} />
-              )
-            ) : (
-              <ArrowUpDown size={10} style={{ opacity: 0.35 }} />
+                <ArrowUpDown size={10} style={{ opacity: 0.35 }} />
+              )}
+            </button>
+            {col.key !== 'fid' && onToggleLabelField && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onToggleLabelField(col.key);
+                }}
+                title={
+                  isLabelField?.(col.key) ? 'Quitar de la etiqueta' : 'Usar como campo de etiqueta'
+                }
+                aria-label={
+                  isLabelField?.(col.key) ? 'Quitar de la etiqueta' : 'Usar como campo de etiqueta'
+                }
+                className="cad-a11y-btn"
+                style={{
+                  padding: 3,
+                  marginRight: 4,
+                  color: isLabelField?.(col.key) ? 'var(--cad-accent)' : 'var(--cad-text-muted)',
+                  flexShrink: 0,
+                }}
+              >
+                <Tag size={10} />
+              </button>
             )}
-          </button>
+          </div>
         ))}
         <div style={{ width: 34, flexShrink: 0 }} />
       </div>
@@ -270,8 +311,6 @@ function AttributeGrid<T>({
   );
 }
 
-// ─── Panel principal: arma filas/columnas según layer.kind ─────────────────
-
 export default function AttributeTablePanel() {
   const open = useAttributeTableStore((s) => s.open);
   const layerId = useAttributeTableStore((s) => s.layerId);
@@ -286,11 +325,12 @@ export default function AttributeTablePanel() {
 
   const drawSource = useMapStore((s) => s.drawSource);
   const mapInstance = useMapStore((s) => s.mapInstance);
-  useDrawSourceTick(drawSource); // fuerza re-render cuando cambian features del drawSource
+  useDrawSourceTick(drawSource);
   const streets = useStreetStore((s) => s.streets);
   const roundabouts = useRoundaboutStore((s) => s.roundabouts);
   const selectedIds = useSelectionStore((s) => s.selectedIds);
   const setSelection = useSelectionStore((s) => s.setSelection);
+  const labelClass = useLabelClassStore((s) => (layer ? s.byLayerId[layer.id] : undefined));
 
   const [height, setHeight] = useState(PANEL_DEFAULT_H);
   const dragRef = useRef<{ startY: number; startH: number } | null>(null);
@@ -326,11 +366,32 @@ export default function AttributeTablePanel() {
       .fit(ext, { size: mapInstance.getSize(), maxZoom: 20, padding: [80, 80, 80, 80] });
   };
 
-  let gridEl: ReactElement;
-  let selectedCountInScope: number;
-  let onMoveToLayer: ((targetId: string) => void) | null;
-  let onDeleteSelected: (() => void) | null;
-  let moveTargets: Array<{ id: string; name: string }>;
+  const activeFieldKeys = new Set(labelClass?.style.fieldBindings ?? []);
+  const toggleLabelField = (key: string) => {
+    const base =
+      labelClass?.style ?? defaultLabelStyleConfig({ color: defaultColorForKind(layer.kind) });
+    const next = new Set(base.fieldBindings ?? []);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    void runCommand(
+      new UpsertLabelClassCommand({
+        layerId: layer.id,
+        style: { ...base, fieldBindings: Array.from(next) },
+        enabled: labelClass?.enabled ?? true,
+        numbering: labelClass?.numbering,
+        priority: labelClass?.priority,
+        visibleMinZoom: labelClass?.visibleMinZoom,
+        visibleMaxZoom: labelClass?.visibleMaxZoom,
+      })
+    );
+  };
+  const isLabelField = (key: string) => activeFieldKeys.has(key);
+
+  let gridEl: React.JSX.Element;
+  let selectedCountInScope = 0;
+  let onMoveToLayer: ((targetId: string) => void) | null = null;
+  let onDeleteSelected: (() => void) | null = null;
+  let moveTargets: Array<{ id: string; name: string }> = [];
 
   if (layer.kind === 'via') {
     const fallbackViaId = useLayersStore.getState().getLayerForKind('via')?.id;
@@ -374,6 +435,8 @@ export default function AttributeTablePanel() {
             .getState()
             .updateStreet(id as string, { [key]: value } as unknown as Partial<Omit<Street, 'id'>>)
         }
+        isLabelField={isLabelField}
+        onToggleLabelField={toggleLabelField}
       />
     );
   } else if (layer.kind === 'rotonda') {
@@ -423,6 +486,8 @@ export default function AttributeTablePanel() {
               { [key]: value } as unknown as Partial<RoundaboutParams>
             )
         }
+        isLabelField={isLabelField}
+        onToggleLabelField={toggleLabelField}
       />
     );
   } else {
@@ -466,6 +531,8 @@ export default function AttributeTablePanel() {
         onCommitEdit={(id, key, value) =>
           void runCommand(new UpdateFeaturePropertyCommand(id, key, value))
         }
+        isLabelField={isLabelField}
+        onToggleLabelField={toggleLabelField}
       />
     );
   }

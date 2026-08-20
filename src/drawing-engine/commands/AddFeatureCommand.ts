@@ -5,6 +5,7 @@ import { GeoUrbanFeatureKind } from '@kernel/domain-model/featureModel';
 import { pickLayerId } from '@layers-engine/store/layerResolution';
 import { useEditSessionStore } from '@layers-engine/store/editSessionStore';
 import { newId } from '@kernel/id/id';
+import { nextLayerFid } from '@kernel/id/layerFidRegistry';
 
 function resolveLayerId(override?: string, kind?: GeoUrbanFeatureKind): string | undefined {
   if (!kind) return undefined;
@@ -52,6 +53,9 @@ export class AddFeatureCommand extends Command {
     const resolvedLayerId = this.layerId ?? resolveLayerId(undefined, this.kind);
     if (resolvedLayerId) {
       this.feature.set('layerId', resolvedLayerId);
+      if (this.feature.get('fid') == null) {
+        this.feature.set('fid', nextLayerFid(resolvedLayerId));
+      }
       useEditSessionStore.getState().startEditing(resolvedLayerId);
     }
     ctx.drawSource.changed();

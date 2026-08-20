@@ -14,6 +14,8 @@ export * from './interactions/RectangleResizeInteraction';
 
 export * from './styles/styleFactory';
 export * from './styles/liveDimensions';
+export * from './styles/sketchVisualization';
+export * from './painters/VertexEditOverlayPainter';
 export { SplitFeatureCommand } from './commands/SplitFeatureCommand';
 export * from './modes/SplitFeatureMode';
 

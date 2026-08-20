@@ -16,6 +16,7 @@ import { SnapGuidePainter } from '@snap-engine/painters/SnapGuidePainter';
 import { SelectionHighlightPainter } from '@selection-engine/painters/SelectionHighlightPainter';
 import { LassoOverlayPainter } from '@selection-engine/painters/LassoOverlayPainter';
 import { SubdivisionPreviewPainter } from '@lotificacion-engine/painters/SubdivisionPreviewPainter';
+import { VertexEditOverlayPainter } from '@drawing-engine/painters/VertexEditOverlayPainter';
 
 function getZoomFromResolution(resolution: number): number {
   return Math.log2(156543.03392804097 / resolution);
@@ -34,6 +35,7 @@ export class PostrenderPainter {
   private readonly subdivisionPreviewPainter = new SubdivisionPreviewPainter();
   private readonly lassoOverlayPainter = new LassoOverlayPainter();
   private readonly selectionHighlightPainter = new SelectionHighlightPainter();
+  private readonly vertexEditOverlayPainter: VertexEditOverlayPainter;
 
   private interacting = false;
 
@@ -52,6 +54,7 @@ export class PostrenderPainter {
     this.drawSource = opts.drawSource;
     this.postrenderLayer = opts.postrenderLayer;
     this.snapGuidePainter = new SnapGuidePainter(this.map);
+    this.vertexEditOverlayPainter = new VertexEditOverlayPainter(this.map);
     this.streetPainter = new StreetPainter(() => this.map.render());
     this.selectionHighlightPainter.attach(this.map, () => this.drawSource.getFeatures().length);
 
@@ -97,6 +100,12 @@ export class PostrenderPainter {
     this.postrenderLayer.changed();
   }
 
+  /** Features actualmente en edición de vértices — pinta sus cotas por segmento en vivo. */
+  setVertexEditTargets(features: Array<Feature<Geometry>> | null): void {
+    this.vertexEditOverlayPainter.setTargets(features);
+    this.postrenderLayer.changed();
+  }
+
   private handle(event: RenderEvent): void {
     const ctx = event.context as CanvasRenderingContext2D | undefined;
     if (!ctx) return;
@@ -120,6 +129,7 @@ export class PostrenderPainter {
     this.selectionHighlightPainter.paint(ctx, toPx, resolution, this.drawSource);
     this.snapGuidePainter.paint(ctx, resolution);
     this.subdivisionPreviewPainter.paint(ctx, toPx);
+    this.vertexEditOverlayPainter.paint(ctx, toPx);
     this.lassoOverlayPainter.paint(ctx, toPx);
   }
 

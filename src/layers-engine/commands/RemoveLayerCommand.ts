@@ -6,11 +6,18 @@ import type { Layer } from '@kernel/domain-model/featureModel';
 import { estimateGeometryBytes } from '@kernel/command/memoryEstimate';
 import { layerEntityAdapters, type LayerEntitySnapshot } from '@layers-engine/extension-points';
 import { useEditSessionStore } from '@layers-engine/store/editSessionStore';
+import { nextLayerFid } from '@kernel/id/layerFidRegistry';
 
 export interface RemoveLayerOptions {
   layerId: string;
   action: 'move' | 'delete';
   targetLayerId?: string;
+}
+
+interface ReassignedEntry {
+  id: string | number;
+  prevFid: number | undefined;
+  newFid: number;
 }
 
 export class RemoveLayerCommand extends Command {
@@ -19,7 +26,7 @@ export class RemoveLayerCommand extends Command {
 
   private removedLayer: Layer | null = null;
   private removedIndex = -1;
-  private reassigned: Array<{ id: string | number }> = [];
+  private reassigned: ReassignedEntry[] = [];
   private removedFeatures: Array<{ id: string | number; feature: Feature<Geometry> }> = [];
   private removedEntitySnapshots: LayerEntitySnapshot[] = [];
 
@@ -49,8 +56,11 @@ export class RemoveLayerCommand extends Command {
       for (const f of affected) {
         const id = f.getId();
         if (id == null) continue;
-        this.reassigned.push({ id });
+        const prevFid = f.get('fid') as number | undefined;
+        const newFid = nextLayerFid(target);
+        this.reassigned.push({ id, prevFid, newFid });
         f.set('layerId', target);
+        f.set('fid', newFid);
       }
       for (const adapter of layerEntityAdapters.collect()) {
         adapter.reassign(this.opts.layerId, target);
@@ -83,9 +93,12 @@ export class RemoveLayerCommand extends Command {
     for (const { id, feature } of this.removedFeatures) {
       if (ctx.drawSource.getFeatureById(id) == null) ctx.drawSource.addFeature(feature);
     }
-    for (const r of this.reassigned) {
-      const f = ctx.drawSource.getFeatureById(r.id);
-      if (f && this.removedLayer) f.set('layerId', this.removedLayer.id);
+    for (const { id, prevFid } of this.reassigned) {
+      const f = ctx.drawSource.getFeatureById(id) as Feature<Geometry> | null;
+      if (!f || !this.removedLayer) continue;
+      f.set('layerId', this.removedLayer.id);
+      if (prevFid !== undefined) f.set('fid', prevFid);
+      else f.unset('fid');
     }
     if (this.removedEntitySnapshots.length > 0) {
       for (const adapter of layerEntityAdapters.collect()) {
@@ -105,9 +118,11 @@ export class RemoveLayerCommand extends Command {
     const store = useLayersStore.getState();
     if (store.getById(this.removedLayer.id)) store.remove(this.removedLayer.id);
 
-    for (const r of this.reassigned) {
-      const f = ctx.drawSource.getFeatureById(r.id);
-      if (f && this.opts.targetLayerId) f.set('layerId', this.opts.targetLayerId);
+    for (const { id, newFid } of this.reassigned) {
+      const f = ctx.drawSource.getFeatureById(id) as Feature<Geometry> | null;
+      if (!f || !this.opts.targetLayerId) continue;
+      f.set('layerId', this.opts.targetLayerId);
+      f.set('fid', newFid);
     }
     for (const { id } of this.removedFeatures) {
       const f = ctx.drawSource.getFeatureById(id);

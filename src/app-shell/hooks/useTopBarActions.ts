@@ -15,6 +15,7 @@ import { toast } from '@shared-ui/store/toastStore';
 import { useProjectFileStore } from '@persistence-engine/store/projectFileStore';
 import { resetManzanoSeq } from '@manzanos-engine/naming/manzanoNaming';
 import { useEditSessionStore } from '@layers-engine/store/editSessionStore';
+import { resetLayerFidRegistry } from '@kernel/id/layerFidRegistry';
 
 export function useTopBarActions() {
   const handleNewProject = async () => {
@@ -33,6 +34,7 @@ export function useTopBarActions() {
     useManzanoStore.getState().resetAll();
     useEditSessionStore.getState().stopAll();
     resetManzanoSeq();
+    resetLayerFidRegistry();
     useDrawStore.getState().setMode('select');
     useDrawStore.getState().setLastDrawnLineId(null);
     refreshSourceMetrics(drawSource);

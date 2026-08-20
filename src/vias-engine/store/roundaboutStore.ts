@@ -1,12 +1,13 @@
-﻿// src/vias-engine/store/roundaboutStore.ts
-import { create } from 'zustand';
+﻿import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import type { RoundaboutParams } from '../geometry/roundaboutEngine';
 import { createIdCounter, nextEntityName, renumberEntityNames } from './roadEntityStore';
+import { nextLayerFid } from '@kernel/id/layerFidRegistry';
 
 export interface Roundabout extends RoundaboutParams {
   id: string;
   name: string;
+  fid?: number;
 }
 
 interface RoundaboutState {
@@ -17,7 +18,7 @@ interface RoundaboutState {
   defaultSidewalkWidthM: number;
 
   addRoundabout: (r: RoundaboutParams) => string;
-  addRoundaboutWithId: (id: string, r: RoundaboutParams) => void;
+  addRoundaboutWithId: (id: string, r: Omit<Roundabout, 'id' | 'name'>) => void;
   updateRoundabout: (id: string, patch: Partial<RoundaboutParams>) => void;
   removeRoundabout: (id: string) => void;
   clearRoundabouts: () => void;
@@ -44,7 +45,12 @@ export const useRoundaboutStore = create<RoundaboutState>()(
       set((state) => {
         const id = roundaboutIdCounter.next('roundabout-');
         newId = id;
-        state.roundabouts.push({ ...r, id, name: nextEntityName(state.roundabouts.length, 'Rotonda') });
+        state.roundabouts.push({
+          ...r,
+          id,
+          name: nextEntityName(state.roundabouts.length, 'Rotonda'),
+          fid: r.layerId ? nextLayerFid(r.layerId) : undefined,
+        });
       });
       return newId;
     },
@@ -52,13 +58,23 @@ export const useRoundaboutStore = create<RoundaboutState>()(
     addRoundaboutWithId: (id, r) =>
       set((state) => {
         if (state.roundabouts.some((x) => x.id === id)) return;
-        state.roundabouts.push({ ...r, id, name: nextEntityName(state.roundabouts.length, 'Rotonda') });
+        const fid = r.fid ?? (r.layerId ? nextLayerFid(r.layerId) : undefined);
+        state.roundabouts.push({
+          ...r,
+          id,
+          name: nextEntityName(state.roundabouts.length, 'Rotonda'),
+          fid,
+        });
       }),
 
     updateRoundabout: (id, patch) =>
       set((state) => {
         const rb = state.roundabouts.find((r) => r.id === id);
-        if (rb) Object.assign(rb, patch);
+        if (!rb) return;
+        if (patch.layerId !== undefined && patch.layerId !== rb.layerId) {
+          rb.fid = nextLayerFid(patch.layerId);
+        }
+        Object.assign(rb, patch);
       }),
 
     removeRoundabout: (id) =>

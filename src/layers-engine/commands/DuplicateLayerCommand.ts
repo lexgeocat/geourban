@@ -4,6 +4,7 @@ import { Command, type CommandContext } from '@kernel/command/Command';
 import { useLayersStore } from '@layers-engine/store/layersRegistryStore';
 import { layerEntityAdapters, type LayerEntitySnapshot } from '@layers-engine/extension-points';
 import { newId } from '@kernel/id/id';
+import { nextLayerFid } from '@kernel/id/layerFidRegistry';
 import type { Layer } from '@kernel/domain-model/featureModel';
 
 export interface DuplicateLayerOptions {
@@ -60,6 +61,7 @@ export class DuplicateLayerCommand extends Command {
         const clonedFeatureId = newId('dup');
         clone.setId(clonedFeatureId);
         clone.set('layerId', this.opts.newLayerId, true);
+        clone.set('fid', nextLayerFid(this.opts.newLayerId), true);
         ctx.drawSource.addFeature(clone);
         this.clonedFeatureIds.push(clonedFeatureId);
         this.clonedFeatures.push({ id: clonedFeatureId, feature: clone });
@@ -70,7 +72,11 @@ export class DuplicateLayerCommand extends Command {
           const remapped: LayerEntitySnapshot = {
             ...snap,
             id: clonedId,
-            data: { ...(snap.data as Record<string, unknown>), layerId: this.opts.newLayerId },
+            data: {
+              ...(snap.data as Record<string, unknown>),
+              layerId: this.opts.newLayerId,
+              fid: undefined, // fuerza a que el store asigne un fid nuevo
+            },
             layerId: this.opts.newLayerId,
           };
           this.clonedEntities.push({ newId: clonedId, source: remapped });

@@ -48,6 +48,7 @@ import {
 } from '@kernel/command/structuralDiff';
 import { createLotFeature } from '@lotificacion-engine/model/createLotFeature';
 import { nextManzanoSeq, manzanoCodeFromSeq } from '../naming/manzanoNaming';
+import { nextLayerFid } from '@kernel/id/layerFidRegistry';
 
 const GEOMETRY_NOCHANGE_TOL = 1e-6;
 
@@ -932,7 +933,9 @@ async function recomputeManzanosImmediate(recorder: StructuralDiffRecorder): Pro
         reused.setGeometry(new PolygonGeom([rounded]));
         if (!alreadyManzana) {
           reused.set('kind', 'manzana', true);
-          reused.set('layerId', resolveManzanaLayerId(), true);
+          const promotedLayerId = resolveManzanaLayerId();
+          reused.set('layerId', promotedLayerId, true);
+          reused.set('fid', nextLayerFid(promotedLayerId), true);
           const mznSeq = nextManzanoSeq();
           reused.set('mznSeq', mznSeq, true);
           reused.set('code', manzanoCodeFromSeq(mznSeq), true);
@@ -1002,6 +1005,7 @@ async function recomputeManzanosImmediate(recorder: StructuralDiffRecorder): Pro
       );
       const lid = resolveManzanaLayerId();
       newFeat.set('layerId', lid);
+      newFeat.set('fid', nextLayerFid(lid));
       const manzanaClass = useLabelClassStore.getState().getForLayer(lid);
       if (manzanaClass && manzanaClass.enabled) {
         newFeat.set('labelConfig', manzanaClass.style, true);

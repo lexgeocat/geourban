@@ -9,6 +9,7 @@ import { AddFeatureCommand } from '../commands/AddFeatureCommand';
 import { updateFeatureMetrics } from '@georef-engine/metrics';
 import { buildSegmentLiveLabels } from '../styles/liveDimensions';
 import { resolveOrCreateLayerForKind } from '@layers-engine/store/layerResolution';
+import { SKETCH_POLY_COLOR } from '../styles/sketchVisualization';
 import type { ModeContext } from '@kernel/modes/ModeContext';
 
 export function activateRectangle(ctx: ModeContext): void {
@@ -20,7 +21,7 @@ export function activateRectangle(ctx: ModeContext): void {
     condition: primaryAction,
     style: (feature) => {
       const shapeStyle = new Style({
-        stroke: new Stroke({ color: 'rgba(0, 212, 255, 0.95)', width: 2, lineDash: [6, 4] }),
+        stroke: new Stroke({ color: SKETCH_POLY_COLOR, width: 2, lineDash: [6, 4] }),
         fill: new Fill({ color: 'rgba(0, 212, 255, 0.10)' }),
       });
       const geom = feature.getGeometry();

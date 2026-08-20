@@ -5,6 +5,7 @@ import { closeRing, type LotResult } from '@kernel/geometry/polygonEngine';
 import { ensureKind } from '@kernel/domain-model/featureModel';
 import { updateFeatureMetrics } from '@georef-engine/metrics';
 import { newId } from '@kernel/id/id';
+import { nextLayerFid } from '@kernel/id/layerFidRegistry';
 import { pickLayerId } from '@layers-engine/store/layerResolution';
 import type { ManzanoLoteMethod } from './types';
 
@@ -54,7 +55,10 @@ export function createLotFeature(
     requireKindMatch: true,
     autoCreate: opts.autoCreateLayer,
   });
-  if (layerId) feature.set('layerId', layerId);
+  if (layerId) {
+    feature.set('layerId', layerId);
+    feature.set('fid', nextLayerFid(layerId));
+  }
 
   updateFeatureMetrics(feature);
 

@@ -29,6 +29,7 @@ import type { Layer } from '@kernel/domain-model/featureModel';
 import type { LabelStyleConfig } from '@label-engine/model/labelModel';
 import { normalizeLabelStyleConfig } from '@label-engine/model/labelModel';
 import { useEditSessionStore } from '@layers-engine/store/editSessionStore';
+import { resetLayerFidRegistry, bumpLayerFidCounter } from '@kernel/id/layerFidRegistry';
 
 interface LayerDto {
   id: string;
@@ -60,6 +61,7 @@ interface StreetDto {
   sideWidthM: number;
   waypointsJson: string | null;
   layerId: string | null;
+  fid: number | null;
 }
 interface RoundaboutDto {
   id: string;
@@ -72,7 +74,9 @@ interface RoundaboutDto {
   roadWidthM: number;
   sidewalkWidthM: number;
   layerId: string | null;
+  fid: number | null;
 }
+
 interface ProjectPayload {
   layers: LayerDto[];
   features: FeatureDto[];
@@ -177,6 +181,7 @@ function buildPayload(): ProjectPayload {
     sideWidthM: s.sideWidthM,
     waypointsJson: s.waypoints ? JSON.stringify(s.waypoints) : null,
     layerId: s.layerId ?? null,
+    fid: s.fid ?? null,
   }));
 
   const roundabouts: RoundaboutDto[] = roundaboutsState.roundabouts.map((r) => ({
@@ -190,6 +195,7 @@ function buildPayload(): ProjectPayload {
     roadWidthM: r.roadWidthM,
     sidewalkWidthM: r.sidewalkWidthM,
     layerId: r.layerId ?? null,
+    fid: r.fid ?? null,
   }));
 
   const meta: ProjectMeta = {
@@ -271,6 +277,7 @@ export async function loadProject(name: string): Promise<void> {
       sideWidthM: s.sideWidthM,
       waypoints: s.waypointsJson ? JSON.parse(s.waypointsJson) : undefined,
       layerId: s.layerId ?? undefined,
+      fid: s.fid ?? undefined,
     });
   }
   for (const r of payload.roundabouts) {
@@ -282,7 +289,20 @@ export async function loadProject(name: string): Promise<void> {
       roadWidthM: r.roadWidthM,
       sidewalkWidthM: r.sidewalkWidthM,
       layerId: r.layerId ?? undefined,
+      fid: r.fid ?? undefined,
     });
+  }
+
+  resetLayerFidRegistry();
+  for (const f of features) {
+    const flId = f.get('layerId') as string | undefined;
+    if (flId) bumpLayerFidCounter(flId, f.get('fid') as number | undefined);
+  }
+  for (const s of payload.streets) {
+    if (s.layerId) bumpLayerFidCounter(s.layerId, s.fid ?? undefined);
+  }
+  for (const r of payload.roundabouts) {
+    if (r.layerId) bumpLayerFidCounter(r.layerId, r.fid ?? undefined);
   }
 
   if (meta.crs) useProjectCrsStore.getState().loadConfig(meta.crs);

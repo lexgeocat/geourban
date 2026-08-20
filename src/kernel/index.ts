@@ -22,6 +22,7 @@ export * from './modes/ModeContext';
 export * from './geometry/vertexEditing';
 export * from './geometry/splitGeometry';
 export * from './utils/naturalSort';
+export * from './id/layerFidRegistry';
 
 export {
   createExtensionPoint,

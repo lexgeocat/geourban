@@ -40,6 +40,12 @@ import {
 import { useLabelEngineTelemetryStore } from '../store/labelEngineTelemetryStore';
 import LineString from 'ol/geom/LineString.js';
 import Point from 'ol/geom/Point.js';
+import { getFeatureKind } from '@kernel/domain-model/featureModel';
+import {
+  getFeatureFieldText,
+  getStreetFieldText,
+  getRoundaboutFieldText,
+} from '@attributes-engine/model/attributeColumns';
 
 const LABEL_BG_HEAVY = `rgba(${CAD_BG_DEEPEST_RGB}, 0.72)`;
 
@@ -139,25 +145,36 @@ function polylineMidpoint(coords: [number, number][]): [number, number] {
   return coords[coords.length - 1];
 }
 
+function appendFieldBindingLines(
+  base: string[],
+  cfg: LabelStyleConfig,
+  getter: (key: string) => string
+): string[] {
+  if (!cfg.fieldBindings || cfg.fieldBindings.length === 0) return base;
+  const extra = cfg.fieldBindings.map(getter).filter((v) => v !== '');
+  return extra.length > 0 ? [...base, ...extra] : base;
+}
+
 function buildStreetLabelLines(street: Street, cfg: LabelStyleConfig, text: string): string[] {
-  return composeLabelLines(cfg, {
+  const base = composeLabelLines(cfg, {
     text,
     primaryValue: streetLengthMetricM(street),
     primaryFormatter: (v) => formatMetricLength(v),
     secondaryLabel: 'Calzada',
     secondaryValue: street.widthM,
   });
+  return appendFieldBindingLines(base, cfg, (key) => getStreetFieldText(street, key));
 }
 
 function buildRoundaboutLabelLines(rb: Roundabout, cfg: LabelStyleConfig, text: string): string[] {
-  return composeLabelLines(cfg, {
+  const base = composeLabelLines(cfg, {
     text,
     primaryValue: roundaboutRoadAreaM2(rb),
     secondaryLabel: 'Radio',
     secondaryValue: rb.radiusM,
   });
+  return appendFieldBindingLines(base, cfg, (key) => getRoundaboutFieldText(rb, key));
 }
-
 export class LabelPainter {
   private readonly collisionGrid = new PainterCollisionGrid();
   private readonly streetSlots = new globalThis.Map<string, StreetLabelSlot[]>();
@@ -315,7 +332,7 @@ export class LabelPainter {
           cfg.useLayerColor && layer ? { ...cfg, color: layer.color } : cfg;
         resolvedStyleByFeatureId.set(fid, { style: effectiveStyle, text });
 
-        const lines = isPolygon
+        const baseLines = isPolygon
           ? composeLabelLines(effectiveStyle, {
               text,
               primaryValue: feature.get('areaM2') as number | undefined,
@@ -328,6 +345,7 @@ export class LabelPainter {
                 primaryFormatter: (v) => formatMetricLength(v),
               })
             : composeLabelLines(effectiveStyle, { text }); // punto: solo texto
+        const lines = this.appendFeatureFieldLines(baseLines, feature, effectiveStyle);
 
         if (lines.length > 0) {
           const size = this.measureLabelBlockSize(ctx, lines, effectiveStyle);
@@ -406,7 +424,7 @@ export class LabelPainter {
       const resolved = resolvedStyleByFeatureId.get(fid);
       if (!resolved) continue;
       const featGeom = feature.getGeometry();
-      const lines =
+      const baseLines =
         featGeom instanceof Polygon
           ? composeLabelLines(resolved.style, {
               text: resolved.text,
@@ -420,10 +438,24 @@ export class LabelPainter {
                 primaryFormatter: (v) => formatMetricLength(v),
               })
             : composeLabelLines(resolved.style, { text: resolved.text }); // punto
+      const lines = this.appendFeatureFieldLines(baseLines, feature, resolved.style);
       if (lines.length === 0) continue;
       if (p.leaderFromPx) this.drawLeaderLine(ctx, p.leaderFromPx, p.positionPx, resolved.style);
       this.drawLabelBlock(ctx, p.positionPx, lines, resolved.style);
     }
+  }
+  private appendFeatureFieldLines(
+    lines: string[],
+    feature: Feature<Geometry>,
+    style: LabelStyleConfig
+  ): string[] {
+    if (!style.fieldBindings || style.fieldBindings.length === 0) return lines;
+    const kind = getFeatureKind(feature);
+    if (!kind) return lines;
+    const extra = style.fieldBindings
+      .map((key) => getFeatureFieldText(feature, kind, key))
+      .filter((v) => v !== '');
+    return extra.length > 0 ? [...lines, ...extra] : lines;
   }
 
   private measureLabelBlockSize(

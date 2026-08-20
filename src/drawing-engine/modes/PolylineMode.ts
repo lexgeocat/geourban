@@ -11,6 +11,7 @@ import { AddFeatureCommand } from '../commands/AddFeatureCommand';
 import { updateFeatureMetrics } from '@georef-engine/metrics';
 import { requireLayerForKind } from '@layers-engine/store/layerPickerStore';
 import { buildSegmentLiveLabels } from '../styles/liveDimensions';
+import { SKETCH_LINE_COLOR, SKETCH_LINE_FILL } from '../styles/sketchVisualization';
 import type { ModeContext } from '@kernel/modes/ModeContext';
 
 export function activatePolyline(ctx: ModeContext): void {
@@ -30,15 +31,15 @@ export function activatePolyline(ctx: ModeContext): void {
               geometry: new MultiPoint(confirmedCoords as number[][]),
               image: new CircleStyle({
                 radius: 5,
-                fill: new Fill({ color: 'rgba(255, 214, 10, 0.25)' }),
-                stroke: new Stroke({ color: 'rgba(255, 214, 10, 0.95)', width: 1.5 }),
+                fill: new Fill({ color: SKETCH_LINE_FILL }),
+                stroke: new Stroke({ color: SKETCH_LINE_COLOR, width: 1.5 }),
               }),
             })
           : null;
 
       const lineStyle = new Style({
         stroke: new Stroke({
-          color: 'rgba(255, 214, 10, 0.95)',
+          color: SKETCH_LINE_COLOR,
           width: 2,
           lineDash: [6, 4],
           lineCap: 'round',

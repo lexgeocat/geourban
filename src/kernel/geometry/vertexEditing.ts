@@ -76,3 +76,52 @@ export function removeVertexFromFeature(
   }
   return false;
 }
+
+// ─── Handles de rectángulo (esquina/lado) ───────────────────────────────
+
+export interface RectHandleHit {
+  feature: Feature<Geometry>;
+  kind: 'corner' | 'edge';
+  index: number;
+  point: [number, number];
+}
+export function ringCorners(geom: Polygon): [number, number][] | null {
+  const ring = geom.getCoordinates()[0];
+  if (!ring || ring.length < 4) return null;
+  const pts = ring.slice(0, 4).map((c) => [c[0], c[1]] as [number, number]);
+  return pts.length === 4 ? pts : null;
+}
+export function findNearestRectHandle(
+  features: Feature<Geometry>[],
+  coord: number[],
+  toleranceMapUnits: number
+): RectHandleHit | null {
+  let best: RectHandleHit | null = null;
+  let bestDist = toleranceMapUnits;
+
+  for (const feature of features) {
+    const geom = feature.getGeometry();
+    if (!(geom instanceof Polygon)) continue;
+    const corners = ringCorners(geom);
+    if (!corners) continue;
+
+    corners.forEach((c, i) => {
+      const d = Math.hypot(c[0] - coord[0], c[1] - coord[1]);
+      if (d < bestDist) {
+        bestDist = d;
+        best = { feature, kind: 'corner', index: i, point: c };
+      }
+    });
+    for (let i = 0; i < 4; i++) {
+      const a = corners[i];
+      const b = corners[(i + 1) % 4];
+      const mid: [number, number] = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+      const d = Math.hypot(mid[0] - coord[0], mid[1] - coord[1]);
+      if (d < bestDist) {
+        bestDist = d;
+        best = { feature, kind: 'edge', index: i, point: mid };
+      }
+    }
+  }
+  return best;
+}
