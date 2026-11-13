@@ -87,21 +87,23 @@ export function activateSelect(ctx: ModeContext): HitTestSelect {
 
   // ── Tecla Escape: limpia toda la selección ──
   const viewport = ctx.map.getViewport();
-  if (!viewport.hasAttribute('tabindex')) viewport.setAttribute('tabindex', '0');
-  const onKeyDown = (e: KeyboardEvent) => {
-    if (e.key !== 'Escape') return;
-    if (e.altKey || e.ctrlKey || e.metaKey) return;
-    if (isEditableTarget(e.target)) return;
-    if (useDrawStore.getState().mode !== 'select') return;
-    e.preventDefault();
-    e.stopPropagation();
-    if (clearSelection(ctx, select)) {
-      ctx.postrenderPainter?.setLassoPreview(null);
-      ctx.map.render();
-    }
-  };
-  viewport.addEventListener('keydown', onKeyDown);
-  ctx.addCleanup(() => viewport.removeEventListener('keydown', onKeyDown));
+  if (viewport) {
+    if (!viewport.hasAttribute('tabindex')) viewport.setAttribute('tabindex', '0');
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (e.altKey || e.ctrlKey || e.metaKey) return;
+      if (isEditableTarget(e.target)) return;
+      if (useDrawStore.getState().mode !== 'select') return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (clearSelection(ctx, select)) {
+        ctx.postrenderPainter?.setLassoPreview(null);
+        ctx.map.render();
+      }
+    };
+    viewport.addEventListener('keydown', onKeyDown);
+    ctx.addCleanup(() => viewport.removeEventListener('keydown', onKeyDown));
+  }
 
   const subMode = useSelectionStore.getState().selectMode;
   if (subMode === 'rect' || subMode === 'lasso') {

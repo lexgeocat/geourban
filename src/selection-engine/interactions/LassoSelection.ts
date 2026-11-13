@@ -58,7 +58,8 @@ export class LassoSelection extends Interaction {
       this.current_ = coord;
       this.lassoPoints = this.mode === 'lasso' ? [coord] : [];
       this.dragging_ = true;
-      this.hostMap.getViewport().style.cursor = 'crosshair';
+      const vp = this.hostMap.getViewport();
+      if (vp) vp.style.cursor = 'crosshair';
       this.hostMap.render();
       return false; // empezamos drag
     }
@@ -89,7 +90,8 @@ export class LassoSelection extends Interaction {
       const end = this.current_ ?? start;
       this.anchor = null;
       this.current_ = null;
-      this.hostMap.getViewport().style.cursor = '';
+      const vp = this.hostMap.getViewport();
+      if (vp) vp.style.cursor = '';
       this.hostMap.render();
 
       if (this.mode === 'rect') {
@@ -131,7 +133,8 @@ export class LassoSelection extends Interaction {
       this.current_ = null;
       this.lassoPoints = [];
       this.dragging_ = false;
-      this.hostMap.getViewport().style.cursor = '';
+      const vp = this.hostMap.getViewport();
+      if (vp) vp.style.cursor = '';
       this.hostMap.render();
       return false;
     }

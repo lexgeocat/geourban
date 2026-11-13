@@ -214,7 +214,8 @@ export class RectangleResizeInteraction extends Interaction {
         startCorners: corners,
         pending,
       };
-      this.hostMap.getViewport().style.cursor = 'move';
+      const vp = this.hostMap.getViewport();
+      if (vp) vp.style.cursor = 'move';
       return false;
     }
 
@@ -253,7 +254,8 @@ export class RectangleResizeInteraction extends Interaction {
     if (type === 'pointerup' && this.dragging) {
       const { pending } = this.dragging;
       this.dragging = null;
-      this.hostMap.getViewport().style.cursor = '';
+      const vp = this.hostMap.getViewport();
+      if (vp) vp.style.cursor = '';
       void runCommand(pending);
       this.refreshHandles();
       return false;
@@ -261,7 +263,8 @@ export class RectangleResizeInteraction extends Interaction {
 
     if (type === 'pointercancel' && this.dragging) {
       this.dragging = null;
-      this.hostMap.getViewport().style.cursor = '';
+      const vp = this.hostMap.getViewport();
+      if (vp) vp.style.cursor = '';
       this.refreshHandles();
       return false;
     }

@@ -388,10 +388,10 @@ export default function AttributeTablePanel() {
   const isLabelField = (key: string) => activeFieldKeys.has(key);
 
   let gridEl: React.JSX.Element;
-  let selectedCountInScope = 0;
-  let onMoveToLayer: ((targetId: string) => void) | null = null;
-  let onDeleteSelected: (() => void) | null = null;
-  let moveTargets: Array<{ id: string; name: string }> = [];
+  let selectedCountInScope: number;
+  let onMoveToLayer: ((targetId: string) => void) | null;
+  let onDeleteSelected: (() => void) | null;
+  let moveTargets: Array<{ id: string; name: string }>;
 
   if (layer.kind === 'via') {
     const fallbackViaId = useLayersStore.getState().getLayerForKind('via')?.id;

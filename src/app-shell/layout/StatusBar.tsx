@@ -404,7 +404,7 @@ export default function StatusBar() {
           <>
             <span>•</span>
             <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.65rem', color: 'var(--cad-text-dim)' }}>
-              <span className="cad-spinner" /> recalculando red vial•
+              <span className="cad-spinner" /> recalculando red vial…
             </span>
           </>
         )}

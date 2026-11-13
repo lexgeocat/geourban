@@ -170,7 +170,7 @@ export default function StatsPanel() {
           }}
           title="Cerrar"
         >
-          ?
+          ✕
         </button>
       </div>
 

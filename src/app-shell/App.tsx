@@ -1,4 +1,4 @@
-﻿import MapView from '@map-core/Map';
+import MapView from '@map-core/Map';
 import TopBar from './layout/TopBar';
 import StatusBar from './layout/StatusBar';
 import LeftSidebar from './layout/leftbar/LeftSidebar';
@@ -13,7 +13,7 @@ import ToastStack from '@shared-ui/ToastStack';
 import SaveProjectModal from '@persistence-engine/ui/SaveProjectModal';
 import OpenProjectModal from '@persistence-engine/ui/OpenProjectModal';
 import LabelConfigModal from '@label-engine/ui/LabelConfigModal';
-import { AttributeTablePanel } from '@attributes-engine';
+import AttributeTablePanel from '@attributes-engine/ui/AttributeTablePanel';
 
 function App() {
   useKeyboardShortcuts();

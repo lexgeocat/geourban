@@ -12,13 +12,11 @@ pub struct LayerDto {
     pub kind: String,
     pub z_index: i64,
     pub color: String,
-    pub fill_color: String,
     pub visible: bool,
     pub locked: bool,
     pub opacity: f64,
     pub show_label: bool,
     pub show_cota: bool,
-    pub color_mode: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -44,6 +42,8 @@ pub struct StreetDto {
     pub side_width_m: f64,
     pub waypoints_json: Option<String>,
     pub layer_id: Option<String>,
+    #[serde(default)]
+    pub fid: Option<i64>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -59,6 +59,8 @@ pub struct RoundaboutDto {
     pub road_width_m: f64,
     pub sidewalk_width_m: f64,
     pub layer_id: Option<String>,
+    #[serde(default)]
+    pub fid: Option<i64>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -104,13 +106,11 @@ CREATE TABLE IF NOT EXISTS layers (
   kind TEXT NOT NULL,
   z_index INTEGER NOT NULL,
   color TEXT NOT NULL,
-  fill_color TEXT NOT NULL,
   visible INTEGER NOT NULL,
   locked INTEGER NOT NULL,
   opacity REAL NOT NULL,
   show_label INTEGER NOT NULL,
-  show_cota INTEGER NOT NULL,
-  color_mode TEXT NOT NULL
+  show_cota INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS features (
   id TEXT PRIMARY KEY,
@@ -130,7 +130,8 @@ CREATE TABLE IF NOT EXISTS streets (
   width_m REAL NOT NULL,
   side_width_m REAL NOT NULL,
   waypoints_json TEXT,
-  layer_id TEXT
+  layer_id TEXT,
+  fid INTEGER
 );
 CREATE TABLE IF NOT EXISTS roundabouts (
   id TEXT PRIMARY KEY,
@@ -142,7 +143,8 @@ CREATE TABLE IF NOT EXISTS roundabouts (
   rotation REAL NOT NULL,
   road_width_m REAL NOT NULL,
   sidewalk_width_m REAL NOT NULL,
-  layer_id TEXT
+  layer_id TEXT,
+  fid INTEGER
 );
 CREATE TABLE IF NOT EXISTS project_meta (
   key TEXT PRIMARY KEY,
@@ -167,6 +169,8 @@ fn open_existing(path: &PathBuf) -> Result<Connection, String> {
     }
     let conn = Connection::open(path).map_err(|e| e.to_string())?;
     conn.execute_batch(SCHEMA).map_err(|e| e.to_string())?;
+    let _ = conn.execute("ALTER TABLE streets ADD COLUMN fid INTEGER", []);
+    let _ = conn.execute("ALTER TABLE roundabouts ADD COLUMN fid INTEGER", []);
     Ok(conn)
 }
 
@@ -189,8 +193,8 @@ pub fn project_save(app: AppHandle, name: String, payload: ProjectPayload) -> Re
     {
         let mut stmt = tx
             .prepare_cached(
-                "INSERT INTO layers (id, name, kind, z_index, color, fill_color, visible, locked, opacity, show_label, show_cota, color_mode)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                "INSERT INTO layers (id, name, kind, z_index, color, visible, locked, opacity, show_label, show_cota)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             )
             .map_err(|e| e.to_string())?;
         for l in &payload.layers {
@@ -200,13 +204,11 @@ pub fn project_save(app: AppHandle, name: String, payload: ProjectPayload) -> Re
                 l.kind,
                 l.z_index,
                 l.color,
-                l.fill_color,
                 l.visible,
                 l.locked,
                 l.opacity,
                 l.show_label,
                 l.show_cota,
-                l.color_mode,
             ])
             .map_err(|e| e.to_string())?;
         }
@@ -226,8 +228,8 @@ pub fn project_save(app: AppHandle, name: String, payload: ProjectPayload) -> Re
     {
         let mut stmt = tx
             .prepare_cached(
-                "INSERT INTO streets (id, name, start_x, start_y, end_x, end_y, width_m, side_width_m, waypoints_json, layer_id)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                "INSERT INTO streets (id, name, start_x, start_y, end_x, end_y, width_m, side_width_m, waypoints_json, layer_id, fid)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
             )
             .map_err(|e| e.to_string())?;
         for s in &payload.streets {
@@ -242,6 +244,7 @@ pub fn project_save(app: AppHandle, name: String, payload: ProjectPayload) -> Re
                 s.side_width_m,
                 s.waypoints_json,
                 s.layer_id,
+                s.fid,
             ])
             .map_err(|e| e.to_string())?;
         }
@@ -250,8 +253,8 @@ pub fn project_save(app: AppHandle, name: String, payload: ProjectPayload) -> Re
     {
         let mut stmt = tx
             .prepare_cached(
-                "INSERT INTO roundabouts (id, name, center_x, center_y, radius_m, sides, rotation, road_width_m, sidewalk_width_m, layer_id)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                "INSERT INTO roundabouts (id, name, center_x, center_y, radius_m, sides, rotation, road_width_m, sidewalk_width_m, layer_id, fid)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
             )
             .map_err(|e| e.to_string())?;
         for r in &payload.roundabouts {
@@ -266,6 +269,7 @@ pub fn project_save(app: AppHandle, name: String, payload: ProjectPayload) -> Re
                 r.road_width_m,
                 r.sidewalk_width_m,
                 r.layer_id,
+                r.fid,
             ])
             .map_err(|e| e.to_string())?;
         }
@@ -289,7 +293,7 @@ pub fn project_load(app: AppHandle, name: String) -> Result<ProjectPayload, Stri
     let mut layers = Vec::new();
     {
         let mut stmt = conn
-            .prepare("SELECT id, name, kind, z_index, color, fill_color, visible, locked, opacity, show_label, show_cota, color_mode FROM layers ORDER BY z_index")
+            .prepare("SELECT id, name, kind, z_index, color, visible, locked, opacity, show_label, show_cota FROM layers ORDER BY z_index")
             .map_err(|e| e.to_string())?;
         let rows = stmt
             .query_map([], |row| {
@@ -299,13 +303,11 @@ pub fn project_load(app: AppHandle, name: String) -> Result<ProjectPayload, Stri
                     kind: row.get(2)?,
                     z_index: row.get(3)?,
                     color: row.get(4)?,
-                    fill_color: row.get(5)?,
-                    visible: row.get(6)?,
-                    locked: row.get(7)?,
-                    opacity: row.get(8)?,
-                    show_label: row.get(9)?,
-                    show_cota: row.get(10)?,
-                    color_mode: row.get(11)?,
+                    visible: row.get(5)?,
+                    locked: row.get(6)?,
+                    opacity: row.get(7)?,
+                    show_label: row.get(8)?,
+                    show_cota: row.get(9)?,
                 })
             })
             .map_err(|e| e.to_string())?;
@@ -339,7 +341,7 @@ pub fn project_load(app: AppHandle, name: String) -> Result<ProjectPayload, Stri
     let mut streets = Vec::new();
     {
         let mut stmt = conn
-            .prepare("SELECT id, name, start_x, start_y, end_x, end_y, width_m, side_width_m, waypoints_json, layer_id FROM streets")
+            .prepare("SELECT id, name, start_x, start_y, end_x, end_y, width_m, side_width_m, waypoints_json, layer_id, fid FROM streets")
             .map_err(|e| e.to_string())?;
         let rows = stmt
             .query_map([], |row| {
@@ -354,6 +356,7 @@ pub fn project_load(app: AppHandle, name: String) -> Result<ProjectPayload, Stri
                     side_width_m: row.get(7)?,
                     waypoints_json: row.get(8)?,
                     layer_id: row.get(9)?,
+                    fid: row.get(10)?,
                 })
             })
             .map_err(|e| e.to_string())?;
@@ -365,7 +368,7 @@ pub fn project_load(app: AppHandle, name: String) -> Result<ProjectPayload, Stri
     let mut roundabouts = Vec::new();
     {
         let mut stmt = conn
-            .prepare("SELECT id, name, center_x, center_y, radius_m, sides, rotation, road_width_m, sidewalk_width_m, layer_id FROM roundabouts")
+            .prepare("SELECT id, name, center_x, center_y, radius_m, sides, rotation, road_width_m, sidewalk_width_m, layer_id, fid FROM roundabouts")
             .map_err(|e| e.to_string())?;
         let rows = stmt
             .query_map([], |row| {
@@ -380,6 +383,7 @@ pub fn project_load(app: AppHandle, name: String) -> Result<ProjectPayload, Stri
                     road_width_m: row.get(7)?,
                     sidewalk_width_m: row.get(8)?,
                     layer_id: row.get(9)?,
+                    fid: row.get(10)?,
                 })
             })
             .map_err(|e| e.to_string())?;

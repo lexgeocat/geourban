@@ -251,6 +251,8 @@ export function activateEdit(ctx: ModeContext, select: HitTestSelect): void {
     void runCommand(cmd);
   };
   const viewport = map.getViewport();
-  viewport.addEventListener('contextmenu', onContextMenu);
-  ctx.addCleanup(() => viewport.removeEventListener('contextmenu', onContextMenu));
+  if (viewport) {
+    viewport.addEventListener('contextmenu', onContextMenu);
+    ctx.addCleanup(() => viewport.removeEventListener('contextmenu', onContextMenu));
+  }
 }

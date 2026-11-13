@@ -11,6 +11,7 @@ export interface LabelPlacement {
 export interface LabelClassNumbering {
   mode: LabelNumberingMode;
   restartPerParent: boolean;
+  customTemplate?: string;
 }
 
 export interface LabelClass {
@@ -49,10 +50,4 @@ export function defaultLabelClass(layerId: string, style: LabelStyleConfig): Lab
     numbering: { mode: 'numeric', restartPerParent: false },
     updatedAt: new Date().toISOString(),
   };
-}
-
-export interface LabelClassNumbering {
-  mode: LabelNumberingMode;
-  restartPerParent: boolean;
-  customTemplate?: string;
 }

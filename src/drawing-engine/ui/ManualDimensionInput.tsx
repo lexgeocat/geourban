@@ -43,17 +43,19 @@ export default function ManualDimensionInput() {
   const pointerMapCoordRef = useRef<number[] | null>(null);
   const valueRef = useRef('');
   const active = MANUAL_INPUT_MODES.has(mode);
+  const [prevActive, setPrevActive] = useState(active);
 
-  useEffect(() => {
-    valueRef.current = value;
-  }, [value]);
-
-  useEffect(() => {
+  if (active !== prevActive) {
+    setPrevActive(active);
     if (!active) {
       setValue('');
       setScreenPos(null);
     }
-  }, [active, mode]);
+  }
+
+  useEffect(() => {
+    valueRef.current = value;
+  }, [value]);
 
   useEffect(() => {
     if (!mapInstance || !active) return;

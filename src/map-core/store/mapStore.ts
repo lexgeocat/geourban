@@ -60,7 +60,6 @@ export const useMapStore = create<MapState>()(
     viewConfig: { center: [-68.3, -16.65], zoom: 19 },
     setMap: (map) =>
       set((state) => {
-        // @ts-expect-error — immer draft vs OL class instance
         state.mapInstance = map;
       }),
     setDrawSource: (src) =>

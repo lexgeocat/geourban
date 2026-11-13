@@ -56,7 +56,7 @@ import { useLabelConfigModalStore } from '@label-engine/store/labelConfigModalSt
 import { useLabelClassStore } from '@label-engine/store/labelClassStore';
 import { defaultColorForKind, defaultLabelStyleConfig } from '@label-engine/model/labelModel';
 import { useEditSessionStore } from '@layers-engine/store/editSessionStore';
-import { useAttributeTableStore } from '@attributes-engine';
+import { useAttributeTableStore } from '@attributes-engine/store/attributeTableStore';
 
 /* ----------- Icons ----------- */
 
@@ -103,14 +103,6 @@ function geometryIconForKind(kind: LayerKind) {
   if (kind === 'punto') return <IconPointKind />;
   if (kind === 'circulo') return <IconCircleKind />;
   return <IconPolygonKind />;
-}
-
-function geometryLabelForKind(kind: LayerKind): string {
-  if (kind === 'via' || kind === 'linea' || kind === 'polilinea' || kind === 'rotonda')
-    return 'línea';
-  if (kind === 'punto') return 'punto';
-  if (kind === 'circulo') return 'círculo';
-  return 'polígono';
 }
 
 /* ----------- Color Picker (contorno de capa) ----------- */

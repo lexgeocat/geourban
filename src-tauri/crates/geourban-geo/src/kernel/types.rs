@@ -19,14 +19,6 @@ pub struct CutResult {
     pub is_remnant: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SliceResult {
-    pub front: Vec<Pt>,
-    pub rest: Vec<Pt>,
-    pub area_m2: f64,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ManzanoLoteMethod {

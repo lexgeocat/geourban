@@ -4,7 +4,7 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   plugins: [react()],
-  base: process.env.TAURI_PLATFORM ? './' : process.env.VITE_BASE_PATH || '/',
+  base: './',
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
@@ -37,16 +37,6 @@ export default defineConfig({
     emptyOutDir: true,
     target: 'esnext',
     assetsInlineLimit: 0,
-    rollupOptions: {
-      output: {
-        assetFileNames: (assetInfo) => {
-          if (assetInfo.name?.endsWith('.wasm')) {
-            return 'sql.js/[name][extname]';
-          }
-          return 'assets/[name]-[hash][extname]';
-        },
-      },
-    },
   },
   worker: {
     format: 'es',

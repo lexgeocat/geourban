@@ -4,7 +4,7 @@ import { BASE_MAP_DEFS } from '@map-core/baseMaps';
 import { RibbonGroup, RibbonTool } from '../../topbar/RibbonPrimitives';
 import { IconGrid, IconSat, IconRoad, IconCursor } from '../../topbar/icons';
 import { useLayersStore } from '@layers-engine/store/layersRegistryStore';
-import { useAttributeTableStore } from '@attributes-engine';
+import { useAttributeTableStore } from '@attributes-engine/store/attributeTableStore';
 import { toast } from '@shared-ui/store/toastStore';
 
 export default function ViewTab() {

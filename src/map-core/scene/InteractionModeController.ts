@@ -61,27 +61,29 @@ export class InteractionModeController {
     this.selectInteractionRef.current = null;
 
     const viewport = map.getViewport();
-    const previousCursor = viewport.getAttribute('data-cursor');
-    if (
-      mode === 'polygon' ||
-      mode === 'line' ||
-      mode === 'rectangle' ||
-      mode === 'roundabout' ||
-      mode === 'street' ||
-      mode === 'labelOrder' ||
-      mode === 'point' ||
-      mode === 'circle' ||
-      mode === 'polyline' ||
-      mode === 'splitFeature'
-    ) {
-      viewport.setAttribute('data-cursor', mode);
-    } else {
-      viewport.removeAttribute('data-cursor');
+    if (viewport) {
+      const previousCursor = viewport.getAttribute('data-cursor');
+      if (
+        mode === 'polygon' ||
+        mode === 'line' ||
+        mode === 'rectangle' ||
+        mode === 'roundabout' ||
+        mode === 'street' ||
+        mode === 'labelOrder' ||
+        mode === 'point' ||
+        mode === 'circle' ||
+        mode === 'polyline' ||
+        mode === 'splitFeature'
+      ) {
+        viewport.setAttribute('data-cursor', mode);
+      } else {
+        viewport.removeAttribute('data-cursor');
+      }
+      this.toClean.push(() => {
+        if (previousCursor === null) viewport.removeAttribute('data-cursor');
+        else viewport.setAttribute('data-cursor', previousCursor);
+      });
     }
-    this.toClean.push(() => {
-      if (previousCursor === null) viewport.removeAttribute('data-cursor');
-      else viewport.setAttribute('data-cursor', previousCursor);
-    });
 
     const modeCtx: ModeContext = {
       map,

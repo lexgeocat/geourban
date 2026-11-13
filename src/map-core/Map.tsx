@@ -131,20 +131,21 @@ export default function MapView() {
     });
     interactions.push(dragPan);
 
-    map.getViewport().addEventListener('contextmenu', (e) => e.preventDefault());
-
     const viewport = map.getViewport();
-    const onPointerDown = (e: PointerEvent) => {
-      if (e.button === 1 || e.button === 2) {
-        viewport.style.cursor = 'grabbing';
-      }
-    };
-    const onPointerUp = () => {
-      viewport.style.cursor = '';
-    };
-    viewport.addEventListener('pointerdown', onPointerDown);
-    viewport.addEventListener('pointerup', onPointerUp);
-    viewport.addEventListener('pointerleave', onPointerUp);
+    if (viewport) {
+      viewport.addEventListener('contextmenu', (e) => e.preventDefault());
+      const onPointerDown = (e: PointerEvent) => {
+        if (e.button === 1 || e.button === 2) {
+          viewport.style.cursor = 'grabbing';
+        }
+      };
+      const onPointerUp = () => {
+        viewport.style.cursor = '';
+      };
+      viewport.addEventListener('pointerdown', onPointerDown);
+      viewport.addEventListener('pointerup', onPointerUp);
+      viewport.addEventListener('pointerleave', onPointerUp);
+    }
 
 
     const postrenderPainter = new PostrenderPainter({
@@ -211,8 +212,8 @@ export default function MapView() {
 
     const snapStyles = new globalThis.Map<string, Style>();
     const SNAP_SHAPES: Record<string, { points?: number; radius: number; radius2?: number; angle?: number }> = {
-      endpoint:             { radius: 7,  points: 4,               angle: Math.PI / 4 }, // Cuadrado ?
-      midpoint:             { radius: 8,  points: 3,               angle: -Math.PI / 2 }, // Triángulo →
+      endpoint:             { radius: 7,  points: 4,               angle: Math.PI / 4 }, // Cuadrado ■
+      midpoint:             { radius: 8,  points: 3,               angle: -Math.PI / 2 }, // Triángulo ▲
       intersection:         { radius: 8,  points: 4, radius2: 2,  angle: Math.PI / 4 },  // Cruz (X)
       extension:            { radius: 7,  points: 4, radius2: 2,  angle: 0 },             // Cruz (+)
       perpendicular:        { radius: 7,  points: 5,               angle: -Math.PI / 2 }, // Pentágono

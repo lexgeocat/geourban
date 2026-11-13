@@ -5,7 +5,7 @@ import type { Layer } from '@kernel/domain-model/featureModel';
 import { useLayersStore } from '@layers-engine/store/layersRegistryStore';
 import { useStreetStore, type Street } from '@vias-engine/store/streetStore';
 import { useRoundaboutStore, type Roundabout } from '@vias-engine/store/roundaboutStore';
-import { useEntityLabelStore, type EntityLabelEntry } from '../store/entityLabelStore';
+import { useEntityLabelStore } from '../store/entityLabelStore';
 import { roundaboutRoadAreaM2 } from '@vias-engine/geometry/roundaboutEngine';
 import {
   composeLabelLines,
