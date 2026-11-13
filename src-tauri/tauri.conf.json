@@ -12,23 +12,24 @@
   "app": {
     "windows": [
       {
-        "title": "GeoUrban",
+        "title": "GeoUrban Studio",
         "width": 1400,
         "height": 900,
         "maximized": true,
         "resizable": true,
-        "fullscreen": false
+        "fullscreen": false,
+        "decorations": false
       }
     ],
     "security": {
       "csp": {
         "default-src": "'self'",
         "script-src": ["'self'"],
-        "style-src": ["'self'", "'unsafe-inline'"],
+        "style-src": ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
         "img-src": ["'self'", "data:", "blob:", "https://*.google.com", "https://*.googleapis.com", "https://tile.openstreetmap.org", "https://*.arcgisonline.com"],
         "connect-src": ["'self'", "https://*.google.com", "https://*.googleapis.com", "https://tile.openstreetmap.org", "https://*.arcgisonline.com"],
         "worker-src": ["'self'", "blob:"],
-        "font-src": ["'self'", "data:"]
+        "font-src": ["'self'", "data:", "https://fonts.gstatic.com"]
       }
     }
   },

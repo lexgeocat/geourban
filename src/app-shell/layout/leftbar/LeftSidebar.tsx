@@ -7,10 +7,10 @@ import ManzanoPanel from '@manzanos-engine/ui/ManzanoPanel';
 import StreetPanel from '@vias-engine/ui/StreetPanel';
 import RoundaboutPanel from '@vias-engine/ui/RoundaboutPanel';
 
-const TABS: { id: LeftSidebarTab; label: string }[] = [
-  { id: 'manzanos', label: 'Manzanos' },
-  { id: 'vias', label: 'Vías' },
-  { id: 'rotondas', label: 'Rotondas' },
+const TABS: { id: LeftSidebarTab; label: string; accent: string }[] = [
+  { id: 'manzanos', label: 'Manzanos', accent: '#F59E0B' },
+  { id: 'vias', label: 'Vías', accent: '#A78BFA' },
+  { id: 'rotondas', label: 'Rotondas', accent: '#34D399' },
 ];
 
 export default function LeftSidebar() {
@@ -74,7 +74,7 @@ export default function LeftSidebar() {
 
   return (
     <div className="leftbar-root" style={{ '--cad-leftbar-panel-width': `${panelWidth}px` } as CSSProperties}>
-      <nav ref={railRef} className="leftbar-rail" aria-label="Paneles laterales">
+      <nav ref={railRef} className="leftbar-rail" aria-label="Paneles laterales de estudio">
         {TABS.map((tab) => {
           const badge = badgeFor(tab.id);
           return (
@@ -82,6 +82,7 @@ export default function LeftSidebar() {
               key={tab.id}
               type="button"
               className={`leftbar-tab ${activeTab === tab.id ? 'active' : ''}`}
+              style={{ '--tab-accent': tab.accent } as CSSProperties}
               onClick={() => toggleTab(tab.id)}
               aria-pressed={activeTab === tab.id}
               aria-label={tab.label}

@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { Tag, X, Save, Play, PenTool } from 'lucide-react';
 import type Feature from 'ol/Feature.js';
 import type Geometry from 'ol/geom/Geometry.js';
 import { Modal } from '@shared-ui/Modal';
@@ -128,16 +129,17 @@ function LabelPreview({ cfg, lines }: { cfg: LabelStyleConfig; lines: string[] }
   return (
     <div
       style={{
-        background: 'var(--cad-bg-deepest)',
+        background:
+          'radial-gradient(circle at 50% 0%, rgba(255, 107, 74, 0.08), transparent 70%), var(--cad-bg-deepest)',
         border: '1px solid var(--cad-border)',
-        borderRadius: 6,
-        padding: '10px 8px',
+        borderRadius: 10,
+        padding: '12px 10px',
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
-        gap: 4,
-        minHeight: 50,
+        gap: 5,
+        minHeight: 58,
       }}
     >
       {cfg.enabled && lines.length > 0 ? (
@@ -673,15 +675,60 @@ export default function LabelConfigModal() {
       }}
       title="Configurar etiqueta"
       visuallyHiddenTitle
-      width="min(400px, 92vw)"
+      width="min(430px, 92vw)"
     >
-      <div style={{ marginBottom: 8 }}>
-        <h2 style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--cad-text)' }}>{title}</h2>
-        {subtitle && (
-          <p style={{ fontSize: '0.62rem', color: 'var(--cad-text-muted)', marginTop: 1 }}>
-            {subtitle}
-          </p>
-        )}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'flex-start',
+          justifyContent: 'space-between',
+          gap: 10,
+          marginBottom: 10,
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div
+            style={{
+              width: 34,
+              height: 34,
+              borderRadius: 9,
+              background: 'var(--ui-10-gradient-soft)',
+              border: '1px solid rgba(255, 107, 74, 0.38)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+            }}
+          >
+            <Tag size={16} color="#FF6B4A" />
+          </div>
+          <div>
+            <h2
+              style={{
+                fontFamily: 'var(--font-display)',
+                fontSize: '0.92rem',
+                fontWeight: 700,
+                color: 'var(--cad-text)',
+              }}
+            >
+              {title}
+            </h2>
+            {subtitle && (
+              <p style={{ fontSize: '0.64rem', color: 'var(--cad-text-muted)', marginTop: 1 }}>
+                {subtitle}
+              </p>
+            )}
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={close}
+          className="cad-panel-header-close"
+          aria-label="Cerrar"
+        >
+          <X size={16} />
+        </button>
       </div>
 
       <LabelPreview cfg={previewCfg} lines={previewLines} />
@@ -1061,7 +1108,8 @@ export default function LabelConfigModal() {
           className="cad-btn-primary"
           title={isAnyBatch ? 'Guarda el estilo y sincroniza lo ya etiquetado' : undefined}
         >
-          💾 Guardar
+          <Save size={13} />
+          <span>Guardar</span>
         </button>
         {showAutoApply && (
           <button
@@ -1074,7 +1122,8 @@ export default function LabelConfigModal() {
                 : 'Numera y aplica automáticamente, reiniciando por manzano'
             }
           >
-            ▶ Aplicar automático
+            <Play size={13} />
+            <span>Aplicar automático</span>
           </button>
         )}
         {showTraceOrder && (
@@ -1084,7 +1133,8 @@ export default function LabelConfigModal() {
             className="cad-btn-primary"
             title={targetCount === 0 ? 'No hay elementos para trazar todavía' : undefined}
           >
-            ✏ Trazar orden…
+            <PenTool size={13} />
+            <span>Trazar orden…</span>
           </button>
         )}
       </div>

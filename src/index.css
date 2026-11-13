@@ -1,42 +1,78 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 /* ============================================================
-   GeoUrban — CAD Dark Design System
+   GeoUrban Studio — Unique 60-30-10 Design System
+   ("Obsidian & Coral-Violet Territorial Studio")
    ============================================================ */
 
 :root {
-  /* ─── Color Palette ─── */
-  --cad-bg-deepest: #0d1117;
-  --cad-bg-deep: #151b28;
-  --cad-bg-panel: #1a2236;
-  --cad-bg-surface: #212d45;
-  --cad-bg-hover: rgba(0, 212, 255, 0.08);
-  --cad-bg-active: rgba(0, 212, 255, 0.15);
+  /* ─── Typography Tokens ─── */
+  --font-display: 'Space Grotesk', 'Plus Jakarta Sans', 'Segoe UI Variable Display', -apple-system, sans-serif;
+  --font-sans: 'Plus Jakarta Sans', 'Segoe UI Variable Text', 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Cascadia Code', 'Fira Code', Consolas, monospace;
 
-  --cad-border: #2a3a52;
-  --cad-border-accent: #0f3460;
+  /* ─── 60% DOMINANT: Warm Carbon Obsidian Surfaces ─── */
+  --ui-60-canvas: #0A0B0F;
+  --ui-60-base: #10121A;
+  --ui-60-surface: #151822;
 
-  --cad-accent: #00d4ff;
-  --cad-accent-violet: #7c3aed;
-  --cad-accent-green: #10b981;
-  --cad-accent-amber: #f59e0b;
-  --cad-accent-red: #ef4444;
+  /* ─── 30% SECONDARY: Mineral Slate, Glass & Typography ─── */
+  --ui-30-card: #1C202E;
+  --ui-30-elevated: #23283A;
+  --ui-30-hover: rgba(255, 107, 74, 0.09);
+  --ui-30-active: rgba(255, 107, 74, 0.17);
+  --ui-30-border: #272D40;
+  --ui-30-border-bright: rgba(255, 255, 255, 0.14);
+  --ui-30-text: #F4F5F8;
+  --ui-30-text-secondary: #A1A9BC;
+  --ui-30-text-muted: #677086;
 
-  --cad-text: #e2e8f0;
-  --cad-text-dim: #94a3b8;
-  --cad-text-muted: #64748b;
+  /* ─── 10% ACCENT: Electric Coral-Amber & Luminous Violet ─── */
+  --ui-10-primary: #FF6B4A;
+  --ui-10-secondary: #8B5CF6;
+  --ui-10-gradient: linear-gradient(135deg, #FF6B4A 0%, #F97316 48%, #8B5CF6 100%);
+  --ui-10-gradient-soft: linear-gradient(135deg, rgba(255, 107, 74, 0.18) 0%, rgba(139, 92, 246, 0.18) 100%);
 
-  /* ─── Spacing ─── */
+  /* ─── Semantic Aliases (100% Compatible with All Components) ─── */
+  --cad-bg-deepest: var(--ui-60-canvas);
+  --cad-bg-deep: var(--ui-60-base);
+  --cad-bg-panel: var(--ui-60-surface);
+  --cad-bg-surface: var(--ui-30-card);
+  --cad-bg-hover: var(--ui-30-hover);
+  --cad-bg-active: var(--ui-30-active);
+
+  --cad-border: var(--ui-30-border);
+  --cad-border-accent: rgba(255, 107, 74, 0.38);
+
+  --cad-accent: var(--ui-10-primary);
+  --cad-accent-secondary: var(--ui-10-secondary);
+  --cad-accent-violet: #8B5CF6;
+  --cad-accent-green: #10B981;
+  --cad-accent-amber: #F59E0B;
+  --cad-accent-red: #F43F5E;
+
+  --cad-text: var(--ui-30-text);
+  --cad-text-dim: var(--ui-30-text-secondary);
+  --cad-text-muted: var(--ui-30-text-muted);
+
+  /* ─── Layout & Spacing Dimensions ─── */
   --cad-toolbar-width: 48px;
-  --cad-topbar-tabs-height: 28px;
-  --cad-topbar-ribbon-height: 56px;
+  --cad-topbar-tabs-height: 36px;
+  --cad-topbar-ribbon-height: 60px;
   --cad-topbar-height: calc(var(--cad-topbar-tabs-height) + var(--cad-topbar-ribbon-height));
-  --cad-statusbar-height: 28px;
+  --cad-statusbar-height: 30px;
+  --cad-leftbar-rail-width: 42px;
+  --cad-leftbar-panel-width: 320px;
 
   /* ─── Shadows ─── */
-  --cad-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
-  --cad-shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.6);
+  --cad-shadow-md: 0 8px 24px -4px rgba(0, 0, 0, 0.6);
+  --cad-shadow-lg: 0 18px 46px -8px rgba(0, 0, 0, 0.78), 0 0 0 1px rgba(255, 255, 255, 0.06);
 
-  /* ─── Z-index scale ─── */
+  /* ─── Z-Index Scale ─── */
   --z-floating-panel: 100;
+  --z-leftbar: 115;
   --z-dropdown: 200;
   --z-panel-menu: 300;
   --z-ribbon-dropdown: 950;
@@ -47,7 +83,7 @@
   --z-tooltip: 9999;
 
   /* ─── Transitions ─── */
-  --cad-transition: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --cad-transition: 160ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 :root[data-ribbon-collapsed='true'] {
@@ -109,18 +145,15 @@ body,
   height: 100%;
   width: 100%;
   overflow: hidden;
-  font-family:
-    'Inter',
-    system-ui,
-    -apple-system,
-    sans-serif;
+  font-family: var(--font-sans);
   background: var(--cad-bg-deepest);
   color: var(--cad-text);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
 }
 
-/* ─── Scrollbar Dark ─── */
+/* ─── Scrollbar Studio Dark ─── */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -130,14 +163,14 @@ body,
 }
 ::-webkit-scrollbar-thumb {
   background: var(--cad-border);
-  border-radius: 3px;
+  border-radius: 999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--cad-text-muted);
+  background: var(--cad-accent);
 }
 
 /* ============================================================
-   CAD Tooltip System (CSS only)
+   Studio Tooltip System
    ============================================================ */
 .cad-tooltip {
   position: relative;
@@ -147,23 +180,23 @@ body,
   position: absolute;
   left: calc(100% + 10px);
   top: 50%;
-  transform: translateY(-50%);
+  transform: translateY(-50%) translateX(-4px);
   padding: 5px 10px;
-  background: var(--cad-bg-surface);
+  background: var(--ui-60-canvas);
   color: var(--cad-text);
-  font-size: 0.7rem;
-  font-weight: 500;
-  letter-spacing: 0.02em;
+  font-family: var(--font-sans);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
   white-space: nowrap;
-  border-radius: 4px;
-  border: 1px solid var(--cad-border);
+  border-radius: 7px;
+  border: 1px solid var(--ui-30-border-bright);
   box-shadow: var(--cad-shadow-md);
   opacity: 0;
   pointer-events: none;
   transition:
     opacity var(--cad-transition),
     transform var(--cad-transition);
-  transform: translateY(-50%) translateX(-4px);
   z-index: var(--z-tooltip);
 }
 .cad-tooltip:hover::after {
@@ -172,44 +205,46 @@ body,
 }
 
 /* ============================================================
-   CAD Icon Button
+   Studio Icon Button
    ============================================================ */
 .cad-icon-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
-  border: none;
+  width: 34px;
+  height: 34px;
+  border: 1px solid transparent;
   background: transparent;
   color: var(--cad-text-dim);
-  border-radius: 6px;
+  border-radius: 8px;
   cursor: pointer;
   transition: all var(--cad-transition);
   outline: none;
 }
 .cad-icon-btn svg {
-  width: 18px;
-  height: 18px;
+  width: 17px;
+  height: 17px;
   transition: all var(--cad-transition);
 }
 .cad-icon-btn:hover {
   background: var(--cad-bg-hover);
-  color: var(--cad-accent);
+  color: var(--cad-text);
+  border-color: rgba(255, 107, 74, 0.28);
 }
 .cad-icon-btn:hover svg {
-  filter: drop-shadow(0 0 4px rgba(0, 212, 255, 0.4));
+  filter: drop-shadow(0 0 6px rgba(255, 107, 74, 0.45));
 }
 .cad-icon-btn.active {
-  background: var(--cad-bg-active);
-  color: var(--cad-accent);
+  background: var(--ui-10-gradient-soft);
+  color: #FFFFFF;
+  border-color: rgba(255, 107, 74, 0.45);
   box-shadow: inset 2px 0 0 var(--cad-accent);
 }
 .cad-icon-btn.active svg {
-  filter: drop-shadow(0 0 6px rgba(0, 212, 255, 0.5));
+  filter: drop-shadow(0 0 6px rgba(255, 107, 74, 0.5));
 }
 .cad-icon-btn:active {
-  transform: scale(0.92);
+  transform: scale(0.94);
 }
 .cad-icon-btn.disabled {
   opacity: 0.35;
@@ -218,24 +253,22 @@ body,
 }
 
 /* ============================================================
-   CAD Outline Button (variante "tag" / "ghost" — usada por
-   botones "Generar etiqueta" en paneles. Mantiene el
-   background-surface pero con borde sutil y hover con accent).
+   Studio Outline Button
    ============================================================ */
 .cad-btn-outline {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
+  gap: 5px;
   width: 100%;
   height: auto;
-  padding: 6px 10px;
+  padding: 6px 11px;
   font-size: 0.7rem;
-  font-weight: 500;
+  font-weight: 600;
   background: var(--cad-bg-surface);
   border: 1px solid var(--cad-border);
   color: var(--cad-text-dim);
-  border-radius: 4px;
+  border-radius: 7px;
   cursor: pointer;
   transition: all var(--cad-transition);
   outline: none;
@@ -243,6 +276,7 @@ body,
 .cad-btn-outline:hover {
   border-color: var(--cad-accent);
   color: var(--cad-accent);
+  background: var(--cad-bg-hover);
 }
 .cad-btn-outline:active {
   transform: scale(0.98);
@@ -253,7 +287,7 @@ body,
 }
 
 /* ============================================================
-   Botones de acción de modal 
+   Action Buttons (Modals & Forms)
    ============================================================ */
 .cad-btn-secondary,
 .cad-btn-primary,
@@ -264,33 +298,39 @@ body,
   gap: 6px;
   width: auto;
   height: auto;
-  padding: 7px 14px;
+  padding: 7px 15px;
+  font-family: var(--font-sans);
   font-size: 0.72rem;
   font-weight: 600;
-  border-radius: 6px;
+  border-radius: 8px;
   cursor: pointer;
   transition:
     opacity var(--cad-transition),
-    transform var(--cad-transition);
+    transform var(--cad-transition),
+    box-shadow var(--cad-transition),
+    filter var(--cad-transition);
   outline: none;
   white-space: nowrap;
 }
 .cad-btn-secondary {
-  background: transparent;
+  background: var(--cad-bg-surface);
   border: 1px solid var(--cad-border);
   color: var(--cad-text-dim);
 }
 .cad-btn-secondary:hover:not(:disabled) {
   border-color: var(--cad-accent);
-  color: var(--cad-accent);
+  color: var(--cad-text);
 }
 .cad-btn-primary {
-  background: var(--cad-accent);
-  border: 1px solid var(--cad-accent);
-  color: #0d1117;
+  background: var(--ui-10-gradient);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #FFFFFF;
+  font-weight: 700;
+  box-shadow: 0 4px 14px rgba(255, 107, 74, 0.3);
 }
 .cad-btn-primary:hover:not(:disabled) {
-  opacity: 0.88;
+  filter: brightness(1.08);
+  box-shadow: 0 6px 18px rgba(255, 107, 74, 0.42);
 }
 .cad-btn-danger {
   background: var(--cad-accent-red);
@@ -298,7 +338,7 @@ body,
   color: #fff;
 }
 .cad-btn-danger:hover:not(:disabled) {
-  opacity: 0.88;
+  opacity: 0.9;
 }
 .cad-btn-secondary:active,
 .cad-btn-primary:active,
@@ -319,7 +359,7 @@ body,
 }
 
 /* ============================================================
-   "icon-only"
+   Accessibility Icon-Only Button
    ============================================================ */
 .cad-a11y-btn {
   display: inline-flex;
@@ -344,52 +384,47 @@ body,
 [data-layer-row='true']:focus-visible {
   outline: 2px solid var(--cad-accent);
   outline-offset: 2px;
-  border-radius: 3px;
+  border-radius: 5px;
 }
 
 /* ============================================================
-   Layer Panel — Hover profesional en filas de capa
+   Layer Panel — Interactive Row States
    ============================================================ */
 [data-layer-row='true'] {
   transition: background 120ms ease, box-shadow 120ms ease;
+  border-radius: 6px;
 }
 [data-layer-row='true']:hover {
   background: var(--cad-bg-hover);
   box-shadow: inset 2px 0 0 0 var(--cad-accent);
 }
-/* Chip de hover en los botones de acción (ojo, lápiz, color…) */
 [data-layer-row='true'] .cad-a11y-btn {
   padding: 2px;
   margin: -2px 0;
-  border-radius: 4px;
+  border-radius: 5px;
   transition: background 100ms ease;
 }
 [data-layer-row='true'] .cad-a11y-btn:hover {
-  background: rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.08);
 }
-/* Al hacer hover sobre el botón, su icono se ilumina por completo
-   (gana al opacity inline del estado inactivo del ojo/lápiz) */
 [data-layer-row='true'] .cad-a11y-btn:hover svg {
   opacity: 1 !important;
   color: var(--cad-accent) !important;
 }
-/* Grip de arrastre: se ilumina con el accent al hoverear la fila */
 .layer-row-grip {
   transition: color 120ms ease;
 }
 [data-layer-row='true']:hover .layer-row-grip {
   color: var(--cad-accent) !important;
 }
-/* Nombre de la capa: se aclara al hoverear la fila (aunque esté oculta) */
 .layer-row-name-btn {
   transition: color 120ms ease;
 }
 [data-layer-row='true']:hover .layer-row-name-btn {
   color: var(--cad-text) !important;
 }
-/* Header de sección ("Capas de datos"): pill de hover sutil */
 .layer-section-header {
-  border-radius: 4px;
+  border-radius: 6px;
   transition: background 120ms ease;
 }
 .layer-section-header:hover {
@@ -397,7 +432,7 @@ body,
 }
 
 /* ============================================================
-   CAD Toggle Switch
+   Studio Toggle Switch & Radio
    ============================================================ */
 .cad-toggle {
   position: relative;
@@ -407,7 +442,7 @@ body,
   -webkit-appearance: none;
   background: var(--cad-bg-deepest);
   border: 1px solid var(--cad-border);
-  border-radius: 9px;
+  border-radius: 999px;
   cursor: pointer;
   transition: all var(--cad-transition);
   flex-shrink: 0;
@@ -424,18 +459,15 @@ body,
   transition: all var(--cad-transition);
 }
 .cad-toggle:checked {
-  background: var(--cad-accent);
+  background: var(--ui-10-gradient);
   border-color: var(--cad-accent);
 }
 .cad-toggle:checked::after {
   left: 16px;
   background: #fff;
-  box-shadow: 0 0 6px rgba(0, 212, 255, 0.6);
+  box-shadow: 0 0 8px rgba(255, 107, 74, 0.65);
 }
 
-/* ============================================================
-   CAD Radio Button
-   ============================================================ */
 .cad-radio {
   position: relative;
   width: 16px;
@@ -469,34 +501,36 @@ body,
 }
 
 /* ============================================================
-   CAD Panels (Glassmorphism)
+   Studio Glassmorphism Panels (30% Secondary Elevation)
    ============================================================ */
 .cad-panel-glass {
-  background: rgba(26, 34, 54, 0.85);
-  backdrop-filter: blur(16px) saturate(1.2);
-  -webkit-backdrop-filter: blur(16px) saturate(1.2);
-  border: 1px solid rgba(42, 58, 82, 0.6);
-  border-radius: 10px;
-  box-shadow: var(--cad-shadow-lg);
+  background: rgba(20, 23, 33, 0.88);
+  backdrop-filter: blur(20px) saturate(1.35);
+  -webkit-backdrop-filter: blur(20px) saturate(1.35);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 12px;
+  box-shadow: var(--cad-shadow-lg), inset 0 1px 0 0 rgba(255, 255, 255, 0.08);
 }
 
 /* ============================================================
-   CAD Form Controls & Panel Header
+   Form Controls & Panel Header
    ============================================================ */
 .cad-input {
   width: 100%;
-  padding: 5px 8px;
+  padding: 5px 9px;
   background: var(--cad-bg-deepest);
   border: 1px solid var(--cad-border);
-  border-radius: 4px;
+  border-radius: 6px;
   color: var(--cad-text);
   font-size: 0.72rem;
-  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   outline: none;
+  transition: border-color 140ms ease, box-shadow 140ms ease;
 }
 .cad-input:focus {
   border-color: var(--cad-accent);
-  box-shadow: 0 0 0 1px rgba(0, 212, 255, 0.3);
+  box-shadow: 0 0 0 2px rgba(255, 107, 74, 0.22);
 }
 .cad-input-sm {
   padding: 3px 6px;
@@ -511,6 +545,7 @@ body,
   margin-bottom: 8px;
   padding-bottom: 6px;
   border-bottom: 1px solid var(--cad-border);
+  font-family: var(--font-display);
 }
 .cad-panel-header-close {
   background: none;
@@ -519,13 +554,20 @@ body,
   cursor: pointer;
   font-size: 0.85rem;
   line-height: 1;
-  padding: 0 2px;
+  padding: 2px 5px;
+  border-radius: 5px;
+  transition: background 120ms ease, color 120ms ease;
+}
+.cad-panel-header-close:hover {
+  background: var(--cad-bg-hover);
+  color: var(--cad-text);
 }
 
 .cad-section-title {
+  font-family: var(--font-display);
   font-size: 0.6rem;
-  font-weight: 500;
-  letter-spacing: 0.06em;
+  font-weight: 700;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--cad-text-muted);
   margin-bottom: 6px;
@@ -541,8 +583,9 @@ body,
 }
 .cad-row-value {
   color: var(--cad-accent);
-  font-family: 'JetBrains Mono', 'Fira Code', monospace;
-  font-weight: 500;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
 }
 
 /* ============================================================
@@ -553,13 +596,13 @@ body,
 }
 .custom-attribution {
   position: absolute;
-  bottom: 2px;
-  right: 4px;
-  background: rgba(13, 17, 23, 0.75) !important;
-  backdrop-filter: blur(8px);
-  padding: 2px 8px !important;
+  bottom: 4px;
+  right: 8px;
+  background: rgba(10, 11, 15, 0.8) !important;
+  backdrop-filter: blur(10px);
+  padding: 2px 10px !important;
   font-size: 0.6rem !important;
-  border-radius: 4px;
+  border-radius: 999px;
   color: var(--cad-text-muted) !important;
   border: 1px solid var(--cad-border) !important;
 }
@@ -570,14 +613,12 @@ body,
 .custom-attribution .ol-uncollapsible {
   display: none !important;
 }
-
-/* Hide default OL zoom control */
 .ol-zoom {
   display: none !important;
 }
 
 /* ============================================================
-   Cursor crosshair (AutoCAD-like) en modos de dibujo
+   Studio Crosshair Cursor in Drawing Modes (Coral-Amber #FF6B4A)
    ============================================================ */
 .ol-viewport[data-cursor='polygon'] canvas,
 .ol-viewport[data-cursor='line'] canvas,
@@ -590,20 +631,20 @@ body,
 .ol-viewport[data-cursor='labelOrder'] canvas,
 .ol-viewport[data-cursor='splitFeature'] canvas {
   cursor:
-    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='48' height='48' viewBox='0 0 48 48'><g stroke='%2300d4ff' stroke-width='2.5' fill='none' stroke-linecap='round'><line x1='24' y1='0' x2='24' y2='48'/><line x1='0' y1='24' x2='48' y2='24'/></g></svg>")
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='48' height='48' viewBox='0 0 48 48'><g stroke='%23FF6B4A' stroke-width='2.5' fill='none' stroke-linecap='round'><line x1='24' y1='0' x2='24' y2='48'/><line x1='0' y1='24' x2='48' y2='24'/><circle cx='24' cy='24' r='4' stroke='%238B5CF6' stroke-width='1.5'/></g></svg>")
       24 24,
     crosshair !important;
 }
 
 .ol-viewport[data-cursor='erase'] canvas {
   cursor:
-    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='48' height='48' viewBox='0 0 48 48'><g stroke='%23ef4444' stroke-width='3' fill='none' stroke-linecap='round'><circle cx='24' cy='24' r='20'/><line x1='12' y1='12' x2='36' y2='36'/></g></svg>")
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='48' height='48' viewBox='0 0 48 48'><g stroke='%23F43F5E' stroke-width='3' fill='none' stroke-linecap='round'><circle cx='24' cy='24' r='20'/><line x1='12' y1='12' x2='36' y2='36'/></g></svg>")
       24 24,
     not-allowed !important;
 }
 
 /* ============================================================
-   Animations
+   Animations & Utilities
    ============================================================ */
 @keyframes cadSpin {
   to {
@@ -614,7 +655,7 @@ body,
   display: inline-block;
   width: 10px;
   height: 10px;
-  border: 2px solid rgba(0, 212, 255, 0.25);
+  border: 2px solid rgba(255, 107, 74, 0.25);
   border-top-color: var(--cad-accent);
   border-radius: 50%;
   animation: cadSpin 0.6s linear infinite;
@@ -625,7 +666,7 @@ body,
 @keyframes fadeSlideIn {
   from {
     opacity: 0;
-    transform: translateY(-8px);
+    transform: translateY(-6px);
   }
   to {
     opacity: 1;
@@ -634,13 +675,9 @@ body,
 }
 
 .animate-fade-in {
-  animation: fadeSlideIn 0.25s ease-out;
+  animation: fadeSlideIn 0.2s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-/* ============================================================
-   Radix Dialog (modales) — solo transición; el look sale de
-   .cad-panel-glass y el resto de clases cad-* ya existentes.
-   ============================================================ */
 .cad-modal-overlay[data-state='open'] {
   animation: cadOverlayIn 150ms ease-out;
 }
@@ -666,97 +703,98 @@ body,
 .cad-modal-content[data-state='open'] {
   animation: fadeSlideIn 0.2s ease-out;
 }
-/* ============================================================
-   Monospace utility
-   ============================================================ */
+
 .font-mono-cad {
-  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
 }
 
 /* ============================================================
-   TopBar — ArcGIS Pro Style Ribbon
+   TopBar — Next-Gen Floating Studio Command Deck
+   (Segmented Pill Switcher + Floating Capsule Tool Islands)
    ============================================================ */
-
 .topbar-root {
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
   z-index: 100;
-  background: var(--cad-bg-deepest);
+  background: linear-gradient(180deg, #0B0D13 0%, #11141E 100%);
   border-bottom: 1px solid var(--cad-border);
   user-select: none;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
 }
 
-/* ─── TAB STRIP ─── */
+/* ─── STUDIO HEADER BAR ─── */
 .topbar-tabs {
   display: flex;
-  align-items: stretch;
+  align-items: center;
   height: var(--cad-topbar-tabs-height);
-  background: var(--cad-bg-deep);
-  padding: 0 8px;
-  gap: 0;
+  background: rgba(10, 11, 15, 0.72);
+  padding: 0 10px;
+  gap: 8px;
 }
 
-/* GU app menu button (leftmost in the tab strip) */
+/* GU Brand Pill Button */
 .topbar-app-menu {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  height: 22px;
-  align-self: center;
-  margin-right: 6px;
-  padding: 0 10px;
-  gap: 6px;
-  background: linear-gradient(135deg, var(--cad-accent) 0%, var(--cad-accent-violet) 100%);
-  border: 1px solid rgba(0, 212, 255, 0.4);
-  border-radius: 4px;
+  height: 26px;
+  margin-right: 4px;
+  padding: 0 12px;
+  gap: 5px;
+  background: var(--ui-10-gradient);
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 999px;
   color: #fff;
-  font-size: 0.7rem;
+  font-family: var(--font-display);
+  font-size: 0.71rem;
   font-weight: 700;
   letter-spacing: 0.06em;
   cursor: pointer;
   transition: all var(--cad-transition);
-  box-shadow: 0 0 8px rgba(0, 212, 255, 0.25);
+  box-shadow: 0 2px 12px rgba(255, 107, 74, 0.35);
 }
 .topbar-app-menu:hover {
-  box-shadow: 0 0 12px rgba(0, 212, 255, 0.5);
+  box-shadow: 0 4px 16px rgba(255, 107, 74, 0.55);
+  filter: brightness(1.08);
   transform: translateY(-1px);
 }
 .topbar-app-menu:active {
   transform: scale(0.96);
 }
 .topbar-app-menu .app-menu-caret {
-  width: 8px;
-  height: 8px;
-  margin-left: 2px;
-  opacity: 0.85;
+  width: 10px;
+  height: 10px;
+  margin-left: 1px;
+  opacity: 0.9;
   transition: transform var(--cad-transition);
 }
 .topbar-app-menu.open .app-menu-caret {
   transform: rotate(180deg);
 }
 
-/* App menu dropdown panel (renderizado por portal en <body>) */
+/* App Menu Dropdown */
 .app-menu-panel {
-  min-width: 220px;
-  padding: 4px;
+  min-width: 240px;
+  padding: 6px;
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 2px;
 }
 .app-menu-item {
   display: flex;
   align-items: center;
   gap: 10px;
   width: 100%;
-  padding: 7px 10px;
+  padding: 8px 11px;
   background: transparent;
-  border: none;
-  border-radius: 3px;
-  color: var(--cad-text-dim);
-  font-size: 0.72rem;
-  font-weight: 500;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--cad-text);
+  font-size: 0.73rem;
+  font-weight: 600;
   text-align: left;
   cursor: pointer;
   transition: all var(--cad-transition);
@@ -764,79 +802,195 @@ body,
 }
 .app-menu-item:hover {
   background: var(--cad-bg-hover);
-  color: var(--cad-accent);
+  border-color: rgba(255, 107, 74, 0.25);
+  color: #FFFFFF;
 }
 .app-menu-item.danger {
   color: var(--cad-accent-red);
 }
 .app-menu-item.danger:hover {
-  background: rgba(239, 68, 68, 0.1);
-  color: var(--cad-accent-red);
+  background: rgba(244, 63, 94, 0.14);
+  border-color: rgba(244, 63, 94, 0.32);
+  color: #FB7185;
 }
 .app-menu-item svg {
-  width: 14px;
-  height: 14px;
+  width: 15px;
+  height: 15px;
   flex-shrink: 0;
 }
 .app-menu-item .app-menu-shortcut {
   margin-left: auto;
   font-size: 0.6rem;
   color: var(--cad-text-muted);
-  font-family: 'JetBrains Mono', 'Fira Code', monospace;
-  letter-spacing: 0.02em;
+  font-family: var(--font-mono);
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: var(--ui-60-canvas);
+  border: 1px solid var(--cad-border);
 }
 .app-menu-divider {
   height: 1px;
   background: var(--cad-border);
-  margin: 3px 4px;
+  margin: 4px 4px;
+}
+
+/* Segmented Pill Workspace Switcher */
+.topbar-tab-list {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--ui-60-surface);
+  border: 1px solid var(--cad-border);
+  flex-shrink: 0;
 }
 
 .topbar-tab {
   position: relative;
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  padding: 0 16px;
+  gap: 6px;
+  height: 24px;
+  padding: 0 12px;
   background: transparent;
-  border: none;
+  border: 1px solid transparent;
+  border-radius: 999px;
   color: var(--cad-text-dim);
-  font-size: 0.72rem;
-  font-weight: 500;
-  letter-spacing: 0.02em;
+  font-family: var(--font-display);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
   cursor: pointer;
   transition: all var(--cad-transition);
+  white-space: nowrap;
 }
 .topbar-tab:hover {
   color: var(--cad-text);
-  background: var(--cad-bg-hover);
+  background: rgba(255, 255, 255, 0.04);
 }
 .topbar-tab.active {
-  color: var(--cad-accent);
-  background: var(--cad-bg-panel);
+  color: #FFFFFF;
+  background: var(--ui-10-gradient-soft);
+  border-color: rgba(255, 107, 74, 0.45);
+  box-shadow: 0 2px 10px rgba(255, 107, 74, 0.16);
 }
-.topbar-tab.active::after {
-  content: '';
-  position: absolute;
-  left: 8px;
-  right: 8px;
-  bottom: 0;
-  height: 2px;
-  background: var(--cad-accent);
-  border-radius: 1px 1px 0 0;
-  box-shadow: 0 0 6px rgba(0, 212, 255, 0.5);
+
+/* Quick Access Toolbar Capsule in Titlebar */
+.topbar-qat {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 28px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--ui-60-surface);
+  border: 1px solid var(--cad-border);
+  flex-shrink: 0;
 }
-.topbar-tab-spacer {
+
+.topbar-qat-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 22px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  transition: all var(--cad-transition);
+}
+.topbar-qat-btn:hover:not(:disabled) {
+  background: var(--cad-bg-hover);
+  border-color: rgba(255, 107, 74, 0.3);
+  transform: translateY(-1px);
+}
+.topbar-qat-btn:disabled {
+  opacity: 0.32;
+  cursor: not-allowed;
+}
+
+.topbar-qat-sep {
+  width: 1px;
+  height: 14px;
+  background: var(--cad-border);
+  margin: 0 3px;
+}
+
+/* Center Draggable Titlebar Region + Project Telemetry Pill */
+.topbar-drag-center {
   flex: 1;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 120px;
+  overflow: hidden;
+  padding: 0 8px;
 }
+
+.topbar-project-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 25px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: rgba(28, 32, 46, 0.72);
+  border: 1px solid var(--cad-border);
+  color: var(--cad-text);
+  font-family: var(--font-display);
+  font-size: 0.68rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--cad-transition);
+  max-width: 100%;
+  overflow: hidden;
+}
+.topbar-project-pill:hover {
+  background: var(--cad-bg-hover);
+  border-color: rgba(255, 107, 74, 0.38);
+}
+
+.topbar-project-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--cad-text);
+}
+
+.topbar-project-meta {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  font-weight: 600;
+  color: var(--cad-text-dim);
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(10, 11, 15, 0.65);
+  border: 1px solid var(--cad-border);
+  white-space: nowrap;
+}
+
+/* Right Controls & Native Frameless Window Controls */
+.topbar-right-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 100%;
+  flex-shrink: 0;
+}
+
 .topbar-collapse-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 22px;
+  width: 26px;
+  height: 24px;
   align-self: center;
-  background: transparent;
+  background: var(--ui-60-surface);
   border: 1px solid var(--cad-border);
-  border-radius: 4px;
+  border-radius: 999px;
   color: var(--cad-text-dim);
   cursor: pointer;
   transition: all var(--cad-transition);
@@ -848,18 +1002,50 @@ body,
 }
 .topbar-collapse-btn:hover {
   color: var(--cad-accent);
-  border-color: rgba(0, 212, 255, 0.3);
+  border-color: rgba(255, 107, 74, 0.4);
 }
 
-/* ─── RIBBON PANELS ─── */
+.topbar-window-controls {
+  display: inline-flex;
+  align-items: stretch;
+  height: 100%;
+  margin-right: -10px;
+  border-left: 1px solid var(--cad-border);
+}
+
+.topbar-win-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 100%;
+  background: transparent;
+  border: none;
+  color: var(--cad-text-dim);
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+.topbar-win-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #FFFFFF;
+}
+.topbar-win-btn.close:hover {
+  background: #F43F5E;
+  color: #FFFFFF;
+}
+
+/* ─── FLOATING STUDIO TOOL ISLANDS (Not a CAD Ribbon) ─── */
 .topbar-ribbon {
   display: flex;
   align-items: stretch;
   height: var(--cad-topbar-ribbon-height);
-  background: var(--cad-bg-panel);
+  background:
+    radial-gradient(circle at 12% 0%, rgba(255, 107, 74, 0.07), transparent 36%),
+    radial-gradient(circle at 62% 0%, rgba(139, 92, 246, 0.07), transparent 38%),
+    var(--cad-bg-panel);
   border-top: 1px solid var(--cad-border);
-  padding: 4px 8px 4px;
-  gap: 4px;
+  padding: 5px 10px;
+  gap: 8px;
   overflow-x: auto;
   overflow-y: hidden;
   animation: ribbonSlide 220ms cubic-bezier(0.16, 1, 0.3, 1);
@@ -881,20 +1067,21 @@ body,
   align-items: stretch;
   min-width: 0;
   flex-shrink: 0;
-  border-right: 1px solid var(--cad-border);
-  padding: 0 4px;
-}
-.ribbon-group:last-child {
-  border-right: none;
+  background: linear-gradient(180deg, rgba(28, 32, 46, 0.88) 0%, rgba(21, 24, 34, 0.94) 100%);
+  border: 1px solid var(--cad-border);
+  border-radius: 10px;
+  padding: 3px 8px 3px;
+  box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.05);
 }
 .ribbon-group-label {
-  font-size: 0.55rem;
-  font-weight: 600;
+  font-family: var(--font-display);
+  font-size: 0.54rem;
+  font-weight: 700;
   color: var(--cad-text-muted);
   text-align: center;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-  padding: 0 0 2px;
+  letter-spacing: 0.08em;
+  padding: 0 0 1px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -902,66 +1089,70 @@ body,
 .ribbon-group-items {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 4px;
   flex: 1;
   min-width: 0;
 }
 
-/* Compact ribbon tool (icon + label en horizontal) */
+/* Studio Tool Pill Button (Colorful Icon + Crisp Label) */
 .ribbon-tool {
   display: flex;
   flex-direction: row;
   align-items: center;
   justify-content: flex-start;
   min-width: 0;
-  height: 28px;
-  padding: 0 8px;
-  gap: 6px;
-  background: transparent;
+  height: 30px;
+  padding: 0 10px;
+  gap: 7px;
+  background: rgba(255, 255, 255, 0.02);
   border: 1px solid transparent;
-  border-radius: 4px;
+  border-radius: 7px;
   color: var(--cad-text-dim);
   cursor: pointer;
   transition: all var(--cad-transition);
   position: relative;
 }
 .ribbon-tool svg {
-  width: 14px;
-  height: 14px;
+  width: 15px;
+  height: 15px;
   flex-shrink: 0;
+  transition: transform var(--cad-transition);
 }
 .ribbon-tool-label {
-  font-size: 0.66rem;
-  font-weight: 500;
+  font-family: var(--font-sans);
+  font-size: 0.68rem;
+  font-weight: 600;
   color: var(--cad-text-dim);
   line-height: 1;
   white-space: nowrap;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.01em;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .ribbon-tool:hover {
   background: var(--cad-bg-hover);
-  color: var(--cad-accent);
-  border-color: var(--cad-border);
+  color: var(--cad-text);
+  border-color: rgba(255, 107, 74, 0.3);
+  transform: translateY(-1px);
 }
 .ribbon-tool:hover .ribbon-tool-label {
   color: var(--cad-text);
 }
 .ribbon-tool:hover svg {
-  filter: drop-shadow(0 0 4px rgba(0, 212, 255, 0.4));
+  transform: scale(1.1);
 }
 .ribbon-tool.active {
-  background: var(--cad-bg-active);
-  color: var(--cad-accent);
-  border-color: rgba(0, 212, 255, 0.3);
-  box-shadow: inset 0 -2px 0 var(--cad-accent);
+  background: var(--ui-10-gradient-soft);
+  color: #FFFFFF;
+  border-color: rgba(255, 107, 74, 0.5);
+  box-shadow: 0 3px 12px rgba(255, 107, 74, 0.18), inset 0 1px 0 0 rgba(255, 255, 255, 0.14);
 }
 .ribbon-tool.active .ribbon-tool-label {
-  color: var(--cad-accent);
+  color: #FFFFFF;
+  font-weight: 700;
 }
 .ribbon-tool:active {
-  transform: scale(0.95);
+  transform: scale(0.96);
 }
 .ribbon-tool.disabled {
   opacity: 0.35;
@@ -969,23 +1160,21 @@ body,
   pointer-events: none;
 }
 
-/* Small icon button (within ribbon) */
 .ribbon-tool.small {
   flex-direction: row;
   height: 28px;
   min-width: 28px;
-  padding: 0 6px;
-  gap: 4px;
+  padding: 0 8px;
+  gap: 5px;
 }
 .ribbon-tool.small svg {
   width: 14px;
   height: 14px;
 }
 .ribbon-tool.small .ribbon-tool-label {
-  font-size: 0.6rem;
+  font-size: 0.63rem;
 }
 
-/* Number badge on tool button */
 .ribbon-tool-badge {
   position: absolute;
   top: 1px;
@@ -1009,32 +1198,28 @@ body,
   min-width: 240px;
   max-width: 320px;
   max-height: calc(100vh - var(--cad-topbar-tabs-height) - 20px);
-  padding: 6px;
+  padding: 8px;
   overflow-y: auto;
   z-index: var(--z-ribbon-dropdown);
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 6px;
 }
 .ribbon-popover-title {
   padding: 5px 8px 7px;
-  font-size: 0.58rem;
+  font-family: var(--font-display);
+  font-size: 0.6rem;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--cad-accent);
   border-bottom: 1px solid var(--cad-border);
-  margin-bottom: 4px;
+  margin-bottom: 2px;
 }
 .ribbon-popover .ribbon-group {
   flex-direction: column;
   align-items: stretch;
-  border-right: none;
-  border-bottom: 1px solid var(--cad-border);
-  padding: 2px 2px 6px;
-}
-.ribbon-popover .ribbon-group:last-child {
-  border-bottom: none;
+  padding: 6px;
 }
 .ribbon-popover .ribbon-group-label {
   text-align: left;
@@ -1043,7 +1228,7 @@ body,
 .ribbon-popover .ribbon-group-items {
   flex-direction: column;
   align-items: stretch;
-  gap: 2px;
+  gap: 3px;
 }
 .ribbon-popover .ribbon-tool {
   flex-direction: row;
@@ -1053,7 +1238,7 @@ body,
   height: 36px;
   padding: 0 10px;
   gap: 10px;
-  border-radius: 6px;
+  border-radius: 7px;
 }
 .ribbon-popover .ribbon-tool-label {
   font-size: 0.7rem;
@@ -1061,25 +1246,21 @@ body,
 }
 .ribbon-popover .ribbon-tool:hover .ribbon-tool-label,
 .ribbon-popover .ribbon-tool.active .ribbon-tool-label {
-  color: var(--cad-accent);
+  color: #FFFFFF;
 }
 .ribbon-popover .ribbon-tool.small {
   height: 34px;
 }
 
-/* Responsive: en pantallas pequeñas compactamos más el ribbon */
 @media (max-width: 900px) {
-  .ribbon-group {
-    border-right: none;
-  }
   .ribbon-tool {
     height: 26px;
-    padding: 0 6px;
-    gap: 4px;
+    padding: 0 7px;
+    gap: 5px;
   }
   .ribbon-tool svg {
-    width: 12px;
-    height: 12px;
+    width: 13px;
+    height: 13px;
   }
   .ribbon-tool-label {
     font-size: 0.62rem;
@@ -1087,28 +1268,11 @@ body,
   .ribbon-group-label {
     font-size: 0.5rem;
   }
-  .ribbon-popover .ribbon-tool {
-    height: 36px;
-    min-width: 0;
-  }
-  .ribbon-popover .ribbon-tool-label {
-    display: inline;
-  }
-  .ribbon-popover .ribbon-group-label {
-    display: block;
-  }
 }
 
 /* ============================================================
-   Left Sidebar — rail slim con icono + etiqueta rotada 90°
-   (Vías / Rotondas / Manzanos) y panel glassmorphism redimensionable
+   Left Sidebar — Studio Vertical Dock & Glass Drawer
    ============================================================ */
-:root {
-  --cad-leftbar-rail-width: 36px;
-  --cad-leftbar-panel-width: 320px;
-  --z-leftbar: 115;
-}
-
 .leftbar-root {
   position: fixed;
   top: var(--cad-topbar-height);
@@ -1121,13 +1285,13 @@ body,
 
 .leftbar-rail {
   width: max-content;
-  background: var(--cad-bg-deep);
+  background: linear-gradient(180deg, #0D0F16 0%, #121520 100%);
   border-right: 1px solid var(--cad-border);
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  padding: 8px 4px;
-  gap: 4px;
+  padding: 10px 5px;
+  gap: 6px;
   overflow-y: auto;
   pointer-events: auto;
 }
@@ -1140,11 +1304,11 @@ body,
   justify-content: flex-start;
   gap: 8px;
   width: 100%;
-  height: 110px;
-  padding: 8px 4px 6px;
+  height: 112px;
+  padding: 9px 5px 7px;
   border: 1px solid transparent;
-  border-radius: 6px;
-  background: transparent;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.015);
   color: var(--cad-text-dim);
   cursor: pointer;
   transition: all var(--cad-transition);
@@ -1154,20 +1318,23 @@ body,
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  height: 18px;
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.04);
   flex-shrink: 0;
 }
 .leftbar-tab-icon svg {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   transition: all var(--cad-transition);
 }
 .leftbar-tab-label {
-  font-size: 0.6rem;
-  font-weight: 600;
+  font-family: var(--font-display);
+  font-size: 0.62rem;
+  font-weight: 700;
   line-height: 1;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.05em;
   color: var(--cad-text-dim);
   transition: color var(--cad-transition);
   white-space: nowrap;
@@ -1178,29 +1345,23 @@ body,
 }
 .leftbar-tab:hover {
   background: var(--cad-bg-hover);
-  border-color: var(--cad-border);
+  border-color: rgba(255, 107, 74, 0.3);
 }
 .leftbar-tab:hover .leftbar-tab-label {
   color: var(--cad-text);
 }
 .leftbar-tab:hover .leftbar-tab-icon svg {
-  filter: drop-shadow(0 0 4px rgba(0, 212, 255, 0.4));
+  transform: scale(1.1);
 }
 .leftbar-tab.active {
-  background: var(--cad-bg-active);
-  border-color: rgba(0, 212, 255, 0.35);
+  background: var(--ui-10-gradient-soft);
+  border-color: rgba(255, 107, 74, 0.45);
   box-shadow:
-    inset 2px 0 0 var(--cad-accent),
-    0 0 12px rgba(0, 212, 255, 0.15);
-}
-.leftbar-tab.active .leftbar-tab-icon {
-  color: var(--cad-accent);
-}
-.leftbar-tab.active .leftbar-tab-icon svg {
-  filter: drop-shadow(0 0 6px rgba(0, 212, 255, 0.5));
+    inset 3px 0 0 var(--tab-accent, var(--cad-accent)),
+    0 4px 14px rgba(0, 0, 0, 0.35);
 }
 .leftbar-tab.active .leftbar-tab-label {
-  color: var(--cad-accent);
+  color: #FFFFFF;
 }
 .leftbar-tab:active {
   transform: scale(0.97);
@@ -1213,21 +1374,22 @@ body,
   height: 15px;
   padding: 0 4px;
   border-radius: 8px;
-  background: var(--cad-accent-red);
+  background: var(--ui-10-gradient);
   color: #fff;
+  font-family: var(--font-mono);
   font-size: 0.55rem;
   font-weight: 700;
   display: flex;
   align-items: center;
   justify-content: center;
   pointer-events: none;
-  box-shadow: 0 0 6px rgba(239, 68, 68, 0.5);
+  box-shadow: 0 2px 6px rgba(255, 107, 74, 0.45);
 }
 
 .leftbar-panel {
   width: var(--cad-leftbar-panel-width, 320px);
   max-width: calc(100vw - var(--cad-leftbar-rail-width) - 24px);
-  margin-left: 4px;
+  margin: 6px 0 6px 6px;
   display: flex;
   flex-direction: column;
   pointer-events: auto;
@@ -1238,11 +1400,12 @@ body,
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 10px 12px;
-  font-size: 0.72rem;
+  padding: 11px 14px;
+  font-family: var(--font-display);
+  font-size: 0.74rem;
   font-weight: 700;
   color: var(--cad-text);
-  letter-spacing: 0.03em;
+  letter-spacing: 0.04em;
   border-bottom: 1px solid var(--cad-border);
   flex-shrink: 0;
   gap: 8px;
@@ -1257,8 +1420,10 @@ body,
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
   color: var(--cad-accent);
   flex-shrink: 0;
 }
@@ -1274,7 +1439,6 @@ body,
   overflow-y: auto;
 }
 
-/* Borde de resize en el costado derecho del panel */
 .leftbar-resize-handle {
   position: absolute;
   top: 0;

@@ -30,7 +30,7 @@ export function Modal({
   title,
   visuallyHiddenTitle,
   description,
-  width = 'min(560px, 92vw)',
+  width = 'min(520px, 92vw)',
   children,
   disableOutsideClose,
 }: ModalProps) {
@@ -42,8 +42,9 @@ export function Modal({
           style={{
             position: 'fixed',
             inset: 0,
-            background: 'rgba(0, 0, 0, 0.55)',
-            backdropFilter: 'blur(4px)',
+            background: 'rgba(6, 7, 11, 0.72)',
+            backdropFilter: 'blur(8px)',
+            WebkitBackdropFilter: 'blur(8px)',
             zIndex: 'var(--z-modal-overlay)',
           }}
         />
@@ -57,7 +58,11 @@ export function Modal({
             width,
             maxHeight: '90vh',
             overflow: 'auto',
-            padding: '20px 22px',
+            padding: '22px 24px',
+            borderRadius: 16,
+            border: '1px solid rgba(255, 255, 255, 0.11)',
+            boxShadow:
+              '0 24px 64px -12px rgba(0, 0, 0, 0.85), 0 0 0 1px rgba(255, 107, 74, 0.12), inset 0 1px 0 0 rgba(255, 255, 255, 0.12)',
             zIndex: 'var(--z-modal)',
           }}
           onInteractOutside={disableOutsideClose ? (e) => e.preventDefault() : undefined}

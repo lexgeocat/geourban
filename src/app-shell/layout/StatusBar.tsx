@@ -3,8 +3,6 @@ import {
   ZoomIn,
   ZoomOut,
   Maximize2,
-  Undo2,
-  Redo2,
   Grid3x3,
   Map as MapIcon,
   Satellite,
@@ -16,7 +14,6 @@ import {
 } from 'lucide-react';
 import { useMapStore } from '@map-core/store/mapStore';
 import { useUiShellStore } from '../store/uiShellStore';
-import { undo, redo, useCommandStack } from '@kernel/command/CommandStack';
 
 import { useProjectCrsStore, type ProjectCrsMode } from '@georef-engine/store/projectCrsStore';
 import { BASE_MAP_DEFS, type BaseMapId } from '@map-core/baseMaps';
@@ -27,14 +24,14 @@ import { useEditSessionStore } from '@layers-engine/store/editSessionStore';
 import EditSessionIndicator from './EditSessionIndicator';
 
 const BASE_MAP_ICONS: Record<BaseMapId, React.ReactNode> = {
-  cad: <Grid3x3 size={13} />,
-  osm: <MapIcon size={13} />,
-  googleSatellite: <Satellite size={13} />,
-  googleRoadmap: <MapPin size={13} />,
+  cad: <Grid3x3 size={13} color="#FF6B4A" />,
+  osm: <MapIcon size={13} color="#34D399" />,
+  googleSatellite: <Satellite size={13} color="#38BDF8" />,
+  googleRoadmap: <MapPin size={13} color="#FBBF24" />,
 };
 
 const BASE_MAP_LABELS: Record<BaseMapId, string> = {
-  cad: 'CAD · Grilla',
+  cad: 'Estudio · Grilla',
   osm: 'OpenStreetMap',
   googleSatellite: 'Google Satelital',
   googleRoadmap: 'Google Maps',
@@ -84,8 +81,6 @@ export default function StatusBar() {
 
   const epsgLabel = crsMode === 'utm' ? (exportEpsg ?? 'EPSG:UTM') : 'Local';
 
-  const canUndo = useCommandStack((s) => s.canUndo);
-  const canRedo = useCommandStack((s) => s.canRedo);
   const zoomIn = useMapStore((s) => s.zoomIn);
   const zoomOut = useMapStore((s) => s.zoomOut);
   const fitToExtent = useMapStore((s) => s.fitToExtent);
@@ -120,77 +115,50 @@ export default function StatusBar() {
         left: 0,
         right: 0,
         height: 'var(--cad-statusbar-height)',
-        background: 'var(--cad-bg-deep)',
+        background: 'linear-gradient(90deg, #0A0B0F 0%, #12151F 50%, #0A0B0F 100%)',
         borderTop: '1px solid var(--cad-border)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
         padding: '0 12px',
         zIndex: 100,
-        fontSize: '0.65rem',
+        fontSize: '0.66rem',
         color: 'var(--cad-text-muted)',
       }}
       className="font-mono-cad"
     >
-      {/* Left: Undo/Redo + coordinates */}
-      <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-        {/* Undo / Redo (moved from TopBar) */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          <button
-            className="cad-icon-btn cad-tooltip"
-            onClick={undo}
-            disabled={!canUndo}
-            data-tooltip="Deshacer (Ctrl+Z)"
-            aria-label="Deshacer"
-            title="Deshacer (Ctrl+Z)"
-            style={{
-              width: 22,
-              height: 22,
-              opacity: canUndo ? 1 : 0.35,
-              cursor: canUndo ? 'pointer' : 'not-allowed',
-            }}
-          >
-            <Undo2 size={12} />
-          </button>
-          <button
-            className="cad-icon-btn cad-tooltip"
-            onClick={redo}
-            disabled={!canRedo}
-            data-tooltip="Rehacer (Ctrl+Y)"
-            aria-label="Rehacer"
-            title="Rehacer (Ctrl+Y)"
-            style={{
-              width: 22,
-              height: 22,
-              opacity: canRedo ? 1 : 0.35,
-              cursor: canRedo ? 'pointer' : 'not-allowed',
-            }}
-          >
-            <Redo2 size={12} />
-          </button>
-        </div>
-
-        <span>•</span>
-
-        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          <Crosshair size={11} />
+      {/* Left: Coordinates */}
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+        <span
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+            padding: '2px 10px',
+            borderRadius: 999,
+            background: 'rgba(10, 11, 15, 0.78)',
+            border: '1px solid var(--cad-border)',
+            color: 'var(--cad-text)',
+          }}
+        >
+          <Crosshair size={11} color="#FF6B4A" />
           {coords ? (
             <span>
-              <span style={{ color: 'var(--cad-accent)' }}>X</span>{' '}
+              <strong style={{ color: '#FF6B4A' }}>X</strong>{' '}
               {coords.isProjected ? coords.x.toFixed(2) : coords.x.toFixed(4)}
-              <span>•</span>
-              <span style={{ color: 'var(--cad-accent)' }}>Y</span>{' '}
+              <span style={{ margin: '0 6px', color: 'var(--cad-text-muted)' }}>·</span>
+              <strong style={{ color: '#A78BFA' }}>Y</strong>{' '}
               {coords.isProjected ? coords.y.toFixed(2) : coords.y.toFixed(4)}
-              {coords.isProjected && <span style={{ marginLeft: 6, opacity: 0.5 }}>m</span>}
+              {coords.isProjected && <span style={{ marginLeft: 5, opacity: 0.55 }}>m</span>}
             </span>
           ) : (
-            <span style={{ opacity: 0.5 }}>sin posición</span>
+            <span style={{ opacity: 0.55 }}>sin posición</span>
           )}
         </span>
       </div>
 
-      {/* Center: CRS + Base Map + OSNAP + Grid Snap */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 16, flex: 1, justifyContent: 'center' }}>
+      {/* Center: CRS + Base Map + OSNAP + Props */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, justifyContent: 'center' }}>
         <div ref={crsRef} style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
           <button
             onClick={() => setCrsOpen(!crsOpen)}
@@ -200,15 +168,17 @@ export default function StatusBar() {
               display: 'flex',
               alignItems: 'center',
               gap: 6,
-              padding: '2px 6px',
-              borderRadius: 4,
-              background: crsOpen ? 'var(--cad-bg-active)' : 'transparent',
+              width: 'auto',
+              height: 22,
+              padding: '0 9px',
+              borderRadius: 999,
+              background: crsOpen ? 'var(--cad-bg-active)' : 'var(--cad-bg-surface)',
               border: '1px solid var(--cad-border)',
               color: crsMode === 'utm' ? 'var(--cad-accent)' : 'var(--cad-text-dim)',
               fontSize: '0.65rem',
             }}
           >
-            <Globe size={13} />
+            <Globe size={12} color="#34D399" />
             <span style={{ letterSpacing: '0.03em' }}>{epsgLabel}</span>
           </button>
           {crsOpen && (
@@ -218,14 +188,14 @@ export default function StatusBar() {
                 position: 'absolute',
                 bottom: '100%',
                 left: 0,
-                marginBottom: 4,
-                minWidth: 230,
+                marginBottom: 6,
+                minWidth: 235,
                 padding: 10,
-                borderRadius: 6,
+                borderRadius: 10,
                 zIndex: 'var(--z-dropdown)',
               }}
             >
-              <div style={{ fontSize: '0.6rem', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--cad-text-dim)', marginBottom: 8, borderBottom: '1px solid var(--cad-border)', paddingBottom: 6 }}>
+              <div style={{ fontSize: '0.6rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--cad-text-dim)', marginBottom: 8, borderBottom: '1px solid var(--cad-border)', paddingBottom: 6 }}>
                 CRS del proyecto
               </div>
 
@@ -241,7 +211,7 @@ export default function StatusBar() {
                       background: crsMode === m ? 'var(--cad-bg-active)' : 'var(--cad-bg-surface)',
                       border: `1px solid ${crsMode === m ? 'var(--cad-accent)' : 'var(--cad-border)'}`,
                       color: crsMode === m ? 'var(--cad-accent)' : 'var(--cad-text-dim)',
-                      borderRadius: 4,
+                      borderRadius: 6,
                     }}
                   >
                     {CRS_MODE_LABELS[m]}
@@ -257,12 +227,12 @@ export default function StatusBar() {
                     max={60}
                     value={utmZone}
                     onChange={(e) => handleUtmZoneChange(Math.min(60, Math.max(1, parseInt(e.target.value, 10) || 1)))}
-                    style={{ width: 56, padding: '4px 6px', background: 'var(--cad-bg-deepest)', border: '1px solid var(--cad-border)', borderRadius: 4, color: 'var(--cad-text)', fontSize: '0.75rem', fontFamily: 'JetBrains Mono, monospace' }}
+                    style={{ width: 56, padding: '4px 6px', background: 'var(--cad-bg-deepest)', border: '1px solid var(--cad-border)', borderRadius: 6, color: 'var(--cad-text)', fontSize: '0.75rem', fontFamily: 'JetBrains Mono, monospace' }}
                   />
                   <select
                     value={utmHemisphere}
                     onChange={(e) => handleUtmHemisphereChange(e.target.value as 'N' | 'S')}
-                    style={{ padding: '4px 6px', background: 'var(--cad-bg-deepest)', border: '1px solid var(--cad-border)', borderRadius: 4, color: 'var(--cad-text)', fontSize: '0.75rem' }}
+                    style={{ padding: '4px 6px', background: 'var(--cad-bg-deepest)', border: '1px solid var(--cad-border)', borderRadius: 6, color: 'var(--cad-text)', fontSize: '0.75rem' }}
                   >
                     <option value="N">Norte</option>
                     <option value="S">Sur</option>
@@ -286,7 +256,7 @@ export default function StatusBar() {
                 <button
                   onClick={() => { requestReconfigure(); setCrsOpen(false); }}
                   className="cad-icon-btn"
-                  style={{ width: '100%', height: 'auto', padding: '5px 8px', fontSize: '0.65rem', color: 'var(--cad-text-muted)', border: '1px solid var(--cad-border)', borderRadius: 4, marginTop: 6 }}
+                  style={{ width: '100%', height: 'auto', padding: '5px 8px', fontSize: '0.65rem', color: 'var(--cad-text-muted)', border: '1px solid var(--cad-border)', borderRadius: 6, marginTop: 6 }}
                 >
                   Reconfigurar (reabrir asistente)
                 </button>
@@ -294,8 +264,6 @@ export default function StatusBar() {
             </div>
           )}
         </div>
-
-        <span>•</span>
 
         {/* Base Map Selector */}
         <div ref={baseMapRef} style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
@@ -307,16 +275,20 @@ export default function StatusBar() {
               display: 'flex',
               alignItems: 'center',
               gap: 6,
-              padding: '2px 6px',
-              borderRadius: 4,
-              background: baseMapOpen ? 'var(--cad-bg-active)' : 'transparent',
+              width: 'auto',
+              height: 22,
+              padding: '0 9px',
+              borderRadius: 999,
+              background: baseMapOpen ? 'var(--cad-bg-active)' : 'var(--cad-bg-surface)',
               border: '1px solid var(--cad-border)',
               color: 'var(--cad-text)',
               fontSize: '0.65rem',
             }}
           >
             {BASE_MAP_ICONS[baseMap]}
-            <span style={{ textTransform: 'uppercase', letterSpacing: '0.04em' }}>{baseMap === 'cad' ? 'CAD' : baseMap === 'osm' ? 'OSM' : baseMap === 'googleSatellite' ? 'SAT' : 'MAPS'}</span>
+            <span style={{ textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              {baseMap === 'cad' ? 'GRILLA' : baseMap === 'osm' ? 'OSM' : baseMap === 'googleSatellite' ? 'SAT' : 'MAPS'}
+            </span>
           </button>
           {baseMapOpen && (
             <div
@@ -325,10 +297,10 @@ export default function StatusBar() {
                 position: 'absolute',
                 bottom: '100%',
                 left: 0,
-                marginBottom: 4,
-                minWidth: 160,
+                marginBottom: 6,
+                minWidth: 170,
                 padding: 6,
-                borderRadius: 6,
+                borderRadius: 10,
                 zIndex: 'var(--z-dropdown)',
               }}
             >
@@ -344,7 +316,7 @@ export default function StatusBar() {
                     padding: '6px 8px',
                     border: 'none',
                     background: baseMap === def.id ? 'var(--cad-bg-hover)' : 'transparent',
-                    borderRadius: 4,
+                    borderRadius: 6,
                     color: baseMap === def.id ? 'var(--cad-accent)' : 'var(--cad-text)',
                     fontSize: '0.7rem',
                     textAlign: 'left',
@@ -359,19 +331,10 @@ export default function StatusBar() {
           )}
         </div>
 
-        <span>•</span>
-
-        {/* OSNAP · panel unificado: tipos de snap + grilla + master switch (F3) */}
+        {/* OSNAP · panel unificado */}
         <SnapPanel />
 
-        {hasEditingLayers && (
-          <>
-            <span>•</span>
-            <EditSessionIndicator />
-          </>
-        )}
-
-        <span>•</span>
+        {hasEditingLayers && <EditSessionIndicator />}
 
         {/* Properties Panel */}
         <label
@@ -381,9 +344,10 @@ export default function StatusBar() {
             display: 'flex',
             alignItems: 'center',
             gap: 6,
-            padding: '2px 6px',
-            borderRadius: 4,
-            background: panelVisibility.properties ? 'var(--cad-bg-active)' : 'transparent',
+            height: 22,
+            padding: '0 9px',
+            borderRadius: 999,
+            background: panelVisibility.properties ? 'var(--cad-bg-active)' : 'var(--cad-bg-surface)',
             border: '1px solid var(--cad-border)',
             color: panelVisibility.properties ? 'var(--cad-accent)' : 'var(--cad-text-dim)',
             fontSize: '0.65rem',
@@ -395,26 +359,32 @@ export default function StatusBar() {
             checked={panelVisibility.properties}
             onChange={(e) => setPanelVisibility('properties', e.target.checked)}
             className="cad-toggle"
-            style={{ marginRight: 4 }}
+            style={{ marginRight: 2 }}
           />
-          <FileText size={13} />
+          <FileText size={12} color="#EC4899" />
           <span style={{ textTransform: 'uppercase', letterSpacing: '0.04em' }}>Props</span>
         </label>
-        {recomputingRoads && (
-          <>
-            <span>•</span>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.65rem', color: 'var(--cad-text-dim)' }}>
-              <span className="cad-spinner" /> recalculando red vial…
-            </span>
-          </>
-        )}
 
+        {recomputingRoads && (
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.65rem', color: 'var(--cad-text-dim)' }}>
+            <span className="cad-spinner" /> recalculando red vial…
+          </span>
+        )}
       </div>
 
       {/* Right: Zoom controls + zoom level indicator */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-        {/* Zoom controls (moved from TopBar) */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 2,
+            padding: '1px 4px',
+            borderRadius: 999,
+            background: 'var(--cad-bg-surface)',
+            border: '1px solid var(--cad-border)',
+          }}
+        >
           <button
             className="cad-icon-btn cad-tooltip"
             onClick={zoomOut}
@@ -423,7 +393,7 @@ export default function StatusBar() {
             title="Alejar"
             style={{ width: 22, height: 22 }}
           >
-            <ZoomOut size={12} />
+            <ZoomOut size={12} color="#FBBF24" />
           </button>
           <button
             className="cad-icon-btn cad-tooltip"
@@ -433,7 +403,7 @@ export default function StatusBar() {
             title="Centrar vista"
             style={{ width: 22, height: 22 }}
           >
-            <Maximize2 size={12} />
+            <Maximize2 size={12} color="#FF6B4A" />
           </button>
           <button
             className="cad-icon-btn cad-tooltip"
@@ -443,15 +413,25 @@ export default function StatusBar() {
             title="Acercar"
             style={{ width: 22, height: 22 }}
           >
-            <ZoomIn size={12} />
+            <ZoomIn size={12} color="#34D399" />
           </button>
         </div>
 
-        <span>•</span>
-
-        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          <Search size={11} />
-          <span>Zoom <span style={{ color: 'var(--cad-accent)' }}>{zoom.toFixed(1)}</span></span>
+        <span
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 5,
+            padding: '2px 9px',
+            borderRadius: 999,
+            background: 'var(--cad-bg-surface)',
+            border: '1px solid var(--cad-border)',
+          }}
+        >
+          <Search size={11} color="#38BDF8" />
+          <span>
+            Z <strong style={{ color: 'var(--cad-accent)' }}>{zoom.toFixed(1)}</strong>
+          </span>
         </span>
       </div>
     </div>

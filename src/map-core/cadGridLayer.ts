@@ -10,7 +10,7 @@ const NICE_STEPS = [
   50000, 100000, 200000, 500000, 1000000, 2000000, 5000000, 10000000, 20000000,
 ];
 
-const CAD_BG = '#0a0e14';
+const CAD_BG = '#0A0B0F';
 
 interface CadColors {
   minor: string;
@@ -20,14 +20,15 @@ interface CadColors {
 
 function readCadColors(): CadColors {
   if (typeof window === 'undefined') {
-    return { minor: 'rgba(36, 48, 68, 0.85)', major: 'rgba(0, 212, 255, 0.22)', axis: 'rgba(0, 212, 255, 0.45)' };
+    return { minor: 'rgba(38, 43, 58, 0.65)', major: 'rgba(139, 92, 246, 0.18)', axis: 'rgba(255, 107, 74, 0.38)' };
   }
   const style = getComputedStyle(document.documentElement);
-  const accent = style.getPropertyValue('--cad-accent').trim() || '#00d4ff';
+  const accent = style.getPropertyValue('--cad-accent').trim() || '#FF6B4A';
+  const secondary = style.getPropertyValue('--cad-accent-secondary').trim() || '#8B5CF6';
   return {
-    minor: 'rgba(36, 48, 68, 0.85)',
-    major: withAlpha(accent, 0.22),
-    axis: withAlpha(accent, 0.45),
+    minor: 'rgba(38, 43, 58, 0.65)',
+    major: withAlpha(secondary, 0.18),
+    axis: withAlpha(accent, 0.42),
   };
 }
 

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { FilePlus, FolderOpen, Save, LogOut, Info } from 'lucide-react';
+import { FilePlus, FolderOpen, Save, LogOut, Info, Sparkles } from 'lucide-react';
 
 export interface AppMenuActions {
   onNewProject: () => void;
@@ -32,7 +32,7 @@ export default function AppMenu({ actions }: { actions: AppMenuActions }) {
   const toggle = () => {
     if (!open && ref.current) {
       const rect = ref.current.getBoundingClientRect();
-      setPos({ top: rect.bottom + 6, left: rect.left });
+      setPos({ top: rect.bottom + 8, left: rect.left });
     }
     setOpen((v) => !v);
   };
@@ -49,9 +49,10 @@ export default function AppMenu({ actions }: { actions: AppMenuActions }) {
         onClick={toggle}
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label="Menú principal"
-        title="Menú principal"
+        aria-label="Menú principal GeoUrban Studio"
+        title="Menú principal GeoUrban Studio"
       >
+        <Sparkles size={13} color="#FFF" style={{ filter: 'drop-shadow(0 0 4px rgba(255,255,255,0.45))' }} />
         <span>GU</span>
         <svg className="app-menu-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
           <polyline points="6 9 12 15 18 9" />
@@ -68,29 +69,29 @@ export default function AppMenu({ actions }: { actions: AppMenuActions }) {
             style={{ position: 'fixed', top: pos.top, left: pos.left, zIndex: 'var(--z-dropdown)' }}
           >
             <button role="menuitem" className="app-menu-item" onClick={() => runAndClose(actions.onNewProject)}>
-              <FilePlus />
+              <FilePlus color="#34D399" />
               <span>Nuevo proyecto</span>
               <span className="app-menu-shortcut">Ctrl+N</span>
             </button>
             <button role="menuitem" className="app-menu-item" onClick={() => runAndClose(actions.onOpenProject)}>
-              <FolderOpen />
+              <FolderOpen color="#FBBF24" />
               <span>Abrir proyecto…</span>
               <span className="app-menu-shortcut">Ctrl+O</span>
             </button>
             <button role="menuitem" className="app-menu-item" onClick={() => runAndClose(actions.onSaveProject)}>
-              <Save />
+              <Save color="#38BDF8" />
               <span>Guardar proyecto…</span>
               <span className="app-menu-shortcut">Ctrl+S</span>
             </button>
 
             <div className="app-menu-divider" />
             <button role="menuitem" className="app-menu-item" onClick={() => runAndClose(actions.onAbout)}>
-              <Info />
-              <span>Acerca de GeoUrban</span>
+              <Info color="#A78BFA" />
+              <span>Acerca de GeoUrban Studio</span>
             </button>
             <div className="app-menu-divider" />
             <button role="menuitem" className="app-menu-item danger" onClick={() => runAndClose(actions.onExit)}>
-              <LogOut />
+              <LogOut color="#FB7185" />
               <span>Salir</span>
             </button>
           </div>,
