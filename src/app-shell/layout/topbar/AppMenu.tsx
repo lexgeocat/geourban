@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { FilePlus, FolderOpen, Save, LogOut, Info, Sparkles } from 'lucide-react';
+import { FilePlus, FolderOpen, Save, LogOut, Info } from 'lucide-react';
+import urbigeoIcon from '@/assets/urbigeo-icon.png';
 
 export interface AppMenuActions {
   onNewProject: () => void;
@@ -52,7 +53,14 @@ export default function AppMenu({ actions }: { actions: AppMenuActions }) {
         aria-label="Menú principal GeoUrban Studio"
         title="Menú principal GeoUrban Studio"
       >
-        <Sparkles size={13} color="#FFF" style={{ filter: 'drop-shadow(0 0 4px rgba(255,255,255,0.45))' }} />
+        <img
+          src={urbigeoIcon}
+          alt=""
+          width={18}
+          height={18}
+          className="app-menu-brand-icon"
+          aria-hidden="true"
+        />
         <span>GU</span>
         <svg className="app-menu-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
           <polyline points="6 9 12 15 18 9" />

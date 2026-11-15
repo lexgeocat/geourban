@@ -742,8 +742,8 @@ body,
   justify-content: center;
   height: 26px;
   margin-right: 4px;
-  padding: 0 12px;
-  gap: 5px;
+  padding: 0 10px 0 5px;
+  gap: 6px;
   background: var(--ui-10-gradient);
   border: 1px solid rgba(255, 255, 255, 0.24);
   border-radius: 999px;
@@ -755,6 +755,15 @@ body,
   cursor: pointer;
   transition: all var(--cad-transition);
   box-shadow: 0 2px 12px rgba(255, 107, 74, 0.35);
+}
+.app-menu-brand-icon {
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  object-fit: cover;
+  display: block;
+  flex-shrink: 0;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
 }
 .topbar-app-menu:hover {
   box-shadow: 0 4px 16px rgba(255, 107, 74, 0.55);
