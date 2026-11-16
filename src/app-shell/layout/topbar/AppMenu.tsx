@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { FilePlus, FolderOpen, Save, LogOut, Info } from 'lucide-react';
+import { FilePlus, FolderOpen, Save, LogOut, Info, Printer } from 'lucide-react';
 import urbigeoIcon from '@/assets/urbigeo-icon.png';
 
 export interface AppMenuActions {
   onNewProject: () => void;
   onSaveProject: () => void;
   onOpenProject: () => void;
+  onOpenLayout: () => void;
   onAbout: () => void;
   onExit: () => void;
 }
@@ -90,6 +91,11 @@ export default function AppMenu({ actions }: { actions: AppMenuActions }) {
               <Save color="#38BDF8" />
               <span>Guardar proyecto…</span>
               <span className="app-menu-shortcut">Ctrl+S</span>
+            </button>
+            <button role="menuitem" className="app-menu-item" onClick={() => runAndClose(actions.onOpenLayout)}>
+              <Printer color="#FF6B4A" />
+              <span>Generar Layout Cartográfico…</span>
+              <span className="app-menu-shortcut">Ctrl+P</span>
             </button>
 
             <div className="app-menu-divider" />

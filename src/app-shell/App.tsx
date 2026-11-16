@@ -14,6 +14,7 @@ import SaveProjectModal from '@persistence-engine/ui/SaveProjectModal';
 import OpenProjectModal from '@persistence-engine/ui/OpenProjectModal';
 import LabelConfigModal from '@label-engine/ui/LabelConfigModal';
 import AttributeTablePanel from '@attributes-engine/ui/AttributeTablePanel';
+import { PrintLayoutModal } from '@layout-engine';
 
 function App() {
   useKeyboardShortcuts();
@@ -60,6 +61,7 @@ function App() {
       <ToastStack />
       <ManualDimensionInput />
       <AttributeTablePanel />
+      <PrintLayoutModal />
 
       <StatusBar />
     </div>

@@ -10,11 +10,13 @@ type UiShellState = {
   baseMap: BaseMapId;
   panelVisibility: Record<PanelKey, boolean>;
   statsPanelVisible: boolean;
+  layoutModalOpen: boolean;
   activeTab: RibbonTabId;
   ribbonCollapsed: boolean;
   setBaseMap: (id: BaseMapId) => void;
   setPanelVisibility: (key: PanelKey, visible: boolean) => void;
   setStatsPanelVisible: (v: boolean) => void;
+  setLayoutModalOpen: (v: boolean) => void;
   setActiveTab: (id: RibbonTabId) => void;
   setRibbonCollapsed: (v: boolean) => void;
 };
@@ -26,6 +28,7 @@ export const useUiShellStore = create<UiShellState>()(
       properties: false,
     },
     statsPanelVisible: false,
+    layoutModalOpen: false,
     activeTab: 'map',
     ribbonCollapsed: false,
     setBaseMap: (id) =>
@@ -39,6 +42,10 @@ export const useUiShellStore = create<UiShellState>()(
     setStatsPanelVisible: (v) =>
       set((state) => {
         state.statsPanelVisible = v;
+      }),
+    setLayoutModalOpen: (v) =>
+      set((state) => {
+        state.layoutModalOpen = v;
       }),
     setActiveTab: (id) =>
       set((state) => {

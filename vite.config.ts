@@ -23,6 +23,7 @@ export default defineConfig({
       '@shared-ui': path.resolve(__dirname, './src/shared-ui'),
       '@app-shell': path.resolve(__dirname, './src/app-shell'),
       '@attributes-engine': path.resolve(__dirname, './src/attributes-engine'),
+      '@layout-engine': path.resolve(__dirname, './src/layout-engine'),
     },
   },
   server: {

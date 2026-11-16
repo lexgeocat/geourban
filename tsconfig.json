@@ -29,7 +29,9 @@
       "@persistence-engine/*": ["src/persistence-engine/*"],
       "@shared-ui/*": ["src/shared-ui/*"],
       "@app-shell/*": ["src/app-shell/*"],
-      "@attributes-engine/*": ["src/attributes-engine/*"]
+      "@attributes-engine/*": ["src/attributes-engine/*"],
+      "@layout-engine": ["src/layout-engine/index.ts"],
+      "@layout-engine/*": ["src/layout-engine/*"]
     }
   },
   "include": ["src"],

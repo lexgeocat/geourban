@@ -1,4 +1,4 @@
-import { BarChart3, Table2, SlidersHorizontal, Compass } from 'lucide-react';
+import { BarChart3, Table2, SlidersHorizontal, Compass, Printer } from 'lucide-react';
 import { useUiShellStore } from '../../../store/uiShellStore';
 import { BASE_MAP_DEFS } from '@map-core/baseMaps';
 import { RibbonGroup, RibbonTool } from '../../topbar/RibbonPrimitives';
@@ -12,6 +12,8 @@ export default function ViewTab() {
   const setBaseMap = useUiShellStore((s) => s.setBaseMap);
   const statsPanelVisible = useUiShellStore((s) => s.statsPanelVisible);
   const setStatsPanelVisible = useUiShellStore((s) => s.setStatsPanelVisible);
+  const layoutModalOpen = useUiShellStore((s) => s.layoutModalOpen);
+  const setLayoutModalOpen = useUiShellStore((s) => s.setLayoutModalOpen);
   const propsPanelVisible = useUiShellStore((s) => s.panelVisibility.properties);
 
   return (
@@ -65,6 +67,16 @@ export default function ViewTab() {
             }
             useAttributeTableStore.getState().openForLayer(targetId);
           }}
+        />
+      </RibbonGroup>
+
+      <RibbonGroup label="Publicación y Planos">
+        <RibbonTool
+          icon={<Printer size={14} color="#FF6B4A" style={{ filter: 'drop-shadow(0 0 6px rgba(255, 107, 74, 0.45))' }} />}
+          label="Layout / Plano"
+          shortcut="Ctrl+P"
+          active={layoutModalOpen}
+          onClick={() => setLayoutModalOpen(true)}
         />
       </RibbonGroup>
     </>

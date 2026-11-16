@@ -15,6 +15,7 @@ import { toast } from '@shared-ui/store/toastStore';
 import { useProjectFileStore } from '@persistence-engine/store/projectFileStore';
 import { useManzanoStore } from '@lotificacion-engine/store/manzanoLotConfigStore';
 import { useLabelConfigModalStore } from '@label-engine/store/labelConfigModalStore';
+import { useUiShellStore } from '../store/uiShellStore';
 
 function isTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -117,6 +118,7 @@ function handleSelectAll(): void {
 export function useKeyboardShortcuts() {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      if (useUiShellStore.getState().layoutModalOpen) return;
       if (isTypingTarget(e.target)) return;
       if (e.altKey) return;
 
@@ -171,6 +173,11 @@ export function useKeyboardShortcuts() {
       if (ctrlOrCmd && (key === 'o' || key === 'O')) {
         e.preventDefault();
         useProjectFileStore.getState().setOpenModalOpen(true);
+        return;
+      }
+      if (ctrlOrCmd && (key === 'p' || key === 'P')) {
+        e.preventDefault();
+        useUiShellStore.getState().setLayoutModalOpen(true);
         return;
       }
       if (ctrlOrCmd && (key === 'e' || key === 'E')) {

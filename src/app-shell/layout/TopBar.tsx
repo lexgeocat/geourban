@@ -9,6 +9,7 @@ import {
   FilePlus2,
   FolderOpen,
   Save,
+  Printer,
   Undo2,
   Redo2,
   Minus,
@@ -160,6 +161,7 @@ export default function TopBar() {
             onNewProject: actions.handleNewProject,
             onSaveProject: actions.handleSaveProject,
             onOpenProject: actions.handleOpenProject,
+            onOpenLayout: () => useUiShellStore.getState().setLayoutModalOpen(true),
             onAbout: actions.handleAbout,
             onExit: actions.handleExit,
           }}
@@ -193,6 +195,15 @@ export default function TopBar() {
             aria-label="Guardar proyecto"
           >
             <Save size={13} color="#38BDF8" />
+          </button>
+          <button
+            type="button"
+            className="topbar-qat-btn"
+            onClick={() => useUiShellStore.getState().setLayoutModalOpen(true)}
+            title="Generar Layout Cartográfico (Ctrl+P)"
+            aria-label="Generar Layout Cartográfico"
+          >
+            <Printer size={13} color="#FF6B4A" />
           </button>
           <span className="topbar-qat-sep" aria-hidden="true" />
           <button

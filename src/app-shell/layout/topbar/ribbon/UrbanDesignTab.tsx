@@ -1,5 +1,6 @@
-import { Trash2 } from 'lucide-react';
+import { Trash2, Printer } from 'lucide-react';
 import { useDrawStore } from '@map-core/store/drawStore';
+import { useUiShellStore } from '../../../store/uiShellStore';
 import { useStreetStore } from '@vias-engine/store/streetStore';
 import { useRoundaboutStore } from '@vias-engine/store/roundaboutStore';
 import { useEntityLabelStore } from '@label-engine/store/entityLabelStore';
@@ -83,6 +84,15 @@ const handleClearStreets = async () => {
             <span className="ribbon-tool-label">Limpiar ({streets.length})</span>
           </button>
         )}
+      </RibbonGroup>
+
+      <RibbonGroup label="Lámina Técnica">
+        <RibbonTool
+          icon={<Printer size={15} color="#FF6B4A" style={{ filter: 'drop-shadow(0 0 6px rgba(255, 107, 74, 0.45))' }} />}
+          label="Layout Automático"
+          shortcut="Ctrl+P"
+          onClick={() => useUiShellStore.getState().setLayoutModalOpen(true)}
+        />
       </RibbonGroup>
     </>
   );
