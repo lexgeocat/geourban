@@ -20,13 +20,7 @@ export type LayoutThemeId =
   | 'urbigeo-dark'
   | 'blueprint';
 
-/**
- * Modo 1 ('direct'): Composición automática directa (por Lote individual o Urbanización completa).
- * Modo 2 ('qgis-viewport'): Editor tipo QGIS Print Composer con Viewports movibles/redimensionables y pan/zoom interno.
- */
-export type LayoutCompositionMode = 'direct' | 'qgis-viewport';
 export type LayoutScopeMode = 'lot' | 'urbanization';
-export type QgisInteractionTool = 'pan-content' | 'edit-viewport-box';
 export type ActiveViewportTarget = 'main' | 'location';
 export type CarimboFitMode = 'adapt-sheet' | 'preserve-aspect';
 export type ViewportFocusTarget = 'sheet' | 'main' | 'location' | 'carimbo';
@@ -265,6 +259,7 @@ export interface CadastralFormFields {
 }
 
 export interface LayoutDisplayOptions {
+  viewportStyleMode: 'designer' | 'monochrome';
   showNorthArrow: boolean;
   showLocationNorthArrow: boolean;
   showScaleTextBadge: boolean;
@@ -291,7 +286,6 @@ export interface LayoutConfig {
   carimboFitMode: CarimboFitMode;
   carimboScalePercent: number;
   theme: LayoutThemeId;
-  compositionMode: LayoutCompositionMode;
   scopeMode: LayoutScopeMode;
   dataDrivenEnabled: boolean;
   selectedLotId: string | null;

@@ -236,6 +236,7 @@ export function renderDxfCarimbo(params: {
   carimboFitMode: CarimboFitMode;
   carimboScalePercent: number;
   palette: ThemePalette;
+  strokeScale?: number;
 }): DxfCarimboRenderOutput {
   const {
     ctx,
@@ -247,6 +248,7 @@ export function renderDxfCarimbo(params: {
     carimboFitMode,
     carimboScalePercent,
     palette,
+    strokeScale = 1,
   } = params;
   const { bbox, entities, layerColors, detected } = dxfDoc;
 
@@ -378,7 +380,8 @@ export function renderDxfCarimbo(params: {
     );
     ctx.strokeStyle = strokeCol;
     const defaultLw = ent.layer.toUpperCase() === 'TRAZO' ? 2.4 : 1.15;
-    ctx.lineWidth = edit?.lineWidth ?? defaultLw;
+    const lwBase = edit?.lineWidth ?? defaultLw;
+    ctx.lineWidth = lwBase * strokeScale;
     ctx.setLineDash(resolveLayoutLineDash(edit?.lineStyle, ctx.lineWidth));
 
     if (ent.type === 'LINE') {

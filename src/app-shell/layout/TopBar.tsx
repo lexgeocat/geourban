@@ -17,6 +17,9 @@ import {
   Copy,
   X,
   FolderKanban,
+  Frame,
+  Map as MapIcon,
+  SlidersHorizontal,
 } from 'lucide-react';
 import { useDrawStore } from '@map-core/store/drawStore';
 import { useUiShellStore, type RibbonTabId } from '../store/uiShellStore';
@@ -24,23 +27,33 @@ import { useTopBarActions } from '../hooks/useTopBarActions';
 import { useProjectFileStore } from '@persistence-engine/store/projectFileStore';
 import { useLayersStore } from '@layers-engine/store/layersRegistryStore';
 import { useStreetStore } from '@vias-engine/store/streetStore';
+import { useLayoutStore } from '@layout-engine/store/layoutStore';
 import { undo, redo, useCommandStack } from '@kernel/command/CommandStack';
 import AppMenu from './topbar/AppMenu';
 import { RibbonContext } from './topbar/RibbonContext';
 import UrbanDesignTab from './topbar/ribbon/UrbanDesignTab';
 import EditTab from './topbar/ribbon/EditTab';
 import ViewTab from './topbar/ribbon/ViewTab';
+import LayoutDesignTab from './topbar/ribbon/LayoutDesignTab';
+import LayoutElementsTab from './topbar/ribbon/LayoutElementsTab';
 
-const RIBBON_TABS: { id: RibbonTabId; label: string; icon: React.ReactNode }[] = [
+const MAP_RIBBON_TABS: { id: RibbonTabId; label: string; icon: React.ReactNode }[] = [
   { id: 'map', label: 'Diseño Urbanístico', icon: <Compass size={13} color="#FF6B4A" /> },
   { id: 'edit', label: 'Edición Geométrica', icon: <Wand2 size={13} color="#A78BFA" /> },
   { id: 'view', label: 'Cartografía y Vista', icon: <Layers size={13} color="#38BDF8" /> },
+];
+
+const LAYOUT_RIBBON_TABS: { id: RibbonTabId; label: string; icon: React.ReactNode }[] = [
+  { id: 'layout-design', label: 'Diseño de Lámina', icon: <Frame size={13} color="#38BDF8" /> },
+  { id: 'layout-elements', label: 'Elementos y Escalas', icon: <SlidersHorizontal size={13} color="#2DD4BF" /> },
 ];
 
 export default function TopBar() {
   const mode = useDrawStore((s) => s.mode);
   const setMode = useDrawStore((s) => s.setMode);
 
+  const workspaceView = useUiShellStore((s) => s.workspaceView);
+  const setWorkspaceView = useUiShellStore((s) => s.setWorkspaceView);
   const activeTab = useUiShellStore((s) => s.activeTab);
   const setActiveTab = useUiShellStore((s) => s.setActiveTab);
   const ribbonCollapsed = useUiShellStore((s) => s.ribbonCollapsed);
@@ -51,6 +64,24 @@ export default function TopBar() {
   const streetCount = useStreetStore((s) => s.streets.length);
   const canUndo = useCommandStack((s) => s.canUndo);
   const canRedo = useCommandStack((s) => s.canRedo);
+
+  const layoutUndoCount = useLayoutStore((s) => s.undoStack.length);
+  const layoutRedoCount = useLayoutStore((s) => s.redoStack.length);
+  const undoLayout = useLayoutStore((s) => s.undoLayout);
+  const redoLayout = useLayoutStore((s) => s.redoLayout);
+  const layoutPaperSize = useLayoutStore((s) => s.config.paperSize);
+  const layoutMainScale = useLayoutStore((s) => s.config.mainViewport.scaleDenominator);
+
+  const activeCanUndo = workspaceView === 'layout' ? layoutUndoCount > 0 : canUndo;
+  const activeCanRedo = workspaceView === 'layout' ? layoutRedoCount > 0 : canRedo;
+  const handleActiveUndo = () => {
+    if (workspaceView === 'layout') undoLayout();
+    else undo();
+  };
+  const handleActiveRedo = () => {
+    if (workspaceView === 'layout') redoLayout();
+    else redo();
+  };
 
   const actions = useTopBarActions();
 
@@ -141,6 +172,8 @@ export default function TopBar() {
     void actions.handleExit();
   };
 
+  const visibleTabs = workspaceView === 'layout' ? LAYOUT_RIBBON_TABS : MAP_RIBBON_TABS;
+
   const renderTabContent = (tabId: RibbonTabId) => {
     if (tabId === 'map') {
       return <UrbanDesignTab />;
@@ -148,10 +181,16 @@ export default function TopBar() {
     if (tabId === 'edit') {
       return <EditTab onDeleteSelected={actions.handleDeleteSelected} />;
     }
-    return <ViewTab />;
+    if (tabId === 'view') {
+      return <ViewTab />;
+    }
+    if (tabId === 'layout-design') {
+      return <LayoutDesignTab />;
+    }
+    return <LayoutElementsTab />;
   };
 
-  const activeLabel = RIBBON_TABS.find((t) => t.id === activeTab)?.label ?? '';
+  const activeLabel = visibleTabs.find((t) => t.id === activeTab)?.label ?? visibleTabs[0]?.label ?? '';
 
   return (
     <div className="topbar-root">
@@ -161,7 +200,10 @@ export default function TopBar() {
             onNewProject: actions.handleNewProject,
             onSaveProject: actions.handleSaveProject,
             onOpenProject: actions.handleOpenProject,
-            onOpenLayout: () => useUiShellStore.getState().setLayoutModalOpen(true),
+            onOpenLayout: () => {
+              setPopoverPos(null);
+              setWorkspaceView('layout');
+            },
             onAbout: actions.handleAbout,
             onExit: actions.handleExit,
           }}
@@ -199,9 +241,16 @@ export default function TopBar() {
           <button
             type="button"
             className="topbar-qat-btn"
-            onClick={() => useUiShellStore.getState().setLayoutModalOpen(true)}
-            title="Generar Layout Cartográfico (Ctrl+P)"
-            aria-label="Generar Layout Cartográfico"
+            onClick={() => {
+              setPopoverPos(null);
+              setWorkspaceView(workspaceView === 'layout' ? 'map' : 'layout');
+            }}
+            title={
+              workspaceView === 'layout'
+                ? 'Volver al Mapa / Diseñador (Ctrl+P)'
+                : 'Abrir Layout Cartográfico (Ctrl+P)'
+            }
+            aria-label="Alternar Layout Cartográfico"
           >
             <Printer size={13} color="#FF6B4A" />
           </button>
@@ -209,9 +258,9 @@ export default function TopBar() {
           <button
             type="button"
             className="topbar-qat-btn"
-            onClick={undo}
-            disabled={!canUndo}
-            title="Deshacer (Ctrl+Z)"
+            onClick={handleActiveUndo}
+            disabled={!activeCanUndo}
+            title={workspaceView === 'layout' ? 'Deshacer en Layout (Ctrl+Z)' : 'Deshacer en Mapa (Ctrl+Z)'}
             aria-label="Deshacer"
           >
             <Undo2 size={13} color="#818CF8" />
@@ -219,25 +268,25 @@ export default function TopBar() {
           <button
             type="button"
             className="topbar-qat-btn"
-            onClick={redo}
-            disabled={!canRedo}
-            title="Rehacer (Ctrl+Y)"
+            onClick={handleActiveRedo}
+            disabled={!activeCanRedo}
+            title={workspaceView === 'layout' ? 'Rehacer en Layout (Ctrl+Y)' : 'Rehacer en Mapa (Ctrl+Y)'}
             aria-label="Rehacer"
           >
             <Redo2 size={13} color="#C084FC" />
           </button>
         </div>
 
-        {/* Segmented Workspace Switcher */}
-        <div className="topbar-tab-list" role="tablist" aria-label="Módulos de estudio">
-          {RIBBON_TABS.map((tab) => (
+        {/* Contextual Ribbon Tab Switcher (only active view's tabs are shown!) */}
+        <div className="topbar-tab-list" role="tablist" aria-label="Herramientas contextuales de la vista">
+          {visibleTabs.map((tab) => (
             <button
               key={tab.id}
               ref={(el) => {
                 if (el) tabRefs.current.set(tab.id, el);
                 else tabRefs.current.delete(tab.id);
               }}
-              className={`topbar-tab ${activeTab === tab.id ? 'active' : ''}`}
+              className={`topbar-tab ${workspaceView === 'layout' ? 'contextual ' : ''}${activeTab === tab.id ? 'active' : ''}`}
               onClick={() => handleTabClick(tab.id)}
               aria-haspopup="menu"
               aria-expanded={ribbonCollapsed && activeTab === tab.id && !!popoverPos}
@@ -322,6 +371,51 @@ export default function TopBar() {
           <div className="topbar-ribbon">{renderTabContent(activeTab)}</div>
         </RibbonContext.Provider>
       )}
+
+      {/* ArcGIS Pro / Rust GIS Document View Switcher Tabs */}
+      <div className="workspace-viewtabs-bar" role="tablist" aria-label="Vistas del espacio de trabajo">
+        <div className="workspace-viewtabs-list">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={workspaceView === 'map'}
+            className={`workspace-viewtab ${workspaceView === 'map' ? 'active' : ''}`}
+            onClick={() => {
+              setPopoverPos(null);
+              setWorkspaceView('map');
+            }}
+          >
+            <MapIcon size={13} color={workspaceView === 'map' ? '#FF6B4A' : 'currentColor'} />
+            <span>Mapa / Diseñador</span>
+            <span className="workspace-viewtab-meta">
+              {layerCount} {layerCount === 1 ? 'capa' : 'capas'}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            role="tab"
+            aria-selected={workspaceView === 'layout'}
+            className={`workspace-viewtab layout-tab ${workspaceView === 'layout' ? 'active' : ''}`}
+            onClick={() => {
+              setPopoverPos(null);
+              setWorkspaceView('layout');
+            }}
+          >
+            <Frame size={13} color={workspaceView === 'layout' ? '#38BDF8' : 'currentColor'} />
+            <span>Layout Cartográfico</span>
+            <span className="workspace-viewtab-meta">
+              {layoutPaperSize === 'OFICIO_BOL' ? 'Oficio' : layoutPaperSize} · 1:{layoutMainScale}
+            </span>
+          </button>
+        </div>
+
+        <span style={{ fontSize: '0.62rem', color: 'var(--cad-text-muted)', alignSelf: 'center', fontWeight: 500 }}>
+          {workspaceView === 'layout'
+            ? 'Vista contextual: Lámina CAD/GIS · Clic medio = Mover hoja · Ctrl+P = Mapa'
+            : 'Vista contextual: Mapa y Diseño Urbanístico · Ctrl+P = Layout'}
+        </span>
+      </div>
 
       {ribbonCollapsed &&
         popoverPos &&

@@ -18,7 +18,6 @@ import {
   type CustomCarimboField,
   type CustomPaperSize,
   type DxfEntityEdit,
-  type LayoutCompositionMode,
   type LayoutConfig,
   type LayoutDisplayOptions,
   type LayoutScopeMode,
@@ -26,7 +25,6 @@ import {
   type LotAttributeOverride,
   type PaperOrientation,
   type PaperSizeId,
-  type QgisInteractionTool,
   type SelectedCanvasItem,
   type SheetAnnotationEntity,
   type SheetAnnotationKind,
@@ -119,7 +117,6 @@ interface LayoutStoreState {
   undoStack: LayoutConfig[];
   redoStack: LayoutConfig[];
   canvasTool: CanvasEditorTool;
-  qgisTool: QgisInteractionTool;
   activeViewport: ActiveViewportTarget;
   selectedItem: SelectedCanvasItem;
   viewportFocusTarget: ViewportFocusTarget;
@@ -144,13 +141,11 @@ interface LayoutStoreState {
   setCarimboScalePercent: (pct: number) => void;
   setTheme: (theme: LayoutThemeId) => void;
 
-  setCompositionMode: (mode: LayoutCompositionMode) => void;
   setScopeMode: (scope: LayoutScopeMode) => void;
   setDataDrivenEnabled: (enabled: boolean) => void;
   setSelectedLotId: (lotId: string | null) => void;
 
   setCanvasTool: (tool: CanvasEditorTool) => void;
-  setQgisTool: (tool: QgisInteractionTool) => void;
   setActiveViewport: (target: ActiveViewportTarget) => void;
   setSelectedItem: (item: SelectedCanvasItem) => void;
   setViewportFocusTarget: (target: ViewportFocusTarget) => void;
@@ -211,7 +206,6 @@ export const useLayoutStore = create<LayoutStoreState>()(
     undoStack: [],
     redoStack: [],
     canvasTool: 'edit-elements',
-    qgisTool: 'pan-content',
     activeViewport: 'main',
     selectedItem: null,
     viewportFocusTarget: 'sheet',
@@ -262,7 +256,6 @@ export const useLayoutStore = create<LayoutStoreState>()(
       carimboFitMode: 'adapt-sheet',
       carimboScalePercent: 100,
       theme: 'monochrome-cad-white',
-      compositionMode: 'qgis-viewport',
       scopeMode: 'lot',
       dataDrivenEnabled: true,
       selectedLotId: null,
@@ -286,6 +279,7 @@ export const useLayoutStore = create<LayoutStoreState>()(
       widgets: cloneDefaultWidgets(),
       lotAttributeOverrides: {},
       display: {
+        viewportStyleMode: 'monochrome',
         showNorthArrow: true,
         showLocationNorthArrow: true,
         showScaleTextBadge: true,
@@ -497,14 +491,6 @@ export const useLayoutStore = create<LayoutStoreState>()(
         state.config.theme = theme;
       }),
 
-    setCompositionMode: (mode) =>
-      set((state) => {
-        state.config.compositionMode = mode;
-        if (mode === 'direct' && state.canvasTool === 'edit-viewport-box') {
-          state.canvasTool = 'edit-elements';
-        }
-      }),
-
     setScopeMode: (scope) =>
       set((state) => {
         state.config.scopeMode = scope;
@@ -537,18 +523,6 @@ export const useLayoutStore = create<LayoutStoreState>()(
     setCanvasTool: (tool) =>
       set((state) => {
         state.canvasTool = tool;
-        if (tool === 'edit-viewport-box') {
-          state.config.compositionMode = 'qgis-viewport';
-          state.qgisTool = 'edit-viewport-box';
-        } else if (tool === 'pan-content') {
-          state.qgisTool = 'pan-content';
-        }
-      }),
-
-    setQgisTool: (tool) =>
-      set((state) => {
-        state.qgisTool = tool;
-        state.canvasTool = tool;
       }),
 
     setActiveViewport: (target) =>
@@ -575,7 +549,7 @@ export const useLayoutStore = create<LayoutStoreState>()(
 
     setPreviewZoom: (zoom) =>
       set((state) => {
-        state.previewZoom = Math.max(0.4, Math.min(4.0, +zoom.toFixed(2)));
+        state.previewZoom = Math.max(0.35, Math.min(12.0, +zoom.toFixed(2)));
       }),
 
     setSheetPanPx: (pan) =>

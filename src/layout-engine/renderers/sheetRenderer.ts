@@ -37,11 +37,45 @@ export interface AnnotationRenderedHitBox {
   rect: Rect;
 }
 
+export interface SheetCameraInput {
+  stageCssWidth: number;
+  stageCssHeight: number;
+  dpr: number;
+  previewZoom: number;
+  sheetPanPx: [number, number];
+}
+
+export function computeSheetCssRect(params: {
+  stageCssWidth: number;
+  stageCssHeight: number;
+  paperWidthMm: number;
+  paperHeightMm: number;
+  previewZoom: number;
+  sheetPanPx: [number, number];
+}): Rect {
+  const { stageCssWidth, stageCssHeight, paperWidthMm, paperHeightMm, previewZoom, sheetPanPx } =
+    params;
+  const availW = Math.max(120, stageCssWidth - 40);
+  const availH = Math.max(120, stageCssHeight - 40);
+  const aspect = paperWidthMm / Math.max(1, paperHeightMm);
+  const baseW = Math.min(availW, availH * aspect);
+  const baseH = baseW / Math.max(0.01, aspect);
+  const w = baseW * previewZoom;
+  const h = baseH * previewZoom;
+  return {
+    x: (stageCssWidth - w) / 2 + sheetPanPx[0],
+    y: (stageCssHeight - h) / 2 + sheetPanPx[1],
+    w,
+    h,
+  };
+}
+
 export interface SheetRenderResult {
   widthPx: number;
   heightPx: number;
   paperWidthMm: number;
   paperHeightMm: number;
+  sheetCssRect?: Rect;
   innerRect: Rect;
   mainViewportRect: Rect;
   locationViewportRect: Rect;
@@ -195,8 +229,9 @@ function renderSheetAnnotations(params: {
   widthPx: number;
   dxfValues: DynamicDxfValues;
   palette: ThemePalette;
+  strokeScale?: number;
 }): AnnotationRenderedHitBox[] {
-  const { ctx, annotations, containerRect, widthPx, dxfValues, palette } = params;
+  const { ctx, annotations, containerRect, widthPx, dxfValues, palette, strokeScale = 1 } = params;
   const hitBoxes: AnnotationRenderedHitBox[] = [];
   const pxScale = widthPx / 1200;
 
@@ -212,7 +247,7 @@ function renderSheetAnnotations(params: {
         ctx.fillStyle = palette.panelBg;
         ctx.fillRect(xPx, yPx, wPx, hPx);
       }
-      const lw = (ann.lineWidth ?? 1.5) * (pxScale * 0.65);
+      const lw = (ann.lineWidth ?? 1.5) * (pxScale * 0.65) * strokeScale;
       const effStyle = ann.lineStyle ?? (ann.dashed ? 'dashed' : 'solid');
       ctx.strokeStyle = palette.dxfStrokeDefault;
       ctx.lineWidth = lw;
@@ -232,7 +267,7 @@ function renderSheetAnnotations(params: {
     } else if (ann.kind === 'line') {
       const x2 = xPx + wPx;
       const y2 = yPx + hPx;
-      const lw = (ann.lineWidth ?? 1.8) * (pxScale * 0.65);
+      const lw = (ann.lineWidth ?? 1.8) * (pxScale * 0.65) * strokeScale;
       const effStyle = ann.lineStyle ?? (ann.dashed ? 'dashed' : 'solid');
       ctx.strokeStyle = palette.dxfStrokeDefault;
       ctx.lineWidth = lw;
@@ -303,8 +338,9 @@ export function renderCartographicSheet(params: {
   template: LayoutTemplateEntry;
   selectedLot: LotCatalogItem | null;
   brandIcon: HTMLImageElement | null;
+  camera?: SheetCameraInput;
 }): SheetRenderResult {
-  const { canvas, carto, config, template, selectedLot, brandIcon } = params;
+  const { canvas, carto, config, template, selectedLot, brandIcon, camera } = params;
   const palette = THEME_PALETTES[config.theme];
 
   const { widthPx, heightPx, paperWidthMm, paperHeightMm, innerRect } = computeSheetGeometry(
@@ -312,9 +348,31 @@ export function renderCartographicSheet(params: {
     template
   );
 
-  if (canvas.width !== widthPx || canvas.height !== heightPx) {
-    canvas.width = widthPx;
-    canvas.height = heightPx;
+  const useCamera = Boolean(
+    camera && camera.stageCssWidth > 0 && camera.stageCssHeight > 0
+  );
+  const dpr = useCamera ? Math.max(1, Math.min(3, camera!.dpr || 1)) : 1;
+  const sheetCssRect = useCamera
+    ? computeSheetCssRect({
+        stageCssWidth: camera!.stageCssWidth,
+        stageCssHeight: camera!.stageCssHeight,
+        paperWidthMm,
+        paperHeightMm,
+        previewZoom: camera!.previewZoom,
+        sheetPanPx: camera!.sheetPanPx,
+      })
+    : undefined;
+
+  const targetBufW = useCamera
+    ? Math.max(1, Math.round(camera!.stageCssWidth * dpr))
+    : widthPx;
+  const targetBufH = useCamera
+    ? Math.max(1, Math.round(camera!.stageCssHeight * dpr))
+    : heightPx;
+
+  if (canvas.width !== targetBufW || canvas.height !== targetBufH) {
+    canvas.width = targetBufW;
+    canvas.height = targetBufH;
   }
 
   const mainRect = normalizedBoxToRect(config.mainViewport.boxNormalized, innerRect);
@@ -346,6 +404,7 @@ export function renderCartographicSheet(params: {
       heightPx,
       paperWidthMm,
       paperHeightMm,
+      sheetCssRect,
       innerRect,
       mainViewportRect: mainRect,
       locationViewportRect: locRect,
@@ -357,7 +416,50 @@ export function renderCartographicSheet(params: {
     };
   }
 
+  // Factor de escala vectorial: en vista interactiva compensa zoom+DPR para que cada línea
+  // sea siempre trazo vectorial nítido de ~1px CSS sin pixelación ni distorsión al acercar.
+  const cssScale = sheetCssRect ? sheetCssRect.w / widthPx : 1;
+  const cadScaleOverride = sheetCssRect
+    ? 1 / Math.max(0.05, cssScale)
+    : Math.max(1.5, widthPx / 1000);
+  const dxfStrokeScale = sheetCssRect
+    ? Math.max(0.35, cadScaleOverride * 0.72)
+    : 1;
+
   ctx.save();
+  if (sheetCssRect) {
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, targetBufW, targetBufH);
+
+    // Sombra suave del papel sobre el espacio de trabajo CAD
+    ctx.save();
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.72)';
+    ctx.shadowBlur = 24 * dpr;
+    ctx.shadowOffsetY = 8 * dpr;
+    ctx.fillStyle = palette.sheetBg;
+    ctx.fillRect(
+      sheetCssRect.x * dpr,
+      sheetCssRect.y * dpr,
+      sheetCssRect.w * dpr,
+      sheetCssRect.h * dpr
+    );
+    ctx.restore();
+
+    ctx.beginPath();
+    ctx.rect(
+      sheetCssRect.x * dpr,
+      sheetCssRect.y * dpr,
+      sheetCssRect.w * dpr,
+      sheetCssRect.h * dpr
+    );
+    ctx.clip();
+
+    const devScale = cssScale * dpr;
+    ctx.setTransform(devScale, 0, 0, devScale, sheetCssRect.x * dpr, sheetCssRect.y * dpr);
+  } else {
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+  }
+
   ctx.fillStyle = palette.sheetBg;
   ctx.fillRect(0, 0, widthPx, heightPx);
 
@@ -383,6 +485,7 @@ export function renderCartographicSheet(params: {
       carimboFitMode: config.carimboFitMode,
       carimboScalePercent: config.carimboScalePercent,
       palette,
+      strokeScale: dxfStrokeScale,
     });
     dxfHitBoxes = dxfOut.dxfHitBoxes;
 
@@ -398,6 +501,7 @@ export function renderCartographicSheet(params: {
         config,
         palette,
         drawHeaderStrip: false,
+        cadScaleOverride,
       })
     );
 
@@ -414,6 +518,7 @@ export function renderCartographicSheet(params: {
         effectiveCadastral,
         dxfValues,
         palette,
+        cadScaleOverride,
       })
     );
   } else {
@@ -421,9 +526,9 @@ export function renderCartographicSheet(params: {
     const pxPerMm = widthPx / paperWidthMm;
     const margin = Math.max(8, Math.round((config.marginMm || 8) * pxPerMm));
     ctx.strokeStyle = palette.borderOuter;
-    ctx.lineWidth = 2.6;
+    ctx.lineWidth = 1.45 * cadScaleOverride;
     ctx.strokeRect(margin, margin, widthPx - margin * 2, heightPx - margin * 2);
-    ctx.lineWidth = 0.9;
+    ctx.lineWidth = 0.65 * cadScaleOverride;
     ctx.strokeRect(margin + 5, margin + 5, widthPx - (margin + 5) * 2, heightPx - (margin + 5) * 2);
 
     widgetHitBoxes.push(
@@ -439,6 +544,7 @@ export function renderCartographicSheet(params: {
         effectiveCadastral,
         dxfValues,
         palette,
+        cadScaleOverride,
       })
     );
 
@@ -454,6 +560,7 @@ export function renderCartographicSheet(params: {
         config,
         palette,
         drawHeaderStrip: !template.isBlankSheet,
+        cadScaleOverride,
       })
     );
 
@@ -507,6 +614,7 @@ export function renderCartographicSheet(params: {
     widthPx,
     dxfValues,
     palette,
+    strokeScale: dxfStrokeScale,
   });
 
   ctx.restore();
@@ -516,6 +624,7 @@ export function renderCartographicSheet(params: {
     heightPx,
     paperWidthMm,
     paperHeightMm,
+    sheetCssRect,
     innerRect,
     mainViewportRect: mainRect,
     locationViewportRect: locRect,

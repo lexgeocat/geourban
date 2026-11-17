@@ -11,9 +11,12 @@ import {
   Globe,
   Crosshair,
   Search,
+  Frame,
 } from 'lucide-react';
 import { useMapStore } from '@map-core/store/mapStore';
 import { useUiShellStore } from '../store/uiShellStore';
+import { useLayoutStore } from '@layout-engine/store/layoutStore';
+import { getEffectivePaperDimensionsMm } from '@layout-engine/model/layoutTypes';
 
 import { useProjectCrsStore, type ProjectCrsMode } from '@georef-engine/store/projectCrsStore';
 import { BASE_MAP_DEFS, type BaseMapId } from '@map-core/baseMaps';
@@ -49,8 +52,14 @@ export default function StatusBar() {
   const drawSource = useMapStore((s) => s.drawSource);
   const baseMap = useUiShellStore((s) => s.baseMap);
   const setBaseMap = useUiShellStore((s) => s.setBaseMap);
+  const workspaceView = useUiShellStore((s) => s.workspaceView);
   const panelVisibility = useUiShellStore((s) => s.panelVisibility);
   const setPanelVisibility = useUiShellStore((s) => s.setPanelVisibility);
+
+  const layoutConfig = useLayoutStore((s) => s.config);
+  const previewZoom = useLayoutStore((s) => s.previewZoom);
+  const setPreviewZoom = useLayoutStore((s) => s.setPreviewZoom);
+  const resetSheetView = useLayoutStore((s) => s.resetSheetView);
 
   const crsMode = useProjectCrsStore((s) => s.mode);
   const utmZone = useProjectCrsStore((s) => s.utmZone);
@@ -106,6 +115,142 @@ export default function StatusBar() {
     setBaseMap('osm');
     if (drawSource) refreshSourceMetrics(drawSource);
   };
+
+  if (workspaceView === 'layout') {
+    const paperDims = getEffectivePaperDimensionsMm(layoutConfig);
+    const paperLabel = layoutConfig.paperSize === 'OFICIO_BOL' ? 'OFICIO' : layoutConfig.paperSize;
+
+    return (
+      <div
+        style={{
+          position: 'absolute',
+          bottom: 0,
+          left: 0,
+          right: 0,
+          height: 'var(--cad-statusbar-height)',
+          background: 'linear-gradient(90deg, #0A0B0F 0%, #101725 50%, #0A0B0F 100%)',
+          borderTop: '1px solid var(--cad-border)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '0 12px',
+          zIndex: 100,
+          fontSize: '0.66rem',
+          color: 'var(--cad-text-muted)',
+        }}
+        className="font-mono-cad"
+      >
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          <span
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '2px 10px',
+              borderRadius: 999,
+              background: 'rgba(10, 11, 15, 0.78)',
+              border: '1px solid rgba(56, 189, 248, 0.35)',
+              color: 'var(--cad-text)',
+            }}
+          >
+            <Frame size={11} color="#38BDF8" />
+            <span>
+              <strong style={{ color: '#38BDF8' }}>{paperLabel}</strong>{' '}
+              {paperDims.widthMm.toFixed(0)}×{paperDims.heightMm.toFixed(0)} mm ·{' '}
+              {layoutConfig.orientation === 'landscape' ? 'Horizontal' : 'Vertical'}
+            </span>
+          </span>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, justifyContent: 'center' }}>
+          <span
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '2px 10px',
+              borderRadius: 999,
+              background: 'var(--cad-bg-surface)',
+              border: '1px solid var(--cad-border)',
+              color: 'var(--cad-text-dim)',
+            }}
+          >
+            <strong style={{ color: '#FF6B4A' }}>
+              VP-1 1:{layoutConfig.mainViewport.scaleDenominator}
+            </strong>
+            <span>·</span>
+            <strong style={{ color: '#2DD4BF' }}>
+              VP-2 1:{layoutConfig.locationViewport.scaleDenominator}
+            </strong>
+            <span style={{ opacity: 0.5 }}>|</span>
+            <span>Clic medio = Mover hoja · Rueda = Escala / Zoom · Ctrl+Z/Y</span>
+          </span>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 2,
+              padding: '1px 4px',
+              borderRadius: 999,
+              background: 'var(--cad-bg-surface)',
+              border: '1px solid var(--cad-border)',
+            }}
+          >
+            <button
+              className="cad-icon-btn cad-tooltip"
+              onClick={() => setPreviewZoom(previewZoom - 0.2)}
+              data-tooltip="Alejar lámina"
+              aria-label="Alejar lámina"
+              title="Alejar lámina"
+              style={{ width: 22, height: 22 }}
+            >
+              <ZoomOut size={12} color="#FBBF24" />
+            </button>
+            <button
+              className="cad-icon-btn cad-tooltip"
+              onClick={resetSheetView}
+              data-tooltip="Ajustar lámina a ventana"
+              aria-label="Ajustar lámina"
+              title="Ajustar lámina"
+              style={{ width: 22, height: 22 }}
+            >
+              <Maximize2 size={12} color="#38BDF8" />
+            </button>
+            <button
+              className="cad-icon-btn cad-tooltip"
+              onClick={() => setPreviewZoom(previewZoom + 0.2)}
+              data-tooltip="Acercar lámina"
+              aria-label="Acercar lámina"
+              title="Acercar lámina"
+              style={{ width: 22, height: 22 }}
+            >
+              <ZoomIn size={12} color="#34D399" />
+            </button>
+          </div>
+
+          <span
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 5,
+              padding: '2px 9px',
+              borderRadius: 999,
+              background: 'var(--cad-bg-surface)',
+              border: '1px solid var(--cad-border)',
+            }}
+          >
+            <Search size={11} color="#38BDF8" />
+            <span>
+              Z <strong style={{ color: '#38BDF8' }}>{Math.round(previewZoom * 100)}%</strong>
+            </span>
+          </span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div

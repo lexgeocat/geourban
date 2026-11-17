@@ -1,38 +1,29 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   Bold,
-  Frame,
   Italic,
-  Maximize2,
   Minus,
-  MousePointer,
   Plus,
-  Redo2,
-  RotateCcw,
-  Square,
   Trash2,
-  Type,
   Underline,
-  Undo2,
 } from 'lucide-react';
 import {
   getEffectivePaperDimensionsMm,
   type ActiveViewportTarget,
-  type CanvasEditorTool,
   type CartoWidgetId,
   type LayoutFontFamily,
   type LayoutLineStyle,
   type SelectedCanvasItem,
   type ViewportBoxNormalized,
-  type ViewportFocusTarget,
 } from '../model/layoutTypes';
 import type { Rect } from '../renderers/cartographicPrimitives';
-import type { SheetRenderResult } from '../renderers/sheetRenderer';
+import { computeSheetCssRect, type SheetRenderResult } from '../renderers/sheetRenderer';
 import { useLayoutStore } from '../store/layoutStore';
 
 interface InteractiveViewportCanvasProps {
   canvasRef: React.RefObject<HTMLCanvasElement | null>;
   renderMetrics: SheetRenderResult | null;
+  onStageResize?: (size: { width: number; height: number; dpr: number }) => void;
 }
 
 type CornerHandle = 'nw' | 'ne' | 'sw' | 'se';
@@ -312,21 +303,6 @@ function SelectionHighlightOverlay({
   );
 }
 
-const TOOL_BUTTONS: Array<{ id: CanvasEditorTool; label: string; icon: React.ReactNode }> = [
-  { id: 'edit-elements', label: 'Seleccionar / Pan', icon: <MousePointer size={12} /> },
-  { id: 'edit-viewport-box', label: 'Cajas VP', icon: <Frame size={12} /> },
-  { id: 'draw-text', label: '+ Texto', icon: <Type size={12} /> },
-  { id: 'draw-rect', label: '+ Recuadro', icon: <Square size={12} /> },
-  { id: 'draw-line', label: '+ Línea', icon: <Minus size={12} /> },
-];
-
-const FLOAT_FOCUS_BUTTONS: Array<{ id: ViewportFocusTarget; label: string }> = [
-  { id: 'sheet', label: 'Hoja' },
-  { id: 'main', label: 'VP-1 Plano' },
-  { id: 'location', label: 'VP-2 Ubic.' },
-  { id: 'carimbo', label: 'Carimbo' },
-];
-
 function pointNearRectBorderOrInside(
   px: number,
   py: number,
@@ -383,12 +359,11 @@ function toggleStyleBtn(active: boolean): React.CSSProperties {
 export default function InteractiveViewportCanvas({
   canvasRef,
   renderMetrics,
+  onStageResize,
 }: InteractiveViewportCanvasProps) {
   const templates = useLayoutStore((s) => s.templates);
   const activeTemplateId = useLayoutStore((s) => s.activeTemplateId);
   const config = useLayoutStore((s) => s.config);
-  const undoCount = useLayoutStore((s) => s.undoStack.length);
-  const redoCount = useLayoutStore((s) => s.redoStack.length);
   const canvasTool = useLayoutStore((s) => s.canvasTool);
   const activeViewport = useLayoutStore((s) => s.activeViewport);
   const selectedItem = useLayoutStore((s) => s.selectedItem);
@@ -398,21 +373,15 @@ export default function InteractiveViewportCanvas({
   const sheetPanPx = useLayoutStore((s) => s.sheetPanPx);
 
   const pushHistorySnapshot = useLayoutStore((s) => s.pushHistorySnapshot);
-  const undoLayout = useLayoutStore((s) => s.undoLayout);
-  const redoLayout = useLayoutStore((s) => s.redoLayout);
 
-  const setCanvasTool = useLayoutStore((s) => s.setCanvasTool);
   const setActiveViewport = useLayoutStore((s) => s.setActiveViewport);
   const setSelectedItem = useLayoutStore((s) => s.setSelectedItem);
-  const setViewportFocusTarget = useLayoutStore((s) => s.setViewportFocusTarget);
   const setPreviewZoom = useLayoutStore((s) => s.setPreviewZoom);
   const setSheetPanPx = useLayoutStore((s) => s.setSheetPanPx);
   const resetSheetView = useLayoutStore((s) => s.resetSheetView);
 
   const panViewport = useLayoutStore((s) => s.panViewport);
   const updateViewportBox = useLayoutStore((s) => s.updateViewportBox);
-  const setMainScale = useLayoutStore((s) => s.setMainScale);
-  const setLocationScale = useLayoutStore((s) => s.setLocationScale);
   const zoomViewportScale = useLayoutStore((s) => s.zoomViewportScale);
 
   const updateWidgetSpec = useLayoutStore((s) => s.updateWidgetSpec);
@@ -441,13 +410,34 @@ export default function InteractiveViewportCanvas({
     latestMetricsRef.current = renderMetrics;
   }, [renderMetrics]);
 
+  // Observar dimensiones del escenario para render vectorial HiDPI nítido a cualquier zoom
+  useEffect(() => {
+    const el = stageRef.current;
+    if (!el || !onStageResize) return;
+    const report = () => {
+      onStageResize({
+        width: el.clientWidth,
+        height: el.clientHeight,
+        dpr: window.devicePixelRatio || 1,
+      });
+    };
+    report();
+    const ro = new ResizeObserver(report);
+    ro.observe(el);
+    window.addEventListener('resize', report);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', report);
+    };
+  }, [onStageResize]);
+
   // Centrar viewport al pulsar Hoja / VP-1 / VP-2 / Carimbo
   useEffect(() => {
     if (viewportFocusNonce === 0) return;
     const rafId = requestAnimationFrame(() => {
       const metrics = latestMetricsRef.current;
-      const canvasEl = canvasRef.current;
-      if (!metrics || !canvasEl) return;
+      const stageEl = stageRef.current;
+      if (!metrics || !stageEl) return;
       if (viewportFocusTarget === 'sheet') {
         setSheetPanPx([0, 0]);
         return;
@@ -463,16 +453,24 @@ export default function InteractiveViewportCanvas({
           h: metrics.innerRect.h * 0.56,
         };
       }
+      const st = useLayoutStore.getState();
+      const sheetCss = computeSheetCssRect({
+        stageCssWidth: stageEl.clientWidth,
+        stageCssHeight: stageEl.clientHeight,
+        paperWidthMm: metrics.paperWidthMm,
+        paperHeightMm: metrics.paperHeightMm,
+        previewZoom: st.previewZoom,
+        sheetPanPx: [0, 0],
+      });
       const cxNorm = (targetRect.x + targetRect.w / 2) / metrics.widthPx;
       const cyNorm = (targetRect.y + targetRect.h / 2) / metrics.heightPx;
-      const cRect = canvasEl.getBoundingClientRect();
       setSheetPanPx([
-        Math.round((0.5 - cxNorm) * cRect.width),
-        Math.round((0.5 - cyNorm) * cRect.height),
+        Math.round((0.5 - cxNorm) * sheetCss.w),
+        Math.round((0.5 - cyNorm) * sheetCss.h),
       ]);
     });
     return () => cancelAnimationFrame(rafId);
-  }, [viewportFocusTarget, viewportFocusNonce, setSheetPanPx, canvasRef]);
+  }, [viewportFocusTarget, viewportFocusNonce, setSheetPanPx]);
 
   // Atajos profesionales de teclado dentro del editor: Ctrl+Z, Ctrl+Y, Ctrl+Shift+Z, Supr, Esc
   useEffect(() => {
@@ -511,23 +509,27 @@ export default function InteractiveViewportCanvas({
   }, []);
 
   const clientToSheetPx = (clientX: number, clientY: number): [number, number] | null => {
-    const canvasEl = canvasRef.current;
-    if (!canvasEl || !renderMetrics) return null;
-    const rect = canvasEl.getBoundingClientRect();
-    const x = ((clientX - rect.left) / Math.max(1, rect.width)) * renderMetrics.widthPx;
-    const y = ((clientY - rect.top) / Math.max(1, rect.height)) * renderMetrics.heightPx;
+    const stageEl = stageRef.current;
+    const sheetCss = renderMetrics?.sheetCssRect;
+    if (!stageEl || !renderMetrics || !sheetCss) return null;
+    const sRect = stageEl.getBoundingClientRect();
+    const relX = clientX - sRect.left - sheetCss.x;
+    const relY = clientY - sRect.top - sheetCss.y;
+    const x = (relX / Math.max(1, sheetCss.w)) * renderMetrics.widthPx;
+    const y = (relY / Math.max(1, sheetCss.h)) * renderMetrics.heightPx;
     return [x, y];
   };
 
   const getInnerCssGeometry = () => {
-    const canvasEl = canvasRef.current;
-    if (!canvasEl || !renderMetrics) return null;
-    const rect = canvasEl.getBoundingClientRect();
-    const scaleX = rect.width / renderMetrics.widthPx;
-    const scaleY = rect.height / renderMetrics.heightPx;
+    const stageEl = stageRef.current;
+    const sheetCss = renderMetrics?.sheetCssRect;
+    if (!stageEl || !renderMetrics || !sheetCss) return null;
+    const sRect = stageEl.getBoundingClientRect();
+    const scaleX = sheetCss.w / renderMetrics.widthPx;
+    const scaleY = sheetCss.h / renderMetrics.heightPx;
     return {
-      innerCssLeft: rect.left + renderMetrics.innerRect.x * scaleX,
-      innerCssTop: rect.top + renderMetrics.innerRect.y * scaleY,
+      innerCssLeft: sRect.left + sheetCss.x + renderMetrics.innerRect.x * scaleX,
+      innerCssTop: sRect.top + sheetCss.y + renderMetrics.innerRect.y * scaleY,
       innerCssW: renderMetrics.innerRect.w * scaleX,
       innerCssH: renderMetrics.innerRect.h * scaleY,
       scaleX,
@@ -536,13 +538,12 @@ export default function InteractiveViewportCanvas({
   };
 
   const getMetersPerCssPx = (target: ActiveViewportTarget): number => {
-    const canvasEl = canvasRef.current;
-    if (!canvasEl || !renderMetrics) return 0.5;
-    const rect = canvasEl.getBoundingClientRect();
+    const sheetCss = renderMetrics?.sheetCssRect;
+    if (!renderMetrics || !sheetCss) return 0.5;
     const { widthMm: paperWidthMm } = getEffectivePaperDimensionsMm(config);
     const scaleDenom =
       target === 'main' ? renderMetrics.effectiveMainScale : renderMetrics.effectiveLocationScale;
-    const cssPxPerMm = rect.width / paperWidthMm;
+    const cssPxPerMm = sheetCss.w / paperWidthMm;
     const cssPxPerMeter = (1000 / Math.max(10, scaleDenom)) * cssPxPerMm;
     return 1 / Math.max(1e-4, cssPxPerMeter);
   };
@@ -1011,7 +1012,7 @@ export default function InteractiveViewportCanvas({
     setPreviewZoom(previewZoom + (e.deltaY < 0 ? 0.16 : -0.16));
   };
 
-  const aspectRatio = renderMetrics ? `${renderMetrics.widthPx} / ${renderMetrics.heightPx}` : '1.414 / 1';
+  const sheetCssRect = renderMetrics?.sheetCssRect ?? null;
   const innerLeftPct = renderMetrics ? (renderMetrics.innerRect.x / renderMetrics.widthPx) * 100 : 1;
   const innerTopPct = renderMetrics ? (renderMetrics.innerRect.y / renderMetrics.heightPx) * 100 : 1;
   const innerWidthPct = renderMetrics ? (renderMetrics.innerRect.w / renderMetrics.widthPx) * 100 : 98;
@@ -1071,167 +1072,6 @@ export default function InteractiveViewportCanvas({
 
   return (
     <div style={{ position: 'relative', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-      {/* Barra superior CAD: Undo/Redo + Herramientas + Escala simultánea VP-1 / VP-2 */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '5px 10px',
-          background: 'rgba(13, 17, 25, 0.96)',
-          borderBottom: '1px solid var(--cad-border)',
-          gap: 6,
-          flexWrap: 'wrap',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
-          {/* Undo / Redo */}
-          <button
-            type="button"
-            disabled={undoCount === 0}
-            onClick={undoLayout}
-            title="Deshacer (Ctrl+Z)"
-            style={{
-              ...smallBtnStyle,
-              padding: '4px 6px',
-              opacity: undoCount === 0 ? 0.35 : 1,
-              cursor: undoCount === 0 ? 'not-allowed' : 'pointer',
-            }}
-          >
-            <Undo2 size={12} />
-          </button>
-          <button
-            type="button"
-            disabled={redoCount === 0}
-            onClick={redoLayout}
-            title="Rehacer (Ctrl+Y)"
-            style={{
-              ...smallBtnStyle,
-              padding: '4px 6px',
-              opacity: redoCount === 0 ? 0.35 : 1,
-              cursor: redoCount === 0 ? 'not-allowed' : 'pointer',
-            }}
-          >
-            <Redo2 size={12} />
-          </button>
-
-          <div style={{ width: 1, height: 16, background: 'var(--cad-border)', margin: '0 2px' }} />
-
-          {TOOL_BUTTONS.map((tb) => {
-            const active =
-              canvasTool === tb.id || (tb.id === 'edit-elements' && canvasTool === 'pan-content');
-            return (
-              <button
-                key={tb.id}
-                type="button"
-                onClick={() => setCanvasTool(tb.id)}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 4,
-                  padding: '4px 8px',
-                  borderRadius: 6,
-                  fontSize: '0.63rem',
-                  fontWeight: active ? 700 : 500,
-                  cursor: 'pointer',
-                  border: `1px solid ${active ? '#38BDF8' : 'var(--cad-border)'}`,
-                  background: active ? 'rgba(56, 189, 248, 0.16)' : 'var(--cad-bg-surface)',
-                  color: active ? '#38BDF8' : 'var(--cad-text-dim)',
-                }}
-              >
-                {tb.icon}
-                <span>{tb.label}</span>
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Controles en vivo de Escala VP-1 y VP-2 simultáneos */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-            <span style={{ fontSize: '0.6rem', fontWeight: 700, color: '#FF6B4A' }}>VP-1 1:</span>
-            <button
-              type="button"
-              onClick={() => zoomViewportScale('main', effMainScale, 0.85)}
-              title="Acercar escala VP-1"
-              style={smallBtnStyle}
-            >
-              <Minus size={9} />
-            </button>
-            <input
-              type="number"
-              min={10}
-              step={25}
-              value={effMainScale}
-              onChange={(e) => {
-                const n = Number(e.target.value);
-                if (Number.isFinite(n) && n >= 10) setMainScale('manual', n);
-              }}
-              style={{
-                width: 52,
-                padding: '2px 4px',
-                borderRadius: 4,
-                background: '#090D16',
-                border: '1px solid rgba(255, 107, 74, 0.45)',
-                color: '#F8FAFC',
-                fontSize: '0.63rem',
-                fontFamily: 'var(--font-mono)',
-                textAlign: 'center',
-              }}
-            />
-            <button
-              type="button"
-              onClick={() => zoomViewportScale('main', effMainScale, 1.15)}
-              title="Alejar escala VP-1"
-              style={smallBtnStyle}
-            >
-              <Plus size={9} />
-            </button>
-          </div>
-
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-            <span style={{ fontSize: '0.6rem', fontWeight: 700, color: '#2DD4BF' }}>VP-2 1:</span>
-            <button
-              type="button"
-              onClick={() => zoomViewportScale('location', effLocScale, 0.85)}
-              title="Acercar escala VP-2"
-              style={smallBtnStyle}
-            >
-              <Minus size={9} />
-            </button>
-            <input
-              type="number"
-              min={50}
-              step={100}
-              value={effLocScale}
-              onChange={(e) => {
-                const n = Number(e.target.value);
-                if (Number.isFinite(n) && n >= 50) setLocationScale('manual', n);
-              }}
-              style={{
-                width: 54,
-                padding: '2px 4px',
-                borderRadius: 4,
-                background: '#090D16',
-                border: '1px solid rgba(45, 212, 191, 0.45)',
-                color: '#F8FAFC',
-                fontSize: '0.63rem',
-                fontFamily: 'var(--font-mono)',
-                textAlign: 'center',
-              }}
-            />
-            <button
-              type="button"
-              onClick={() => zoomViewportScale('location', effLocScale, 1.15)}
-              title="Alejar escala VP-2"
-              style={smallBtnStyle}
-            >
-              <Plus size={9} />
-            </button>
-          </div>
-        </div>
-      </div>
-
       {/* Barra contextual profesional del objeto seleccionado */}
       {selectedItem && (
         <div
@@ -1676,71 +1516,7 @@ export default function InteractiveViewportCanvas({
         </div>
       )}
 
-      {/* Píldora flotante inferior de enfoque rápido */}
-      <div
-        style={{
-          position: 'absolute',
-          bottom: 12,
-          left: '50%',
-          transform: 'translateX(-50%)',
-          zIndex: 12,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 3,
-          padding: '4px 6px',
-          borderRadius: 999,
-          background: 'rgba(11, 15, 23, 0.9)',
-          border: '1px solid rgba(148, 163, 184, 0.28)',
-          backdropFilter: 'blur(8px)',
-          boxShadow: '0 8px 24px rgba(0, 0, 0, 0.5)',
-        }}
-      >
-        {FLOAT_FOCUS_BUTTONS.map((btn) => {
-          const active = viewportFocusTarget === btn.id;
-          return (
-            <button
-              key={btn.id}
-              type="button"
-              onClick={() => setViewportFocusTarget(btn.id)}
-              style={{
-                padding: '3px 9px',
-                borderRadius: 999,
-                border: 'none',
-                background: active ? 'rgba(45, 212, 191, 0.22)' : 'transparent',
-                color: active ? '#2DD4BF' : '#CBD5E1',
-                fontSize: '0.62rem',
-                fontWeight: active ? 700 : 500,
-                cursor: 'pointer',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {btn.label}
-            </button>
-          );
-        })}
-        <button
-          type="button"
-          onClick={resetSheetView}
-          title="Centrar vista (Doble clic medio)"
-          style={{
-            padding: '3px 7px',
-            borderRadius: 999,
-            border: 'none',
-            background: 'transparent',
-            color: '#94A3B8',
-            fontSize: '0.61rem',
-            cursor: 'pointer',
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 3,
-          }}
-        >
-          <RotateCcw size={10} />
-          <Maximize2 size={10} />
-        </button>
-      </div>
-
-      {/* Área de trabajo CAD tipo Paper Space */}
+      {/* Área de trabajo CAD tipo Paper Space HiDPI vectorial */}
       <div
         ref={stageRef}
         onMouseDown={handleStageMouseDown}
@@ -1752,12 +1528,9 @@ export default function InteractiveViewportCanvas({
         onMouseLeave={handleMouseUp}
         onWheel={handleStageWheel}
         style={{
+          position: 'relative',
           flex: 1,
           overflow: 'hidden',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: 20,
           cursor:
             canvasTool === 'draw-text' || canvasTool === 'draw-rect' || canvasTool === 'draw-line'
               ? 'crosshair'
@@ -1768,33 +1541,31 @@ export default function InteractiveViewportCanvas({
             'radial-gradient(circle at center, rgba(30, 41, 59, 0.45) 0%, rgba(7, 9, 14, 0.98) 100%)',
         }}
       >
-        <div
+        <canvas
+          ref={canvasRef}
           style={{
-            position: 'relative',
-            width: `${Math.round(previewZoom * 92)}%`,
-            flexShrink: 0,
-            maxHeight: previewZoom <= 1 ? '96%' : undefined,
-            aspectRatio,
-            transform: `translate(${sheetPanPx[0]}px, ${sheetPanPx[1]}px)`,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            boxShadow: '0 20px 60px rgba(0, 0, 0, 0.78), 0 0 0 1px rgba(255, 255, 255, 0.14)',
-            borderRadius: 3,
-            overflow: 'hidden',
+            position: 'absolute',
+            inset: 0,
+            width: '100%',
+            height: '100%',
+            display: 'block',
           }}
-        >
-          <canvas
-            ref={canvasRef}
-            style={{
-              width: '100%',
-              height: '100%',
-              display: 'block',
-            }}
-          />
+        />
 
-          {/* Cajas VP-1 / VP-2 editables */}
-          {renderMetrics && (
+        {renderMetrics && sheetCssRect && (
+          <div
+            style={{
+              position: 'absolute',
+              left: sheetCssRect.x,
+              top: sheetCssRect.y,
+              width: sheetCssRect.w,
+              height: sheetCssRect.h,
+              pointerEvents: 'none',
+              overflow: 'hidden',
+              borderRadius: 2,
+            }}
+          >
+            {/* Cajas VP-1 / VP-2 editables */}
             <div
               style={{
                 position: 'absolute',
@@ -1824,45 +1595,45 @@ export default function InteractiveViewportCanvas({
                 onViewportMouseDown={handleViewportBoxMouseDown}
               />
             </div>
-          )}
 
-          {/* Borrador de recuadro o línea mientras se dibuja */}
-          {draftShape && renderMetrics && (
-            <div
-              style={{
-                position: 'absolute',
-                left: `${innerLeftPct}%`,
-                top: `${innerTopPct}%`,
-                width: `${innerWidthPct}%`,
-                height: `${innerHeightPct}%`,
-                pointerEvents: 'none',
-              }}
-            >
+            {/* Borrador de recuadro o línea mientras se dibuja */}
+            {draftShape && (
               <div
                 style={{
                   position: 'absolute',
-                  left: `${(draftShape.shape === 'rect' ? draftShape.x : Math.min(draftShape.x, draftShape.x + draftShape.w)) * 100}%`,
-                  top: `${(draftShape.shape === 'rect' ? draftShape.y : Math.min(draftShape.y, draftShape.y + draftShape.h)) * 100}%`,
-                  width: `${Math.max(0.01, Math.abs(draftShape.w)) * 100}%`,
-                  height: `${Math.max(0.01, Math.abs(draftShape.h)) * 100}%`,
-                  border: '1.5px dashed #FF6B4A',
-                  background: 'rgba(255, 107, 74, 0.08)',
+                  left: `${innerLeftPct}%`,
+                  top: `${innerTopPct}%`,
+                  width: `${innerWidthPct}%`,
+                  height: `${innerHeightPct}%`,
+                  pointerEvents: 'none',
                 }}
-              />
-            </div>
-          )}
+              >
+                <div
+                  style={{
+                    position: 'absolute',
+                    left: `${(draftShape.shape === 'rect' ? draftShape.x : Math.min(draftShape.x, draftShape.x + draftShape.w)) * 100}%`,
+                    top: `${(draftShape.shape === 'rect' ? draftShape.y : Math.min(draftShape.y, draftShape.y + draftShape.h)) * 100}%`,
+                    width: `${Math.max(0.01, Math.abs(draftShape.w)) * 100}%`,
+                    height: `${Math.max(0.01, Math.abs(draftShape.h)) * 100}%`,
+                    border: '1.5px dashed #FF6B4A',
+                    background: 'rgba(255, 107, 74, 0.08)',
+                  }}
+                />
+              </div>
+            )}
 
-          {/* Resaltado y 4 manejadores de esquina para escalar el elemento seleccionado */}
-          {selectedRect && renderMetrics && (
-            <SelectionHighlightOverlay
-              rect={selectedRect}
-              sheetW={renderMetrics.widthPx}
-              sheetH={renderMetrics.heightPx}
-              label={selectedLabel}
-              onStartCornerDrag={handleStartScaleDrag}
-            />
-          )}
-        </div>
+            {/* Resaltado y 4 manejadores de esquina para escalar el elemento seleccionado */}
+            {selectedRect && (
+              <SelectionHighlightOverlay
+                rect={selectedRect}
+                sheetW={renderMetrics.widthPx}
+                sheetH={renderMetrics.heightPx}
+                label={selectedLabel}
+                onStartCornerDrag={handleStartScaleDrag}
+              />
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

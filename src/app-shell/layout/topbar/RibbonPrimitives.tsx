@@ -10,6 +10,7 @@ type RibbonToolProps = {
   shortcut?: string;
   disabled?: boolean;
   active?: boolean;
+  iconOnly?: boolean;
   badge?: number;
   tooltip?: string;
   onClick?: () => void;
@@ -22,6 +23,7 @@ export function RibbonTool({
   shortcut,
   disabled,
   active,
+  iconOnly,
   badge,
   onClick,
   tooltip,
@@ -37,13 +39,13 @@ export function RibbonTool({
     <button
       onClick={handle}
       disabled={disabled}
-      className={`ribbon-tool ${isActive ? 'active' : ''} ${disabled ? 'disabled' : ''}`}
+      className={`ribbon-tool ${iconOnly ? 'icon-only' : ''} ${isActive ? 'active' : ''} ${disabled ? 'disabled' : ''}`}
       data-tooltip={tip}
       aria-label={tip}
       title={tip}
     >
       {icon}
-      <span className="ribbon-tool-label">{label}</span>
+      {!iconOnly && <span className="ribbon-tool-label">{label}</span>}
       {badge != null && badge > 0 && <span className="ribbon-tool-badge">{badge}</span>}
     </button>
   );

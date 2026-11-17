@@ -6,7 +6,7 @@ import LineString from 'ol/geom/LineString.js';
 import Point from 'ol/geom/Point.js';
 import CircleGeom from 'ol/geom/Circle.js';
 import type VectorSource from 'ol/source/Vector.js';
-import { getFeatureKind, getLotStatus, type Layer } from '@kernel/domain-model/featureModel';
+import { getFeatureKind, getLayerSuggestion, getLotStatus, type Layer } from '@kernel/domain-model/featureModel';
 import { polyArea, type Pt } from '@kernel/geometry/polygonEngine';
 import { projectPathToMetricPlane, streetLengthMetricM } from '@georef-engine/metrics';
 import type { Street } from '@vias-engine/store/streetStore';
@@ -20,6 +20,9 @@ export interface MetricPolygonEntity {
   bbox: [number, number, number, number];
   centroid: [number, number];
   color: string;
+  opacity: number;
+  strokeWidth: number;
+  zIndex: number;
   code: string;
   areaM2: number;
   perimeterM: number;
@@ -34,6 +37,9 @@ export interface MetricLineEntity {
   kind: 'linea' | 'polilinea';
   path: [number, number][];
   color: string;
+  opacity: number;
+  strokeWidth: number;
+  zIndex: number;
   label: string;
 }
 
@@ -41,6 +47,8 @@ export interface MetricPointEntity {
   id: string;
   coord: [number, number];
   color: string;
+  opacity: number;
+  zIndex: number;
   label: string;
 }
 
@@ -52,6 +60,7 @@ export interface MetricStreetEntity {
   sideWidthM: number;
   lengthM: number;
   color: string;
+  opacity: number;
 }
 
 export interface MetricRoundaboutEntity {
@@ -64,6 +73,15 @@ export interface MetricRoundaboutEntity {
   radiusM: number;
   roadWidthM: number;
   color: string;
+  opacity: number;
+}
+
+export interface MetricRoadNetworkGroup {
+  layerId: string;
+  color: string;
+  opacity: number;
+  outerPolygons: [number, number][][][];
+  roadPolygons: [number, number][][][];
 }
 
 export interface LotVertexRow {
@@ -116,6 +134,7 @@ export interface ExtractedCartography {
   points: MetricPointEntity[];
   streets: MetricStreetEntity[];
   roundabouts: MetricRoundaboutEntity[];
+  roadNets?: MetricRoadNetworkGroup[];
   lotsCatalog: LotCatalogItem[];
   totalAreaM2: number;
   manzanoAreaM2: number;
@@ -299,7 +318,22 @@ export function extractProjectCartography(params: {
       const geom = feat.getGeometry();
       if (!geom) return;
       const kind = getFeatureKind(feat) ?? 'lote';
-      const color = layer?.color ?? (kind === 'manzana' ? '#f59e0b' : kind === 'lote' ? '#0ea5e9' : '#64748b');
+      const featColor = feat.get('color') as string | undefined;
+      const featOpacity = feat.get('opacity') as number | undefined;
+      const featStrokeWidth =
+        (feat.get('strokeWidth') as number | undefined) ??
+        (feat.get('lineWidth') as number | undefined);
+      const color =
+        featColor ?? layer?.color ?? getLayerSuggestion(kind)?.color ?? '#58a6ff';
+      const opacity =
+        typeof featOpacity === 'number' && Number.isFinite(featOpacity)
+          ? Math.max(0.05, Math.min(1, featOpacity))
+          : (layer?.opacity ?? 1);
+      const strokeWidth =
+        typeof featStrokeWidth === 'number' && Number.isFinite(featStrokeWidth)
+          ? Math.max(0.5, featStrokeWidth)
+          : 2;
+      const zIndex = layer?.zIndex ?? 0;
 
       if (geom instanceof Polygon) {
         const rawRing = geom.getCoordinates()[0];
@@ -328,6 +362,9 @@ export function extractProjectCartography(params: {
           bbox: ringBBox(metricRing),
           centroid: ringCentroid(metricRing),
           color,
+          opacity,
+          strokeWidth,
+          zIndex,
           code,
           areaM2,
           perimeterM,
@@ -356,6 +393,9 @@ export function extractProjectCartography(params: {
           bbox: ringBBox(metricRing),
           centroid: ringCentroid(metricRing),
           color,
+          opacity,
+          strokeWidth,
+          zIndex,
           code: (feat.get('label') as string | undefined) ?? 'Círculo',
           areaM2,
           perimeterM: ringPerimeter(metricRing),
@@ -374,6 +414,9 @@ export function extractProjectCartography(params: {
           kind: kind === 'polilinea' ? 'polilinea' : 'linea',
           path: metricPath,
           color,
+          opacity,
+          strokeWidth,
+          zIndex,
           label: (feat.get('label') as string | undefined) ?? '',
         });
       } else if (geom instanceof Point) {
@@ -387,6 +430,8 @@ export function extractProjectCartography(params: {
             id: String(feat.getId() ?? `pt-${points.length}`),
             coord: ptMetric,
             color,
+            opacity,
+            zIndex,
             label: (feat.get('label') as string | undefined) ?? `P-${points.length + 1}`,
           });
         }
@@ -395,7 +440,7 @@ export function extractProjectCartography(params: {
   }
 
   for (const st of streets) {
-    const layer = st.layerId ? layerById.get(st.layerId) : undefined;
+    const layer = st.layerId ? layerById.get(st.layerId) : layers.find((l) => l.kind === 'via');
     if (layer && !layer.visible) continue;
     const rawPts: [number, number][] = [st.start, ...(st.waypoints ?? []), st.end];
     rawPts.forEach(expand3857);
@@ -412,12 +457,13 @@ export function extractProjectCartography(params: {
       widthM: st.widthM,
       sideWidthM: st.sideWidthM ?? 0,
       lengthM: streetLengthMetricM(st),
-      color: layer?.color ?? '#8b5cf6',
+      color: layer?.color ?? getLayerSuggestion('via')?.color ?? '#8b5cf6',
+      opacity: layer?.opacity ?? 1,
     });
   }
 
   for (const rb of roundabouts) {
-    const layer = rb.layerId ? layerById.get(rb.layerId) : undefined;
+    const layer = rb.layerId ? layerById.get(rb.layerId) : layers.find((l) => l.kind === 'rotonda') ?? layers.find((l) => l.kind === 'via');
     if (layer && !layer.visible) continue;
     const rbGeom = roundaboutGeometry(rb);
     rbGeom.sideOuter.forEach((pt) => expand3857([pt[0], pt[1]]));
@@ -438,7 +484,8 @@ export function extractProjectCartography(params: {
         island: islandMetric,
         radiusM: rb.radiusM,
         roadWidthM: rb.roadWidthM,
-        color: layer?.color ?? '#f78166',
+        color: layer?.color ?? getLayerSuggestion('rotonda')?.color ?? '#f78166',
+        opacity: layer?.opacity ?? 1,
       });
     }
   }

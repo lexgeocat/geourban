@@ -59,9 +59,10 @@
 
   /* ─── Layout & Spacing Dimensions ─── */
   --cad-toolbar-width: 48px;
-  --cad-topbar-tabs-height: 36px;
-  --cad-topbar-ribbon-height: 60px;
-  --cad-topbar-height: calc(var(--cad-topbar-tabs-height) + var(--cad-topbar-ribbon-height));
+  --cad-topbar-tabs-height: 34px;
+  --cad-topbar-ribbon-height: 50px;
+  --cad-viewtabs-height: 26px;
+  --cad-topbar-height: calc(var(--cad-topbar-tabs-height) + var(--cad-topbar-ribbon-height) + var(--cad-viewtabs-height));
   --cad-statusbar-height: 30px;
   --cad-leftbar-rail-width: 42px;
   --cad-leftbar-panel-width: 320px;
@@ -87,7 +88,7 @@
 }
 
 :root[data-ribbon-collapsed='true'] {
-  --cad-topbar-height: var(--cad-topbar-tabs-height);
+  --cad-topbar-height: calc(var(--cad-topbar-tabs-height) + var(--cad-viewtabs-height));
 }
 
 /* ─── Global Reset ─── */
@@ -884,6 +885,75 @@ body,
   border-color: rgba(255, 107, 74, 0.45);
   box-shadow: 0 2px 10px rgba(255, 107, 74, 0.16);
 }
+.topbar-tab.contextual.active {
+  color: #FFFFFF;
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.22), rgba(45, 212, 191, 0.18));
+  border-color: rgba(56, 189, 248, 0.5);
+  box-shadow: 0 2px 10px rgba(56, 189, 248, 0.18);
+}
+
+/* Workspace Document View Switcher Tabs (ArcGIS Pro / Rust GIS style) */
+.workspace-viewtabs-bar {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  height: var(--cad-viewtabs-height);
+  padding: 0 12px;
+  gap: 10px;
+  background: linear-gradient(180deg, rgba(11, 13, 20, 0.95) 0%, rgba(16, 19, 28, 0.98) 100%);
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.workspace-viewtabs-list {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 100%;
+  padding-top: 3px;
+}
+
+.workspace-viewtab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 23px;
+  padding: 0 12px;
+  border-radius: 6px 6px 0 0;
+  border: 1px solid transparent;
+  border-bottom: none;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--cad-text-muted);
+  font-family: var(--font-display);
+  font-size: 0.66rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--cad-transition);
+}
+
+.workspace-viewtab:hover {
+  color: var(--cad-text);
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.workspace-viewtab.active {
+  background: #0B0E14;
+  color: #FFFFFF;
+  border-color: var(--cad-border);
+  box-shadow: inset 0 2px 0 #FF6B4A;
+}
+
+.workspace-viewtab.layout-tab.active {
+  box-shadow: inset 0 2px 0 #38BDF8;
+}
+
+.workspace-viewtab-meta {
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--cad-text-dim);
+}
 
 /* Quick Access Toolbar Capsule in Titlebar */
 .topbar-qat {
@@ -1053,8 +1123,8 @@ body,
     radial-gradient(circle at 62% 0%, rgba(139, 92, 246, 0.07), transparent 38%),
     var(--cad-bg-panel);
   border-top: 1px solid var(--cad-border);
-  padding: 5px 10px;
-  gap: 8px;
+  padding: 3px 10px;
+  gap: 6px;
   overflow-x: auto;
   overflow-y: hidden;
   animation: ribbonSlide 220ms cubic-bezier(0.16, 1, 0.3, 1);
@@ -1078,18 +1148,18 @@ body,
   flex-shrink: 0;
   background: linear-gradient(180deg, rgba(28, 32, 46, 0.88) 0%, rgba(21, 24, 34, 0.94) 100%);
   border: 1px solid var(--cad-border);
-  border-radius: 10px;
-  padding: 3px 8px 3px;
+  border-radius: 8px;
+  padding: 2px 7px 2px;
   box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.05);
 }
 .ribbon-group-label {
   font-family: var(--font-display);
-  font-size: 0.54rem;
+  font-size: 0.5rem;
   font-weight: 700;
   color: var(--cad-text-muted);
   text-align: center;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.07em;
   padding: 0 0 1px;
   white-space: nowrap;
   overflow: hidden;
@@ -1098,7 +1168,7 @@ body,
 .ribbon-group-items {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
   flex: 1;
   min-width: 0;
 }
@@ -1110,20 +1180,28 @@ body,
   align-items: center;
   justify-content: flex-start;
   min-width: 0;
-  height: 30px;
-  padding: 0 10px;
-  gap: 7px;
+  height: 28px;
+  padding: 0 9px;
+  gap: 6px;
   background: rgba(255, 255, 255, 0.02);
   border: 1px solid transparent;
-  border-radius: 7px;
+  border-radius: 6px;
   color: var(--cad-text-dim);
   cursor: pointer;
   transition: all var(--cad-transition);
   position: relative;
 }
+.ribbon-tool.icon-only {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  gap: 0;
+  justify-content: center;
+  border-radius: 6px;
+}
 .ribbon-tool svg {
-  width: 15px;
-  height: 15px;
+  width: 14px;
+  height: 14px;
   flex-shrink: 0;
   transition: transform var(--cad-transition);
 }
@@ -1239,6 +1317,10 @@ body,
   align-items: stretch;
   gap: 3px;
 }
+.ribbon-popover .ribbon-group-items:has(.icon-only) {
+  flex-direction: row;
+  flex-wrap: wrap;
+}
 .ribbon-popover .ribbon-tool {
   flex-direction: row;
   justify-content: flex-start;
@@ -1248,6 +1330,13 @@ body,
   padding: 0 10px;
   gap: 10px;
   border-radius: 7px;
+}
+.ribbon-popover .ribbon-tool.icon-only {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  gap: 0;
+  justify-content: center;
 }
 .ribbon-popover .ribbon-tool-label {
   font-size: 0.7rem;

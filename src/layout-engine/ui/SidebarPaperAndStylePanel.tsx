@@ -1,30 +1,9 @@
-import { useRef, useState } from 'react';
-import { BookmarkPlus, FileCode2, Palette, Scaling, Trash2, Upload } from 'lucide-react';
+import { useState } from 'react';
+import { BookmarkPlus, FileCode2, Scaling, Trash2 } from 'lucide-react';
 import { toast } from '@shared-ui/store/toastStore';
-import {
-  PAPER_DIMENSIONS_MM,
-  type CarimboFitMode,
-  type LayoutThemeId,
-  type PaperOrientation,
-  type PaperSizeId,
-} from '../model/layoutTypes';
+import type { CarimboFitMode } from '../model/layoutTypes';
 import { useLayoutStore } from '../store/layoutStore';
 import { cardStyle, cardTitleStyle, fieldLabelStyle, inputStyle, segmentBtnStyle } from './sidebarStyles';
-
-const MONOCHROME_THEMES: Array<{ id: LayoutThemeId; label: string; desc: string; swatch: string }> = [
-  {
-    id: 'monochrome-cad-white',
-    label: 'Blanco Impresión (CTB B/N)',
-    desc: 'Monocromo negro/gris',
-    swatch: '#FFFFFF',
-  },
-  {
-    id: 'autocad-model-dark',
-    label: 'Negro AutoCAD (B/N)',
-    desc: 'Monocromo blanco/gris',
-    swatch: '#090C12',
-  },
-];
 
 export default function SidebarPaperAndStylePanel() {
   const templates = useLayoutStore((s) => s.templates);
@@ -32,20 +11,15 @@ export default function SidebarPaperAndStylePanel() {
   const config = useLayoutStore((s) => s.config);
 
   const selectTemplate = useLayoutStore((s) => s.selectTemplate);
-  const importCustomDxf = useLayoutStore((s) => s.importCustomDxf);
   const saveActiveTemplateToLibrary = useLayoutStore((s) => s.saveActiveTemplateToLibrary);
   const removeCustomTemplate = useLayoutStore((s) => s.removeCustomTemplate);
 
-  const setPaperSize = useLayoutStore((s) => s.setPaperSize);
-  const setOrientation = useLayoutStore((s) => s.setOrientation);
   const setCustomPaper = useLayoutStore((s) => s.setCustomPaper);
   const setMarginMm = useLayoutStore((s) => s.setMarginMm);
   const setCarimboFitMode = useLayoutStore((s) => s.setCarimboFitMode);
   const setCarimboScalePercent = useLayoutStore((s) => s.setCarimboScalePercent);
-  const setTheme = useLayoutStore((s) => s.setTheme);
 
   const [saveName, setSaveName] = useState('');
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const unitFactor = config.customPaper.unit === 'in' ? 25.4 : 1;
   const customWidthDisplay = +(config.customPaper.widthMm / unitFactor).toFixed(2);
@@ -63,74 +37,17 @@ export default function SidebarPaperAndStylePanel() {
     }
   };
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    try {
-      const buf = await file.arrayBuffer();
-      let text = new TextDecoder('utf-8', { fatal: false }).decode(buf);
-      if (text.includes('\uFFFD')) {
-        text = new TextDecoder('windows-1252').decode(buf);
-      }
-      if (!text.includes('SECTION') && !text.includes('ENTITIES')) {
-        toast('El archivo no parece ser un DXF ASCII válido (guardalo como DXF ASCII en AutoCAD/QGIS).', {
-          variant: 'warning',
-          durationMs: 6000,
-        });
-        return;
-      }
-      const created = importCustomDxf(file.name, text);
-      toast(`Carimbo "${created.name}" integrado y guardado en tus plantillas.`, {
-        variant: 'success',
-        durationMs: 4500,
-      });
-    } catch (err) {
-      console.error('Error al importar plantilla DXF:', err);
-      toast('No se pudo leer el archivo .dxf seleccionado.', { variant: 'error' });
-    } finally {
-      e.target.value = '';
-    }
-  };
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-      {/* 1. Mis Plantillas & Guardado Persistente */}
+      {/* 1. Biblioteca de Plantillas Guardadas y .DXF */}
       <div style={cardStyle}>
         <div style={cardTitleStyle}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <FileCode2 size={14} color="#FBBF24" />
-            <span>Plantillas (.DXF y Guardadas)</span>
+            <span>Biblioteca de Plantillas</span>
           </div>
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 4,
-              padding: '4px 8px',
-              borderRadius: 6,
-              border: '1px solid rgba(251, 191, 36, 0.45)',
-              background: 'rgba(251, 191, 36, 0.14)',
-              color: '#FBBF24',
-              fontSize: '0.63rem',
-              fontWeight: 700,
-              cursor: 'pointer',
-            }}
-          >
-            <Upload size={11} />
-            <span>Importar .DXF</span>
-          </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".dxf"
-            style={{ display: 'none' }}
-            onChange={(e) => void handleFileChange(e)}
-          />
         </div>
 
-        {/* Barra para guardar modificaciones / carimbo actual */}
         <div
           style={{
             display: 'flex',
@@ -170,7 +87,7 @@ export default function SidebarPaperAndStylePanel() {
               }}
             >
               <BookmarkPlus size={12} />
-              <span>{activeTpl?.saved ? 'Actualizar Guardada' : 'Guardar Plantilla'}</span>
+              <span>{activeTpl?.saved ? 'Actualizar' : 'Guardar'}</span>
             </button>
             {activeTpl?.saved && (
               <button
@@ -187,7 +104,7 @@ export default function SidebarPaperAndStylePanel() {
                   cursor: 'pointer',
                 }}
               >
-                Guardar Copia
+                Copia
               </button>
             )}
           </div>
@@ -206,7 +123,7 @@ export default function SidebarPaperAndStylePanel() {
                 textAlign: 'center',
               }}
             >
-              Sin plantillas guardadas. Usá <strong>Importar .DXF</strong> o diseñá tu lámina en blanco y presioná <strong>Guardar Plantilla</strong>.
+              Sin plantillas guardadas. Usá el ícono <strong>Importar .DXF</strong> en la barra superior o diseñá tu lámina y guardala aquí.
             </div>
           )}
           {templates.map((tpl) => {
@@ -220,7 +137,7 @@ export default function SidebarPaperAndStylePanel() {
                   style={{
                     flex: 1,
                     textAlign: 'left',
-                    padding: '7px 9px',
+                    padding: '6px 8px',
                     borderRadius: 8,
                     cursor: 'pointer',
                     border: `1px solid ${active ? 'rgba(251, 191, 36, 0.6)' : 'var(--cad-border)'}`,
@@ -228,14 +145,14 @@ export default function SidebarPaperAndStylePanel() {
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 4 }}>
-                    <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--cad-text)' }}>
+                    <span style={{ fontSize: '0.66rem', fontWeight: 700, color: 'var(--cad-text)' }}>
                       {tpl.name}
                     </span>
                     <div style={{ display: 'flex', gap: 3 }}>
                       {tpl.saved && (
                         <span
                           style={{
-                            fontSize: '0.55rem',
+                            fontSize: '0.54rem',
                             fontWeight: 700,
                             padding: '1px 4px',
                             borderRadius: 4,
@@ -249,7 +166,7 @@ export default function SidebarPaperAndStylePanel() {
                       {tpl.kind !== 'iso-procedural' && (
                         <span
                           style={{
-                            fontSize: '0.55rem',
+                            fontSize: '0.54rem',
                             fontWeight: 700,
                             padding: '1px 4px',
                             borderRadius: 4,
@@ -262,7 +179,7 @@ export default function SidebarPaperAndStylePanel() {
                       )}
                     </div>
                   </div>
-                  <div style={{ fontSize: '0.59rem', color: 'var(--cad-text-muted)', marginTop: 2 }}>
+                  <div style={{ fontSize: '0.58rem', color: 'var(--cad-text-muted)', marginTop: 2 }}>
                     {tpl.description}
                   </div>
                 </button>
@@ -289,125 +206,12 @@ export default function SidebarPaperAndStylePanel() {
         </div>
       </div>
 
-      {/* 2. Estilo Visual Monocromático AutoCAD */}
-      <div style={cardStyle}>
-        <div style={cardTitleStyle}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <Palette size={14} color="#38BDF8" />
-            <span>Estilo Visual CAD (Monocromo)</span>
+      {/* 2. Medidas Personalizadas (solo cuando Papel === CUSTOM en la cinta) */}
+      {config.paperSize === 'CUSTOM' && (
+        <div style={cardStyle}>
+          <div style={cardTitleStyle}>
+            <span>Dimensiones Personalizadas</span>
           </div>
-        </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-          {MONOCHROME_THEMES.map((th) => {
-            const active = config.theme === th.id;
-            return (
-              <button
-                key={th.id}
-                type="button"
-                onClick={() => setTheme(th.id)}
-                style={{
-                  padding: '7px 8px',
-                  borderRadius: 8,
-                  textAlign: 'left',
-                  cursor: 'pointer',
-                  border: `1px solid ${active ? '#38BDF8' : 'var(--cad-border)'}`,
-                  background: active ? 'rgba(56, 189, 248, 0.14)' : 'var(--cad-bg-deep)',
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                  <span
-                    style={{
-                      width: 10,
-                      height: 10,
-                      borderRadius: 3,
-                      background: th.swatch,
-                      border: '1px solid #64748B',
-                    }}
-                  />
-                  <span style={{ fontSize: '0.67rem', fontWeight: 700, color: 'var(--cad-text)' }}>
-                    {th.label}
-                  </span>
-                </div>
-                <div style={{ fontSize: '0.58rem', color: 'var(--cad-text-muted)', marginTop: 1 }}>
-                  {th.desc}
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* 3. Papel & Auto-Adecuación */}
-      <div style={cardStyle}>
-        <div style={cardTitleStyle}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <Scaling size={14} color="#A78BFA" />
-            <span>Papel y Auto-Adecuación</span>
-          </div>
-        </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: '1.35fr 1fr', gap: 6 }}>
-          <div>
-            <label style={fieldLabelStyle}>Formato de Papel</label>
-            <select
-              value={config.paperSize}
-              onChange={(e) => setPaperSize(e.target.value as PaperSizeId)}
-              style={inputStyle}
-            >
-              {(Object.keys(PAPER_DIMENSIONS_MM) as PaperSizeId[]).map((k) => (
-                <option key={k} value={k}>
-                  {PAPER_DIMENSIONS_MM[k].label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label style={fieldLabelStyle}>Orientación</label>
-            <select
-              value={config.orientation}
-              onChange={(e) => setOrientation(e.target.value as PaperOrientation)}
-              style={inputStyle}
-            >
-              <option value="landscape">Horizontal</option>
-              <option value="portrait">Vertical</option>
-            </select>
-          </div>
-        </div>
-
-        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-          {(
-            [
-              { id: 'OFICIO_BOL', tag: 'Oficio 8.5×13"' },
-              { id: 'A4', tag: 'A4' },
-              { id: 'A3', tag: 'A3' },
-              { id: 'A2', tag: 'A2' },
-              { id: 'A1', tag: 'A1' },
-              { id: 'A0', tag: 'A0' },
-              { id: 'CUSTOM', tag: 'Custom' },
-            ] as const
-          ).map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              onClick={() => setPaperSize(p.id)}
-              style={{
-                padding: '3px 7px',
-                borderRadius: 5,
-                fontSize: '0.6rem',
-                fontWeight: config.paperSize === p.id ? 700 : 500,
-                cursor: 'pointer',
-                border: `1px solid ${config.paperSize === p.id ? '#A78BFA' : 'var(--cad-border)'}`,
-                background: config.paperSize === p.id ? 'rgba(167, 139, 250, 0.16)' : 'var(--cad-bg-deep)',
-                color: config.paperSize === p.id ? '#C4B5FD' : 'var(--cad-text-muted)',
-              }}
-            >
-              {p.tag}
-            </button>
-          ))}
-        </div>
-
-        {config.paperSize === 'CUSTOM' && (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 0.7fr', gap: 5 }}>
             <div>
               <label style={fieldLabelStyle}>Ancho ({config.customPaper.unit})</label>
@@ -453,7 +257,17 @@ export default function SidebarPaperAndStylePanel() {
               </select>
             </div>
           </div>
-        )}
+        </div>
+      )}
+
+      {/* 3. Márgenes y Auto-Adecuación de Carimbo */}
+      <div style={cardStyle}>
+        <div style={cardTitleStyle}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Scaling size={14} color="#A78BFA" />
+            <span>Ajuste de Carimbo y Márgenes</span>
+          </div>
+        </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 5 }}>
           <button

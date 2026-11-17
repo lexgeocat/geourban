@@ -3,14 +3,11 @@ import {
   Eraser,
   FileCheck2,
   FileEdit,
-  Minus,
   MousePointerClick,
   Plus,
   RotateCcw,
   Sparkles,
-  Square,
   Trash2,
-  Type,
 } from 'lucide-react';
 import { toast } from '@shared-ui/store/toastStore';
 import type { LotCatalogItem } from '../extractors/cartographyExtractor';
@@ -52,7 +49,6 @@ export default function SidebarCarimboFieldsPanel({
 
   const setCanvasTool = useLayoutStore((s) => s.setCanvasTool);
   const setSelectedItem = useLayoutStore((s) => s.setSelectedItem);
-  const addSheetAnnotation = useLayoutStore((s) => s.addSheetAnnotation);
   const setDxfTextOverride = useLayoutStore((s) => s.setDxfTextOverride);
   const updateDxfEntityEdit = useLayoutStore((s) => s.updateDxfEntityEdit);
   const restoreAllDxfEntities = useLayoutStore((s) => s.restoreAllDxfEntities);
@@ -80,76 +76,10 @@ export default function SidebarCarimboFieldsPanel({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-      {/* 1. Dibujo rápido en Lámina y Control Rápido de Datos */}
+      {/* 1. Autocompletado de Datos del Lote */}
       <div style={cardStyle}>
         <div style={cardTitleStyle}>
-          <span>Herramientas de Carimbo y Dibujo</span>
-        </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 5 }}>
-          <button
-            type="button"
-            onClick={() => addSheetAnnotation('text', 0.72, 0.55, 0.18, 0.04, 'NUEVO TEXTO')}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 4,
-              padding: '6px',
-              borderRadius: 6,
-              border: '1px solid var(--cad-border)',
-              background: 'var(--cad-bg-deep)',
-              color: '#38BDF8',
-              fontSize: '0.62rem',
-              fontWeight: 700,
-              cursor: 'pointer',
-            }}
-          >
-            <Type size={11} />
-            <span>+ Texto</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => addSheetAnnotation('rect', 0.68, 0.52, 0.28, 0.14)}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 4,
-              padding: '6px',
-              borderRadius: 6,
-              border: '1px solid var(--cad-border)',
-              background: 'var(--cad-bg-deep)',
-              color: '#FF6B4A',
-              fontSize: '0.62rem',
-              fontWeight: 700,
-              cursor: 'pointer',
-            }}
-          >
-            <Square size={11} />
-            <span>+ Recuadro</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => addSheetAnnotation('line', 0.68, 0.60, 0.28, 0)}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 4,
-              padding: '6px',
-              borderRadius: 6,
-              border: '1px solid var(--cad-border)',
-              background: 'var(--cad-bg-deep)',
-              color: '#2DD4BF',
-              fontSize: '0.62rem',
-              fontWeight: 700,
-              cursor: 'pointer',
-            }}
-          >
-            <Minus size={11} />
-            <span>+ Línea</span>
-          </button>
+          <span>Atributos del Carimbo</span>
         </div>
 
         <div style={{ display: 'flex', gap: 5 }}>

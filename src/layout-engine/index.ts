@@ -1,4 +1,4 @@
-export { default as PrintLayoutModal } from './ui/PrintLayoutModal';
+export { default as LayoutWorkspaceView } from './ui/LayoutWorkspaceView';
 export { useLayoutStore } from './store/layoutStore';
 export { parseDxfString } from './dxf/dxfParser';
 export { detectDxfTemplateViewports } from './dxf/dxfViewportDetector';
@@ -18,7 +18,6 @@ export type {
   CustomCarimboField,
   CustomPaperSize,
   DxfEntityEdit,
-  LayoutCompositionMode,
   LayoutConfig,
   LayoutDisplayOptions,
   LayoutFontFamily,

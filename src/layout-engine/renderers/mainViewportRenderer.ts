@@ -8,6 +8,12 @@ import {
   type Rect,
   type WidgetRenderedHitBox,
 } from './cartographicPrimitives';
+import {
+  renderStreetAxes,
+  renderStreetFallback,
+  renderUnionedRoadNetworks,
+  resolveDesignerColor,
+} from './designerStyleHelpers';
 import { interpolateCarimboText, type DynamicDxfValues } from './dxfCarimboRenderer';
 
 function drawVertexTableOverlay(
@@ -214,6 +220,7 @@ export function renderMainViewport(params: {
   effectiveCadastral: CadastralFormFields;
   dxfValues: DynamicDxfValues;
   palette: ThemePalette;
+  cadScaleOverride?: number;
 }): WidgetRenderedHitBox[] {
   const {
     ctx,
@@ -227,6 +234,7 @@ export function renderMainViewport(params: {
     effectiveCadastral,
     dxfValues,
     palette,
+    cadScaleOverride,
   } = params;
 
   const widgetHitBoxes: WidgetRenderedHitBox[] = [];
@@ -243,12 +251,13 @@ export function renderMainViewport(params: {
   };
 
   const isLotMode = config.scopeMode === 'lot' && selectedLot !== null;
+  const cadScale = cadScaleOverride ?? Math.max(1.5, canvasWidthPx / 1000);
 
   ctx.save();
   ctx.fillStyle = palette.panelBg;
   ctx.fillRect(frame.x, frame.y, frame.w, frame.h);
   ctx.strokeStyle = palette.borderOuter;
-  ctx.lineWidth = 1.8;
+  ctx.lineWidth = Math.max(1.8, 1.2 * cadScale);
   ctx.strokeRect(frame.x, frame.y, frame.w, frame.h);
 
   ctx.fillStyle = palette.mapBg;
@@ -293,7 +302,7 @@ export function renderMainViewport(params: {
     const firstMinorY = Math.ceil(viewMinY / minorStep) * minorStep;
 
     ctx.strokeStyle = palette.gridMinor;
-    ctx.lineWidth = 0.7;
+    ctx.lineWidth = Math.max(0.7, 0.48 * cadScale);
     ctx.beginPath();
     for (let gx = firstMinorX; gx <= viewMaxX; gx += minorStep) {
       const [sx] = toScreen([gx, cyMetric]);
@@ -308,7 +317,7 @@ export function renderMainViewport(params: {
     ctx.stroke();
 
     ctx.strokeStyle = palette.gridMajor;
-    ctx.lineWidth = 1.05;
+    ctx.lineWidth = Math.max(1.0, 0.72 * cadScale);
     ctx.beginPath();
     for (let gx = firstGridX; gx <= viewMaxX; gx += gridStepM) {
       const [sx] = toScreen([gx, cyMetric]);
@@ -323,60 +332,103 @@ export function renderMainViewport(params: {
     ctx.stroke();
 
     ctx.strokeStyle = palette.gridText;
-    ctx.lineWidth = 1;
+    ctx.lineWidth = Math.max(1.0, 0.75 * cadScale);
+    const crossArm = 3.5 * (cadScale * 0.7);
     for (let gx = firstGridX; gx <= viewMaxX; gx += gridStepM) {
       for (let gy = firstGridY; gy <= viewMaxY; gy += gridStepM) {
         const [sx, sy] = toScreen([gx, gy]);
         ctx.beginPath();
-        ctx.moveTo(sx - 3.5, sy);
-        ctx.lineTo(sx + 3.5, sy);
-        ctx.moveTo(sx, sy - 3.5);
-        ctx.lineTo(sx, sy + 3.5);
+        ctx.moveTo(sx - crossArm, sy);
+        ctx.lineTo(sx + crossArm, sy);
+        ctx.moveTo(sx, sy - crossArm);
+        ctx.lineTo(sx, sy + crossArm);
         ctx.stroke();
       }
     }
   }
 
-  // 2. Calles y aceras
-  for (const st of carto.streets) {
-    if (st.path.length < 2) continue;
-    const totalW = (st.widthM + st.sideWidthM * 2) * pxPerMeter;
-    const roadW = st.widthM * pxPerMeter;
+  const isDesignerMode = config.display.viewportStyleMode === 'designer';
+  const cadBlackInk = palette.isLight ? '#000000' : '#FFFFFF';
+  const cadSecondaryInk = palette.isLight ? '#334155' : '#CBD5E1';
+  const cadAxisInk = palette.isLight ? '#475569' : '#94A3B8';
 
-    const tracePath = () => {
-      ctx.beginPath();
-      st.path.forEach((pt, idx) => {
-        const [sx, sy] = toScreen(pt);
-        if (idx === 0) ctx.moveTo(sx, sy);
-        else ctx.lineTo(sx, sy);
+  // 2. Red vial y aceras unionadas (cero cruces en intersecciones cuando roadNets está disponible)
+  const designerCurbColor = palette.isLight ? '#475569' : '#CBD5E1';
+  const roadNets = carto.roadNets ?? [];
+
+  if (roadNets.length > 0) {
+    renderUnionedRoadNetworks({
+      ctx,
+      roadNets,
+      toScreen,
+      resolveColors: (group) => ({
+        roadStroke: isDesignerMode
+          ? resolveDesignerColor(group.color, 1, palette.isLight)
+          : cadBlackInk,
+        curbStroke: isDesignerMode ? designerCurbColor : cadSecondaryInk,
+      }),
+      roadLineWidth: Math.max(1.8, 1.15 * cadScale),
+      curbLineWidth: Math.max(1.2, 0.78 * cadScale),
+    });
+  } else {
+    for (const st of carto.streets) {
+      if (st.path.length < 2) continue;
+      renderStreetFallback({
+        ctx,
+        street: st,
+        toScreen,
+        pxPerMeter,
+        roadStroke: isDesignerMode
+          ? resolveDesignerColor(st.color, 1, palette.isLight)
+          : cadBlackInk,
+        curbStroke: isDesignerMode ? designerCurbColor : cadSecondaryInk,
+        roadLineWidth: Math.max(1.8, 1.15 * cadScale),
+        curbLineWidth: Math.max(1.2, 0.78 * cadScale),
       });
-    };
-
-    if (st.sideWidthM > 0) {
-      tracePath();
-      ctx.strokeStyle = palette.streetSidewalkFill;
-      ctx.lineWidth = Math.max(4, totalW);
-      ctx.lineCap = 'butt';
-      ctx.lineJoin = 'round';
-      ctx.stroke();
     }
+    for (const rb of carto.roundabouts) {
+      const rbColor = isDesignerMode
+        ? resolveDesignerColor(rb.color, 1, palette.isLight)
+        : cadBlackInk;
+      const strokeRing = (ring: [number, number][], stroke: string, lw: number) => {
+        if (ring.length < 3) return;
+        ctx.beginPath();
+        ring.forEach((pt, idx) => {
+          const [sx, sy] = toScreen(pt);
+          if (idx === 0) ctx.moveTo(sx, sy);
+          else ctx.lineTo(sx, sy);
+        });
+        ctx.closePath();
+        ctx.strokeStyle = stroke;
+        ctx.lineWidth = lw;
+        ctx.stroke();
+      };
+      strokeRing(
+        rb.sideOuter,
+        isDesignerMode ? designerCurbColor : cadSecondaryInk,
+        Math.max(1.2, 0.78 * cadScale)
+      );
+      strokeRing(rb.roadOuter, rbColor, Math.max(1.8, 1.15 * cadScale));
+      if (rb.island) strokeRing(rb.island, rbColor, Math.max(1.8, 1.15 * cadScale));
+    }
+  }
 
-    tracePath();
-    ctx.strokeStyle = palette.streetRoadFill;
-    ctx.lineWidth = Math.max(2.5, roadW);
-    ctx.lineCap = 'butt';
-    ctx.lineJoin = 'round';
-    ctx.stroke();
+  // Ejes viales segmentados + etiquetas de calle
+  renderStreetAxes({
+    ctx,
+    streets: carto.streets,
+    roundabouts: carto.roundabouts,
+    toScreen,
+    axisStroke: isDesignerMode
+      ? resolveDesignerColor(carto.streets[0]?.color ?? '#8b5cf6', 0.9, palette.isLight)
+      : cadAxisInk,
+    lineWidth: Math.max(1.1, 0.72 * cadScale),
+    cadScale,
+  });
 
-    ctx.save();
-    tracePath();
-    ctx.strokeStyle = palette.streetCenterline;
-    ctx.lineWidth = 1.05;
-    ctx.setLineDash([8, 6]);
-    ctx.stroke();
-    ctx.restore();
-
-    if (config.display.showStreetNames && st.name) {
+  if (config.display.showStreetNames) {
+    for (const st of carto.streets) {
+      if (st.path.length < 2 || !st.name) continue;
       let bestIdx = 0;
       let bestLen = 0;
       for (let i = 0; i < st.path.length - 1; i++) {
@@ -394,10 +446,12 @@ export function renderMainViewport(params: {
         ctx.save();
         ctx.translate((ax + bx) / 2, (ay + by) / 2);
         ctx.rotate(ang);
-        ctx.font = '700 10.5px "Plus Jakarta Sans", sans-serif';
-        ctx.fillStyle = palette.textPrimary;
+        ctx.font = `700 ${(9.5 * (cadScale * 0.5)).toFixed(1)}px "Plus Jakarta Sans", sans-serif`;
+        ctx.fillStyle = isDesignerMode
+          ? resolveDesignerColor(st.color, 1, palette.isLight)
+          : cadBlackInk;
         ctx.strokeStyle = palette.mapBg;
-        ctx.lineWidth = 3;
+        ctx.lineWidth = Math.max(2.5, 1.8 * cadScale);
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         const lbl = `${st.name.toUpperCase()} (${st.widthM.toFixed(1)}m)`;
@@ -408,30 +462,9 @@ export function renderMainViewport(params: {
     }
   }
 
-  // 3. Rotondas
-  for (const rb of carto.roundabouts) {
-    const drawRing = (ring: [number, number][], fill: string, stroke: string, lw: number) => {
-      if (ring.length < 3) return;
-      ctx.beginPath();
-      ring.forEach((pt, idx) => {
-        const [sx, sy] = toScreen(pt);
-        if (idx === 0) ctx.moveTo(sx, sy);
-        else ctx.lineTo(sx, sy);
-      });
-      ctx.closePath();
-      ctx.fillStyle = fill;
-      ctx.fill();
-      ctx.strokeStyle = stroke;
-      ctx.lineWidth = lw;
-      ctx.stroke();
-    };
-    drawRing(rb.sideOuter, palette.streetSidewalkFill, palette.borderInner, 1.1);
-    drawRing(rb.roadOuter, palette.streetRoadFill, palette.streetCenterline, 1.4);
-    if (rb.island) drawRing(rb.island, palette.mapBg, palette.accentSecondary, 1.5);
-  }
-
-  // 4. Polígonos
+  // 4. Polígonos con grosores reales tipo plumilla CAD (sin opacidad lavada ni hacheado)
   const sortedPolys = [...carto.polygons].sort((a, b) => {
+    if (a.zIndex !== b.zIndex) return a.zIndex - b.zIndex;
     const order = { perimetro: 0, manzana: 1, circulo: 2, lote: 3 };
     return order[a.kind] - order[b.kind];
   });
@@ -451,83 +484,63 @@ export function renderMainViewport(params: {
     });
     ctx.closePath();
 
-    if (poly.kind === 'perimetro') {
+    const baseWidthFactor = Math.max(0.75, (poly.strokeWidth || 2) / 2);
+
+    if (isDesignerMode) {
+      const designerStroke = resolveDesignerColor(poly.color, 1, palette.isLight);
+      if (isTargetLot) {
+        ctx.strokeStyle = designerStroke;
+        ctx.lineWidth = Math.max(3.2, 2.0 * cadScale * baseWidthFactor);
+        ctx.stroke();
+      } else {
+        ctx.strokeStyle = designerStroke;
+        ctx.lineWidth = Math.max(1.8, 1.15 * cadScale * baseWidthFactor);
+        ctx.stroke();
+      }
+    } else if (poly.kind === 'perimetro') {
       ctx.save();
-      ctx.strokeStyle = palette.perimetroStroke;
-      ctx.lineWidth = 2.6;
-      ctx.setLineDash([12, 6, 3, 6]);
+      ctx.strokeStyle = cadBlackInk;
+      ctx.lineWidth = Math.max(2.4, 1.6 * cadScale);
+      ctx.setLineDash([12 * cadScale * 0.65, 5 * cadScale * 0.65, 3 * cadScale * 0.65, 5 * cadScale * 0.65]);
       ctx.stroke();
       ctx.restore();
     } else if (poly.kind === 'manzana') {
-      if (!poly.subdivided && !isLotMode) {
-        ctx.fillStyle = palette.manzanaFill;
-        ctx.fill();
-      }
-      ctx.strokeStyle = palette.manzanaStroke;
-      ctx.lineWidth = isLotMode ? 1.5 : 2;
+      ctx.strokeStyle = cadBlackInk;
+      ctx.lineWidth = Math.max(2.2, 1.35 * cadScale * baseWidthFactor);
       ctx.stroke();
     } else if (poly.kind === 'lote') {
       if (isTargetLot) {
-        ctx.fillStyle = palette.selectedLotFill;
-        ctx.fill();
-
-        if (palette.isMonochrome) {
-          ctx.save();
-          ctx.clip();
-          const [minX, minY] = toScreen([poly.bbox[0], poly.bbox[3]]);
-          const [maxX, maxY] = toScreen([poly.bbox[2], poly.bbox[1]]);
-          const hSpan = maxY - minY;
-          ctx.strokeStyle = palette.selectedLotStroke;
-          ctx.globalAlpha = 0.16;
-          ctx.lineWidth = 0.9;
-          ctx.beginPath();
-          for (let sx = minX - hSpan; sx <= maxX + hSpan; sx += 14) {
-            ctx.moveTo(sx, maxY);
-            ctx.lineTo(sx + hSpan, minY);
-          }
-          ctx.stroke();
-          ctx.restore();
-        }
-
-        ctx.strokeStyle = palette.selectedLotStroke;
-        ctx.lineWidth = 3.2;
+        ctx.strokeStyle = cadBlackInk;
+        ctx.lineWidth = Math.max(3.6, 2.15 * cadScale * baseWidthFactor);
         ctx.stroke();
       } else {
-        ctx.save();
-        if (isLotMode) {
-          ctx.globalAlpha = 0.6;
-          ctx.setLineDash([5, 4]);
-        } else {
-          ctx.fillStyle = palette.loteFill;
-          ctx.fill();
-        }
-        ctx.strokeStyle = palette.loteStroke;
-        ctx.lineWidth = 1.1;
+        ctx.strokeStyle = cadBlackInk;
+        ctx.lineWidth = Math.max(1.6, 1.0 * cadScale * baseWidthFactor);
         ctx.stroke();
-        ctx.restore();
       }
     } else {
-      ctx.fillStyle = palette.isMonochrome ? palette.gridMinor : 'rgba(139, 92, 246, 0.14)';
-      ctx.fill();
-      ctx.strokeStyle = palette.isMonochrome ? palette.textPrimary : poly.color;
-      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = cadBlackInk;
+      ctx.lineWidth = Math.max(1.8, 1.15 * cadScale * baseWidthFactor);
       ctx.stroke();
     }
 
     if (config.display.showLotLabels && poly.kind !== 'perimetro') {
       const [cxPx, cyPx] = toScreen(poly.centroid);
       if (isTargetLot) {
-        ctx.font = '800 13px "Space Grotesk", sans-serif';
-        ctx.fillStyle = palette.selectedLotStroke;
+        const titleColor = isDesignerMode
+          ? resolveDesignerColor(poly.color, 1, palette.isLight)
+          : cadBlackInk;
+        ctx.font = '800 14px "Space Grotesk", sans-serif';
+        ctx.fillStyle = titleColor;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText(`LOTE ${poly.code}`, cxPx, cyPx - 9);
-        ctx.font = '700 11px "JetBrains Mono", monospace';
+        ctx.fillText(`LOTE ${poly.code}`, cxPx, cyPx - 10);
+        ctx.font = '700 11.5px "JetBrains Mono", monospace';
         ctx.fillStyle = palette.textPrimary;
         ctx.fillText(`SUP: ${poly.areaM2.toFixed(2)} m²`, cxPx, cyPx + 7);
-        ctx.font = '600 9px "JetBrains Mono", monospace';
+        ctx.font = '600 9.5px "JetBrains Mono", monospace';
         ctx.fillStyle = palette.textSecondary;
-        ctx.fillText(`MZN. ${selectedLot.manzanoCode}`, cxPx, cyPx + 21);
+        ctx.fillText(`MZN. ${selectedLot.manzanoCode}`, cxPx, cyPx + 22);
       } else if (poly.kind === 'lote') {
         let minPxX = Infinity,
           maxPxX = -Infinity,
@@ -543,19 +556,21 @@ export function renderMainViewport(params: {
         const bw = maxPxX - minPxX;
         const bh = maxPxY - minPxY;
         if (bw > 22 && bh > 14) {
-          ctx.font = `700 ${bw > 44 ? 9.5 : 8}px "JetBrains Mono", monospace`;
-          ctx.fillStyle = isLotMode ? palette.textMuted : palette.textPrimary;
+          ctx.font = `700 ${bw > 44 ? 10.5 : 8.5}px "JetBrains Mono", monospace`;
+          ctx.fillStyle = palette.textPrimary;
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
           ctx.fillText(isLotMode ? `Col. L-${poly.code}` : poly.code, cxPx, cyPx);
         }
       } else if (poly.kind === 'manzana' && !poly.subdivided) {
-        ctx.font = '800 11.5px "Space Grotesk", sans-serif';
-        ctx.fillStyle = palette.textPrimary;
+        ctx.font = '800 12px "Space Grotesk", sans-serif';
+        ctx.fillStyle = isDesignerMode
+          ? resolveDesignerColor(poly.color, 1, palette.isLight)
+          : cadBlackInk;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(poly.code, cxPx, cyPx - 6);
-        ctx.font = '600 9.5px "JetBrains Mono", monospace';
+        ctx.font = '600 10px "JetBrains Mono", monospace';
         ctx.fillStyle = palette.textSecondary;
         ctx.fillText(`${poly.areaM2.toFixed(1)} m²`, cxPx, cyPx + 7);
       }
@@ -578,14 +593,14 @@ export function renderMainViewport(params: {
           ctx.save();
           ctx.translate((x0 + x1) / 2, (y0 + y1) / 2);
           ctx.rotate(ang);
-          ctx.font = `${isTargetLot ? '800 10px' : '600 8px'} "JetBrains Mono", monospace`;
-          ctx.fillStyle = isTargetLot ? palette.textPrimary : palette.textMuted;
+          ctx.font = `${isTargetLot ? '800 11px' : '700 8.5px'} "JetBrains Mono", monospace`;
+          ctx.fillStyle = palette.textPrimary;
           ctx.strokeStyle = palette.mapBg;
-          ctx.lineWidth = 3;
+          ctx.lineWidth = Math.max(3, 2 * cadScale);
           ctx.textAlign = 'center';
           ctx.textBaseline = 'bottom';
           const dimText = `${segLenM.toFixed(2)} m`;
-          if (isTargetLot) ctx.strokeText(dimText, 0, -4);
+          ctx.strokeText(dimText, 0, isTargetLot ? -4 : -2);
           ctx.fillText(dimText, 0, isTargetLot ? -4 : -2);
           ctx.restore();
         }
@@ -595,18 +610,26 @@ export function renderMainViewport(params: {
 
   // 5. Vértices V1..Vn
   if (isLotMode && config.display.showVertexMarkers) {
+    const markerColor = isDesignerMode
+      ? resolveDesignerColor(
+          carto.polygons.find((p) => p.id === selectedLot.id)?.color ?? '#58a6ff',
+          1,
+          palette.isLight
+        )
+      : cadBlackInk;
+    const vRadius = Math.max(7, 4.2 * cadScale);
     for (const v of selectedLot.vertices) {
       const [vx, vy] = toScreen([v.eastM, v.northM]);
       ctx.beginPath();
-      ctx.arc(vx, vy, 8, 0, Math.PI * 2);
-      ctx.fillStyle = palette.selectedLotStroke;
+      ctx.arc(vx, vy, vRadius, 0, Math.PI * 2);
+      ctx.fillStyle = markerColor;
       ctx.fill();
       ctx.strokeStyle = palette.sheetBg;
-      ctx.lineWidth = 1.6;
+      ctx.lineWidth = Math.max(1.5, 0.9 * cadScale);
       ctx.stroke();
 
-      ctx.font = '800 7.5px "JetBrains Mono", monospace';
-      ctx.fillStyle = palette.isMonochrome ? palette.sheetBg : '#FFFFFF';
+      ctx.font = `800 ${Math.max(8, Math.round(vRadius * 0.88))}px "JetBrains Mono", monospace`;
+      ctx.fillStyle = palette.sheetBg;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(v.vertexLabel, vx, vy);
@@ -622,18 +645,22 @@ export function renderMainViewport(params: {
       if (idx === 0) ctx.moveTo(sx, sy);
       else ctx.lineTo(sx, sy);
     });
-    ctx.strokeStyle = palette.isMonochrome ? palette.textPrimary : ln.color;
-    ctx.lineWidth = 1.8;
+    ctx.strokeStyle = isDesignerMode
+      ? resolveDesignerColor(ln.color, 1, palette.isLight)
+      : cadBlackInk;
+    ctx.lineWidth = Math.max(1.8, 1.15 * cadScale * Math.max(0.75, (ln.strokeWidth || 2) / 2));
     ctx.stroke();
   }
   for (const pt of carto.points) {
     const [sx, sy] = toScreen(pt.coord);
     ctx.beginPath();
-    ctx.arc(sx, sy, 4.5, 0, Math.PI * 2);
-    ctx.fillStyle = palette.isMonochrome ? palette.textPrimary : pt.color;
+    ctx.arc(sx, sy, Math.max(4.5, 2.5 * cadScale), 0, Math.PI * 2);
+    ctx.fillStyle = isDesignerMode
+      ? resolveDesignerColor(pt.color, 1, palette.isLight)
+      : cadBlackInk;
     ctx.fill();
     ctx.strokeStyle = palette.sheetBg;
-    ctx.lineWidth = 1.4;
+    ctx.lineWidth = Math.max(1.4, 0.8 * cadScale);
     ctx.stroke();
   }
 
@@ -760,15 +787,15 @@ export function renderMainViewport(params: {
 
   // Borde interno del mapa
   ctx.strokeStyle = palette.borderOuter;
-  ctx.lineWidth = 1.6;
+  ctx.lineWidth = Math.max(1.6, 1.1 * cadScale);
   ctx.strokeRect(mapRect.x, mapRect.y, mapRect.w, mapRect.h);
 
   // Coordenadas perimetrales E / N
   if (config.display.showGrid) {
-    ctx.font = '600 9px "JetBrains Mono", monospace';
+    ctx.font = '600 9.5px "JetBrains Mono", monospace';
     ctx.fillStyle = palette.gridText;
     ctx.strokeStyle = palette.borderOuter;
-    ctx.lineWidth = 1.1;
+    ctx.lineWidth = Math.max(1.1, 0.8 * cadScale);
 
     for (let gx = firstGridX; gx <= viewMaxX; gx += gridStepM) {
       const [sx] = toScreen([gx, cyMetric]);

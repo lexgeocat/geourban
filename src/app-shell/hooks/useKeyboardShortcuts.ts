@@ -118,12 +118,19 @@ function handleSelectAll(): void {
 export function useKeyboardShortcuts() {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (useUiShellStore.getState().layoutModalOpen) return;
-      if (isTypingTarget(e.target)) return;
-      if (e.altKey) return;
-
       const ctrlOrCmd = e.ctrlKey || e.metaKey;
       const key = e.key;
+
+      if (ctrlOrCmd && (key === 'p' || key === 'P') && !e.altKey) {
+        e.preventDefault();
+        const shell = useUiShellStore.getState();
+        shell.setWorkspaceView(shell.workspaceView === 'map' ? 'layout' : 'map');
+        return;
+      }
+
+      if (useUiShellStore.getState().workspaceView === 'layout') return;
+      if (isTypingTarget(e.target)) return;
+      if (e.altKey) return;
 
       if (ctrlOrCmd && (key === 'z' || key === 'Z')) {
         e.preventDefault();
